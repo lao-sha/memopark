@@ -25,18 +25,16 @@ frame-try-runtime = { optional = true, workspace = true }
 pallet-aura.workspace = true
 pallet-balances.workspace = true
 pallet-grandpa.workspace = true
-pallet-karma = { path = "../pallets/karma", default-features = false }
-pallet-authorizer = { path = "../pallets/authorizer", default-features = false }
 pallet-forwarder = { path = "../pallets/forwarder", default-features = false }
-pallet-agent = { path = "../pallets/agent", default-features = false }
-pallet-order = { path = "../pallets/order", default-features = false }
-pallet-otc-market = { path = "../pallets/otc-market", default-features = false }
+pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
+pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
+pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
 pallet-escrow = { path = "../pallets/escrow", default-features = false }
 pallet-arbitration = { path = "../pallets/arbitration", default-features = false }
-pallet-exchange = { path = "../pallets/exchange", default-features = false }
-pallet-ritual = { path = "../pallets/ritual", default-features = false }
-pallet-cemetery = { path = "../pallets/cemetery", default-features = false }
-pallet-deceased = { path = "../pallets/deceased", default-features = false }
+# replaced old ritual/cemetery
+pallet-memorial-park = { path = "../pallets/memorial-park", default-features = false }
+pallet-grave = { path = "../pallets/grave", default-features = false }
+pallet-memorial-offerings = { path = "../pallets/memorial-offerings", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
@@ -78,18 +76,15 @@ std = [
 	"pallet-aura/std",
 	"pallet-balances/std",
 	"pallet-grandpa/std",
-	"pallet-karma/std",
-	"pallet-authorizer/std",
 	"pallet-forwarder/std",
-	"pallet-agent/std",
-	"pallet-order/std",
-	"pallet-otc-market/std",
+	"pallet-otc-maker/std",
+	"pallet-otc-listing/std",
+	"pallet-otc-order/std",
 	"pallet-escrow/std",
 	"pallet-arbitration/std",
-	"pallet-exchange/std",
-	"pallet-ritual/std",
-	"pallet-cemetery/std",
-	"pallet-deceased/std",
+	"pallet-memorial-park/std",
+	"pallet-grave/std",
+	"pallet-memorial-offerings/std",
 	"pallet-evidence/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
@@ -155,4 +150,7 @@ metadata-hash = ["substrate-wasm-builder/metadata-hash"]
 
 # A convenience feature for enabling things when doing a build
 # for an on-chain release.
+#
+# It enables both the metadata-hash generation and disables the logging from
+# `sp-api` in the runtime, which is just in memory and never visible.
 on-chain-release-build = ["metadata-hash", "sp-api/disable-logging"]

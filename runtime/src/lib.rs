@@ -23,8 +23,7 @@ use sp_version::RuntimeVersion;
 pub use frame_system::Call as SystemCall;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
-pub use pallet_forwarder::Call as ForwarderCall;
-pub use pallet_ritual::Call as RitualCall;
+// pub use pallet_ritual::Call as RitualCall;
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 
@@ -231,41 +230,32 @@ mod runtime {
 	pub type Template = pallet_template;
 
 	#[runtime::pallet_index(8)]
-	pub type Karma = pallet_karma;
-
-	#[runtime::pallet_index(9)]
-	pub type Authorizer = pallet_authorizer;
-
-	#[runtime::pallet_index(10)]
 	pub type Forwarder = pallet_forwarder;
 
+	#[runtime::pallet_index(9)]
+	pub type OtcMaker = pallet_otc_maker;
+
+	#[runtime::pallet_index(10)]
+	pub type OtcListing = pallet_otc_listing;
+
 	#[runtime::pallet_index(11)]
-	pub type Agent = pallet_agent;
+	pub type OtcOrder = pallet_otc_order;
 
 	#[runtime::pallet_index(12)]
-	pub type Order = pallet_order;
-
-	#[runtime::pallet_index(13)]
-	pub type OtcMarket = pallet_otc_market;
-
-	#[runtime::pallet_index(14)]
 	pub type Escrow = pallet_escrow;
 
-	#[runtime::pallet_index(15)]
+	#[runtime::pallet_index(13)]
 	pub type Arbitration = pallet_arbitration;
 
+	#[runtime::pallet_index(14)]
+	pub type MemorialPark = pallet_memorial_park;
+
+	#[runtime::pallet_index(15)]
+	pub type Grave = pallet_grave;
+
 	#[runtime::pallet_index(16)]
-	pub type Exchange = pallet_exchange;
+	pub type MemorialOfferings = pallet_memorial_offerings;
 
 	#[runtime::pallet_index(17)]
-	pub type Ritual = pallet_ritual;
-
-	#[runtime::pallet_index(18)]
-	pub type Cemetery = pallet_cemetery;
-
-	#[runtime::pallet_index(19)]
-	pub type Deceased = pallet_deceased;
-
-	#[runtime::pallet_index(20)]
 	pub type Evidence = pallet_evidence;
 }

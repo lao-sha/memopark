@@ -5835,25 +5835,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
-name = "pallet-agent"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-arbitration"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
  "pallet-escrow",
- "pallet-order",
  "parity-scale-codec",
  "scale-info",
  "sp-arithmetic",
@@ -5875,17 +5862,6 @@ dependencies = [
  "scale-info",
  "sp-application-crypto",
  "sp-consensus-aura",
- "sp-runtime",
-]
-
-[[package]]
-name = "pallet-authorizer"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
  "sp-runtime",
 ]
 
@@ -5921,29 +5897,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-cemetery"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-runtime",
-]
-
-[[package]]
-name = "pallet-deceased"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-escrow"
 version = "0.1.0"
 dependencies = [
@@ -5960,23 +5913,8 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
- "pallet-authorizer",
  "parity-scale-codec",
  "scale-info",
- "sp-runtime",
-]
-
-[[package]]
-name = "pallet-exchange"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-authorizer",
- "pallet-karma",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
  "sp-runtime",
 ]
 
@@ -6016,40 +5954,76 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-karma"
+name = "pallet-grave"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
- "pallet-authorizer",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
 ]
 
 [[package]]
-name = "pallet-order"
+name = "pallet-membership"
+version = "28.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memorial-offerings"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
- "pallet-escrow",
- "pallet-karma",
  "parity-scale-codec",
  "scale-info",
- "sp-arithmetic",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memorial-park"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-otc-listing"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "pallet-escrow",
+ "pallet-otc-maker",
+ "parity-scale-codec",
+ "scale-info",
  "sp-core",
  "sp-runtime",
  "sp-std 12.0.0",
 ]
 
 [[package]]
-name = "pallet-otc-market"
+name = "pallet-otc-maker"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
- "pallet-escrow",
+ "pallet-membership",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6058,15 +6032,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-ritual"
+name = "pallet-otc-order"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-arbitration",
+ "pallet-balances",
+ "pallet-escrow",
+ "pallet-evidence",
+ "pallet-otc-listing",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
  "sp-runtime",
+ "sp-std 12.0.0",
 ]
 
 [[package]]
@@ -9632,22 +9612,19 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
- "pallet-agent",
  "pallet-arbitration",
  "pallet-aura",
- "pallet-authorizer",
  "pallet-balances",
- "pallet-cemetery",
- "pallet-deceased",
  "pallet-escrow",
  "pallet-evidence",
- "pallet-exchange",
  "pallet-forwarder",
  "pallet-grandpa",
- "pallet-karma",
- "pallet-order",
- "pallet-otc-market",
- "pallet-ritual",
+ "pallet-grave",
+ "pallet-memorial-offerings",
+ "pallet-memorial-park",
+ "pallet-otc-listing",
+ "pallet-otc-maker",
+ "pallet-otc-order",
  "pallet-sudo",
  "pallet-template",
  "pallet-timestamp",

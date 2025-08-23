@@ -137,7 +137,7 @@ pub mod pallet {
             }
             ensure!(Disputed::<T>::get(domain, id).is_none(), Error::<T>::AlreadyDisputed);
             Disputed::<T>::insert(domain, id, ());
-            EvidenceIds::<T>::try_mutate(domain, id, |v| {
+            EvidenceIds::<T>::try_mutate(domain, id, |v| -> Result<(), Error<T>> {
                 v.try_push(evidence_id).map_err(|_| Error::<T>::AlreadyDisputed)?; // 复用错误占位，避免新增错误枚举
                 Ok(())
             })?;
@@ -159,7 +159,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
             ensure!(Disputed::<T>::get(domain, id).is_some(), Error::<T>::NotDisputed);
-            EvidenceIds::<T>::try_mutate(domain, id, |v| {
+            EvidenceIds::<T>::try_mutate(domain, id, |v| -> Result<(), Error<T>> {
                 v.try_push(evidence_id).map_err(|_| Error::<T>::AlreadyDisputed)?;
                 Ok(())
             })?;
