@@ -13,6 +13,7 @@ pub mod pallet {
 	};
 	use frame_system::pallet_prelude::*;
 	use alloc::vec::Vec;
+	use sp_core::H256;
 
 	/// 函数级中文注释：共享证据（媒体）记录结构，存储跨域使用的图片/视频/文档的 IPFS CID（或哈希）。
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -33,6 +34,10 @@ pub mod pallet {
 		pub vids: BoundedVec<BoundedVec<u8, MaxCidLen>, MaxVid>,
 		pub docs: BoundedVec<BoundedVec<u8, MaxCidLen>, MaxDoc>,
 		pub memo: Option<BoundedVec<u8, MaxMemoLen>>,
+		/// 新增：证据承诺（commit），例如 H(ns || subject_id || cid_enc || salt || ver)
+		pub commit: Option<H256>,
+		/// 新增：命名空间（8 字节），用于授权与分域检索
+		pub ns: Option<[u8; 8]>,
 	}
 
 	#[pallet::config]
@@ -61,12 +66,20 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type EvidenceByTarget<T: Config> = StorageDoubleMap<_, Blake2_128Concat, (u8, u64), Blake2_128Concat, u64, (), OptionQuery>;
 
+	/// 新增：按命名空间+主体键值引用证据 id（便于按 ns/subject_id 聚合）
+	#[pallet::storage]
+	pub type EvidenceByNs<T: Config> = StorageDoubleMap<_, Blake2_128Concat, ([u8; 8], u64), Blake2_128Concat, u64, (), OptionQuery>;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		EvidenceCommitted { id: u64, domain: u8, target_id: u64, owner: T::AccountId },
 		EvidenceLinked { domain: u8, target_id: u64, id: u64 },
 		EvidenceUnlinked { domain: u8, target_id: u64, id: u64 },
+		/// 新增：V2 事件，按命名空间与主体提交/链接
+		EvidenceCommittedV2 { id: u64, ns: [u8; 8], subject_id: u64, owner: T::AccountId },
+		EvidenceLinkedV2 { ns: [u8; 8], subject_id: u64, id: u64 },
+		EvidenceUnlinkedV2 { ns: [u8; 8], subject_id: u64, id: u64 },
 	}
 
 	#[pallet::error]
@@ -90,10 +103,46 @@ pub mod pallet {
 			let ns = T::EvidenceNsBytes::get();
 			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
 			let id = NextEvidenceId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
-			let ev = Evidence { id, domain, target_id, owner: who.clone(), imgs: imgs.try_into().map_err(|_| Error::<T>::NotAuthorized)?, vids: vids.try_into().map_err(|_| Error::<T>::NotAuthorized)?, docs: docs.try_into().map_err(|_| Error::<T>::NotAuthorized)?, memo };
+			let ev = Evidence { id, domain, target_id, owner: who.clone(), imgs: imgs.try_into().map_err(|_| Error::<T>::NotAuthorized)?, vids: vids.try_into().map_err(|_| Error::<T>::NotAuthorized)?, docs: docs.try_into().map_err(|_| Error::<T>::NotAuthorized)?, memo, commit: None, ns: Some(ns) };
 			Evidences::<T>::insert(id, &ev);
 			EvidenceByTarget::<T>::insert((domain, target_id), id, ());
 			Self::deposit_event(Event::EvidenceCommitted { id, domain, target_id, owner: who });
+			Ok(())
+		}
+
+		/// 函数级中文注释（V2）：仅登记承诺哈希（不在链上存储任何明文/可逆 CID）。
+		/// - ns：8 字节命名空间（如 b"kyc_____"、b"otc_ord_"）。
+		/// - subject_id：业务主体 id（如订单号、账户短码等）。
+		/// - commit：承诺哈希（例如 blake2b256(ns||subject_id||cid_enc||salt||ver)）。
+		#[pallet::weight(10_000)]
+		pub fn commit_hash(
+			origin: OriginFor<T>,
+			ns: [u8; 8],
+			subject_id: u64,
+			commit: H256,
+			memo: Option<BoundedVec<u8, T::MaxMemoLen>>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
+			let id = NextEvidenceId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
+			let empty_imgs: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxImg> = Default::default();
+			let empty_vids: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxVid> = Default::default();
+			let empty_docs: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxDoc> = Default::default();
+			let ev = Evidence {
+				id,
+				domain: 0,
+				target_id: subject_id,
+				owner: who.clone(),
+				imgs: empty_imgs,
+				vids: empty_vids,
+				docs: empty_docs,
+				memo,
+				commit: Some(commit),
+				ns: Some(ns),
+			};
+			Evidences::<T>::insert(id, &ev);
+			EvidenceByNs::<T>::insert((ns, subject_id), id, ());
+			Self::deposit_event(Event::EvidenceCommittedV2 { id, ns, subject_id, owner: who });
 			Ok(())
 		}
 
@@ -109,6 +158,17 @@ pub mod pallet {
 			Ok(())
 		}
 
+		/// 函数级中文注释（V2）：按命名空间与主体链接既有证据 id（仅保存引用，不触碰明文）。
+		#[pallet::weight(10_000)]
+		pub fn link_by_ns(origin: OriginFor<T>, ns: [u8; 8], subject_id: u64, id: u64) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
+			ensure!(Evidences::<T>::contains_key(id), Error::<T>::NotFound);
+			EvidenceByNs::<T>::insert((ns, subject_id), id, ());
+			Self::deposit_event(Event::EvidenceLinkedV2 { ns, subject_id, id });
+			Ok(())
+		}
+
 		/// 函数级中文注释：取消目标与证据的链接；仅授权账户可调用。
 		#[pallet::weight(10_000)]
 		pub fn unlink(origin: OriginFor<T>, domain: u8, target_id: u64, id: u64) -> DispatchResult {
@@ -117,6 +177,16 @@ pub mod pallet {
 			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
 			EvidenceByTarget::<T>::remove((domain, target_id), id);
 			Self::deposit_event(Event::EvidenceUnlinked { domain, target_id, id });
+			Ok(())
+		}
+
+		/// 函数级中文注释（V2）：按命名空间与主体取消链接。
+		#[pallet::weight(10_000)]
+		pub fn unlink_by_ns(origin: OriginFor<T>, ns: [u8; 8], subject_id: u64, id: u64) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
+			EvidenceByNs::<T>::remove((ns, subject_id), id);
+			Self::deposit_event(Event::EvidenceUnlinkedV2 { ns, subject_id, id });
 			Ok(())
 		}
 	}

@@ -55,7 +55,6 @@
 - 状态变更：订单状态从 Submitted → Released → Closed
 - 返回事件：OrderReleasedAndClosed { order_id }
 
-<!-- 已移除：pallet-temple -->
 ## 2.（已移除）
 
 ### 2.1 register_temple - 注册寺庙
@@ -175,7 +174,6 @@
 - 权限：任何已签名用户
 - 返回事件：TributeOffered { spec_id, offerer, tribute_id }
 
-<!-- 已移除：pallet-device -->
 ## 7.（已移除）
 
 ### 7.1 register_headband - 注册设备
@@ -282,197 +280,157 @@
 - 权限：会话发起者
 - 返回事件：CallForwarded { session_id }
 
-<!-- 已移除：pallet-meditation -->
 ## 11.（已移除）
 
 <!-- 11.x 条目已移除 -->
 
-<!-- 已移除：pallet-mining -->
 ## 12.（已移除）
 
 <!-- 12.x 条目已移除 -->
 
-## 13. OTC 市场 (pallet-otc-market)
+## 13. OTC 三件套（非官方）
 
-### 13.1 place_order - 挂单
-- 功能：在 OTC 市场挂单交易
-- 调用参数：
-  - asset_in: AssetId - 卖出资产
-  - amount_in: AssetBalance - 卖出数量
-  - asset_out: AssetId - 买入资产
-  - amount_out: AssetBalance - 买入数量
-- 权限：任何已签名用户
-- 副作用：资金锁定到托管
-- 返回事件：OrderPlaced { order_id, maker }
+### 13.1 做市商管理 (pallet-otc-maker)
+- **功能**：做市商（经销商）准入、资料承诺、启用/停牌；前置 KYC（pallet-identity 正向裁决）
+- **调用**：
+  - `otcMaker.upsertMaker(paymentCidCommit: H256)`
+    - 说明：注册或更新做市商资料，默认启用
+    - 权限：签名账户，且通过 KYC
+    - 事件：`MakerUpserted { who }`
+  - `otcMaker.setActive(active: bool)`
+    - 说明：切换启用/停牌
+    - 权限：做市商本人；启用时需通过 KYC
+    - 事件：`MakerStatusChanged { who, active }`
 
-### 13.2 cancel_order - 撤单
-- 功能：撤销 OTC 订单
-- 调用参数：order_id: u64 - 订单ID
-- 权限：订单创建者
-- 副作用：释放托管资金
-- 返回事件：OrderCancelled { order_id }
+### 13.2 挂单管理 (pallet-otc-listing)
+- **功能**：创建/取消 OTC 挂单，保存条款承诺（加密条款 CID 承诺）
+- **调用**：
+  - `otcListing.createListing(side: u8, base: u32, quote: u32, price: Balance, minQty: Balance, maxQty: Balance, total: Balance, partial: bool, expireAt: BlockNumber, termsCommit?: BoundedVec<u8, MaxCidLen>)`
+    - 说明：创建挂单，`side`=0 买单/1 卖单
+    - 权限：签名账户（通常为做市商）
+    - 事件：`ListingCreated { id }`
+  - `otcListing.cancelListing(id: u64)`
+    - 说明：取消挂单
+    - 权限：挂单创建者
+    - 事件：`ListingCanceled { id }`
 
-## 14. 证据管理 (pallet-evidence)
+### 13.3 订单管理 (pallet-otc-order)
+- **功能**：吃单创建订单、标记支付/进入争议
+- **调用**：
+  - `otcOrder.openOrder(listingId: u64, price: Balance, qty: Balance, amount: Balance, paymentCommit: H256, contactCommit: H256)`
+    - 说明：吃单创建订单；承诺仅存哈希
+    - 权限：签名账户（taker）
+    - 返回：事件 `OrderOpened { id }`
+  - `otcOrder.markPaid(id: u64)`
+    - 说明：买家标记已支付/已提交凭据
+    - 权限：订单 `taker`
+    - 返回：事件 `OrderPaidCommitted { id }`
+  - `otcOrder.markDisputed(id: u64)`
+    - 说明：标记争议中（Paid 未放行/过期/证据期内任一成立）
+    - 权限：订单参与方（maker/taker）
+    - 返回：事件 `OrderDisputed { id }`
 
-### 14.1 commit - 提交证据
-- 功能：提交证据到链上
-- 调用参数：
-  - evidence_cid: BoundedVec<u8, T::MaxCidLen> - 证据IPFS CID
-  - category: u8 - 证据类别
-  - note: Option<BoundedVec<u8, T::MaxNoteLen>> - 说明
-- 权限：授权账户
-- 返回事件：EvidenceCommitted { evidence_id, committer }
+---
 
-### 14.2 link - 链接证据
-- 功能：将证据链接到业务实体
-- 调用参数：
-  - evidence_id: u64 - 证据ID
-  - target_type: u8 - 目标类型
-  - target_id: u64 - 目标ID
-- 权限：授权账户
-- 返回事件：EvidenceLinked { evidence_id, target_type, target_id }
+## 14. 证据管理 (pallet-evidence)（非官方）
+- **总体**：链下加密，链上承诺与引用。V1 存储 CID 列表（兼容），V2 仅登记承诺。
 
-### 14.3 unlink - 取消链接
-- 功能：取消证据与业务实体的链接
-- 调用参数：
-  - evidence_id: u64 - 证据ID
-  - target_type: u8 - 目标类型
-  - target_id: u64 - 目标ID
-- 权限：授权账户
-- 返回事件：EvidenceUnlinked { evidence_id, target_type, target_id }
+### 14.1 commit(domain: u8, targetId: u64, imgs: Vec<Cid>, vids: Vec<Cid>, docs: Vec<Cid>, memo?: BoundedVec)
+- **功能**：提交证据（V1：保存加密 CID 列表）
+- **权限**：Authorizer 通过的账户
+- **事件**：`EvidenceCommitted { id, domain, target_id, owner }`
 
-## 15. 陵园管理 (pallet-cemetery)
+### 14.2 link(domain: u8, targetId: u64, id: u64)
+- **功能**：为目标链接既有证据 id
+- **事件**：`EvidenceLinked { domain, target_id, id }`
 
-### 15.1 create_cemetery - 创建陵园
-- 功能：创建新的陵园
-- 调用参数：
-  - name: BoundedVec<u8, T::MaxNameLen> - 陵园名称
-  - location: BoundedVec<u8, T::MaxLocationLen> - 地理位置
-  - meta_cid: Option<BoundedVec<u8, T::MaxCidLen>> - 元数据CID
-- 权限：任何已签名用户
-- 返回事件：CemeteryCreated { cemetery_id, admin }
+### 14.3 unlink(domain: u8, targetId: u64, id: u64)
+- **功能**：取消链接
+- **事件**：`EvidenceUnlinked { domain, target_id, id }`
 
-### 15.2 set_cemetery_admin - 设置管理员
-- 功能：设置陵园管理员
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - new_admin: T::AccountId - 新管理员
-- 权限：当前陵园管理员
-- 返回事件：CemeteryAdminSet { cemetery_id, new_admin }
+### 14.4 commitHash(ns: [u8;8], subjectId: u64, commit: H256, memo?: BoundedVec)  // V2
+- **功能**：仅登记承诺哈希（不存 CID 列表）
+- **权限**：Authorizer 通过的账户
+- **事件**：`EvidenceCommittedV2 { id, ns, subject_id, owner }`
 
-### 15.3 create_plot - 创建墓位
-- 功能：在陵园中创建墓位
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - plot_type: u8 - 墓位类型
-  - meta_cid: Option<BoundedVec<u8, T::MaxCidLen>> - 元数据CID
-- 权限：anlin园管理员
-- 返回事件：PlotCreated { cemetery_id, plot_id }
+### 14.5 linkByNs(ns: [u8;8], subjectId: u64, id: u64)  // V2
+- **功能**：按命名空间与主体链接证据 id
+- **事件**：`EvidenceLinkedV2 { ns, subject_id, id }`
 
-### 15.4 update_plot - 更新墓位
-- 功能：更新墓位信息
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - plot_id: u64 - 墓位ID
-  - new_meta_cid: Option<BoundedVec<u8, T::MaxCidLen>> - 新元数据CID
-- 权限：陵园管理员或墓位所有者
-- 返回事件：PlotUpdated { cemetery_id, plot_id }
+### 14.6 unlinkByNs(ns: [u8;8], subjectId: u64, id: u64)  // V2
+- **功能**：按命名空间与主体取消链接
+- **事件**：`EvidenceUnlinkedV2 { ns, subject_id, id }`
 
-### 15.5 transfer_plot - 转移墓位
-- 功能：转移墓位所有权
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - plot_id: u64 - 墓位ID
-  - new_owner: T::AccountId - 新所有者
-- 权限：墓位当前所有者
-- 返回事件：PlotTransferred { cemetery_id, plot_id, new_owner }
+调用参数别名：
+- Cid = `BoundedVec<u8, MaxCidLen>`
 
-### 15.6 inter - 安葬
-- 功能：将逝者安葬到墓位
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - plot_id: u64 - 墓位ID
-  - deceased_id: u64 - 逝者ID
-- 权限：墓位所有者
-- 返回事件：Interred { cemetery_id, plot_id, deceased_id }
+---
 
-### 15.7 exhume - 迁出
-- 功能：将逝者从墓位迁出
-- 调用参数：
-  - cemetery_id: u64 - 陵园ID
-  - plot_id: u64 - 墓位ID
-  - deceased_id: u64 - 逝者ID
-- 权限：墓位所有者
-- 返回事件：Exhumed { cemetery_id, plot_id, deceased_id }
+## 15. 仲裁管理 (pallet-arbitration)（非官方）
+- **总体**：路由到域的业务 Pallet；只保存争议登记与 `evidence_id` 引用。
 
-## 16. 逝者档案 (pallet-deceased)
+### 15.1 dispute(domain: [u8;8], id: u64, evidence: Vec<Cid>)
+- **功能**：登记争议（兼容旧式 CID 提交）
+- **权限**：由 Router.can_dispute 校验（通常为订单参与方）
+- **事件**：`Disputed { domain, id }`
 
-### 16.1 register_deceased - 注册逝者档案
-- 功能：注册逝者信息档案
-- 调用参数：
-  - profile_commit: sp_core::H256 - 档案承诺哈希
-  - meta_ver: u8 - 元数据版本
-  - meta_cid: Option<BoundedVec<u8, T::MaxCidLen>> - 元数据IPFS CID
-- 权限：任何已签名用户
-- 返回事件：DeceasedRegistered { id }
+### 15.2 arbitrate(domain: [u8;8], id: u64, decisionCode: u8, bps?: u16)
+- **功能**：裁决（0=Release,1=Refund,2=Partial(bps)）
+- **权限**：仲裁者白名单/治理授权
+- **事件**：`Arbitrated { domain, id, decision, bps }`
 
-### 16.2 update_deceased - 更新逝者档案
-- 功能：更新逝者档案信息
-- 调用参数：
-  - deceased_id: u64 - 逝者ID
-  - new_profile_commit: Option<sp_core::H256> - 新档案承诺
-  - new_meta_ver: Option<u8> - 新元数据版本
-  - new_meta_cid: Option<Option<BoundedVec<u8, T::MaxCidLen>>> - 新元数据CID
-- 权限：档案所有者或授权编辑者
-- 返回事件：DeceasedUpdated { id }
+### 15.3 disputeWithEvidenceId(domain: [u8;8], id: u64, evidenceId: u64)
+- **功能**：以 `evidence_id` 登记争议（推荐 V2）
+- **事件**：`Disputed { domain, id }`
 
-### 16.3 deactivate_deceased - 停用档案
-- 功能：停用逝者档案
-- 调用参数：deceased_id: u64 - 逝者ID
-- 权限：档案所有者
-- 返回事件：DeceasedDeactivated { id }
+### 15.4 appendEvidenceId(domain: [u8;8], id: u64, evidenceId: u64)
+- **功能**：为已登记争议追加 `evidence_id`
+- **返回**：成功无返回值（事件可选）
 
-### 16.4 transfer_deceased_ownership - 转移档案所有权
-- 功能：转移档案所有权
-- 调用参数：
-  - deceased_id: u64 - 逝者ID
-  - new_owner: T::AccountId - 新所有者
-- 权限：档案当前所有者
-- 返回事件：DeceasedOwnershipTransferred { id }
+---
 
-### 16.5 grant_deceased_editor - 授权编辑者
-- 功能：授权其他用户编辑档案
-- 调用参数：
-  - deceased_id: u64 - 逝者ID
-  - editor: T::AccountId - 编辑者账户
-- 权限：档案所有者
-- 返回事件：EditorGranted { id }
+## 16. 纪念园区/陵墓/供奉（非官方）
 
-### 16.6 revoke_deceased_editor - 撤销编辑权限
-- 功能：撤销编辑者权限
-- 调用参数：
-  - deceased_id: u64 - 逝者ID
-  - editor: T::AccountId - 编辑者账户
-- 权限：档案所有者
-- 返回事件：EditorRevoked { id }
+### 16.1 纪念园区 (pallet-memorial-park)
+- `memorialPark.createPark(country: BoundedVec<u8>, region: BoundedVec<u8>, metaCid?: BoundedVec<u8>)`
+  - 事件：`ParkCreated { id }`
+- `memorialPark.updatePark(id: u64, region?: BoundedVec<u8>, metaCid?: BoundedVec<u8>, active?: bool)`
+  - 事件：`ParkUpdated { id }`
+- `memorialPark.setParkAdmin(id: u64, newAdmin: AccountId)`
+  - 事件：`ParkAdminSet { id }`
+- `memorialPark.transferPark(id: u64, newOwner: AccountId)`
+  - 事件：`ParkTransferred { id }`
 
-### 16.7 link_relation - 建立关系
-- 功能：在逝者间建立亲属关系
-- 调用参数：
-  - a: u64 - 逝者A的ID
-  - b: u64 - 逝者B的ID
-  - kind: u8 - 关系类型（0=父母，1=配偶）
-- 权限：两个档案的所有者或编辑者
-- 返回事件：RelationLinked { a, b, kind }
+### 16.2 陵墓 (pallet-grave)
+- `grave.createGrave(parkId: u64, kindCode: u8, capacity: u16, metaCid?: BoundedVec<u8>)`
+  - 事件：`GraveCreated { id }`
+- `grave.updateGrave(id: u64, metaCid?: BoundedVec<u8>, active?: bool)`
+  - 事件：`GraveUpdated { id }`
+- `grave.transferGrave(id: u64, newOwner: AccountId)`
+  - 事件：`GraveTransferred { id }`
+- `grave.inter(graveId: u64, deceasedId: u64, memo?: BoundedVec<u8>)`
+  - 事件：`IntermentCommitted { grave_id, deceased_id }`
+- `grave.exhume(graveId: u64, deceasedId: u64)`
+  - 事件：`ExhumationCommitted { grave_id, deceased_id }`
 
-### 16.8 unlink_relation - 解除关系
-- 功能：解除逝者间的亲属关系
-- 调用参数：
-  - a: u64 - 逝者A的ID
-  - b: u64 - 逝者B的ID
-  - kind: u8 - 关系类型
-- 权限：两个档案的所有者或编辑者
-- 返回事件：RelationUnlinked { a, b, kind }
+### 16.3 供奉 (pallet-memorial-offerings)
+- `memorialOfferings.registerSpec(kindCode: u8, metaCid?: BoundedVec<u8>)`
+  - 事件：`SpecRegistered { id }`
+- `memorialOfferings.updateSpec(id: u64, active?: bool, metaCid?: BoundedVec<u8>)`
+  - 事件：`SpecUpdated { id }`
+- `memorialOfferings.offer(target: (u8,u64), specId: u64, memo?: BoundedVec<u8>)`
+  - 事件：`OfferingCommitted { id, spec_id, target }`
+- `memorialOfferings.batchOffer(vec<(target, specId, memo?)>)`
+  - 事件：多次 `OfferingCommitted`
+
+---
+
+## 17. 元交易代付（非官方扩展说明）
+- 允许命名空间：
+  - 仲裁：`ArbitrationNsBytes` → `Arbitration::dispute/arbitrate`
+  - 证据：`EvidenceNsBytes` → `Evidence::commit/commitHash/link/linkByNs/unlink/unlinkByNs`
+  - OTC 吃单：`OtcOrderNsBytes` → `OtcOrder::openOrder`
+- 返回参数：与各调用事件为准；代付不改变调用返回结构。
 
 ## 17. 模板示例 (pallet-template)
 
