@@ -9,18 +9,17 @@ edition = "2021"
 members = [
     "node",
     "pallets/template",
-    "pallets/karma",
-    "pallets/authorizer",
     "pallets/forwarder",
-    "pallets/agent",
-    "pallets/order",
-    "pallets/otc-market",
+    # 新 OTC 三件套：稍后创建
+    "pallets/otc-maker",
+    "pallets/otc-listing",
+    "pallets/otc-order",
     "pallets/escrow",
     "pallets/arbitration",
-    "pallets/exchange",
-    "pallets/ritual",
-    "pallets/cemetery",
-    "pallets/deceased",
+    
+    "pallets/memorial-park",
+    "pallets/grave",
+    "pallets/memorial-offerings",
     "pallets/evidence",
     "runtime",
 ]
@@ -29,6 +28,9 @@ resolver = "2"
 [workspace.dependencies]
 solochain-template-runtime = { path = "./runtime", default-features = false }
 pallet-template = { path = "./pallets/template", default-features = false }
+enumflags2 = { version = "0.7", default-features = false }
+log = { version = "0.4", default-features = false }
+sp-keystore = { version = "0.42.0", default-features = false }
 clap = { version = "4.5.13" }
 frame-benchmarking-cli = { version = "47.0.0", default-features = false }
 frame-metadata-hash-extension = { version = "0.8.0", default-features = false }
@@ -87,6 +89,12 @@ sp-storage = { version = "22.0.0", default-features = false }
 sp-transaction-pool = { version = "36.0.0", default-features = false }
 sp-version = { version = "39.0.0", default-features = false }
 substrate-wasm-builder = { version = "26.0.1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
 
 [profile.release]
 opt-level = 3

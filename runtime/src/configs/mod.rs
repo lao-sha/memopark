@@ -33,13 +33,13 @@ use frame_support::{
 	},
 };
 use frame_system::limits::{BlockLength, BlockWeights};
-use alloc::vec::Vec; // 为 KarmaMintAdapter::gain 的 memo Vec 引入作用域
+use alloc::vec::Vec;
 use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
 
-// 引入以区块数表示的一天常量，用于配置授权中心的投票期（AuthorizerVotingPeriod）
+// 引入以区块数表示的一天常量
 use crate::DAYS;
 // 引入以区块数表示的一分钟常量，用于设备挑战 TTL 等时间参数
 // 引入余额单位常量（已移除与设备/挖矿相关依赖，无需引入 MINUTES/MILLI_UNIT）
@@ -54,31 +54,25 @@ use super::{
 // ===== Forwarder 集成所需的适配与类型 =====
 use pallet_forwarder::ForwarderAuthorizer;
 
-/// Authorizer 适配器：把 `pallet-authorizer` 的接口桥接给 `pallet-forwarder`
+/// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
 pub struct AuthorizerAdapter;
 impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 	/// 校验赞助者是否在命名空间下被允许
-	fn is_sponsor_allowed(ns: [u8; 8], sponsor: &AccountId) -> bool {
-		pallet_authorizer::Pallet::<Runtime>::is_authorized(pallet_authorizer::pallet::Namespace(ns), sponsor)
-	}
+	fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool { false }
 
 	/// 校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
 	fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
-		let order_ns = OrderNsBytes::get();
 		match (ns, call) {
-			// 订单域：仅允许下单与履约关键路径
-			(n, RuntimeCall::Order(inner)) if n == order_ns => matches!(
-				inner,
-				pallet_order::Call::create_order { .. }
-				| pallet_order::Call::submit_order_proof { .. }
-				| pallet_order::Call::confirm_done_by_buyer { .. }
-				| pallet_order::Call::finalize_expired { .. }
-			),
 			// 设备/冥想相关调用已移除
 			// 仲裁域：允许提交争议与裁决（可叠加白名单控制仲裁者）
 			(n, RuntimeCall::Arbitration(inner)) if n == ArbitrationNsBytes::get() => matches!(
 				inner,
 				pallet_arbitration::Call::dispute { .. } | pallet_arbitration::Call::arbitrate { .. }
+			),
+			// OTC 吃单域：仅放行 open_order 代付
+			(n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
+				inner,
+				pallet_otc_order::Call::open_order { .. }
 			),
 			_ => false,
 		}
@@ -96,18 +90,7 @@ impl frame_support::traits::Contains<RuntimeCall> for ForbidEscapeCalls {
         )
     }
 }
-parameter_types! {
-	pub const AuthorizerMinDeposit: Balance = EXISTENTIAL_DEPOSIT;
-	pub const AuthorizerVotingPeriod: BlockNumber = DAYS; // 约一天
-}
-
-impl pallet_authorizer::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type Currency = Balances;
-	type MinDeposit = AuthorizerMinDeposit;
-	type VotingPeriod = AuthorizerVotingPeriod;
-	type AdminOrigin = frame_system::EnsureRoot<AccountId>;
-}
+// 已移除：pallet-authorizer 配置与常量
 
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -228,21 +211,7 @@ impl pallet_template::Config for Runtime {
 	type WeightInfo = pallet_template::weights::SubstrateWeight<Runtime>;
 }
 
-parameter_types! {
-	pub const KarmaHistoryMaxLen: u32 = 1000;
-	pub const KarmaMemoMaxLen: u32 = 128;
-}
-
-impl pallet_karma::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type KarmaBalance = Balance;
-	// Use block number as Moment for lightweight time tracking
-	// type Moment = BlockNumber; // removed, not used anymore
-	type HistoryMaxLen = KarmaHistoryMaxLen;
-	type MaxMemoLen = KarmaMemoMaxLen;
-	// Karma 授权命名空间常量配置（以 8 字节固定标识绑定授权中心）
-	type AuthorizerNamespace = KarmaNsBytes;
-}
+// 已移除：pallet_karma 配置块与相关常量
 
 // ===== pallet-forwarder 配置实现 =====
 impl pallet_forwarder::Config for Runtime {
@@ -250,7 +219,7 @@ impl pallet_forwarder::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	/// 运行时聚合调用类型（作为元交易内层调用）
 	type RuntimeCall = RuntimeCall;
-	/// Authorizer 适配器（桥接到 pallet-authorizer）
+	/// Authorizer 适配器（Noop 实现，默认拒绝）
 	type Authorizer = AuthorizerAdapter;
 	/// 禁止调用集合（MVP：为空集）
 	type ForbiddenCalls = ForbidEscapeCalls;
@@ -262,78 +231,103 @@ impl pallet_forwarder::Config for Runtime {
 // 设备/挖矿/冥想相关配置已移除
 
 // （pallet-meditation 已移除）
-// ===== 会话许可命名空间常量（用于 forwarder + authorizer） =====
+// ===== 会话许可命名空间常量（用于 forwarder） =====
 parameter_types! {
-    pub const OrderNsBytes: [u8; 8] = *b"order___";
     pub const ArbitrationNsBytes: [u8; 8] = *b"arb___ _"; // 8字节
+    pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
 }
 
 // ===== temple 已移除；保留 agent/order 配置 =====
 
-parameter_types! {
-    pub const AgentMaxSkills: u32 = 16;
-    pub const AgentMaxCalendar: u32 = 64;
-}
-impl pallet_agent::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type MaxSkills = AgentMaxSkills;
-    type MaxCalendar = AgentMaxCalendar;
-}
+// 已移除：pallet-agent 配置与参数
 
-// ===== ritual/cemetery/deceased 运行时参数占位（可按需调整） =====
+// ===== memorial-park/grave/deceased 运行时参数占位（可按需调整） =====
 parameter_types! {
-    pub const RitualNsBytes: [u8; 8] = *b"ritual__";
-    pub const RitualMaxSpecs: u32 = 1024;
-    pub const RitualMaxSpecsPerKind: u32 = 128;
-    pub const RitualMaxSpecsPerProvider: u32 = 128;
-    pub const RitualMaxMemoLen: u32 = 128;
-    pub const RitualMaxCidLen: u32 = 64;
-    pub const RitualMaxBatchOffers: u32 = 16;
-    pub const RitualDefaultCooldown: u32 = 0;
-    pub const RitualDefaultBurnout: u32 = 0;
+    pub const ParkMaxRegionLen: u32 = 64;
+    pub const ParkMaxCidLen: u32 = 64;
+    pub const ParkMaxPerCountry: u32 = 100_000;
 }
-
-impl pallet_ritual::Config for Runtime {
+pub struct RootOnlyParkAdmin;
+impl pallet_memorial_park::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type RitualNsBytes = RitualNsBytes;
-    type MaxSpecs = RitualMaxSpecs;
-    type MaxSpecsPerKind = RitualMaxSpecsPerKind;
-    type MaxSpecsPerProvider = RitualMaxSpecsPerProvider;
-    type MaxMemoLen = RitualMaxMemoLen;
-    type MaxCidLen = RitualMaxCidLen;
-    type MaxBatchOffers = RitualMaxBatchOffers;
-    type DefaultCooldownBlocks = RitualDefaultCooldown;
-    type DefaultBurnoutBlocks = RitualDefaultBurnout;
-    type TargetControl = ();
-    type OnOfferingCommitted = ();
+    type MaxRegionLen = ParkMaxRegionLen;
+    type MaxCidLen = ParkMaxCidLen;
+    type MaxParksPerCountry = ParkMaxPerCountry;
+    type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
 }
 
 parameter_types! {
-    pub const CemeteryMaxCidLen: u32 = 64;
-    pub const CemeteryMaxPlotsPerCemetery: u32 = 4096;
-    pub const CemeteryMaxOccupantsPerPlot: u32 = 16;
-    pub const CemeteryMaxMemoLen: u32 = 64;
+    pub const GraveMaxCidLen: u32 = 64;
+    pub const GraveMaxPerPark: u32 = 4096;
+    pub const GraveMaxIntermentsPerGrave: u32 = 128;
 }
-impl pallet_cemetery::Config for Runtime {
+pub struct NoopIntermentHook;
+impl pallet_grave::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type MaxCidLen = CemeteryMaxCidLen;
-    type MaxPlotsPerCemetery = CemeteryMaxPlotsPerCemetery;
-    type MaxOccupantsPerPlot = CemeteryMaxOccupantsPerPlot;
-    type MaxMemoLen = CemeteryMaxMemoLen;
-    type OnIntermentCommitted = ();
+    type MaxCidLen = GraveMaxCidLen;
+    type MaxPerPark = GraveMaxPerPark;
+    type MaxIntermentsPerGrave = GraveMaxIntermentsPerGrave;
+    type OnInterment = NoopIntermentHook;
+    type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
 }
 
+// 已移除：pallet-deceased 配置
+
 parameter_types! {
-    pub const DeceasedMaxCidLen: u32 = 64;
-    pub const DeceasedMaxEditors: u32 = 8;
-    pub const DeceasedMaxRelations: u32 = 16;
+    pub const OfferMaxCidLen: u32 = 64;
+    pub const OfferMaxNameLen: u32 = 64;
+    pub const OfferMaxPerTarget: u32 = 10_000;
 }
-impl pallet_deceased::Config for Runtime {
+pub struct AllowAllTargetControl;
+pub struct NoopOfferingHook;
+pub struct DummyEvidenceProvider;
+impl pallet_memorial_offerings::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type MaxCidLen = DeceasedMaxCidLen;
-    type MaxEditors = DeceasedMaxEditors;
-    type MaxRelationsPerNode = DeceasedMaxRelations;
+    type MaxCidLen = OfferMaxCidLen;
+    type MaxNameLen = OfferMaxNameLen;
+    type MaxOfferingsPerTarget = OfferMaxPerTarget;
+    type TargetCtl = AllowAllTargetControl;
+    type OnOffering = NoopOfferingHook;
+    type Evidence = DummyEvidenceProvider;
+}
+
+// ====== 适配器实现（临时占位：允许 Root/无操作）======
+impl pallet_memorial_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+    /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
+    fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
+        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+    }
+}
+
+impl pallet_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+    /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
+    fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
+        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+    }
+}
+
+impl pallet_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
+    /// 函数级中文注释：安葬回调空实现，占位方便后续接入统计/KPI。
+    fn on_interment(_grave_id: u64, _deceased_id: u64) {}
+}
+
+impl pallet_memorial_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
+    /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
+    fn exists(_target: (u8, u64)) -> bool { true }
+    /// 函数级中文注释：权限检查临时实现：仅 Root 放行，后续可扩展为更细粒度策略。
+    fn ensure_allowed(origin: RuntimeOrigin, _target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
+        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+    }
+}
+
+impl pallet_memorial_offerings::pallet::OnOfferingCommitted<AccountId> for NoopOfferingHook {
+    /// 函数级中文注释：供奉回调空实现；可在 runtime 将其桥接到 Karma 记分或统计模块。
+    fn on_offering(_target: (u8, u64), _kind_code: u8, _who: &AccountId) {}
+}
+
+impl pallet_memorial_offerings::pallet::EvidenceProvider<AccountId> for DummyEvidenceProvider {
+    /// 函数级中文注释：证据读取占位实现：总是返回 Some(())，仅为编译通过。后续请桥接到 pallet-evidence。
+    fn get(_id: u64) -> Option<()> { Some(()) }
 }
 
 // ===== evidence 配置 =====
@@ -345,6 +339,7 @@ parameter_types! {
     pub const EvidenceMaxMemoLen: u32 = 64;
     pub const EvidenceNsBytes: [u8; 8] = *b"evid___ ";
 }
+pub struct AllowAllEvidenceAuthorizer;
 impl pallet_evidence::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxCidLen = EvidenceMaxCidLen;
@@ -353,44 +348,16 @@ impl pallet_evidence::Config for Runtime {
     type MaxDoc = EvidenceMaxDoc;
     type MaxMemoLen = EvidenceMaxMemoLen;
     type EvidenceNsBytes = EvidenceNsBytes;
-    // 通过适配器接入授权中心，保持 Pallet 低耦合
-    type Authorizer = EvidenceAuthorizerAdapter;
+    // 无授权中心：占位实现，默认允许
+    type Authorizer = AllowAllEvidenceAuthorizer; 
+}
+impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for AllowAllEvidenceAuthorizer {
+    fn is_authorized(_ns: [u8; 8], _who: &AccountId) -> bool { true }
 }
 
-parameter_types! {
-    pub const OrderConfirmTTL: BlockNumber = 2 * DAYS; // 两天确认期
-    pub const OrderMaxCidLen: u32 = 64;
-    pub const OrderMaxImg: u32 = 20;
-    pub const OrderMaxVid: u32 = 5;
-    pub const OrderPlatformFeeBps: u16 = 200; // 2%
-}
-impl pallet_order::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type PalletIdGet = ConstPalletId;
-    type PlatformAccount = PlatformAccount;
-    type PlatformFeeBps = OrderPlatformFeeBps;
-    type ConfirmTTL = OrderConfirmTTL;
-    type MaxCidLen = OrderMaxCidLen;
-    type MaxImg = OrderMaxImg;
-    type MaxVid = OrderMaxVid;
-    type Escrow = pallet_escrow::Pallet<Runtime>;
-    // 函数级中文注释：
-    // 通过本地适配 Trait（`KarmaMint`）为订单绑定“功德值增加”实现。
-    // 这里将其桥接到 `pallet_karma::Pallet<Runtime>` 的 `add_merit` 方法。
-    type Karma = KarmaMintAdapter;
-    type WeightInfo = pallet_order::weights::SubstrateWeight<Runtime>;
-}
+// 已移除：pallet-order 参数与 Config
 
-// ==== Karma 适配器：桥接 pallet_karma 到 pallet_order 的本地 Trait ====
-pub struct KarmaMintAdapter;
-impl pallet_order::pallet::KarmaMint<AccountId> for KarmaMintAdapter {
-    type Balance = Balance;
-    fn gain(origin_caller: &AccountId, who: &AccountId, amount: Self::Balance, memo: Vec<u8>) -> frame_support::dispatch::DispatchResult {
-        // 出于向后兼容保留，但内部切换为仅增加功德值
-        <pallet_karma::Pallet<Runtime> as pallet_karma::pallet::KarmaCurrency<AccountId>>::add_merit(origin_caller, who, amount, memo)
-    }
-}
+// 已移除：Karma 适配器实现
 
 // 托管 PalletId 与平台账户占位（示例）
 parameter_types! {
@@ -400,14 +367,26 @@ parameter_types! {
 pub struct PlatformAccount;
 impl sp_core::Get<AccountId> for PlatformAccount { fn get() -> AccountId { sp_core::crypto::AccountId32::new([0u8;32]).into() } }
 
-// ===== otc-market/escrow/arbitration 配置 =====
-parameter_types! { pub const OtcMaxNotesLen: u32 = 128; }
-impl pallet_otc_market::Config for Runtime {
+// ===== escrow/arbitration 配置 =====
+
+// ===== 新 OTC 三件套参数（占位，可按需调整） =====
+parameter_types! {
+    pub const OtcMaxCidLen: u32 = 64;
+}
+impl pallet_otc_maker::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type Balance = Balance;
-    type MaxNotesLen = OtcMaxNotesLen;
-    type Escrow = pallet_escrow::Pallet<Runtime>;
-    type WeightInfo = pallet_otc_market::weights::SubstrateWeight<Runtime>;
+    type MaxCidLen = OtcMaxCidLen;
+}
+impl pallet_otc_listing::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type MaxCidLen = OtcMaxCidLen;
+}
+parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
+impl pallet_otc_order::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type ConfirmTTL = OtcOrderConfirmTTL;
 }
 
 parameter_types! { pub const EscrowPalletId: frame_support::PalletId = frame_support::PalletId(*b"otc/escw"); }
@@ -427,78 +406,22 @@ impl pallet_arbitration::Config for Runtime {
     type Router = ArbitrationRouter;
 }
 
-parameter_types! {
-	/// Karma 在授权中心的命名空间字节（建议与 PalletId 对齐）
-	pub const KarmaNsBytes: [u8; 8] = *b"karma___";
-}
+// 已移除：Karma 授权命名空间常量
 
-// ===== 仲裁域路由：把仲裁请求分发到对应业务 pallet =====
+// ===== 仲裁域路由：把仲裁请求分发到对应业务 pallet（当前无业务接入） =====
 pub struct ArbitrationRouter;
 impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRouter {
-    fn can_dispute(domain: [u8; 8], who: &AccountId, id: u64) -> bool {
-        match domain {
-            d if d == OrderNsBytes::get() => {
-                <pallet_order::Pallet<Runtime> as pallet_order::pallet::ArbitrationOrderHook<Runtime>>::can_dispute(who, id)
-            }
-            _ => false,
-        }
-    }
-    fn apply_decision(domain: [u8; 8], id: u64, decision: pallet_arbitration::pallet::Decision) -> frame_support::dispatch::DispatchResult {
-        match (domain, decision) {
-            (d, pallet_arbitration::pallet::Decision::Release) if d == OrderNsBytes::get() => {
-                <pallet_order::Pallet<Runtime> as pallet_order::pallet::ArbitrationOrderHook<Runtime>>::arbitrate_release(id)
-            }
-            (d, pallet_arbitration::pallet::Decision::Refund) if d == OrderNsBytes::get() => {
-                <pallet_order::Pallet<Runtime> as pallet_order::pallet::ArbitrationOrderHook<Runtime>>::arbitrate_refund(id)
-            }
-            (d, pallet_arbitration::pallet::Decision::Partial(bps)) if d == OrderNsBytes::get() => {
-                <pallet_order::Pallet<Runtime> as pallet_order::pallet::ArbitrationOrderHook<Runtime>>::arbitrate_partial(id, bps)
-            }
-            _ => Err(sp_runtime::DispatchError::Other("UnsupportedDomain")),
-        }
+    fn can_dispute(_domain: [u8; 8], _who: &AccountId, _id: u64) -> bool { false }
+    fn apply_decision(_domain: [u8; 8], _id: u64, _decision: pallet_arbitration::pallet::Decision) -> frame_support::dispatch::DispatchResult {
+        Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
     }
 }
 
 // ===== exchange 配置 =====
 use frame_support::PalletId;
 
-parameter_types! {
-    pub const ExchangeBpsDenominator: u16 = 10_000;
-    pub const ExchangeMaxAllocs: u32 = 64;
-    pub const ExchangeMaxMemoLen: u32 = 64;
-    pub const ExchangePalletId: PalletId = PalletId(*b"xchg/kma");
-    /// Exchange 管理命名空间（用于分配项增删改查授权，不用于会话代付）
-    pub const ExchangeNsBytes: [u8; 8] = *b"exchange";
-}
+// 已移除：pallet-exchange 参数与 Config
 
-impl pallet_exchange::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type PalletIdGet = ExchangePalletId;
-    type BpsDenominator = ExchangeBpsDenominator;
-    type MaxAllocs = ExchangeMaxAllocs;
-    type MaxMemoLen = ExchangeMaxMemoLen;
-    type AdminAuthorizerNs = ExchangeNsBytes;
-    type Admin = ExchangeAdminAdapter;
-    type Karma = pallet_karma::Pallet<Runtime>;
-    type WeightInfo = (); // 基准后替换
-}
+// 已移除：evidence 授权适配器（改为 () ）
 
-// ===== evidence 授权适配器：桥接到 pallet-authorizer =====
-pub struct EvidenceAuthorizerAdapter;
-impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for EvidenceAuthorizerAdapter {
-    /// 函数级中文注释：
-    /// is_authorized 调用授权中心 `pallet-authorizer`，判断给定账户在命名空间下是否被授权。
-    fn is_authorized(ns: [u8; 8], who: &AccountId) -> bool {
-        pallet_authorizer::Pallet::<Runtime>::is_authorized(pallet_authorizer::pallet::Namespace(ns), who)
-    }
-}
-
-// 为 Exchange 提供管理员校验适配：桥接到 pallet-authorizer
-pub struct ExchangeAdminAdapter;
-impl pallet_exchange::pallet::AdminAuthorizer<AccountId> for ExchangeAdminAdapter {
-    fn is_admin(who: &AccountId) -> bool {
-        let ns = ExchangeNsBytes::get();
-        pallet_authorizer::Pallet::<Runtime>::is_authorized(pallet_authorizer::pallet::Namespace(ns), who)
-    }
-}
+// 已移除：Exchange 管理员适配器实现
