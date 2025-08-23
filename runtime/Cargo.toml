@@ -36,6 +36,7 @@ pallet-memorial-park = { path = "../pallets/memorial-park", default-features = f
 pallet-grave = { path = "../pallets/grave", default-features = false }
 pallet-memorial-offerings = { path = "../pallets/memorial-offerings", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
+pallet-identity = { path = "../pallets/identity", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -86,6 +87,7 @@ std = [
 	"pallet-grave/std",
 	"pallet-memorial-offerings/std",
 	"pallet-evidence/std",
+	"pallet-identity/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",

@@ -258,4 +258,7 @@ mod runtime {
 
 	#[runtime::pallet_index(17)]
 	pub type Evidence = pallet_evidence;
+
+	#[runtime::pallet_index(18)]
+	pub type Identity = pallet_identity;
 }

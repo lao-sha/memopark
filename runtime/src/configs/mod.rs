@@ -69,6 +69,16 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 				inner,
 				pallet_arbitration::Call::dispute { .. } | pallet_arbitration::Call::arbitrate { .. }
 			),
+			// 证据域：允许提交/链接/取消链接证据（V1/V2）
+			(n, RuntimeCall::Evidence(inner)) if n == EvidenceNsBytes::get() => matches!(
+				inner,
+				pallet_evidence::Call::commit { .. }
+				| pallet_evidence::Call::commit_hash { .. }
+				| pallet_evidence::Call::link { .. }
+				| pallet_evidence::Call::link_by_ns { .. }
+				| pallet_evidence::Call::unlink { .. }
+				| pallet_evidence::Call::unlink_by_ns { .. }
+			),
 			// OTC 吃单域：仅放行 open_order 代付
 			(n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
 				inner,
@@ -249,7 +259,7 @@ parameter_types! {
 }
 pub struct RootOnlyParkAdmin;
 impl pallet_memorial_park::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
+	type RuntimeEvent = RuntimeEvent;
     type MaxRegionLen = ParkMaxRegionLen;
     type MaxCidLen = ParkMaxCidLen;
     type MaxParksPerCountry = ParkMaxPerCountry;
@@ -277,18 +287,20 @@ parameter_types! {
     pub const OfferMaxCidLen: u32 = 64;
     pub const OfferMaxNameLen: u32 = 64;
     pub const OfferMaxPerTarget: u32 = 10_000;
+    pub const OfferMaxMediaPerOffering: u32 = 8;
+    pub const OfferMaxMemoLen: u32 = 64;
 }
 pub struct AllowAllTargetControl;
 pub struct NoopOfferingHook;
-pub struct DummyEvidenceProvider;
 impl pallet_memorial_offerings::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxCidLen = OfferMaxCidLen;
     type MaxNameLen = OfferMaxNameLen;
     type MaxOfferingsPerTarget = OfferMaxPerTarget;
+    type MaxMediaPerOffering = OfferMaxMediaPerOffering;
+    type MaxMemoLen = OfferMaxMemoLen;
     type TargetCtl = AllowAllTargetControl;
     type OnOffering = NoopOfferingHook;
-    type Evidence = DummyEvidenceProvider;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -325,10 +337,7 @@ impl pallet_memorial_offerings::pallet::OnOfferingCommitted<AccountId> for NoopO
     fn on_offering(_target: (u8, u64), _kind_code: u8, _who: &AccountId) {}
 }
 
-impl pallet_memorial_offerings::pallet::EvidenceProvider<AccountId> for DummyEvidenceProvider {
-    /// 函数级中文注释：证据读取占位实现：总是返回 Some(())，仅为编译通过。后续请桥接到 pallet-evidence。
-    fn get(_id: u64) -> Option<()> { Some(()) }
-}
+// 备注：memorial-offerings 已改为内置媒体存储，不再需要 EvidenceProvider 适配器。
 
 // ===== evidence 配置 =====
 parameter_types! {
@@ -376,6 +385,83 @@ parameter_types! {
 impl pallet_otc_maker::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxCidLen = OtcMaxCidLen;
+    // 基于 Identity 的 KYC 适配器
+    type Kyc = KycByIdentity;
+}
+
+// ===== KYC 适配器（基于 pallet-identity 的 judgement） =====
+pub struct KycByIdentity;
+impl pallet_otc_maker::pallet::KycProvider<AccountId> for KycByIdentity {
+    /// 函数级中文注释：判断账户是否已通过 KYC
+    /// - 读取 identity::IdentityOf，检测存在且含有正向 judgement（如 KnownGood/Reasonable）。
+    fn is_verified(who: &AccountId) -> bool {
+        use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
+        if let Some(reg) = IdOf::<Runtime>::get(who) {
+            // 只要存在非负向的 judgement 即视为通过（可按需收紧）
+            return reg.judgements.iter().any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
+        }
+        false
+    }
+}
+
+// ===== identity 配置与参数 =====
+parameter_types! {
+    /// 基础身份信息押金（u128）。可按需调整为更高值以抑制状态膨胀。
+    pub const IdentityBasicDeposit: u128 = 1_000_000_000; // 约等于 0.001 UNIT（示例）
+    /// 按字节计费押金（u128），用于限制过大信息体。
+    pub const IdentityByteDeposit: u128 = 10_000; // 每字节押金（示例）
+    /// 用户名登记押金（u128）。
+    pub const IdentityUsernameDeposit: u128 = 1_000_000_000; // 示例
+    /// 子账号押金（u128）。
+    pub const IdentitySubAccountDeposit: u128 = 1_000_000_000; // 示例
+    /// 最多子账号数。
+    pub const IdentityMaxSubAccounts: u32 = 100;
+    /// 最多注册机构数。
+    pub const IdentityMaxRegistrars: u32 = 20;
+    /// 用户名待接受过期时间（区块）。例如 1 天：6 秒/块 → 14_400 块。
+    pub const IdentityPendingUsernameExpiration: u32 = 14_400;
+    /// 用户名解绑宽限期（区块）。例如 30 天。
+    pub const IdentityUsernameGracePeriod: u32 = 432_000;
+    /// 用户名后缀最大长度。
+    pub const IdentityMaxSuffixLength: u32 = 16;
+    /// 用户名总长度（含后缀与分隔符）最大值。
+    pub const IdentityMaxUsernameLength: u32 = 32;
+}
+
+impl pallet_identity::Config for Runtime {
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+    /// 货币实现（需支持可保留押金）
+    type Currency = Balances;
+    /// 押金参数
+    type BasicDeposit = IdentityBasicDeposit;
+    type ByteDeposit = IdentityByteDeposit;
+    type UsernameDeposit = IdentityUsernameDeposit;
+    type SubAccountDeposit = IdentitySubAccountDeposit;
+    /// 规模参数
+    type MaxSubAccounts = IdentityMaxSubAccounts;
+    type MaxRegistrars = IdentityMaxRegistrars;
+    /// 身份信息类型（采用官方 legacy 结构，字段上限 64）
+    type IdentityInformation = pallet_identity::legacy::IdentityInfo<frame_support::traits::ConstU32<64>>;
+    /// 被罚没资金处理（占位：丢弃）
+    type Slashed = ();
+    /// Root 权限用于强制操作/登记管理员
+    type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+    type RegistrarOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 离线签名/公钥类型（多签通用）
+    type OffchainSignature = sp_runtime::MultiSignature;
+    type SigningPublicKey = sp_runtime::MultiSigner;
+    /// 用户名权限与时限
+    type UsernameAuthorityOrigin = frame_system::EnsureRoot<AccountId>;
+    type PendingUsernameExpiration = IdentityPendingUsernameExpiration;
+    type UsernameGracePeriod = IdentityUsernameGracePeriod;
+    type MaxSuffixLength = IdentityMaxSuffixLength;
+    type MaxUsernameLength = IdentityMaxUsernameLength;
+    /// 基准权重
+    type WeightInfo = pallet_identity::weights::SubstrateWeight<Runtime>;
+    /// 基准工具（仅基准编译时需要）
+    #[cfg(feature = "runtime-benchmarks")]
+    type BenchmarkHelper = ();
 }
 impl pallet_otc_listing::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;

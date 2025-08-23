@@ -14,6 +14,13 @@
 - `dispute(domain, id, reason)`：登记争议，校验是否允许进入仲裁（由 Router 的 `can_dispute` 决定）。
 - `arbitrate(domain, id, decision)`：执行裁决，Router 调用业务 Hook 落地资金流。
 
+### 证据存储改造（V2）
+- 统一通过 `pallet-evidence` 存储证据：加密文件放链下（IPFS/对象存储），链上仅存承诺哈希或加密 CID 的不可逆承诺。
+- 仲裁侧不再保存任何明文或可逆 CID，仅保存 `evidence_id` 引用：
+  - `dispute_with_evidence_id(domain, id, evidence_id)`：登记争议并首添证据引用。
+  - `append_evidence_id(domain, id, evidence_id)`：为已登记的案件补充证据引用。
+- `pallet-evidence` 新增 `commit_hash(ns, subject_id, commit)` 与按命名空间 `link_by_ns/unlink_by_ns`，便于按域聚合检索与权限控制。
+
 ## Config
 - `type Router`：域路由实现。
 - `type Escrow`：托管接口。

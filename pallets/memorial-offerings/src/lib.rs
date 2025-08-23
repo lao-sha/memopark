@@ -7,7 +7,7 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec};
+    use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound};
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
 
@@ -24,10 +24,7 @@ pub mod pallet {
         fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId);
     }
 
-    /// 函数级中文注释：证据提供者接口，占位以便校验 evidence_id 合法性。
-    pub trait EvidenceProvider<AccountId> {
-        fn get(_id: u64) -> Option<()>;
-    }
+    // 函数级中文注释：删除证据提供者接口，改为在本 Pallet 内置媒体元数据存储（仅存 CID 与可选承诺）。
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -35,10 +32,13 @@ pub mod pallet {
         #[pallet::constant] type MaxCidLen: Get<u32>;
         #[pallet::constant] type MaxNameLen: Get<u32>;
         #[pallet::constant] type MaxOfferingsPerTarget: Get<u32>;
+        /// 函数级中文注释：单次供奉所允许附带的媒体条目上限（每条仅存 CID 与可选承诺）。
+        #[pallet::constant] type MaxMediaPerOffering: Get<u32>;
+        /// 函数级中文注释：单条媒体的可选备注（memo）最大长度（如前端显示用途），当前未使用，保留扩展。
+        #[pallet::constant] type MaxMemoLen: Get<u32>;
         // 函数级中文注释：目标控制器，使用 runtime 的 Origin 类型以进行权限校验
         type TargetCtl: TargetControl<Self::RuntimeOrigin>;
         type OnOffering: OnOfferingCommitted<Self::AccountId>;
-        type Evidence: EvidenceProvider<Self::AccountId>;
     }
 
     /// 函数级中文注释：祭祀品规格（目录）。
@@ -50,15 +50,26 @@ pub mod pallet {
         pub media_schema_cid: BoundedVec<u8, T::MaxCidLen>,
     }
 
-    /// 函数级中文注释：供奉记录（仅存目标编码与可选 evidence_id）。
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    /// 函数级中文注释：单个媒体条目，仅存 IPFS CID 与可选承诺哈希（不存明文）。
+    #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct MediaItem<T: Config> {
+        /// 媒体的 IPFS CID（或其他内容可寻址标识），链上仅存标识，不存明文。
+        pub cid: BoundedVec<u8, T::MaxCidLen>,
+        /// 可选的承诺哈希（例如对链下密文及盐的哈希），用于后续校验，不泄露明文。
+        pub commit: Option<sp_core::H256>,
+    }
+
+    /// 函数级中文注释：供奉记录（内置媒体元数据，仅存 CID 与可选承诺，不依赖外部 Evidence）。
+    #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct OfferingRecord<T: Config> {
         pub who: T::AccountId,
         pub target: (u8, u64),
         pub kind_code: u8,
         pub amount: Option<u128>,
-        pub evidence_id: Option<u64>,
+        /// 本次供奉关联的媒体列表（受上限约束），每个条目仅包含 CID 与可选承诺。
+        pub media: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering>,
         pub time: BlockNumberFor<T>,
     }
 
@@ -123,17 +134,28 @@ pub mod pallet {
         /// 函数级中文注释：提交一次供奉记录。
         /// - 校验目标存在性与调用者是否被允许；
         /// - 可选 `amount` 仅作记录，真实支付建议走 `order+escrow`；
-        /// - 可选 `evidence_id` 用于关联媒体。
+        /// - `media`：本次供奉关联的媒体列表（仅 CID 与可选承诺），不落明文；长度受上限约束。
         #[pallet::weight(10_000)]
-        pub fn offer(origin: OriginFor<T>, target: (u8, u64), kind_code: u8, amount: Option<u128>, evidence_id: Option<u64>) -> DispatchResult {
+        pub fn offer(
+            origin: OriginFor<T>,
+            target: (u8, u64),
+            kind_code: u8,
+            amount: Option<u128>,
+            media: Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             ensure!(Specs::<T>::contains_key(kind_code), Error::<T>::BadKind);
             ensure!(T::TargetCtl::exists(target), Error::<T>::TargetNotFound);
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
-            if let Some(eid) = evidence_id { let _ = <T as Config>::Evidence::get(eid).ok_or(Error::<T>::NotFound)?; }
+            // 将输入 media 转换为受上限约束的 BoundedVec<MediaItem>
+            let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
+            for (cid, commit) in media.into_iter() {
+                let item = MediaItem::<T> { cid, commit };
+                items.try_push(item).map_err(|_| Error::<T>::TooMany)?;
+            }
             let id = NextOfferingId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
             let now = <frame_system::Pallet<T>>::block_number();
-            let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code, amount, evidence_id, time: now };
+            let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code, amount, media: items, time: now };
             OfferingRecords::<T>::insert(id, &rec);
             OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
             T::OnOffering::on_offering(target, kind_code, &who);
@@ -143,8 +165,8 @@ pub mod pallet {
 
         /// 函数级中文注释：批量提交供奉记录（减少链上交互次数）。
         #[pallet::weight(10_000)]
-        pub fn batch_offer(origin: OriginFor<T>, calls: Vec<(u8, u64, u8, Option<u128>, Option<u64>)>) -> DispatchResult {
-            for (d,id,k,a,e) in calls { Self::offer(origin.clone(), (d,id), k, a, e)?; }
+        pub fn batch_offer(origin: OriginFor<T>, calls: Vec<(u8, u64, u8, Option<u128>, Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>)>) -> DispatchResult {
+            for (d,id,k,a,m) in calls { Self::offer(origin.clone(), (d,id), k, a, m)?; }
             Ok(())
         }
     }

@@ -22,7 +22,10 @@ pub mod pallet {
         pub qty: Balance,
         pub amount: Balance,
         pub created_at: BlockNumber,
+        /// 订单确认/放行超时窗口截至高度（到期后可触发自动流程或发起争议）
         pub expire_at: BlockNumber,
+        /// 证据追加窗口截至高度（窗口内允许补充证据并发起争议）
+        pub evidence_until: BlockNumber,
         pub payment_commit: H256,
         pub contact_commit: H256,
         pub state: OrderState,
@@ -47,10 +50,13 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         OrderOpened { id: u64 },
+        /// 函数级中文注释：买家已支付或提交支付承诺
         OrderPaidCommitted { id: u64 },
         OrderReleased { id: u64 },
         OrderRefunded { id: u64 },
         OrderCanceled { id: u64 },
+        /// 函数级中文注释：订单被标记为争议中（仅状态标识，实际仲裁登记由仲裁 pallet 完成）
+        OrderDisputed { id: u64 },
     }
 
     #[pallet::error]
@@ -82,12 +88,102 @@ pub mod pallet {
                 price, qty, amount,
                 created_at: now,
                 expire_at: now + T::ConfirmTTL::get(),
+                evidence_until: now + T::ConfirmTTL::get(),
                 payment_commit, contact_commit,
                 state: OrderState::Created,
             };
             Orders::<T>::insert(id, order);
             Self::deposit_event(Event::OrderOpened { id });
             Ok(())
+        }
+
+        /// 函数级详细中文注释：买家标记“已支付/已提交凭据”，进入待放行阶段。
+        /// - 要求：调用者必须为订单 taker，状态为 Created。
+        #[pallet::call_index(1)]
+        #[pallet::weight(10_000)]
+        pub fn mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(ord.taker == who, Error::<T>::BadState);
+                ensure!(matches!(ord.state, OrderState::Created), Error::<T>::BadState);
+                ord.state = OrderState::PaidOrCommitted;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::OrderPaidCommitted { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：标记订单为争议中（本地状态），实际仲裁登记由仲裁 pallet 的 extrinsic 完成。
+        /// - 允许 maker/taker 在以下场景调用：
+        ///   1) 已支付未放行（state=PaidOrCommitted）。
+        ///   2) 超过 expire_at 且任一方不同意自动流程。
+        ///   3) 仍在 evidence_until 窗口内（证据追加期）。
+        #[pallet::call_index(2)]
+        #[pallet::weight(10_000)]
+        pub fn mark_disputed(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(ord.maker == who || ord.taker == who, Error::<T>::BadState);
+                let cond_paid_unreleased = matches!(ord.state, OrderState::PaidOrCommitted);
+                let cond_expired = now >= ord.expire_at;
+                let cond_evidence_window = now <= ord.evidence_until;
+                ensure!(cond_paid_unreleased || cond_expired || cond_evidence_window, Error::<T>::BadState);
+                ord.state = OrderState::Disputed;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::OrderDisputed { id });
+            Ok(())
+        }
+    }
+
+    // 仲裁路由钩子：由 runtime 调用，用于放行/退款/部分放行（本 Pallet 内仅更新状态，不涉及资金划转）
+    pub trait ArbitrationHook<T: Config> {
+        /// 函数级中文注释：校验发起人是否可对该订单发起争议（maker/taker + 状态/时窗判断）
+        fn can_dispute(who: &T::AccountId, id: u64) -> bool;
+        fn arbitrate_release(id: u64) -> DispatchResult;
+        fn arbitrate_refund(id: u64) -> DispatchResult;
+        fn arbitrate_partial(id: u64, _bps: u16) -> DispatchResult;
+    }
+
+    impl<T: Config> ArbitrationHook<T> for Pallet<T> {
+        fn can_dispute(who: &T::AccountId, id: u64) -> bool {
+            if let Some(ord) = Orders::<T>::get(id) {
+                let now = <frame_system::Pallet<T>>::block_number();
+                let is_party = ord.maker == *who || ord.taker == *who;
+                let cond_paid_unreleased = matches!(ord.state, OrderState::PaidOrCommitted);
+                let cond_expired = now >= ord.expire_at;
+                let cond_evidence_window = now <= ord.evidence_until;
+                return is_party && (cond_paid_unreleased || cond_expired || cond_evidence_window);
+            }
+            false
+        }
+        fn arbitrate_release(id: u64) -> DispatchResult {
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ord.state = OrderState::Released;
+                Ok(())
+            })
+        }
+        fn arbitrate_refund(id: u64) -> DispatchResult {
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ord.state = OrderState::Refunded;
+                Ok(())
+            })
+        }
+        fn arbitrate_partial(id: u64, _bps: u16) -> DispatchResult {
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                // 本最小实现仅更新状态为 Released；金额按 bps 分配由资金模块处理。
+                ord.state = OrderState::Released;
+                Ok(())
+            })
         }
     }
 }
