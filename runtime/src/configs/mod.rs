@@ -281,7 +281,124 @@ impl pallet_grave::Config for Runtime {
     type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
 }
 
-// 已移除：pallet-deceased 配置
+// ===== deceased 配置 =====
+parameter_types! {
+    pub const DeceasedMaxPerGrave: u32 = 128;
+    pub const DeceasedStringLimit: u32 = 256;
+    pub const DeceasedMaxLinks: u32 = 8;
+}
+
+/// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
+pub struct GraveProviderAdapter;
+impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
+    /// 检查墓位是否存在：读取 `pallet-grave` 的存储 `Graves`
+    fn grave_exists(grave_id: u64) -> bool {
+        pallet_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
+    }
+    /// 校验 `who` 是否可在该墓位下管理逝者：当前仅墓主可管理（后续可扩展授权）
+    fn can_attach(who: &AccountId, grave_id: u64) -> bool {
+        if let Some(grave) = pallet_grave::pallet::Graves::<Runtime>::get(grave_id) {
+            grave.owner == *who
+        } else { false }
+    }
+}
+
+impl pallet_deceased::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DeceasedId = u64;
+    type GraveId = u64;
+    type MaxDeceasedPerGrave = DeceasedMaxPerGrave;
+    type StringLimit = DeceasedStringLimit;
+    type MaxLinks = DeceasedMaxLinks;
+    type GraveProvider = GraveProviderAdapter;
+    type WeightInfo = ();
+}
+
+// ===== deceased-media 配置 =====
+parameter_types! {
+    pub const MediaMaxAlbumsPerDeceased: u32 = 64;
+    pub const MediaMaxMediaPerAlbum: u32 = 256;
+    pub const MediaStringLimit: u32 = 512;
+    pub const MediaMaxTags: u32 = 16;
+    pub const MediaMaxReorderBatch: u32 = 100;
+}
+
+/// 函数级中文注释：逝者访问适配器，实现 `DeceasedAccess`，以 `pallet-deceased` 为后端。
+pub struct DeceasedProviderAdapter;
+impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
+    /// 检查逝者是否存在
+    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
+    /// 检查操作者是否可管理该逝者（当前：记录 owner）
+    fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+    }
+}
+
+impl pallet_deceased_media::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DeceasedId = u64;
+    type AlbumId = u64;
+    type MediaId = u64;
+    type MaxAlbumsPerDeceased = MediaMaxAlbumsPerDeceased;
+    type MaxMediaPerAlbum = MediaMaxMediaPerAlbum;
+    type StringLimit = MediaStringLimit;
+    type MaxTags = MediaMaxTags;
+    type MaxReorderBatch = MediaMaxReorderBatch;
+    type DeceasedProvider = DeceasedProviderAdapter;
+}
+
+// ===== grave-ledger 配置 =====
+parameter_types! {
+    pub const GraveLedgerMaxRecentPerGrave: u32 = 256;
+    pub const GraveLedgerMaxMemoLen: u32 = 64;
+}
+impl pallet_grave_ledger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type GraveId = u64;
+    type MaxRecentPerGrave = GraveLedgerMaxRecentPerGrave;
+    type MaxMemoLen = GraveLedgerMaxMemoLen;
+}
+
+// ===== grave-guestbook 配置 =====
+parameter_types! {
+    pub const GuestbookStringLimit: u32 = 512;
+    pub const GuestbookMaxMessageLen: u32 = 512;
+    pub const GuestbookMaxAttachmentsPerMessage: u32 = 4;
+    pub const GuestbookMaxRecentPerGrave: u32 = 200;
+    pub const GuestbookMaxRelatives: u32 = 64;
+    pub const GuestbookMaxModerators: u32 = 16;
+    pub const GuestbookMinPostBlocksPerAccount: u32 = 30;
+}
+
+pub struct GraveAccessAdapter;
+impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for GraveAccessAdapter {
+    /// 检查墓主或园区管理员：若非墓主，则要求园区管理员权限（沿用你们 RootOnlyParkAdmin 并可扩展）
+    fn ensure_owner_or_admin(grave_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
+        if let Some(g) = pallet_grave::pallet::Graves::<Runtime>::get(grave_id) {
+            if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
+                if who == g.owner { return Ok(()); }
+            }
+            pallet_grave::pallet::RootOnlyParkAdmin::ensure(g.park_id, origin)
+        } else {
+            Err(sp_runtime::DispatchError::Other("GraveNotFound"))
+        }
+    }
+    fn grave_exists(grave_id: u64) -> bool { pallet_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
+}
+
+impl pallet_grave_guestbook::pallet::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type GraveId = u64;
+    type MessageId = u64;
+    type StringLimit = GuestbookStringLimit;
+    type MaxMessageLen = GuestbookMaxMessageLen;
+    type MaxAttachmentsPerMessage = GuestbookMaxAttachmentsPerMessage;
+    type MaxRecentPerGrave = GuestbookMaxRecentPerGrave;
+    type MaxRelatives = GuestbookMaxRelatives;
+    type MaxModerators = GuestbookMaxModerators;
+    type MinPostBlocksPerAccount = GuestbookMinPostBlocksPerAccount;
+    type GraveProvider = GraveAccessAdapter;
+}
 
 parameter_types! {
     pub const OfferMaxCidLen: u32 = 64;
@@ -300,7 +417,7 @@ impl pallet_memorial_offerings::Config for Runtime {
     type MaxMediaPerOffering = OfferMaxMediaPerOffering;
     type MaxMemoLen = OfferMaxMemoLen;
     type TargetCtl = AllowAllTargetControl;
-    type OnOffering = NoopOfferingHook;
+    type OnOffering = GraveOfferingHook;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -332,9 +449,18 @@ impl pallet_memorial_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAl
     }
 }
 
-impl pallet_memorial_offerings::pallet::OnOfferingCommitted<AccountId> for NoopOfferingHook {
-    /// 函数级中文注释：供奉回调空实现；可在 runtime 将其桥接到 Karma 记分或统计模块。
-    fn on_offering(_target: (u8, u64), _kind_code: u8, _who: &AccountId) {}
+/// 函数级中文注释：当供奉落账时，将其按 grave 维度写入账本模块。
+pub struct GraveOfferingHook;
+impl pallet_memorial_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
+    /// 供奉 Hook：由 `pallet-memorial-offerings` 在供奉确认后调用。
+    /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）。
+    /// - 当前 Hook 未携带数量与金额，建议由索引器从 offerings 模块事件补全。
+    fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId) {
+        const DOMAIN_GRAVE: u8 = 1;
+        if target.0 == DOMAIN_GRAVE {
+            pallet_grave_ledger::Pallet::<Runtime>::record_from_hook(target.1, who.clone(), kind_code, None);
+        }
+    }
 }
 
 // 备注：memorial-offerings 已改为内置媒体存储，不再需要 EvidenceProvider 适配器。
