@@ -133,6 +133,10 @@ pub type Hash = sp_core::H256;
 /// An index to a block.
 pub type BlockNumber = u32;
 
+// 为新加入的 pallet 提供类型别名，便于统一使用
+pub type DeceasedId = u64;
+pub type GraveId = u64;
+
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
 
@@ -261,4 +265,16 @@ mod runtime {
 
 	#[runtime::pallet_index(18)]
 	pub type Identity = pallet_identity;
+
+	#[runtime::pallet_index(19)]
+	pub type Deceased = pallet_deceased;
+
+	#[runtime::pallet_index(20)]
+	pub type DeceasedMedia = pallet_deceased_media;
+
+	#[runtime::pallet_index(21)]
+	pub type GraveLedger = pallet_grave_ledger;
+
+	#[runtime::pallet_index(22)]
+	pub type GraveGuestbook = pallet_grave_guestbook;
 }

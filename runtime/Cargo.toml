@@ -34,6 +34,10 @@ pallet-arbitration = { path = "../pallets/arbitration", default-features = false
 # replaced old ritual/cemetery
 pallet-memorial-park = { path = "../pallets/memorial-park", default-features = false }
 pallet-grave = { path = "../pallets/grave", default-features = false }
+pallet-grave-ledger = { path = "../pallets/grave-ledger", default-features = false }
+pallet-grave-guestbook = { path = "../pallets/grave-guestbook", default-features = false }
+pallet-deceased = { path = "../pallets/deceased", default-features = false }
+pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }
 pallet-memorial-offerings = { path = "../pallets/memorial-offerings", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
@@ -85,6 +89,10 @@ std = [
 	"pallet-arbitration/std",
 	"pallet-memorial-park/std",
 	"pallet-grave/std",
+	"pallet-grave-ledger/std",
+	"pallet-grave-guestbook/std",
+	"pallet-deceased/std",
+	"pallet-deceased-media/std",
 	"pallet-memorial-offerings/std",
 	"pallet-evidence/std",
 	"pallet-identity/std",

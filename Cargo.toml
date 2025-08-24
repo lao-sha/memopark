@@ -20,6 +20,10 @@ members = [
     
     "pallets/memorial-park",
     "pallets/grave",
+    "pallets/grave-ledger",
+    "pallets/grave-guestbook",
+    "pallets/deceased",
+    "pallets/deceased-media",
     "pallets/memorial-offerings",
     "pallets/evidence",
     "runtime",
