@@ -1,9 +1,9 @@
-Memorial项目 区块链前端 API 接口统一文档
+MemoPark项目 区块链前端 API 接口统一文档
 
 ## pallet-deceased
 
 - 模块说明：在单个墓位下维护多个逝者记录，提供增删改与迁移。
-- 隐私：仅存有限文本与外链；不涉及 BUD 资金。
+- 隐私：仅存有限文本与外链；不涉及 MEMO 资金。
 
 Extrinsics：
 - create_deceased(grave_id: u64, name: Bytes, bio: Bytes, birth_ts: Option<u64>, death_ts: Option<u64>, links: Vec<Bytes>)
@@ -30,7 +30,7 @@ Storage：
 ## pallet-deceased-media
 
 - 模块说明：每位逝者可有多个相册，每个相册含多媒体项（照片/视频/音频）。
-- 隐私：链下资源 URI + 可选哈希；不涉及 BUD。
+- 隐私：链下资源 URI + 可选哈希；不涉及 MEMO。
 
 Extrinsics：
 - create_album(deceased_id: u64, title: Bytes, desc: Bytes, visibility: Visibility, tags: Vec<Bytes>)

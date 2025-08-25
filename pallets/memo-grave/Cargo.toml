@@ -1,5 +1,5 @@
 [package]
-name = "pallet-grave"
+name = "pallet-memo-grave"
 version = "0.1.0"
 license = "Unlicense"
 edition = "2021"

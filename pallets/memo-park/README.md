@@ -1,4 +1,4 @@
-# pallet-memorial-park
+# pallet-memo-park
 
 - 作用：登记陵园（全球国家/地区）、元数据（仅加密 CID）、治理主体（由 runtime 适配）。
 - 隐私：链上只存承诺/加密 CID；明文在端侧/服务端加密后存 IPFS。

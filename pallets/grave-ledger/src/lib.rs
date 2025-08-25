@@ -102,7 +102,7 @@ pub mod pallet {
         /// 函数级中文注释：供 Hook 调用的内部记录方法。
         /// - 仅供 runtime 中的 OnOffering Hook 调用；
         /// - 记录最小必要信息，维护最近 N 条与分类累计计数；
-        /// - 不做资金逻辑，保障 BUD 安全。
+        /// - 不做资金逻辑，保障 MEMO 安全。
         pub fn record_from_hook(grave_id: T::GraveId, who: T::AccountId, kind_code: u8, memo: Option<Vec<u8>>) {
             let now = <frame_system::Pallet<T>>::block_number();
             let log_id = NextLogId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });

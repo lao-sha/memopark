@@ -1,7 +1,7 @@
-# pallet-grave-guestbook
+# pallet-memo-grave-guestbook
 
 - 用途：为每个 `grave` 提供留言板（Guestbook），可开关公共留言；支持亲人白名单；支持图片/视频/音频附件（链下 URI）。
-- 隐私与安全：仅存最小文本与外链；不涉及 BUD 资金；有界长度/数量与反刷限制。
+- 隐私与安全：仅存最小文本与外链；不涉及 MEMO 资金；有界长度/数量与反刷限制。
 - 低耦合：通过 `GraveAccess` 适配到 `pallet-grave`；可接入 `pallet-membership/identity`。
 
 ## 数据模型

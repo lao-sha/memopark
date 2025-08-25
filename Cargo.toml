@@ -2,7 +2,7 @@
 license = "MIT-0"
 authors = ["Parity Technologies <admin@parity.io>"]
 homepage = "https://paritytech.github.io/polkadot-sdk/"
-repository = "https://github.com/paritytech/polkadot-sdk-solochain-template.git"
+repository = "https://github.com/lao-sha/memopark.git"
 edition = "2021"
 
 [workspace]
@@ -18,20 +18,20 @@ members = [
     "pallets/escrow",
     "pallets/arbitration",
     
-    "pallets/memorial-park",
-    "pallets/grave",
+    "pallets/memo-park",
+    "pallets/memo-grave",
     "pallets/grave-ledger",
     "pallets/grave-guestbook",
     "pallets/deceased",
     "pallets/deceased-media",
-    "pallets/memorial-offerings",
+    "pallets/memo-offerings",
     "pallets/evidence",
     "runtime",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-solochain-template-runtime = { path = "./runtime", default-features = false }
+solochain-template-runtime = { package = "memopark-runtime", path = "./runtime", default-features = false }
 pallet-template = { path = "./pallets/template", default-features = false }
 enumflags2 = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false }

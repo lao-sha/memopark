@@ -2,7 +2,7 @@
 
 本模块用于在每位逝者（Deceased）名下维护多个相册（Album）与媒体项（Media：照片/视频）。
 - 低耦合：通过 `DeceasedAccess` Trait 与 `pallet-deceased` 交互，避免直接依赖其内部实现。
-- 隐私安全：链上仅存最小元数据与链下外链（IPFS/HTTPS/Arweave），可选内容哈希；不涉及 BUD 资金。
+- 隐私安全：链上仅存最小元数据与链下外链（IPFS/HTTPS/Arweave），可选内容哈希；不涉及 MEMO 资金。
 - 限制控制：使用 `BoundedVec` 对字符串长度与集合数量进行约束，防止状态膨胀与 DoS。
 - 冗余检查：仅存最小必要信息，排序/标签等可按需裁剪；建议链下索引服务承载复杂查询。
 - 兼容迁移：预留向官方 `pallet-nfts` 迁移路径。
@@ -96,7 +96,7 @@ impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderA
 ## 隐私与安全
 - 不上链原始多媒体；仅存 `uri` 与可选 `content_hash`（如 blake2/sha256）。
 - 私密内容可采用“加密 URI + 链下密钥分发”模式（`visibility = Private`）。
-- 不进行任何 BUD 代币相关操作，资金风险隔离。
+- 不进行任何 MEMO 代币相关操作，资金风险隔离。
 - 严格的长度/数量上限防止状态膨胀与 DoS。
 
 ## 与 pallet-nfts 的迁移路径（可选升级）
@@ -105,7 +105,7 @@ impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderA
 - 过渡方案：
   - 批量迁移：将现有相册/媒体铸造成 NFT，写回映射字段（如 `collection_id/item_id`），稳定后改读 NFT。
   - 双写方案：新数据同时写入本模块与 NFT，灰度期后切换只读 NFT。
-- 押金策略建议由平台账户统一承担，避免用户 BUD 误锁。
+- 押金策略建议由平台账户统一承担，避免用户 MEMO 误锁。
 
 ## 版本与迁移
 - 当前未实现 `OnRuntimeUpgrade` 迁移逻辑；如未来调整存储结构，建议按 FRAME 迁移流程实现 `pre_upgrade`/`on_runtime_upgrade`/`post_upgrade` 并配合 try-runtime 进行验证。

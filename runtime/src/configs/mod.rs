@@ -258,7 +258,7 @@ parameter_types! {
     pub const ParkMaxPerCountry: u32 = 100_000;
 }
 pub struct RootOnlyParkAdmin;
-impl pallet_memorial_park::Config for Runtime {
+impl pallet_memo_park::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
     type MaxRegionLen = ParkMaxRegionLen;
     type MaxCidLen = ParkMaxCidLen;
@@ -272,7 +272,8 @@ parameter_types! {
     pub const GraveMaxIntermentsPerGrave: u32 = 128;
 }
 pub struct NoopIntermentHook;
-impl pallet_grave::Config for Runtime {
+// 重命名 crate：从 pallet_grave → pallet_memo_grave
+impl pallet_memo_grave::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
@@ -291,13 +292,13 @@ parameter_types! {
 /// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
 pub struct GraveProviderAdapter;
 impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
-    /// 检查墓位是否存在：读取 `pallet-grave` 的存储 `Graves`
+    /// 检查墓位是否存在：读取 `pallet-memo-grave` 的存储 `Graves`
     fn grave_exists(grave_id: u64) -> bool {
-        pallet_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
+        pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
     }
     /// 校验 `who` 是否可在该墓位下管理逝者：当前仅墓主可管理（后续可扩展授权）
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
-        if let Some(grave) = pallet_grave::pallet::Graves::<Runtime>::get(grave_id) {
+        if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
             grave.owner == *who
         } else { false }
     }
@@ -374,16 +375,16 @@ pub struct GraveAccessAdapter;
 impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for GraveAccessAdapter {
     /// 检查墓主或园区管理员：若非墓主，则要求园区管理员权限（沿用你们 RootOnlyParkAdmin 并可扩展）
     fn ensure_owner_or_admin(grave_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
-        if let Some(g) = pallet_grave::pallet::Graves::<Runtime>::get(grave_id) {
+        if let Some(g) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
             if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
                 if who == g.owner { return Ok(()); }
             }
-            pallet_grave::pallet::RootOnlyParkAdmin::ensure(g.park_id, origin)
+            pallet_memo_grave::pallet::RootOnlyParkAdmin::ensure(g.park_id, origin)
         } else {
             Err(sp_runtime::DispatchError::Other("GraveNotFound"))
         }
     }
-    fn grave_exists(grave_id: u64) -> bool { pallet_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
+    fn grave_exists(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
 }
 
 impl pallet_grave_guestbook::pallet::Config for Runtime {
@@ -409,7 +410,7 @@ parameter_types! {
 }
 pub struct AllowAllTargetControl;
 pub struct NoopOfferingHook;
-impl pallet_memorial_offerings::Config for Runtime {
+impl pallet_memo_offerings::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxCidLen = OfferMaxCidLen;
     type MaxNameLen = OfferMaxNameLen;
@@ -421,26 +422,27 @@ impl pallet_memorial_offerings::Config for Runtime {
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
-impl pallet_memorial_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+// 修正命名：由旧 crate 前缀 memorial 切换为 memo，保证与 `pallets/memo-park` 对应
+impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
     /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         Ok(frame_system::ensure_root(origin).map(|_| ())?)
     }
 }
 
-impl pallet_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+impl pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
     /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         Ok(frame_system::ensure_root(origin).map(|_| ())?)
     }
 }
 
-impl pallet_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
+impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
     /// 函数级中文注释：安葬回调空实现，占位方便后续接入统计/KPI。
     fn on_interment(_grave_id: u64, _deceased_id: u64) {}
 }
 
-impl pallet_memorial_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
+impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
     fn exists(_target: (u8, u64)) -> bool { true }
     /// 函数级中文注释：权限检查临时实现：仅 Root 放行，后续可扩展为更细粒度策略。
@@ -451,7 +453,7 @@ impl pallet_memorial_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAl
 
 /// 函数级中文注释：当供奉落账时，将其按 grave 维度写入账本模块。
 pub struct GraveOfferingHook;
-impl pallet_memorial_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
+impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
     /// 供奉 Hook：由 `pallet-memorial-offerings` 在供奉确认后调用。
     /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）。
     /// - 当前 Hook 未携带数量与金额，建议由索引器从 offerings 模块事件补全。
@@ -501,6 +503,20 @@ parameter_types! {
 }
 pub struct PlatformAccount;
 impl sp_core::Get<AccountId> for PlatformAccount { fn get() -> AccountId { sp_core::crypto::AccountId32::new([0u8;32]).into() } }
+
+/// 函数级中文注释：黑洞账户（无私钥）
+/// - 选用全 0 公钥对应的 AccountId32；无法从私钥推导签名，链上仅可接收，不可支出。
+/// - 作为 MEMO 销毁地址使用：向该地址转账即等于销毁。
+pub struct BurnAccount;
+impl sp_core::Get<AccountId> for BurnAccount {
+    /// 函数级中文注释：使用固定字节串 b"memo/burn" 前 32 字节生成 AccountId（无私钥）。
+    fn get() -> AccountId {
+        let mut bytes = [0u8; 32];
+        const SEED: &[u8; 9] = b"memo/burn";
+        bytes[..SEED.len()].copy_from_slice(SEED);
+        sp_core::crypto::AccountId32::new(bytes).into()
+    }
+}
 
 // ===== escrow/arbitration 配置 =====
 

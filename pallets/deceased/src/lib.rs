@@ -27,10 +27,10 @@ pub trait WeightInfo {
 }
 
 impl WeightInfo for () {
-    fn create() -> Weight { 10_000 }
-    fn update() -> Weight { 10_000 }
-    fn remove() -> Weight { 10_000 }
-    fn transfer() -> Weight { 10_000 }
+    fn create() -> Weight { 10_000.into() }
+    fn update() -> Weight { 10_000.into() }
+    fn remove() -> Weight { 10_000.into() }
+    fn transfer() -> Weight { 10_000.into() }
 }
 
 /// 函数级中文注释：逝者实体，链上仅存最小必要信息与链下指针。
@@ -51,8 +51,8 @@ pub struct Deceased<T: Config> {
     /// 外部资源链接（IPFS/HTTPS），每条与数量均受限
     pub links: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks>,
     /// 创建与更新区块号
-    pub created: T::BlockNumber,
-    pub updated: T::BlockNumber,
+    pub created: BlockNumberFor<T>,
+    pub updated: BlockNumberFor<T>,
 }
 
 #[frame_support::pallet]
@@ -169,7 +169,7 @@ pub mod pallet {
             let next = id.checked_add(&T::DeceasedId::from(1u32)).ok_or(Error::<T>::Overflow)?;
             NextDeceasedId::<T>::put(next);
 
-            let now = <frame_system::Pallet<T>>::block_number();
+            let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
             let deceased = Deceased::<T> {
                 grave_id,
                 owner: who.clone(),
