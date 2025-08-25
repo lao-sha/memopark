@@ -2,7 +2,7 @@
 
 - 用途：按墓位（grave）记录供奉（offering）历史，提供“最近 N 条明细 + 累计统计（总次数/分类次数）”。
 - 低耦合：通过 `pallet-memorial-offerings` 的 Hook 写入；不直接依赖其内部数据结构。
-- 隐私与安全：仅存最小元数据与可选 memo（CID/URL），不做任何 BUD 资金处理。
+- 隐私与安全：仅存最小元数据与可选 memo（CID/URL），不做任何 MEMO 资金处理。
 
 ## 存储
 - `NextLogId: u64`

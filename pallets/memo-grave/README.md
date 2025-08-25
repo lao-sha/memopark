@@ -1,4 +1,4 @@
-# pallet-grave
+# pallet-memo-grave
 
 - 作用：管理墓地（单/双/多人）、归属陵园、容量/转让、安葬/起掘记录。
 - 隐私：仅记录承诺/加密 CID 的元数据；不落明文；媒体走 `pallet-evidence`。
@@ -19,3 +19,4 @@
 
 ## 权限
 - 墓地主人或 `ParkAdminOrigin::ensure(park_id, origin)`。
+- 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。

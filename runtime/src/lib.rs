@@ -63,8 +63,8 @@ impl_opaque_keys! {
 // https://docs.substrate.io/main-docs/build/upgrade#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: alloc::borrow::Cow::Borrowed("solochain-template-runtime"),
-	impl_name: alloc::borrow::Cow::Borrowed("solochain-template-runtime"),
+	spec_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
+	impl_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
 	authoring_version: 1,
 	// The version of the runtime specification. A full node will not attempt to use its native
 	//   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -252,13 +252,13 @@ mod runtime {
 	pub type Arbitration = pallet_arbitration;
 
 	#[runtime::pallet_index(14)]
-	pub type MemorialPark = pallet_memorial_park;
+	pub type MemorialPark = pallet_memo_park;
 
 	#[runtime::pallet_index(15)]
-	pub type Grave = pallet_grave;
+	pub type Grave = pallet_memo_grave;
 
 	#[runtime::pallet_index(16)]
-	pub type MemorialOfferings = pallet_memorial_offerings;
+	pub type MemorialOfferings = pallet_memo_offerings;
 
 	#[runtime::pallet_index(17)]
 	pub type Evidence = pallet_evidence;

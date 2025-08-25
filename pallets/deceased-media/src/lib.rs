@@ -18,10 +18,10 @@ pub trait DeceasedAccess<AccountId, DeceasedId> {
 }
 
 /// 函数级中文注释：媒体类型与可见性定义。
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
 pub enum MediaKind { Photo, Video, Audio }
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
 pub enum Visibility { Public, Unlisted, Private }
 
 /// 函数级中文注释：相册结构体，记录逝者、拥有者与元数据（限长）。
@@ -35,8 +35,8 @@ pub struct Album<T: Config> {
     pub visibility: Visibility,
     pub tags: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags>,
     pub cover_media_id: Option<T::MediaId>,
-    pub created: T::BlockNumber,
-    pub updated: T::BlockNumber,
+    pub created: BlockNumberFor<T>,
+    pub updated: BlockNumberFor<T>,
 }
 
 /// 函数级中文注释：媒体项结构体，仅保存外链/哈希等最小信息。
@@ -54,8 +54,8 @@ pub struct Media<T: Config> {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub order_index: u32,
-    pub created: T::BlockNumber,
-    pub updated: T::BlockNumber,
+    pub created: BlockNumberFor<T>,
+    pub updated: BlockNumberFor<T>,
 }
 
 #[frame_support::pallet]
@@ -122,7 +122,7 @@ pub mod pallet {
             deceased_id: T::DeceasedId,
             title: Vec<u8>,
             desc: Vec<u8>,
-            visibility: Visibility,
+            visibility: u8,
             tags: Vec<Vec<u8>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -141,8 +141,9 @@ pub mod pallet {
             let next = id.checked_add(&T::AlbumId::from(1u32)).ok_or(Error::<T>::Overflow)?;
             NextAlbumId::<T>::put(next);
 
+            let vis = match visibility { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) };
             let now = <frame_system::Pallet<T>>::block_number();
-            let album = Album::<T> { deceased_id, owner: who.clone(), title: title_bv, desc: desc_bv, visibility, tags: tags_bv, cover_media_id: None, created: now, updated: now };
+            let album = Album::<T> { deceased_id, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, cover_media_id: None, created: now, updated: now };
 
             AlbumOf::<T>::insert(id, album);
             AlbumsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
@@ -157,7 +158,7 @@ pub mod pallet {
             album_id: T::AlbumId,
             title: Option<Vec<u8>>,
             desc: Option<Vec<u8>>,
-            visibility: Option<Visibility>,
+            visibility: Option<u8>,
             tags: Option<Vec<Vec<u8>>>,
             cover_media_id: Option<Option<T::MediaId>>,
         ) -> DispatchResult {
@@ -167,7 +168,7 @@ pub mod pallet {
                 ensure!(a.owner == who, Error::<T>::NotAuthorized);
                 if let Some(t) = title { a.title = BoundedVec::try_from(t).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(d) = desc { a.desc = BoundedVec::try_from(d).map_err(|_| Error::<T>::BadInput)?; }
-                if let Some(v) = visibility { a.visibility = v; }
+                if let Some(v) = visibility { a.visibility = match v { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) }; }
                 if let Some(ts) = tags {
                     let mut tags_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags> = Default::default();
                     for t in ts.into_iter() {
@@ -206,7 +207,7 @@ pub mod pallet {
         pub fn add_media(
             origin: OriginFor<T>,
             album_id: T::AlbumId,
-            kind: MediaKind,
+            kind: u8,
             uri: Vec<u8>,
             thumbnail_uri: Option<Vec<u8>>,
             content_hash: Option<[u8;32]>,
@@ -223,12 +224,13 @@ pub mod pallet {
             let thumb_bv = match thumbnail_uri { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
 
             // 轻量校验：不同媒体类型的可选字段基本合理性
-            match kind {
+            let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
+            match kind_enum {
                 MediaKind::Photo => {
                     if let (Some(w), Some(h)) = (width, height) { ensure!(w > 0 && h > 0, Error::<T>::BadInput); }
                 }
                 MediaKind::Video | MediaKind::Audio => {
-                    if let Some(d) = duration_secs { ensure!(d > 0, Error::<T>::BadInput); }
+                    if let Some(d) = duration_secs { ensure!(d > 0u32, Error::<T>::BadInput); }
                 }
             }
 
@@ -239,7 +241,7 @@ pub mod pallet {
             let mut list = MediaByAlbum::<T>::get(album_id);
             let ord = order_index.unwrap_or(list.len() as u32);
             let now = <frame_system::Pallet<T>>::block_number();
-            let media = Media::<T> { album_id, deceased_id: album.deceased_id, owner: who.clone(), kind, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width, height, order_index: ord, created: now, updated: now };
+            let media = Media::<T> { album_id, deceased_id: album.deceased_id, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width, height, order_index: ord, created: now, updated: now };
 
             MediaOf::<T>::insert(id, media);
             list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
@@ -268,20 +270,20 @@ pub mod pallet {
                 if let Some(u) = uri { m.uri = BoundedVec::try_from(u).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(t) = thumbnail_uri { m.thumbnail_uri = match t { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None }; }
                 if let Some(h) = content_hash { m.content_hash = h; }
-                if let Some(d) = duration_secs { 
+                if let Some(dur) = duration_secs {
                     // 对视频/音频：若提供时长则要求 > 0
                     if matches!(m.kind, MediaKind::Video | MediaKind::Audio) {
-                        if let Some(val) = d { if let Some(x) = val { ensure!(x > 0, Error::<T>::BadInput); } }
+                        if let Some(x) = dur { ensure!(x > 0u32, Error::<T>::BadInput); }
                     }
-                    m.duration_secs = d; 
+                    m.duration_secs = dur;
                 }
-                if let Some(w) = width { 
-                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = w { if let Some(xx) = x { ensure!(xx > 0, Error::<T>::BadInput); } } }
-                    m.width = w; 
+                if let Some(w_opt) = width {
+                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = w_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
+                    m.width = w_opt;
                 }
-                if let Some(hg) = height { 
-                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = hg { if let Some(xx) = x { ensure!(xx > 0, Error::<T>::BadInput); } } }
-                    m.height = hg; 
+                if let Some(h_opt) = height {
+                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = h_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
+                    m.height = h_opt;
                 }
                 if let Some(ord) = order_index { m.order_index = ord; }
                 m.updated = <frame_system::Pallet<T>>::block_number();

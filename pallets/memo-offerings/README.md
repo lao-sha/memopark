@@ -1,4 +1,4 @@
-# pallet-memorial-offerings
+# pallet-memo-offerings
 
 - 作用：祭祀品规格目录与供奉记录；替换旧 `pallet-ritual`。
 - 隐私：媒体由本 Pallet 自身存储，仅上链 CID 与可选承诺（commit），不落明文。

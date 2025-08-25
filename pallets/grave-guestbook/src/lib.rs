@@ -6,6 +6,8 @@ pub use pallet::*;
 
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
+use sp_runtime::traits::AtLeast32BitUnsigned;
+use sp_runtime::Saturating;
 use sp_std::vec::Vec;
 
 /// 函数级中文注释：墓位访问接口抽象，为保持与 `pallet-grave` 低耦合。
@@ -17,11 +19,11 @@ pub trait GraveAccess<Origin, AccountId, GraveId> {
 }
 
 /// 函数级中文注释：媒体类型（与 deceased-media 对齐，便于前端统一渲染）。
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, sp_runtime::RuntimeDebug)]
 pub enum MediaKind { Photo, Video, Audio }
 
 /// 函数级中文注释：留言附件最小元数据，仅存链下指针与可选摘要。
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct Attachment<T: Config> {
     pub kind: MediaKind,
@@ -33,8 +35,31 @@ pub struct Attachment<T: Config> {
     pub height: Option<u32>,
 }
 
+// 函数级中文注释：为 Attachment<T> 实现 Debug，以满足 Call 枚举派生的 Debug 需求，避免对 T 施加 Debug 约束。
+impl<T: Config> core::fmt::Debug for Attachment<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Attachment")
+            .field("kind", &self.kind)
+            .finish()
+    }
+}
+// 函数级中文注释：为 Attachment<T> 提供手写 Clone 实现，避免对 T::StringLimit 施加 Clone 约束。
+impl<T: Config> Clone for Attachment<T> {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            uri: self.uri.clone(),
+            thumbnail_uri: self.thumbnail_uri.clone(),
+            content_hash: self.content_hash.clone(),
+            duration_secs: self.duration_secs.clone(),
+            width: self.width.clone(),
+            height: self.height.clone(),
+        }
+    }
+}
+
 /// 函数级中文注释：留言实体。
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct Message<T: Config> {
     pub grave_id: T::GraveId,
@@ -82,7 +107,7 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     // 存储
-    #[pallet::storage] pub type GuestbookConfigOf<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, GuestbookConfig<T>, ValueQuery>;
+    #[pallet::storage] pub type GuestbookConfigOf<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, GuestbookConfig<T>, OptionQuery>;
     #[pallet::storage] pub type RelativesOf<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, BoundedVec<T::AccountId, T::MaxRelatives>, ValueQuery>;
     #[pallet::storage] pub type NextMessageId<T: Config> = StorageValue<_, T::MessageId, ValueQuery>;
     #[pallet::storage] pub type MessageOf<T: Config> = StorageMap<_, Blake2_128Concat, T::MessageId, Message<T>, OptionQuery>;
@@ -125,7 +150,9 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn set_public(origin: OriginFor<T>, grave_id: T::GraveId, enabled: bool) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
-            GuestbookConfigOf::<T>::mutate(grave_id, |cfg| { cfg.public_enabled = enabled; });
+            let mut cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
+            cfg.public_enabled = enabled;
+            GuestbookConfigOf::<T>::insert(grave_id, cfg);
             Self::deposit_event(Event::ConfigUpdated(grave_id));
             Ok(())
         }
@@ -151,7 +178,9 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn add_moderator(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
-            GuestbookConfigOf::<T>::mutate(grave_id, |cfg| { let _ = cfg.moderators.try_push(who.clone()); });
+            let mut cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
+            let _ = cfg.moderators.try_push(who.clone());
+            GuestbookConfigOf::<T>::insert(grave_id, cfg);
             Self::deposit_event(Event::ModeratorAdded(grave_id, who));
             Ok(())
         }
@@ -159,7 +188,9 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn remove_moderator(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
-            GuestbookConfigOf::<T>::mutate(grave_id, |cfg| { if let Some(i) = cfg.moderators.iter().position(|x| x == &who) { cfg.moderators.swap_remove(i); } });
+            let mut cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
+            if let Some(i) = cfg.moderators.iter().position(|x| x == &who) { cfg.moderators.swap_remove(i); }
+            GuestbookConfigOf::<T>::insert(grave_id, cfg);
             Self::deposit_event(Event::ModeratorRemoved(grave_id, who));
             Ok(())
         }
@@ -168,7 +199,9 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn pin_message(origin: OriginFor<T>, grave_id: T::GraveId, msg_id: Option<T::MessageId>) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
-            GuestbookConfigOf::<T>::mutate(grave_id, |cfg| { cfg.pinned_message_id = msg_id; });
+            let mut cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
+            cfg.pinned_message_id = msg_id;
+            GuestbookConfigOf::<T>::insert(grave_id, cfg);
             Self::deposit_event(Event::Pinned(grave_id, msg_id));
             Ok(())
         }
@@ -179,13 +212,13 @@ pub mod pallet {
             origin: OriginFor<T>,
             grave_id: T::GraveId,
             content: Vec<u8>,
-            attachments: Vec<Attachment<T>>,
+            attachments: Vec<(u8, Vec<u8>, Option<Vec<u8>>, Option<[u8; 32]>, Option<u32>, Option<u32>, Option<u32>)>,
             reply_to: Option<T::MessageId>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
 
-            let cfg = GuestbookConfigOf::<T>::get(grave_id);
+            let cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
             if !cfg.public_enabled {
                 let is_mod = cfg.moderators.iter().any(|m| m == &who);
                 let is_relative = RelativesOf::<T>::get(grave_id).iter().any(|a| a == &who);
@@ -197,12 +230,23 @@ pub mod pallet {
             let now = <frame_system::Pallet<T>>::block_number();
             let last = LastPostBy::<T>::get(grave_id, &who);
             if last != Default::default() {
-                ensure!(now.saturating_sub(last) >= T::MinPostBlocksPerAccount::get().into(), Error::<T>::RateLimited);
+                let min_gap: BlockNumberFor<T> = T::MinPostBlocksPerAccount::get().into();
+                ensure!(now.saturating_sub(last) >= min_gap, Error::<T>::RateLimited);
             }
 
             let content_bv: BoundedVec<_, T::MaxMessageLen> = BoundedVec::try_from(content).map_err(|_| Error::<T>::BadInput)?;
             let mut atts_bv: BoundedVec<Attachment<T>, T::MaxAttachmentsPerMessage> = Default::default();
-            for a in attachments.into_iter() { atts_bv.try_push(a).map_err(|_| Error::<T>::BadInput)?; }
+            for (k, uri, thumb, hash, dur, w, h) in attachments.into_iter() {
+                let kind = match k { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
+                let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
+                let thumb_bv = match thumb { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                if matches!(kind, MediaKind::Video | MediaKind::Audio) { if let Some(d) = dur { ensure!(d > 0u32, Error::<T>::BadInput); } }
+                if matches!(kind, MediaKind::Photo) {
+                    if let (Some(wv), Some(hv)) = (w, h) { ensure!(wv > 0u32 && hv > 0u32, Error::<T>::BadInput); }
+                }
+                let att = Attachment::<T> { kind, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash: hash, duration_secs: dur, width: w, height: h };
+                atts_bv.try_push(att).map_err(|_| Error::<T>::BadInput)?;
+            }
 
             let id = NextMessageId::<T>::get();
             let next = id.checked_add(&T::MessageId::from(1u32)).ok_or(Error::<T>::BadInput)?;
@@ -225,16 +269,28 @@ pub mod pallet {
             origin: OriginFor<T>,
             message_id: T::MessageId,
             new_content: Option<Vec<u8>>,
-            new_attachments: Option<Vec<Attachment<T>>>,
+            new_attachments: Option<Vec<(u8, Vec<u8>, Option<Vec<u8>>, Option<[u8; 32]>, Option<u32>, Option<u32>, Option<u32>)>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             MessageOf::<T>::try_mutate(message_id, |maybe| -> DispatchResult {
                 let m = maybe.as_mut().ok_or(Error::<T>::MessageNotFound)?;
-                let cfg = GuestbookConfigOf::<T>::get(m.grave_id);
+                let cfg = GuestbookConfigOf::<T>::get(m.grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
                 let is_mod = cfg.moderators.iter().any(|x| x == &who);
                 ensure!(m.author == who || is_mod, Error::<T>::NotAuthorized);
                 if let Some(c) = new_content { m.content = BoundedVec::try_from(c).map_err(|_| Error::<T>::BadInput)?; }
-                if let Some(atts) = new_attachments { let mut bv: BoundedVec<Attachment<T>, T::MaxAttachmentsPerMessage> = Default::default(); for a in atts.into_iter() { bv.try_push(a).map_err(|_| Error::<T>::BadInput)?; } m.attachments = bv; }
+                if let Some(atts) = new_attachments {
+                    let mut bv: BoundedVec<Attachment<T>, T::MaxAttachmentsPerMessage> = Default::default();
+                    for (k, uri, thumb, hash, dur, w, h) in atts.into_iter() {
+                        let kind = match k { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
+                        let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
+                        let thumb_bv = match thumb { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                        if matches!(kind, MediaKind::Video | MediaKind::Audio) { if let Some(d) = dur { ensure!(d > 0u32, Error::<T>::BadInput); } }
+                        if matches!(kind, MediaKind::Photo) { if let (Some(wv), Some(hv)) = (w, h) { ensure!(wv > 0u32 && hv > 0u32, Error::<T>::BadInput); } }
+                        let att = Attachment::<T> { kind, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash: hash, duration_secs: dur, width: w, height: h };
+                        bv.try_push(att).map_err(|_| Error::<T>::BadInput)?;
+                    }
+                    m.attachments = bv;
+                }
                 m.edited = Some(<frame_system::Pallet<T>>::block_number());
                 Ok(())
             })?;
@@ -246,7 +302,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn hide(origin: OriginFor<T>, message_id: T::MessageId) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
-            let (grave_id, is_mod) = if let Some(m) = MessageOf::<T>::get(message_id) { let cfg = GuestbookConfigOf::<T>::get(m.grave_id); (m.grave_id, cfg.moderators.iter().any(|x| x == &who)) } else { return Err(Error::<T>::MessageNotFound.into()); };
+            let (grave_id, is_mod) = if let Some(m) = MessageOf::<T>::get(message_id) { let cfg = GuestbookConfigOf::<T>::get(m.grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() }); (m.grave_id, cfg.moderators.iter().any(|x| x == &who)) } else { return Err(Error::<T>::MessageNotFound.into()); };
             if !is_mod { T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?; }
             MessageOf::<T>::mutate(message_id, |maybe| { if let Some(m) = maybe { m.is_hidden = true; } });
             Self::deposit_event(Event::MessageHidden(message_id));
@@ -257,7 +313,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn delete(origin: OriginFor<T>, message_id: T::MessageId) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let (grave_id, is_mod, is_author) = if let Some(m) = MessageOf::<T>::get(message_id) { let cfg = GuestbookConfigOf::<T>::get(m.grave_id); (m.grave_id, cfg.moderators.iter().any(|x| x == &who), m.author == who) } else { return Err(Error::<T>::MessageNotFound.into()); };
+            let (grave_id, is_mod, is_author) = if let Some(m) = MessageOf::<T>::get(message_id) { let cfg = GuestbookConfigOf::<T>::get(m.grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() }); (m.grave_id, cfg.moderators.iter().any(|x| x == &who), m.author == who) } else { return Err(Error::<T>::MessageNotFound.into()); };
             ensure!(is_mod || is_author, Error::<T>::NotAuthorized);
             MessageOf::<T>::remove(message_id);
             RecentByGrave::<T>::mutate(grave_id, |list| { if let Some(i) = list.iter().position(|x| x == &message_id) { list.swap_remove(i); } });

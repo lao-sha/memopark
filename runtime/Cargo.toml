@@ -1,5 +1,5 @@
 [package]
-name = "solochain-template-runtime"
+name = "memopark-runtime"
 description = "A solochain runtime template built with Substrate, part of Polkadot Sdk."
 version = "0.1.0"
 license = "Unlicense"
@@ -32,13 +32,13 @@ pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
 pallet-escrow = { path = "../pallets/escrow", default-features = false }
 pallet-arbitration = { path = "../pallets/arbitration", default-features = false }
 # replaced old ritual/cemetery
-pallet-memorial-park = { path = "../pallets/memorial-park", default-features = false }
-pallet-grave = { path = "../pallets/grave", default-features = false }
+pallet-memo-park = { path = "../pallets/memo-park", default-features = false }
+pallet-memo-grave = { path = "../pallets/memo-grave", default-features = false }
 pallet-grave-ledger = { path = "../pallets/grave-ledger", default-features = false }
 pallet-grave-guestbook = { path = "../pallets/grave-guestbook", default-features = false }
 pallet-deceased = { path = "../pallets/deceased", default-features = false }
 pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }
-pallet-memorial-offerings = { path = "../pallets/memorial-offerings", default-features = false }
+pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
 pallet-sudo.workspace = true
@@ -87,13 +87,13 @@ std = [
 	"pallet-otc-order/std",
 	"pallet-escrow/std",
 	"pallet-arbitration/std",
-	"pallet-memorial-park/std",
-	"pallet-grave/std",
+	"pallet-memo-park/std",
+	"pallet-memo-grave/std",
 	"pallet-grave-ledger/std",
 	"pallet-grave-guestbook/std",
 	"pallet-deceased/std",
 	"pallet-deceased-media/std",
-	"pallet-memorial-offerings/std",
+	"pallet-memo-offerings/std",
 	"pallet-evidence/std",
 	"pallet-identity/std",
 	"pallet-sudo/std",

@@ -12,7 +12,7 @@
 - `amount_of(id) -> Balance`：查询托管子账户余额。
 
 ## Config
-- `type Currency`：底层代币实现（BUD）。
+- `type Currency`：底层代币实现（MEMO）。
 - `type EscrowPalletId`：派生模块账户。
 
 ## 用例

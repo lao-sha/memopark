@@ -15,7 +15,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig};
+use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig, UNIT};
+use crate::configs::BurnAccount;
 use alloc::{vec, vec::Vec};
 use frame_support::build_struct_json_patch;
 use serde_json::Value;
@@ -26,18 +27,24 @@ use sp_keyring::Sr25519Keyring;
 use sp_runtime::traits::AccountIdConversion;
 
 // Returns the genesis config presets populated with given parameters.
+/// 函数级中文注释：构建创世配置，设置 MEMO 总发行量 1000 亿（按 12 位精度）。
+/// - 将全部初始发行分配给 sudo（root）账户；
+/// - 如需多账号分配，可在 balances 向量中拆分，保证总和一致。
 fn testnet_genesis(
 	initial_authorities: Vec<(AuraId, GrandpaId)>,
 	endowed_accounts: Vec<AccountId>,
 	root: AccountId,
 ) -> Value {
+	let total_issuance: u128 = 100_000_000_000u128.saturating_mul(UNIT);
+	let burn_account = BurnAccount::get();
+	let ed: u128 = crate::EXISTENTIAL_DEPOSIT;
+
 	build_struct_json_patch!(RuntimeGenesisConfig {
 		balances: BalancesConfig {
-			balances: endowed_accounts
-				.iter()
-				.cloned()
-				.map(|k| (k, 1u128 << 60))
-				.collect::<Vec<_>>(),
+			balances: vec![
+				(root.clone(), total_issuance.saturating_sub(ed)),
+				(burn_account, ed),
+			],
 		},
 		aura: pallet_aura::GenesisConfig {
 			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect::<Vec<_>>(),

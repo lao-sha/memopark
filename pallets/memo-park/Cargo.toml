@@ -1,5 +1,5 @@
 [package]
-name = "pallet-memorial-offerings"
+name = "pallet-memo-park"
 version = "0.1.0"
 license = "Unlicense"
 edition = "2021"
@@ -11,7 +11,6 @@ scale-info = { workspace = true, features = ["derive"], default-features = false
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
-sp-core = { workspace = true, default-features = false }
 
 [features]
 default = ["std"]
@@ -21,7 +20,6 @@ std = [
   "frame-support/std",
   "frame-system/std",
   "sp-runtime/std",
-  "sp-core/std",
 ]
 
 
