@@ -26,6 +26,10 @@ impl pallet_deceased::Config for Runtime {
 
 权限：
 - 创建/迁移：`GraveProvider::can_attach(who, grave_id)`。
+  - 判定规则（单一权威源：`pallet-memo-grave`）：
+    - 若 `who` 为墓主 → 允许
+    - 若 `who` 在 `pallet-memo-grave::GraveAdmins[grave_id]` 中 → 允许
+    - 若 `who` 为墓位所在陵园的管理员（`ParkAdminOrigin::ensure(park_id, Signed(who))` 通过）→ 允许
 - 修改/删除：记录 `owner`。
 
 ## 存储

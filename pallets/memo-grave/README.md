@@ -9,6 +9,11 @@
 - `Graves: GraveId -> Grave { park_id, owner, admin_group, kind_code, capacity, metadata_cid, active }`
 - `GravesByPark: ParkId -> BoundedVec<GraveId>`
 - `Interments: GraveId -> BoundedVec<IntermentRecord>`
+ - `GraveMetaOf: GraveId -> { categories: u32, religion: u8 }`
+ - `ModerationOf: GraveId -> { restricted: bool, removed: bool, reason_code: u8 }`
+ - `ComplaintsByGrave: GraveId -> BoundedVec<Complaint>`
+ - `NameIndex: blake2_256(lowercase(name)) -> BoundedVec<GraveId>`
+ - `GraveAdmins: GraveId -> BoundedVec<AccountId>`（墓位管理员集合，供子模块只读引用）
 
 ## Extrinsics
 - `create_grave(park_id, kind_code, capacity?, metadata_cid)`
@@ -16,7 +21,13 @@
 - `transfer_grave(id, new_owner)`
 - `inter(id, deceased_id, slot?, note_cid?)`
 - `exhume(id, deceased_id)`
+ - `set_meta(id, categories?, religion?)`
+ - `complain(id, cid)`
+ - `restrict(id, on, reason_code)` / `remove(id, reason_code)`
+ - `set_name_hash(id, name_hash)` / `clear_name_hash(id, name_hash)`
+ - `add_admin(id, who)` / `remove_admin(id, who)`（仅墓主或园区管理员）
 
 ## 权限
-- 墓地主人或 `ParkAdminOrigin::ensure(park_id, origin)`。
+- 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。
+  - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
 - 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。
