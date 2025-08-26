@@ -270,6 +270,9 @@ parameter_types! {
     pub const GraveMaxCidLen: u32 = 64;
     pub const GraveMaxPerPark: u32 = 4096;
     pub const GraveMaxIntermentsPerGrave: u32 = 128;
+    pub const GraveMaxIdsPerName: u32 = 1024;
+    pub const GraveMaxComplaints: u32 = 100;
+    pub const GraveMaxAdmins: u32 = 16;
 }
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
@@ -280,6 +283,9 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxIntermentsPerGrave = GraveMaxIntermentsPerGrave;
     type OnInterment = NoopIntermentHook;
     type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
+    type MaxIdsPerName = GraveMaxIdsPerName;
+    type MaxComplaintsPerGrave = GraveMaxComplaints;
+    type MaxAdminsPerGrave = GraveMaxAdmins;
 }
 
 // ===== deceased 配置 =====
@@ -299,7 +305,14 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     /// 校验 `who` 是否可在该墓位下管理逝者：当前仅墓主可管理（后续可扩展授权）
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
         if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
-            grave.owner == *who
+            // 1) 墓主放行
+            if grave.owner == *who { return true; }
+            // 2) 墓位管理员放行
+            let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
+            if admins.iter().any(|a| a == who) { return true; }
+            // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
+            let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
+            RootOnlyParkAdmin::ensure(grave.park_id, origin).is_ok()
         } else { false }
     }
 }
@@ -352,12 +365,17 @@ impl pallet_deceased_media::Config for Runtime {
 parameter_types! {
     pub const GraveLedgerMaxRecentPerGrave: u32 = 256;
     pub const GraveLedgerMaxMemoLen: u32 = 64;
+    pub const GraveLedgerMaxTop: u32 = 100;
 }
 impl pallet_grave_ledger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type GraveId = u64;
     type MaxRecentPerGrave = GraveLedgerMaxRecentPerGrave;
     type MaxMemoLen = GraveLedgerMaxMemoLen;
+    type Balance = Balance;
+    type MaxTopGraves = GraveLedgerMaxTop;
+    /// 一周按 6s/块 × 60 × 60 × 24 × 7 = 100_800 块（可由治理升级调整）
+    type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
 }
 
 // ===== grave-guestbook 配置 =====
@@ -379,7 +397,7 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
             if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
                 if who == g.owner { return Ok(()); }
             }
-            pallet_memo_grave::pallet::RootOnlyParkAdmin::ensure(g.park_id, origin)
+            RootOnlyParkAdmin::ensure(g.park_id, origin)
         } else {
             Err(sp_runtime::DispatchError::Other("GraveNotFound"))
         }
@@ -419,6 +437,12 @@ impl pallet_memo_offerings::Config for Runtime {
     type MaxMemoLen = OfferMaxMemoLen;
     type TargetCtl = AllowAllTargetControl;
     type OnOffering = GraveOfferingHook;
+    /// 函数级中文注释：管理员 Origin 注入；当前使用 Root（后续可切换为 council/多签）。
+    type AdminOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：供奉转账使用链上余额
+    type Currency = Balances;
+    /// 函数级中文注释：捐赠账户解析
+    type DonationResolver = GraveDonationResolver;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -445,9 +469,9 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
     fn exists(_target: (u8, u64)) -> bool { true }
-    /// 函数级中文注释：权限检查临时实现：仅 Root 放行，后续可扩展为更细粒度策略。
+    /// 函数级中文注释：权限检查临时实现：允许任意签名账户下单；管理员仅用于上/下架/编辑。
     fn ensure_allowed(origin: RuntimeOrigin, _target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
-        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+        Ok(frame_system::ensure_signed(origin).map(|_| ())?)
     }
 }
 
@@ -456,11 +480,39 @@ pub struct GraveOfferingHook;
 impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
     /// 供奉 Hook：由 `pallet-memorial-offerings` 在供奉确认后调用。
     /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）。
-    /// - 当前 Hook 未携带数量与金额，建议由索引器从 offerings 模块事件补全。
-    fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId) {
+    /// - 携带金额（若 Some）则累计到排行榜；Timed 的持续周数用于标记有效供奉周期
+    fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId, amount: Option<u128>, duration_weeks: Option<u32>) {
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
-            pallet_grave_ledger::Pallet::<Runtime>::record_from_hook(target.1, who.clone(), kind_code, None);
+            let amt: Option<Balance> = amount.map(|a| a as Balance);
+            // 1) 记录供奉流水
+            pallet_grave_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None);
+            // 2) 标记有效供奉周期：
+            // - 若为 Timed（duration_weeks=Some），无论是否转账成功，均标记从当周起连续 w 周
+            // - 若为 Instant（None），仅当存在金额落账时标记当周
+            let should_mark = duration_weeks.is_some() || amount.is_some();
+            if should_mark {
+                let now = <frame_system::Pallet<Runtime>>::block_number();
+                pallet_grave_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
+            }
+        }
+    }
+}
+
+/// 函数级中文注释：纪念馆捐赠账户解析器。
+/// - 从 GraveId 派生子账户，集中管理捐赠。
+pub struct GraveDonationResolver;
+impl pallet_memo_offerings::pallet::DonationAccountResolver<AccountId> for GraveDonationResolver {
+    fn account_for(target: (u8, u64)) -> AccountId {
+        use frame_support::traits::PalletId;
+        const DOMAIN_GRAVE: u8 = 1;
+        // PalletId 使用固定前缀，避免与其它模块冲突
+        const PID: PalletId = PalletId(*b"grave$$$");
+        if target.0 == DOMAIN_GRAVE {
+            PID.into_sub_account_truncating(target.1)
+        } else {
+            // 其它域可复用统一平台账户
+            PlatformAccount::get()
         }
     }
 }

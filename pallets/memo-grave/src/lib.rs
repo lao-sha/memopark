@@ -29,6 +29,10 @@ pub mod pallet {
         #[pallet::constant] type MaxIntermentsPerGrave: Get<u32>;
         type OnInterment: OnIntermentCommitted;
         type ParkAdmin: ParkAdminOrigin<Self::RuntimeOrigin>;
+        #[pallet::constant] type MaxIdsPerName: Get<u32>;
+        #[pallet::constant] type MaxComplaintsPerGrave: Get<u32>;
+        /// 函数级中文注释：每个墓位最多可绑定的管理员账户数（不含墓主）。
+        #[pallet::constant] type MaxAdminsPerGrave: Get<u32>;
     }
 
     /// 函数级中文注释：墓地信息结构。仅存储加密 CID，不落明文。
@@ -69,6 +73,32 @@ pub mod pallet {
     #[pallet::storage]
     pub type Interments<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<IntermentRecord<T>, T::MaxIntermentsPerGrave>, ValueQuery>;
 
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    pub struct GraveMeta { pub categories: u32, pub religion: u8 }
+
+    #[pallet::storage]
+    pub type GraveMetaOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, GraveMeta, ValueQuery>;
+
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    pub struct Moderation { pub restricted: bool, pub removed: bool, pub reason_code: u8 }
+
+    #[pallet::storage]
+    pub type ModerationOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, Moderation, ValueQuery>;
+
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct Complaint<T: Config> { pub who: T::AccountId, pub cid: BoundedVec<u8, T::MaxCidLen>, pub time: BlockNumberFor<T> }
+
+    #[pallet::storage]
+    pub type ComplaintsByGrave<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<Complaint<T>, T::MaxComplaintsPerGrave>, ValueQuery>;
+
+    #[pallet::storage]
+    pub type NameIndex<T: Config> = StorageMap<_, Blake2_128Concat, [u8;32], BoundedVec<u64, T::MaxIdsPerName>, ValueQuery>;
+
+    /// 函数级中文注释：墓位管理员列表（不含墓主），统一授权源供子模块（如 deceased）只读引用。
+    #[pallet::storage]
+    pub type GraveAdmins<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxAdminsPerGrave>, ValueQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -79,6 +109,16 @@ pub mod pallet {
         Exhumed { id: u64, deceased_id: u64 },
         GraveActivated { id: u64 },
         GraveDeactivated { id: u64 },
+        MetaUpdated { id: u64 },
+        ComplainSubmitted { id: u64, who: T::AccountId },
+        Restricted { id: u64, on: bool, reason_code: u8 },
+        Removed { id: u64, reason_code: u8 },
+        NameHashSet { id: u64, name_hash: [u8;32] },
+        NameHashCleared { id: u64, name_hash: [u8;32] },
+        /// 已添加墓位管理员
+        AdminAdded { id: u64, who: T::AccountId },
+        /// 已移除墓位管理员
+        AdminRemoved { id: u64, who: T::AccountId },
     }
 
     #[pallet::error]
@@ -90,6 +130,7 @@ pub mod pallet {
         CapacityExceeded,
         AlreadyOccupied,
         InvalidKind,
+        AlreadyRemoved,
     }
 
     #[pallet::call]
@@ -191,6 +232,108 @@ pub mod pallet {
                 }
             })?;
             Self::deposit_event(Event::Exhumed { id, deceased_id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置墓地扩展元（分类/宗教）。
+        #[pallet::weight(10_000)]
+        pub fn set_meta(origin: OriginFor<T>, id: u64, categories: Option<u32>, religion: Option<u8>) -> DispatchResult {
+            // 墓主或管理员
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            GraveMetaOf::<T>::mutate(id, |m| {
+                if let Some(c) = categories { m.categories = c; }
+                if let Some(r) = religion { m.religion = r; }
+            });
+            Self::deposit_event(Event::MetaUpdated { id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：用户提交投诉（CID 仅指向证据，不落明文）。
+        #[pallet::weight(10_000)]
+        pub fn complain(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            ensure!(!ModerationOf::<T>::get(id).removed, Error::<T>::AlreadyRemoved);
+            let now = <frame_system::Pallet<T>>::block_number();
+            ComplaintsByGrave::<T>::try_mutate(id, |list| list.try_push(Complaint::<T>{ who: who.clone(), cid, time: now }).map_err(|_| Error::<T>::CapacityExceeded))?;
+            Self::deposit_event(Event::ComplainSubmitted { id, who });
+            Ok(())
+        }
+
+        /// 函数级中文注释：园区管理员设置/取消限制。
+        #[pallet::weight(10_000)]
+        pub fn restrict(origin: OriginFor<T>, id: u64, on: bool, reason_code: u8) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) { T::ParkAdmin::ensure(g.park_id, origin)?; } else { return Err(Error::<T>::NotFound.into()); }
+            ModerationOf::<T>::mutate(id, |m| { m.restricted = on; m.reason_code = reason_code; });
+            Self::deposit_event(Event::Restricted { id, on, reason_code });
+            Ok(())
+        }
+
+        /// 函数级中文注释：园区管理员软删除（并自动设置限制）。
+        #[pallet::weight(10_000)]
+        pub fn remove(origin: OriginFor<T>, id: u64, reason_code: u8) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) { T::ParkAdmin::ensure(g.park_id, origin)?; } else { return Err(Error::<T>::NotFound.into()); }
+            ModerationOf::<T>::mutate(id, |m| { m.removed = true; m.restricted = true; m.reason_code = reason_code; });
+            Self::deposit_event(Event::Removed { id, reason_code });
+            Ok(())
+        }
+
+        /// 函数级中文注释：绑定名称哈希索引（不存明文）。
+        #[pallet::weight(10_000)]
+        pub fn set_name_hash(origin: OriginFor<T>, id: u64, name_hash: [u8;32]) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            NameIndex::<T>::try_mutate(name_hash, |list| -> Result<(), Error<T>> {
+                if !list.iter().any(|x| *x == id) { list.try_push(id).map_err(|_| Error::<T>::CapacityExceeded)?; }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::NameHashSet { id, name_hash });
+            Ok(())
+        }
+
+        /// 函数级中文注释：从名称哈希索引中移除该墓地。
+        #[pallet::weight(10_000)]
+        pub fn clear_name_hash(origin: OriginFor<T>, id: u64, name_hash: [u8;32]) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            NameIndex::<T>::mutate(name_hash, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
+            Self::deposit_event(Event::NameHashCleared { id, name_hash });
+            Ok(())
+        }
+
+        /// 函数级中文注释：添加墓位管理员（不含墓主）。仅墓主或园区管理员可调用。
+        #[pallet::weight(10_000)]
+        pub fn add_admin(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            GraveAdmins::<T>::try_mutate(id, |list| -> Result<(), Error<T>> {
+                if !list.iter().any(|x| x == &who) { list.try_push(who.clone()).map_err(|_| Error::<T>::CapacityExceeded)?; }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::AdminAdded { id, who });
+            Ok(())
+        }
+
+        /// 函数级中文注释：移除墓位管理员。仅墓主或园区管理员可调用。
+        #[pallet::weight(10_000)]
+        pub fn remove_admin(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            GraveAdmins::<T>::mutate(id, |list| {
+                if let Some(pos) = list.iter().position(|x| *x == who) { list.swap_remove(pos); }
+            });
+            Self::deposit_event(Event::AdminRemoved { id, who });
             Ok(())
         }
     }
