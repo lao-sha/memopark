@@ -34,6 +34,7 @@ use frame_support::{
 };
 use frame_system::limits::{BlockLength, BlockWeights};
 use alloc::vec::Vec;
+use sp_runtime::traits::AccountIdConversion;
 use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
@@ -312,7 +313,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             if admins.iter().any(|a| a == who) { return true; }
             // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
-            RootOnlyParkAdmin::ensure(grave.park_id, origin).is_ok()
+            <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(grave.park_id, origin).is_ok()
         } else { false }
     }
 }
@@ -397,7 +398,7 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
             if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
                 if who == g.owner { return Ok(()); }
             }
-            RootOnlyParkAdmin::ensure(g.park_id, origin)
+            <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(g.park_id, origin)
         } else {
             Err(sp_runtime::DispatchError::Other("GraveNotFound"))
         }
@@ -494,6 +495,10 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
             if should_mark {
                 let now = <frame_system::Pallet<Runtime>>::block_number();
                 pallet_grave_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
+                // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
+                if let Some(pay) = amt {
+                    pallet_memo_affiliate::Pallet::<Runtime>::report(who, pay, Some(target), now, duration_weeks);
+                }
             }
         }
     }
@@ -504,16 +509,10 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
 pub struct GraveDonationResolver;
 impl pallet_memo_offerings::pallet::DonationAccountResolver<AccountId> for GraveDonationResolver {
     fn account_for(target: (u8, u64)) -> AccountId {
-        use frame_support::traits::PalletId;
-        const DOMAIN_GRAVE: u8 = 1;
-        // PalletId 使用固定前缀，避免与其它模块冲突
-        const PID: PalletId = PalletId(*b"grave$$$");
-        if target.0 == DOMAIN_GRAVE {
-            PID.into_sub_account_truncating(target.1)
-        } else {
-            // 其它域可复用统一平台账户
-            PlatformAccount::get()
-        }
+        // 托管结算：所有供奉先进入联盟托管账户，由联盟模块周期结算再分配。
+        let escrow = EscrowPalletId::get().into_account_truncating();
+        let _ = target; // 当前按域统一托管，保留形参以便未来分域托管
+        escrow
     }
 }
 
@@ -705,3 +704,79 @@ use frame_support::PalletId;
 // 已移除：evidence 授权适配器（改为 () ）
 
 // 已移除：Exchange 管理员适配器实现
+
+// ===== referrals（推荐关系）配置 =====
+parameter_types! {
+    /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
+    pub const RefMaxHops: u32 = 10;
+}
+impl pallet_memo_referrals::Config for Runtime {
+    /// 函数级中文注释：事件类型绑定到运行时事件。
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：最大层级限制（防环遍历的边界）。
+    type MaxHops = RefMaxHops;
+}
+
+// ===== affiliate（计酬）配置 =====
+parameter_types! {
+    /// 函数级中文注释：计酬最大层级（与推荐层级上限相近）。
+    pub const AffiliateMaxHops: u32 = 10;
+    /// 函数级中文注释：佣金池 PalletId，用于派生模块资金账户。
+    pub const AffiliatePalletId: PalletId = PalletId(*b"affiliat");
+}
+
+/// 函数级中文注释：佣金池账户解析器——由 PalletId 派生稳定账户地址。
+pub struct CommissionAccount;
+impl sp_core::Get<AccountId> for CommissionAccount {
+    fn get() -> AccountId {
+        AffiliatePalletId::get().into_account_truncating()
+    }
+}
+
+/// 函数级中文注释：极差费率配置（万分比）。可在未来迁移为存储项/治理参数。
+pub struct AffiliateTierRates;
+impl sp_core::Get<&'static [u16]> for AffiliateTierRates {
+    fn get() -> &'static [u16] {
+        // 第1层 8%，第2层 5%，第3层 2%（示例，可治理升级）
+        const R: &[u16] = &[800, 500, 200];
+        R
+    }
+}
+
+impl pallet_memo_affiliate::Config for Runtime {
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+    /// 货币实现
+    type Currency = Balances;
+    /// 推荐关系只读提供者
+    type Referrals = pallet_memo_referrals::Pallet<Runtime>;
+    /// 周对应区块数
+    type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
+    /// 托管 PalletId
+    type EscrowPalletId = EscrowPalletId;
+    /// 黑洞与国库
+    type BurnAccount = BurnAccount;
+    type TreasuryAccount = PlatformAccount;
+    /// 防御性搜索上限
+    type MaxSearchHops = frame_support::traits::ConstU32<10_000>;
+    /// 结算最大层级与阈值
+    type MaxLevels = frame_support::traits::ConstU32<15>;
+    type PerLevelNeed = frame_support::traits::ConstU32<3>;
+    /// 比例（bps）：每层不等比
+    type LevelRatesBps = LevelRatesArray;
+    type BurnBps = frame_support::traits::ConstU16<1000>; // 10%
+    type TreasuryBps = frame_support::traits::ConstU16<800>; // 8%
+}
+
+/// 函数级中文注释：分层比例数组 [L1=2000, L2=1000, L3..L15=400]
+pub struct LevelRatesArray;
+impl sp_core::Get<&'static [u16]> for LevelRatesArray {
+    fn get() -> &'static [u16] {
+        const RATES: &[u16] = &[
+            2000, // L1 20%
+            1000, // L2 10%
+            400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, // L3..L15 各 4%
+        ];
+        RATES
+    }
+}

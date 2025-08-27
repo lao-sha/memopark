@@ -11,6 +11,10 @@ use sp_runtime::traits::SaturatedConversion;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use sp_runtime::traits::AtLeast32BitUnsigned;
+    use alloc::vec::Vec;
+    use core::{fmt, cmp};
+    use sp_runtime::Saturating;
 
     /// 函数级中文注释：供奉日志实体，仅保留最小必要信息与可选 memo 指针（CID）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -35,7 +39,7 @@ pub mod pallet {
         /// 墓位 ID 类型（与 pallet-grave 对齐）
         type GraveId: Parameter + Member + Copy + MaxEncodedLen;
         /// 链上余额类型（与 Runtime::Balance 对齐）
-        type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen + sp_std::fmt::Debug + sp_std::cmp::Ord;
+        type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen + fmt::Debug + cmp::Ord;
         /// 每个墓位保留的最近日志条数上限
         #[pallet::constant]
         type MaxRecentPerGrave: Get<u32>;
@@ -164,7 +168,7 @@ pub mod pallet {
             // 如有金额，累计金额并维护 TopN
             if let Some(amt) = amount {
                 TotalMemoByGrave::<T>::mutate(grave_id, |b| *b = b.saturating_add(amt));
-                TotalMemoByGraveUser::<T>::mutate((grave_id, who), |b| *b = b.saturating_add(amt));
+                TotalMemoByGraveUser::<T>::mutate((grave_id, who.clone()), |b| *b = b.saturating_add(amt));
                 let total = TotalMemoByGrave::<T>::get(grave_id);
                 Self::upsert_top(grave_id, total);
                 Self::deposit_event(Event::TopUpdated);
@@ -216,7 +220,12 @@ pub mod pallet {
                 let _ = list.try_push(TopEntry { grave_id, total });
             }
             // 降序排序
-            list.as_mut_slice().sort_by(|a, b| b.total.cmp(&a.total));
+            let mut v = list.into_inner();
+            v.sort_by(|a, b| b.total.cmp(&a.total));
+            // 重新装回受限向量（已排序）
+            let mut out: BoundedVec<_, T::MaxTopGraves> = Default::default();
+            for e in v.into_iter() { let _ = out.try_push(e); }
+            list = out;
             // 截断到最大容量
             let max = T::MaxTopGraves::get() as usize;
             if list.len() > max { list.truncate(max); }

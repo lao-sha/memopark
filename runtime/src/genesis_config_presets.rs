@@ -24,7 +24,7 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_genesis_builder::{self, PresetId};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::traits::AccountIdConversion;
+use sp_core::Get;
 
 // Returns the genesis config presets populated with given parameters.
 /// 函数级中文注释：构建创世配置，设置 MEMO 总发行量 1000 亿（按 12 位精度）。

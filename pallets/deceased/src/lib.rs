@@ -27,10 +27,11 @@ pub trait WeightInfo {
 }
 
 impl WeightInfo for () {
-    fn create() -> Weight { 10_000.into() }
-    fn update() -> Weight { 10_000.into() }
-    fn remove() -> Weight { 10_000.into() }
-    fn transfer() -> Weight { 10_000.into() }
+    /// 函数级中文注释：Weight 新结构不再支持从整数直接转换，使用 from_parts(ref_time, proof_size)。
+    fn create() -> Weight { Weight::from_parts(10_000, 0) }
+    fn update() -> Weight { Weight::from_parts(10_000, 0) }
+    fn remove() -> Weight { Weight::from_parts(10_000, 0) }
+    fn transfer() -> Weight { Weight::from_parts(10_000, 0) }
 }
 
 /// 函数级中文注释：逝者实体，链上仅存最小必要信息与链下指针。
