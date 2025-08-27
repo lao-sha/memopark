@@ -230,3 +230,37 @@ the correct dependencies, activate direnv `direnv allow`.
 Please follow the [Substrate Docker instructions
 here](https://github.com/paritytech/polkadot-sdk/blob/master/substrate/docker/README.md) to
 build the Docker container with the Substrate Node Template binary.
+
+## memopark 定制说明（联盟托管结算 + 15 层压缩）
+
+本工程在模板基础上集成了纪念园业务与联盟计酬，核心模块：
+- `pallet-memo-offerings`：供奉目录与下单记录；Hook 联动统计与联盟计酬。
+- `pallet-memo-referrals`：极简推荐关系源，仅存 `SponsorOf` 与只读遍历。
+- `pallet-memo-affiliate`：托管结算与 15 层压缩分配（每层 5%，不足并入国库；10% 销毁，15% 国库）。
+- `pallet-grave-ledger`：按周的活跃标记与排行榜。
+
+### 供奉 → 联盟托管流程
+1. 用户在 `pallet-memo-offerings::offer` 下单；运行时将入金路由到“联盟托管账户”（PalletId 派生）。
+2. Hook 同步：
+   - 记录供奉流水与媒体；
+   - 标记有效供奉期（Timed 连续 w 周，Instant 仅入金当周）；
+   - 调用 `pallet-memo-affiliate::report(who, amount, meta, now, duration_weeks)` 进行“记账式”分配：
+     - 从下往上动态压缩寻找最多 15 个合格上级（处于有效期且直推有效数 ≥ 3×层数），为其累计应得；
+     - 不足 15 层的预算并入国库；同步累计 10% 销毁与 15% 国库基础份额。
+3. 周期末（或任意时点）分页结算：
+   - 调用 `pallet-memo-affiliate::settle(week, max_pay)`，从托管账户按索引分页向应得账户划拨，然后支付当周销毁与国库并清理索引。
+
+### 治理参数（默认）
+- 层数/比例：`MaxLevels=15`，`LevelRateBps=500`（5%/层），`BurnBps=1000`（10%），`TreasuryBps=1500`（15%）。
+- 有效期与阈值：以周为单位（`BlocksPerWeek=100_800`），直推有效阈值 `PerLevelNeed=3`。
+- 结算模式：`SettlementMode=Escrow`（托管；支持治理切换到 `Immediate` 即时）。
+
+### 关键账户
+- 黑洞：运行时常量 `BurnAccount`（b"memo/burn" 派生）。
+- 国库：运行时常量 `PlatformAccount`（可替换为治理账户）。
+- 联盟托管：运行时 `DonationAccountResolver` 路由到 PalletId 托管账户。
+
+### 开发者提示
+- 推荐关系去耦：仅在 `pallet-memo-referrals` 维护一次性绑定；联盟只读，不触碰资金。
+- 事件齐全，重查询建议使用索引器（如 SubQuery）。
+- 转账统一使用 `transfer_keep_alive`，避免误杀账户；结算与到期处理均支持分页。

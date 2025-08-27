@@ -25,6 +25,8 @@ members = [
     "pallets/deceased",
     "pallets/deceased-media",
     "pallets/memo-offerings",
+    "pallets/memo-referrals",
+    "pallets/memo-affiliate",
     "pallets/evidence",
     "runtime",
 ]

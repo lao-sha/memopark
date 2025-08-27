@@ -277,4 +277,10 @@ mod runtime {
 
 	#[runtime::pallet_index(22)]
 	pub type GraveGuestbook = pallet_grave_guestbook;
+
+	#[runtime::pallet_index(23)]
+	pub type Referrals = pallet_memo_referrals;
+
+	#[runtime::pallet_index(24)]
+	pub type Affiliate = pallet_memo_affiliate;
 }

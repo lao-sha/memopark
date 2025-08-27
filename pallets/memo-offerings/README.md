@@ -30,10 +30,11 @@
 - 回调接口：`OnOfferingCommitted(target, kind_code, who, amount?, duration_weeks?)`
   - `amount?`: 本次实际成功转账的 MEMO 数额；无转账为 `None`
   - `duration_weeks?`: 若为 Timed 供奉则为以“周”为单位的时长；Instant 为 `None`
-- 运行时可在 Hook 中写入 `pallet-grave-ledger`：
+- 运行时可在 Hook 中写入 `pallet-grave-ledger` 与 `pallet-memo-affiliate`：
   - 始终记录供奉流水；
   - 若 `duration_weeks.is_some()`（Timed），从当周起连续标记 `w` 周为“有效供奉”；
   - 若为 Instant，仅在 `amount.is_some()` 时标记当周为“有效供奉”。
+  - 分销托管：当存在入金时，调用 `pallet-memo-affiliate::report(who, amount, Some(target), now, duration_weeks)` 仅记账与托管归集；真实转账在联盟模块的周期结算中进行。
 
 ## 有效供奉周期（按周）
 - 周长度：由 `pallet-grave-ledger::BlocksPerWeek` 常量给出（默认 100_800，6s/块）。
@@ -41,3 +42,7 @@
   - Timed：不依赖是否发生转账，按下单周起连续 `duration` 周均视为有效；
   - Instant：仅当存在实际支付（`amount>0`）的当周视为有效。
   - 以上标记写入 `pallet-grave-ledger::WeeklyActive` 存储，供结算/统计查询。
+
+## 托管路由（重要）
+- 供奉入金账户由运行时的 `DonationAccountResolver` 决定。为支持托管结算，运行时将其路由到联盟托管账户（PalletId 派生）。
+- 结算在 `pallet-memo-affiliate` 中进行：每周分页向获奖账户、黑洞与国库划拨；不足 15 层的预算并入国库。

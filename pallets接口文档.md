@@ -115,3 +115,145 @@ Extrinsics：
 
 Storage：
 - GuestbookConfigOf, RelativesOf, NextMessageId, MessageOf, RecentByGrave, MessageCountByGrave, LastPostBy
+
+## 通用说明（前端调用返回语义）
+
+- Extrinsic 返回类型为 DispatchResult(WithPostInfo)；业务层“返回值”通过事件 Event 暴露。
+- 前端通常通过 Polkadot.js 调用：`api.tx.<pallet>.<call>(...)`，监听交易内事件解析业务结果。
+
+## pallet-memo-park（陵园）
+
+- 作用：登记陵园、更新管理与状态；与官方治理/多签低耦合（由 runtime 适配 `ParkAdmin`）。
+- Extrinsics：
+  - create_park(country_iso2: [u8;2], region_code: Bytes, metadata_cid: Bytes)
+    - 权限：签名账户
+    - 事件：ParkCreated { id, owner, country }
+  - update_park(id: u64, region_code?: Bytes, metadata_cid?: Bytes, active?: bool)
+    - 权限：owner 或园区管理员
+    - 事件：ParkUpdated { id }
+  - set_park_admin(id: u64, admin_group: Option<u64>)
+    - 权限：owner 或园区管理员
+    - 事件：AdminSet { id, admin_group }
+  - transfer_park(id: u64, new_owner: AccountId)
+    - 权限：owner
+    - 事件：ParkTransferred { id, new_owner }
+
+## pallet-memo-grave（墓位/纪念堂）
+
+- 作用：创建/更新/转让墓位，安葬/起掘；分类/宗教；投诉与园区审核；名称哈希索引；墓位管理员。
+- Extrinsics：
+  - create_grave(park_id: u64, kind_code: u8, capacity?: u16, metadata_cid: Bytes) -> GraveCreated
+  - update_grave(id: u64, kind_code?: u8, capacity?: u16, metadata_cid?: Bytes, active?: bool) -> GraveUpdated
+  - transfer_grave(id: u64, new_owner: AccountId) -> GraveTransferred
+  - inter(id: u64, deceased_id: u64, slot?: u16, note_cid?: Bytes) -> Interred
+  - exhume(id: u64, deceased_id: u64) -> Exhumed
+  - set_meta(id: u64, categories?: u32, religion?: u8) -> MetaUpdated
+  - complain(id: u64, cid: Bytes) -> ComplainSubmitted
+  - restrict(id: u64, on: bool, reason_code: u8) -> Restricted
+  - remove(id: u64, reason_code: u8) -> Removed
+  - set_name_hash(id: u64, name_hash: [u8;32]) -> NameHashSet / clear_name_hash(...) -> NameHashCleared
+  - add_admin(id: u64, who: AccountId) -> AdminAdded / remove_admin(...) -> AdminRemoved
+
+## pallet-memo-offerings（供奉规格与下单）
+
+- 作用：上/下架供奉规格（Instant/Timed），用户下单供奉（可附媒体 CID），资金路由至托管账户；触发 Hook（台账、联盟记账）。
+- Extrinsics：
+  - create_offering(kind_code: u8, name: Bytes, media_schema_cid: Bytes, kind_flag: u8, min_duration?: u32, max_duration?: u32, can_renew: bool, expire_action: u8, enabled: bool) -> OfferingCreated
+  - update_offering(kind_code: u8, name?: Bytes, media_schema_cid?: Bytes, min_duration?: Option<u32>, max_duration?: Option<u32>, can_renew?: bool, expire_action?: u8) -> OfferingUpdated
+  - set_offering_enabled(kind_code: u8, enabled: bool) -> OfferingEnabled
+  - offer(target: (u8,u64), kind_code: u8, amount?: u128, media: Vec<(cid, commit?)>, duration_weeks?: u32) -> OfferingCommitted
+  - batch_offer(calls: Vec<...offer 参数...>) -> ()
+
+## pallet-memo-referrals（推荐关系）
+
+- 作用：一次性绑定直属推荐人；为联盟计酬提供稳定、低耦合的推荐图来源。
+- Extrinsics：
+  - bind_sponsor(sponsor: AccountId) -> SponsorBound（仅首次绑定，防环、自荐禁止）
+  - set_paused(value: bool) -> PausedSet（Root）
+
+## pallet-memo-affiliate（联盟计酬/托管结算）
+
+- 作用：周度记账 + 托管批量结算；非压缩 + 不等比例（L1=20%、L2=10%、L3..L15=各4%），未达标层份额并入国库。
+- Extrinsics：
+  - set_mode(mode: Escrow|Immediate) -> ModeChanged（Root）
+  - settle(cycle: u32, max_pay: u32) -> Settled（任意人可触发分页结算；完成后支付当周 Burn/Treasury）
+
+## pallet-grave-ledger（供奉台账/排行/活跃周）
+
+- 作用：供奉明细与累计、TopN 排行，以及“按周有效供奉”标记（供统计/计酬使用）。
+- Extrinsics：
+  - prune_grave(grave_id: u64, keep_last: u32) -> Pruned（Root）
+- 只读：`LogOf`/`RecentByGrave`/`TotalsByGrave`/`TotalsByGraveKind`/`TotalMemoByGrave`/`TotalMemoByGraveUser`/`TopGraves`/`WeeklyActive`
+- 事件：OfferingLogged / TopUpdated / WeeklyActiveMarked
+
+## pallet-escrow（托管）
+
+- 作用：按 id 锁定/释放/退款，余额由内部存储维护；托管账户为 PalletId 衍生账户。
+- Extrinsics：
+  - lock(id: u64, payer: AccountId, amount: Balance) -> Locked
+  - release(id: u64, to: AccountId) -> Released
+  - refund(id: u64, to: AccountId) -> Refunded
+
+## pallet-evidence（证据登记/复用）
+
+- 作用：登记证据（CID/承诺哈希），按目标或命名空间链接/取消，供仲裁/风控等跨域复用。
+- Extrinsics：
+  - commit(domain: u8, target_id: u64, imgs: Vec<CID>, vids: Vec<CID>, docs: Vec<CID>, memo?: Bytes) -> EvidenceCommitted
+  - commit_hash(ns: [u8;8], subject_id: u64, commit: H256, memo?: Bytes) -> EvidenceCommittedV2（仅承诺，不落可逆 CID）
+  - link(domain: u8, target_id: u64, id: u64) / unlink(...) -> EvidenceLinked / EvidenceUnlinked
+  - link_by_ns(ns: [u8;8], subject_id: u64, id: u64) / unlink_by_ns(...) -> EvidenceLinkedV2 / EvidenceUnlinkedV2
+
+## pallet-forwarder（赞助转发/会话）
+
+- 作用：开/关会话、赞助者代付元交易，过滤禁用调用与范围校验（由 Authorizer 适配）。
+- Extrinsics：
+  - open_session(permit_bytes: Bytes) -> SessionOpened（赞助者提交离线会话许可）
+  - close_session(ns: [u8;8], session_id: [u8;16]) -> SessionClosed（所有者）
+  - forward(meta_bytes: Bytes, session_sig: Bytes, owner: LookupSource) -> PostDispatchInfo；成功触发 Forwarded
+
+## pallet-otc-maker（做市商资料）
+
+- 作用：KYC 通过后登记做市商资料（承诺哈希），自助上下线。
+- Extrinsics：
+  - upsert_maker(payment_cid_commit: H256) -> MakerUpserted（需 KYC 通过）
+  - set_active(active: bool) -> MakerStatusChanged
+
+## pallet-otc-listing（挂单）
+
+- 作用：最小挂单骨架（价格/数量/条款承诺/到期等）。
+- Extrinsics：
+  - create_listing(side: u8, base: u32, quote: u32, price: Balance, min_qty: Balance, max_qty: Balance, total: Balance, partial: bool, expire_at: BlockNumber, terms_commit?: Bytes) -> ListingCreated
+  - cancel_listing(id: u64) -> ListingCanceled（仅创建者）
+
+## pallet-otc-order（订单）
+
+- 作用：吃单生成订单、标记已付、标记争议（本地状态）。
+- Extrinsics：
+  - open_order(listing_id: u64, price: Balance, qty: Balance, amount: Balance, payment_commit: H256, contact_commit: H256) -> OrderOpened
+  - mark_paid(id: u64) -> OrderPaidCommitted（仅 taker；需 Created 状态）
+  - mark_disputed(id: u64) -> OrderDisputed（maker/taker，见状态/时窗约束）
+
+## pallet-arbitration（仲裁登记/裁决路由）
+
+- 作用：发起争议、引证证据、路由裁决到业务域（托管资金由 Escrow 接口完成释放/退款）。
+- Extrinsics：
+  - dispute(domain: [u8; 8], id: u64, evidence: Vec<Bytes(CID)>) -> Disputed
+  - arbitrate(domain: [u8; 8], id: u64, decision_code: u8(0/1/2), bps?: u16) -> Arbitrated（0放行/1退款/2部分放行）
+  - dispute_with_evidence_id(domain: [u8; 8], id: u64, evidence_id: u64) -> Disputed
+  - append_evidence_id(domain: [u8; 8], id: u64, evidence_id: u64) -> ()
+
+### Polkadot.js 调用示例
+
+```javascript
+// 创建纪念堂
+await api.tx.memoGrave.createGrave(parkId, kindCode, null, metadataCid).signAndSend(account);
+
+// 提交一次供奉（Instant，无时长；amount 会划转到托管账户）
+await api.tx.memoOfferings.offer([domainCode, targetId], kindCode, amount, [[cidBytes, null]], null).signAndSend(account);
+
+// 绑定直属推荐人
+await api.tx.memoReferrals.bindSponsor(sponsor).signAndSend(user);
+
+// 触发结算当周应得（分页）
+await api.tx.memoAffiliate.settle(weekIndex, 100).signAndSend(anyone);
+```

@@ -10,6 +10,7 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, StorageVersion, Currency, ExistenceRequirement}, weights::Weight};
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
+    use sp_runtime::traits::SaturatedConversion;
 
     /// 函数级中文注释：目标控制接口。
     /// - exists：目标是否存在；
@@ -58,6 +59,9 @@ pub mod pallet {
         /// 函数级中文注释：捐赠账户解析器，根据目标解析接收账户。
         type DonationResolver: DonationAccountResolver<Self::AccountId>;
     }
+
+    /// 函数级中文注释：通用余额类型别名，便于在本 Pallet 内部进行从 u128 到链上 Balance 的安全饱和转换。
+    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// 函数级中文注释：供奉品类型（区分是否需要时长）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -276,7 +280,9 @@ pub mod pallet {
             if let Some(amt) = amount {
                 if amt > 0 {
                     let dest = T::DonationResolver::account_for(target);
-                    T::Currency::transfer(&who, &dest, amt.into(), ExistenceRequirement::KeepAlive)?;
+                    // 安全转换：将 u128 金额饱和转换为链上 Balance 类型，避免 From<u128> 约束
+                    let amt_balance: BalanceOf<T> = amt.saturated_into();
+                    T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
                     settled_amount = Some(amt);
                 }
             }

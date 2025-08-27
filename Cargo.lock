@@ -5330,9 +5330,11 @@ dependencies = [
  "pallet-grave-guestbook",
  "pallet-grave-ledger",
  "pallet-identity",
+ "pallet-memo-affiliate",
  "pallet-memo-grave",
  "pallet-memo-offerings",
  "pallet-memo-park",
+ "pallet-memo-referrals",
  "pallet-otc-listing",
  "pallet-otc-maker",
  "pallet-otc-order",
@@ -6151,6 +6153,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-memo-affiliate"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-memo-referrals",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-memo-grave"
 version = "0.1.0"
 dependencies = [
@@ -6175,6 +6189,17 @@ dependencies = [
 
 [[package]]
 name = "pallet-memo-park"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memo-referrals"
 version = "0.1.0"
 dependencies = [
  "frame-support",
