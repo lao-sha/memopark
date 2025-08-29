@@ -211,6 +211,46 @@ Storage：
   - close_session(ns: [u8;8], session_id: [u8;16]) -> SessionClosed（所有者）
   - forward(meta_bytes: Bytes, session_sig: Bytes, owner: LookupSource) -> PostDispatchInfo；成功触发 Forwarded
 
+### forwarder 赞助代付（OTC 买/卖挂单与吃单）
+
+- **代付范围（命名空间）**：
+  - `OtcListingNsBytes = b"otc_lst_"`：允许 `pallet-otc-listing::create_listing`（side=Buy/Sell 由参数决定）。
+  - `OtcOrderNsBytes   = b"otc_ord_"`：允许 `pallet-otc-order::open_order`（吃单创建订单）。
+- **赞助者白名单**：仅允许平台账户 `PlatformAccount` 作为赞助者发起 `forward/open_session`（运行时适配器限制）。
+- **禁用调用**：`Sudo` 等高权限/逃逸调用被拒绝。
+
+- `SessionPermit`（离线签发，赞助者代付上链）：
+  - 字段：`ns: [u8;8]`, `owner: AccountId`, `session_id: [u8;16]`, `session_pubkey: sr25519::Public`, `expires_at: BlockNumber`
+  - Extrinsic：`forwarder.open_session(permit_bytes)`
+- `MetaTx`（离线签 MetaTx，赞助者代付执行）：
+  - 字段：`ns: [u8;8]`, `session_id: [u8;16]`, `call: RuntimeCall`, `nonce: u64`, `valid_till: BlockNumber`
+  - Extrinsic：`forwarder.forward(meta_bytes, session_sig, owner)`
+
+- 前端（Polkadot.js）示例：
+```javascript
+// 1) 平台账户 sponsor 开启会话（ns=otc_lst_，用于 create_listing）
+const permit = { ns: Array.from(new TextEncoder().encode('otc_lst_\0')).slice(0,8), owner, sessionId, sessionPubkey, expiresAt };
+const permitBytes = api.createType('Bytes', api.createType('(ForwarderSessionPermit)', permit).toU8a());
+await api.tx.forwarder.openSession(permitBytes).signAndSend(platformAccount);
+
+// 2) 用户侧构造 RuntimeCall：create_listing（Buy=0/Sell=1）
+const call = api.tx.otcListing.createListing(side, base, quote, price, minQty, maxQty, total, partial, expireAt, termsCommitOpt);
+
+// 3) 构造 MetaTx 并用会话私钥离线签名（示例省略验签）
+const meta = { ns: permit.ns, sessionId, call, nonce, validTill };
+const metaBytes = api.createType('Bytes', api.createType('(ForwarderMetaTx)', meta).toU8a());
+
+// 4) 平台账户 sponsor 代付执行（owner 为被代付用户地址）
+await api.tx.forwarder.forward(metaBytes, sessionSig, owner).signAndSend(platformAccount);
+
+// 5) 吃单创建订单（ns=otc_ord_）流程同理，call 改为：
+//    api.tx.otcOrder.openOrder(listingId, price, qty, amount, paymentCommit, contactCommit)
+```
+
+- 注意：
+  - 生产环境需校验 `session_sig` 与 `session_pubkey`（MVP 版本省略验签）。
+  - 平台账户需确保资金安全与风控策略（额度/频控/黑名单），建议后续接入治理可控的授权中心。
+
 ## pallet-otc-maker（做市商资料）
 
 - 作用：KYC 通过后登记做市商资料（承诺哈希），自助上下线。

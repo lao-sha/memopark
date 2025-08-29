@@ -35,6 +35,7 @@ use frame_support::{
 use frame_system::limits::{BlockLength, BlockWeights};
 use alloc::vec::Vec;
 use sp_runtime::traits::AccountIdConversion;
+use sp_core::Get;
 use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
@@ -58,10 +59,12 @@ use pallet_forwarder::ForwarderAuthorizer;
 /// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
 pub struct AuthorizerAdapter;
 impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
-	/// 校验赞助者是否在命名空间下被允许
-	fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool { false }
+	/// 函数级中文注释：校验赞助者是否在命名空间下被允许
+	/// - 当前仅允许平台账户代付，便于统一风控与审计；未来可扩展为授权中心。
+	fn is_sponsor_allowed(_ns: [u8; 8], sponsor: &AccountId) -> bool { sponsor == &PlatformAccount::get() }
 
-	/// 校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
+	/// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
+	/// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
 	fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
 		match (ns, call) {
 			// 设备/冥想相关调用已移除
@@ -84,6 +87,11 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 			(n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
 				inner,
 				pallet_otc_order::Call::open_order { .. }
+			),
+			// OTC 挂单域：放行 create_listing 代付（side=Buy/Sell 由参数区分）
+			(n, RuntimeCall::OtcListing(inner)) if n == OtcListingNsBytes::get() => matches!(
+				inner,
+				pallet_otc_listing::Call::create_listing { .. }
 			),
 			_ => false,
 		}
@@ -246,6 +254,7 @@ impl pallet_forwarder::Config for Runtime {
 parameter_types! {
     pub const ArbitrationNsBytes: [u8; 8] = *b"arb___ _"; // 8字节
     pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
+    pub const OtcListingNsBytes: [u8; 8] = *b"otc_lst_";
 }
 
 // ===== temple 已移除；保留 agent/order 配置 =====

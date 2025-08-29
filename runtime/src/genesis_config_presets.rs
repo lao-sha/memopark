@@ -32,7 +32,7 @@ use sp_core::Get;
 /// - 如需多账号分配，可在 balances 向量中拆分，保证总和一致。
 fn testnet_genesis(
 	initial_authorities: Vec<(AuraId, GrandpaId)>,
-	endowed_accounts: Vec<AccountId>,
+	_endowed_accounts: Vec<AccountId>,
 	root: AccountId,
 ) -> Value {
 	let total_issuance: u128 = 100_000_000_000u128.saturating_mul(UNIT);

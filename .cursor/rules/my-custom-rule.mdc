@@ -13,4 +13,7 @@ alwaysApply: true
 7、设计项目修改代码过程中，必须检查并保证主网代币MEMO的资金安全
 8、设计项目修改代码过程中，必须检查是否有冗余代码，并提出修改方案
 9、设计项目修改代码过程中，必须兼容未来迁移
-
+10、前端设计代码全部放在 C:\Users\Administrator\Documents\memopark\memopark-dapp
+11、前端技术栈与约束：React 18 + TypeScript + Ant Design 5；移动端优先（最大宽度 640px 居中）
+12、前端设计尽量用组件化设计
+13、前端设计始终设计手机DAPP端，不设计网页端
