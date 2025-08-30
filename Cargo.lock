@@ -5331,7 +5331,9 @@ dependencies = [
  "pallet-grave-ledger",
  "pallet-identity",
  "pallet-memo-affiliate",
+ "pallet-memo-endowment",
  "pallet-memo-grave",
+ "pallet-memo-ipfs",
  "pallet-memo-offerings",
  "pallet-memo-park",
  "pallet-memo-referrals",
@@ -6165,6 +6167,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-memo-endowment"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std 12.0.0",
+]
+
+[[package]]
 name = "pallet-memo-grave"
 version = "0.1.0"
 dependencies = [
@@ -6173,6 +6191,24 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memo-ipfs"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "pallet-memo-endowment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-std 12.0.0",
 ]
 
 [[package]]

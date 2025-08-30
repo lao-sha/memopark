@@ -18,6 +18,9 @@ pub mod pallet {
     pub trait TargetControl<Origin> {
         fn exists(target: (u8, u64)) -> bool;
         fn ensure_allowed(origin: Origin, target: (u8, u64)) -> DispatchResult;
+        /// 函数级中文注释：用于成员制的允许策略（例如仅允许成员供奉）。
+        /// - 返回 true 表示该调用者为目标的成员。
+        fn is_member_of(target: (u8, u64), who: &<Origin as frame_system::OriginTrait>::AccountId) -> bool { let _ = (target, who); true }
     }
 
     /// 函数级中文注释：供奉提交后的回调接口，用于统计或联动积分。

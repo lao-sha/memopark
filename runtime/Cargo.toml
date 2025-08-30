@@ -43,6 +43,8 @@ pallet-memo-referrals = { path = "../pallets/memo-referrals", default-features =
 pallet-memo-affiliate = { path = "../pallets/memo-affiliate", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
+pallet-memo-endowment = { path = "../pallets/memo-endowment", default-features = false }
+pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -100,6 +102,8 @@ std = [
 	"pallet-memo-affiliate/std",
 	"pallet-evidence/std",
 	"pallet-identity/std",
+	"pallet-memo-endowment/std",
+	"pallet-memo-ipfs/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",

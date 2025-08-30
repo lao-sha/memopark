@@ -15,6 +15,13 @@
  - `NameIndex: blake2_256(lowercase(name)) -> BoundedVec<GraveId>`
  - `GraveAdmins: GraveId -> BoundedVec<AccountId>`（墓位管理员集合，供子模块只读引用）
 
+### 新增（Slug 与成员）
+- `SlugOf: GraveId -> BoundedVec<u8, SlugLen>`（10 位数字）
+- `GraveBySlug: Slug -> GraveId`
+- `JoinPolicyOf: GraveId -> u8`（0=Open,1=Whitelist）
+- `Members: (GraveId, AccountId) -> ()`
+- `PendingApplications: (GraveId, AccountId) -> BlockNumber`
+
 ## Extrinsics
 - `create_grave(park_id, kind_code, capacity?, metadata_cid)`
 - `update_grave(id, kind_code?, capacity?, metadata_cid?, active?)`
@@ -26,8 +33,11 @@
  - `restrict(id, on, reason_code)` / `remove(id, reason_code)`
  - `set_name_hash(id, name_hash)` / `clear_name_hash(id, name_hash)`
  - `add_admin(id, who)` / `remove_admin(id, who)`（仅墓主或园区管理员）
+ - 新增：`set_policy(id, policy)`（0/1）
+ - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
 
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
 - 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。
+- 存储版本：StorageVersion=1，兼容 Slug/成员/策略升级。

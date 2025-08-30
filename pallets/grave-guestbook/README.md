@@ -24,3 +24,7 @@
 
 ## 运行时参数建议
 - `StringLimit=512`、`MaxMessageLen=512`、`MaxAttachmentsPerMessage=4`、`MaxRecentPerGrave=200`、`MaxRelatives=64`、`MaxModerators=16`、`MinPostBlocksPerAccount=30`
+
+## 新增（与成员制联动）
+- `GraveAccess` 接口新增 `is_member(grave_id, who)`；
+- 发帖检查：允许“成员 / 版主 / 亲人”发言；非成员在公共关闭时被拒绝（保留管理员特权）。

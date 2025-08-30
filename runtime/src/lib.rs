@@ -136,6 +136,8 @@ pub type BlockNumber = u32;
 // 为新加入的 pallet 提供类型别名，便于统一使用
 pub type DeceasedId = u64;
 pub type GraveId = u64;
+/// 基金会 pallet 类型别名
+pub type Endowment = pallet_memo_endowment::Pallet<Runtime>;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
@@ -283,4 +285,10 @@ mod runtime {
 
 	#[runtime::pallet_index(24)]
 	pub type Affiliate = pallet_memo_affiliate;
+
+	#[runtime::pallet_index(25)]
+	pub type MemoEndowment = pallet_memo_endowment;
+
+	#[runtime::pallet_index(26)]
+	pub type MemoIpfs = pallet_memo_ipfs;
 }
