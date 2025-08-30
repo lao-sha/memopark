@@ -413,6 +413,8 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
         }
     }
     fn grave_exists(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
+    /// 函数级中文注释：成员判定，从 memo-grave Members 存储读取。
+    fn is_member(grave_id: u64, who: &AccountId) -> bool { pallet_memo_grave::pallet::Members::<Runtime>::contains_key(grave_id, who) }
 }
 
 impl pallet_grave_guestbook::pallet::Config for Runtime {
@@ -479,9 +481,14 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
     fn exists(_target: (u8, u64)) -> bool { true }
-    /// 函数级中文注释：权限检查临时实现：允许任意签名账户下单；管理员仅用于上/下架/编辑。
-    fn ensure_allowed(origin: RuntimeOrigin, _target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
-        Ok(frame_system::ensure_signed(origin).map(|_| ())?)
+    /// 函数级中文注释：权限检查：若目标域为 Grave(=1)，则要求发起者为该墓位成员；否则放行。
+    fn ensure_allowed(origin: RuntimeOrigin, target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
+        let who = frame_system::ensure_signed(origin)?;
+        const DOMAIN_GRAVE: u8 = 1;
+        if target.0 == DOMAIN_GRAVE {
+            ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
+        }
+        Ok(())
     }
 }
 
@@ -724,6 +731,34 @@ impl pallet_memo_referrals::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     /// 函数级中文注释：最大层级限制（防环遍历的边界）。
     type MaxHops = RefMaxHops;
+}
+
+// ===== memo-endowment（基金会）配置 =====
+parameter_types! {
+    pub const EndowmentPrincipalId: PalletId = PalletId(*b"endowpri");
+    pub const EndowmentYieldId: PalletId = PalletId(*b"endowyld");
+}
+impl pallet_memo_endowment::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type Balance = Balance;
+    type PrincipalPalletId = EndowmentPrincipalId;
+    type YieldPalletId = EndowmentYieldId;
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+    type WeightInfo = ();
+}
+
+// ===== memo-ipfs（存储+OCW）配置 =====
+parameter_types! { pub const IpfsMaxCidHashLen: u32 = 64; }
+impl pallet_memo_ipfs::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type Balance = Balance;
+    type Endowment = pallet_memo_endowment::Pallet<Runtime>;
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+    type AuthorityId = pallet_memo_ipfs::AuthorityId;
+    type MaxCidHashLen = IpfsMaxCidHashLen;
+    type WeightInfo = ();
 }
 
 // ===== affiliate（计酬）配置 =====

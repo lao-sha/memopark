@@ -28,6 +28,8 @@ members = [
     "pallets/memo-referrals",
     "pallets/memo-affiliate",
     "pallets/evidence",
+    "pallets/memo-endowment",
+    "pallets/memo-ipfs",
     "runtime",
 ]
 resolver = "2"
@@ -96,6 +98,7 @@ sp-storage = { version = "22.0.0", default-features = false }
 sp-transaction-pool = { version = "36.0.0", default-features = false }
 sp-version = { version = "39.0.0", default-features = false }
 substrate-wasm-builder = { version = "26.0.1", default-features = false }
+sp-application-crypto = { version = "40.1.0", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

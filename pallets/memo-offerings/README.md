@@ -46,3 +46,7 @@
 ## 托管路由（重要）
 - 供奉入金账户由运行时的 `DonationAccountResolver` 决定。为支持托管结算，运行时将其路由到联盟托管账户（PalletId 派生）。
 - 结算在 `pallet-memo-affiliate` 中进行：每周分页向获奖账户、黑洞与国库划拨；不足 15 层的预算并入国库。
+
+## 新增（与成员制联动）
+- `TargetControl` 增加可选接口 `is_member_of(target, who)`；
+- 运行时可在 `ensure_allowed` 中要求“仅成员可供奉”（对域 code=1 的 Grave 生效），其余域放行。

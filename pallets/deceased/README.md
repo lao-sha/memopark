@@ -37,6 +37,18 @@ impl pallet_deceased::Config for Runtime {
 - DeceasedOf: DeceasedId -> Deceased
 - DeceasedByGrave: GraveId -> BoundedVec<DeceasedId>
 
+## 逝者↔逝者关系（族谱）
+- 存储：
+  - `Relations: (from, to) -> { kind: u8, note: BoundedVec<u8>, created_by, since }`
+  - `RelationsByDeceased: deceased -> BoundedVec<(peer, kind)>`
+  - `PendingRelationRequests: (from, to) -> (kind, requester, note, created)`
+- Extrinsics：
+  - `propose_relation(from, to, kind, note?)`（A方管理员）
+  - `approve_relation(from, to)` / `reject_relation(from, to)`（B方管理员）
+  - `revoke_relation(from, to)`（任一方管理员）
+  - `update_relation_note(from, to, note?)`
+- 事件：RelationProposed/Approved/Rejected/Revoked/Updated
+
 ## 安全与隐私
 - 不在链上存储敏感个人信息；仅存少量文本与链下链接（IPFS/HTTPS 等）。
 - 不进行任何 MEMO 代币相关操作，避免资金风险。

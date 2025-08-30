@@ -9,6 +9,10 @@ import CreateMemorialForm from './features/memorial/CreateMemorialForm'
 import LifeStoryPage from './features/home/LifeStoryPage'
 import MemorialHallPage from './features/memorial/MemorialHallPage'
 import AuthPage from './features/auth/AuthPage'
+import RequestPinForm from './features/storage/RequestPinForm'
+import EndowmentAuditPage from './features/storage/EndowmentAuditPage'
+import KinshipForm from './features/grave/KinshipForm'
+import RelationProposalForm from './features/grave/RelationProposalForm'
 import './App.css'
 
 /**
@@ -35,6 +39,10 @@ function App() {
             { key: 'memorial', label: '创建纪念馆', children: <CreateMemorialForm /> },
             { key: 'listing', label: '创建挂单', children: <CreateListingForm /> },
             { key: 'order', label: '吃单下单', children: <OpenOrderForm /> },
+            { key: 'ipfs', label: '存储下单', children: <RequestPinForm /> },
+            { key: 'audit', label: '基金审计', children: <EndowmentAuditPage /> },
+            { key: 'kinship', label: '声明亲属关系', children: <KinshipForm /> },
+            { key: 'rel-propose', label: '关系申请', children: <RelationProposalForm /> },
           ]}
         />
       </div>

@@ -9,6 +9,7 @@ use frame_system::pallet_prelude::*;
 use sp_std::vec::Vec;
 use sp_runtime::traits::AtLeast32BitUnsigned;
 use frame_support::weights::Weight;
+use sp_runtime::Saturating;
 
 /// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
 /// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
@@ -116,6 +117,16 @@ pub mod pallet {
         DeceasedRemoved(T::DeceasedId),
         /// 迁移逝者到新墓位 (id, from_grave, to_grave)
         DeceasedTransferred(T::DeceasedId, T::GraveId, T::GraveId),
+        /// 逝者关系：已提交绑定请求(from -> to)
+        RelationProposed(T::DeceasedId, T::DeceasedId, u8),
+        /// 逝者关系：已批准绑定
+        RelationApproved(T::DeceasedId, T::DeceasedId, u8),
+        /// 逝者关系：已拒绝
+        RelationRejected(T::DeceasedId, T::DeceasedId),
+        /// 逝者关系：已撤销
+        RelationRevoked(T::DeceasedId, T::DeceasedId),
+        /// 逝者关系：备注更新
+        RelationUpdated(T::DeceasedId, T::DeceasedId),
     }
 
     #[pallet::error]
@@ -132,10 +143,37 @@ pub mod pallet {
         Overflow,
         /// 输入不合法（长度/数量越界等）
         BadInput,
+        /// 关系已存在
+        RelationExists,
+        /// 关系不存在
+        RelationNotFound,
+        /// 非法关系类型
+        BadRelationKind,
+        /// 对方管理员未批准
+        PendingApproval,
     }
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
+
+    /// 函数级中文注释：逝者关系记录。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct Relation<T: Config> {
+        pub kind: u8,
+        pub note: BoundedVec<u8, T::StringLimit>,
+        pub created_by: T::AccountId,
+        pub since: BlockNumberFor<T>,
+    }
+
+    #[pallet::storage]
+    pub type Relations<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, Relation<T>, OptionQuery>;
+
+    #[pallet::storage]
+    pub type RelationsByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<(T::DeceasedId, u8), ConstU32<128>>, ValueQuery>;
+
+    #[pallet::storage]
+    pub type PendingRelationRequests<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, (u8, T::AccountId, BoundedVec<u8, T::StringLimit>, BlockNumberFor<T>), OptionQuery>;
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -273,6 +311,92 @@ pub mod pallet {
                 Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
                 Ok(())
             })
+        }
+
+        /// 函数级中文注释：从 A(发起方) → B(对方) 发起关系绑定请求。
+        /// - 权限：A 所属墓位的管理员（通过 GraveProvider::can_attach(sender, A.grave_id) 判定）。
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn propose_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, kind: u8, note: Option<Vec<u8>>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
+            let _b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(T::GraveProvider::can_attach(&who, a.grave_id), Error::<T>::NotAuthorized);
+            ensure!(from != to, Error::<T>::BadInput);
+            ensure!(matches!(kind, 0..=3), Error::<T>::BadRelationKind);
+            ensure!(!Relations::<T>::contains_key(from, to), Error::<T>::RelationExists);
+            let now = <frame_system::Pallet<T>>::block_number();
+            let note_bv: BoundedVec<_, T::StringLimit> = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+            PendingRelationRequests::<T>::insert(from, to, (kind, who, note_bv, now));
+            Self::deposit_event(Event::RelationProposed(from, to, kind));
+            Ok(())
+        }
+
+        /// 函数级中文注释：B 方管理员批准关系绑定。
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn approve_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
+            let (kind, created_by, note, _created_at) = PendingRelationRequests::<T>::get(from, to).ok_or(Error::<T>::RelationNotFound)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            let rec = Relation::<T> { kind, note: note.clone(), created_by, since: now };
+            Relations::<T>::insert(from, to, &rec);
+            RelationsByDeceased::<T>::try_mutate(from, |list| list.try_push((to, kind)).map_err(|_| Error::<T>::BadInput))?;
+            // 无向关系（示例：1/2）反向也写入
+            if matches!(kind, 1 | 2) {
+                Relations::<T>::insert(to, from, &rec);
+                RelationsByDeceased::<T>::try_mutate(to, |list| list.try_push((from, kind)).map_err(|_| Error::<T>::BadInput))?;
+            }
+            PendingRelationRequests::<T>::remove(from, to);
+            Self::deposit_event(Event::RelationApproved(from, to, kind));
+            Ok(())
+        }
+
+        /// 函数级中文注释：B 方管理员拒绝关系绑定。
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn reject_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
+            ensure!(PendingRelationRequests::<T>::contains_key(from, to), Error::<T>::RelationNotFound);
+            PendingRelationRequests::<T>::remove(from, to);
+            Self::deposit_event(Event::RelationRejected(from, to));
+            Ok(())
+        }
+
+        /// 函数级中文注释：任一方管理员撤销已建立的关系。
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn revoke_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
+            let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
+            ensure!(Relations::<T>::contains_key(from, to), Error::<T>::RelationNotFound);
+            let kind = Relations::<T>::get(from, to).map(|r| r.kind).unwrap_or_default();
+            Relations::<T>::remove(from, to);
+            RelationsByDeceased::<T>::mutate(from, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == to) { list.swap_remove(i); } });
+            if matches!(kind, 1 | 2) {
+                Relations::<T>::remove(to, from);
+                RelationsByDeceased::<T>::mutate(to, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == from) { list.swap_remove(i); } });
+            }
+            Self::deposit_event(Event::RelationRevoked(from, to));
+            Ok(())
+        }
+
+        /// 函数级中文注释：更新关系备注。
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn update_relation_note(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, note: Option<Vec<u8>>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
+            let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
+            Relations::<T>::try_mutate(from, to, |maybe| -> DispatchResult {
+                let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
+                r.note = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                Ok(())
+            })?;
+            Self::deposit_event(Event::RelationUpdated(from, to));
+            Ok(())
         }
     }
 }

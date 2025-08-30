@@ -16,6 +16,8 @@ pub trait GraveAccess<Origin, AccountId, GraveId> {
     fn ensure_owner_or_admin(grave_id: GraveId, origin: Origin) -> DispatchResult;
     /// 检查墓位是否存在
     fn grave_exists(grave_id: GraveId) -> bool;
+    /// 检查是否为该墓位成员（经 Open/Whitelist 流程加入）。
+    fn is_member(grave_id: GraveId, who: &AccountId) -> bool;
 }
 
 /// 函数级中文注释：媒体类型（与 deceased-media 对齐，便于前端统一渲染）。
@@ -219,12 +221,11 @@ pub mod pallet {
             ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
 
             let cfg = GuestbookConfigOf::<T>::get(grave_id).unwrap_or(GuestbookConfig::<T>{ public_enabled: false, allow_anonymous: false, pinned_message_id: None, moderators: Default::default() });
-            if !cfg.public_enabled {
-                let is_mod = cfg.moderators.iter().any(|m| m == &who);
-                let is_relative = RelativesOf::<T>::get(grave_id).iter().any(|a| a == &who);
-                // 墓主/园区管理员也应被允许，但需要外部 Origin 校验，简化为：版主或亲人即可
-                ensure!(is_mod || is_relative, Error::<T>::PublicDisabled);
-            }
+            let is_mod = cfg.moderators.iter().any(|m| m == &who);
+            let is_relative = RelativesOf::<T>::get(grave_id).iter().any(|a| a == &who);
+            let is_member = T::GraveProvider::is_member(grave_id, &who);
+            // 成员或版主或亲人可发言；否则拒绝
+            ensure!(is_member || is_mod || is_relative, Error::<T>::NotAuthorized);
 
             // 反刷：同账号在同一 grave 的最小发言间隔
             let now = <frame_system::Pallet<T>>::block_number();
