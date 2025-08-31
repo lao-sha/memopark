@@ -49,7 +49,8 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        OrderOpened { id: u64 },
+        /// 函数级中文注释：订单创建事件（补充快照字段，便于索引器建模）。
+        OrderOpened { id: u64, listing_id: u64, maker: T::AccountId, taker: T::AccountId, price: BalanceOf<T>, qty: BalanceOf<T>, amount: BalanceOf<T>, created_at: BlockNumberFor<T>, expire_at: BlockNumberFor<T> },
         /// 函数级中文注释：买家已支付或提交支付承诺
         OrderPaidCommitted { id: u64 },
         OrderReleased { id: u64 },
@@ -92,8 +93,8 @@ pub mod pallet {
                 payment_commit, contact_commit,
                 state: OrderState::Created,
             };
-            Orders::<T>::insert(id, order);
-            Self::deposit_event(Event::OrderOpened { id });
+            Orders::<T>::insert(id, &order);
+            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: order.maker.clone(), taker: order.taker.clone(), price, qty, amount, created_at: now, expire_at: order.expire_at });
             Ok(())
         }
 

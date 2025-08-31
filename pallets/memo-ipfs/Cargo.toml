@@ -21,6 +21,8 @@ sp-offchain = { workspace = true }
 sp-application-crypto = { workspace = true }
 pallet-balances = { workspace = true }
 pallet-memo-endowment = { path = "../memo-endowment", default-features = false }
+serde_json = { workspace = true, default-features = false, features = ["alloc"] }
+hex = { version = "0.4", default-features = false }
 
 [features]
 default = ["std"]
@@ -37,6 +39,8 @@ std = [
     "sp-offchain/std",
     "pallet-balances/std",
     "pallet-memo-endowment/std",
+    "serde_json/std",
+    "hex/std",
 ]
 
 

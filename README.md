@@ -237,7 +237,7 @@ build the Docker container with the Substrate Node Template binary.
 - `pallet-memo-offerings`：供奉目录与下单记录；Hook 联动统计与联盟计酬。
 - `pallet-memo-referrals`：极简推荐关系源，仅存 `SponsorOf` 与只读遍历。
 - `pallet-memo-affiliate`：托管结算与 15 层压缩分配（每层 5%，不足并入国库；10% 销毁，15% 国库）。
-- `pallet-grave-ledger`：按周的活跃标记与排行榜。
+- `pallet-ledger`：按周的活跃标记与累计统计（明细/排行交由 Subsquid）。
 
 ### 供奉 → 联盟托管流程
 1. 用户在 `pallet-memo-offerings::offer` 下单；运行时将入金路由到“联盟托管账户”（PalletId 派生）。

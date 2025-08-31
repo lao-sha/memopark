@@ -6,13 +6,26 @@ import GreatsPage from './features/home/GreatsPage'
 import CreateListingForm from './features/otc/CreateListingForm'
 import OpenOrderForm from './features/otc/OpenOrderForm'
 import CreateMemorialForm from './features/memorial/CreateMemorialForm'
+import SubmitEvidencePage from './features/evidence/SubmitEvidencePage'
+import ArbitrationPage from './features/arbitration/ArbitrationPage'
 import LifeStoryPage from './features/home/LifeStoryPage'
 import MemorialHallPage from './features/memorial/MemorialHallPage'
 import AuthPage from './features/auth/AuthPage'
 import RequestPinForm from './features/storage/RequestPinForm'
 import EndowmentAuditPage from './features/storage/EndowmentAuditPage'
+import EndowmentAdminPage from './features/storage/EndowmentAdminPage'
 import KinshipForm from './features/grave/KinshipForm'
 import RelationProposalForm from './features/grave/RelationProposalForm'
+import ActionsBar from './features/grave/ActionsBar'
+import VisibilitySettings from './features/grave/VisibilitySettings'
+import PolicyViewer from './features/grave/PolicyViewer'
+import TopGravesPage from './features/ledger/TopGravesPage'
+import MyOtcPage from './features/otc/MyOtcPage'
+import CasesPage from './features/arbitration/CasesPage'
+import GuestbookPage from './features/guestbook/GuestbookPage'
+import LedgerOverviewPage from './features/ledger/LedgerOverviewPage'
+import OfferPage from './features/offerings/OfferPage'
+import OrderDetailPage from './features/otc/OrderDetailPage'
 import './App.css'
 
 /**
@@ -40,9 +53,22 @@ function App() {
             { key: 'listing', label: '创建挂单', children: <CreateListingForm /> },
             { key: 'order', label: '吃单下单', children: <OpenOrderForm /> },
             { key: 'ipfs', label: '存储下单', children: <RequestPinForm /> },
+            { key: 'evidence', label: '证据提交(代付)', children: <SubmitEvidencePage /> },
+            { key: 'arbitration', label: '仲裁(代付)', children: <ArbitrationPage /> },
+            { key: 'top', label: '排行榜', children: <TopGravesPage /> },
+            { key: 'ledger', label: '台账概览', children: <LedgerOverviewPage /> },
+            { key: 'offer', label: '供奉下单', children: <OfferPage /> },
+            { key: 'my-otc', label: '我的OTC', children: <MyOtcPage /> },
+            { key: 'order-detail', label: '订单详情', children: <OrderDetailPage /> },
+            { key: 'cases', label: '仲裁列表', children: <CasesPage /> },
+            { key: 'guestbook', label: '留言板', children: <GuestbookPage /> },
             { key: 'audit', label: '基金审计', children: <EndowmentAuditPage /> },
+            { key: 'endow-admin', label: '基金治理(演示)', children: <EndowmentAdminPage /> },
             { key: 'kinship', label: '声明亲属关系', children: <KinshipForm /> },
             { key: 'rel-propose', label: '关系申请', children: <RelationProposalForm /> },
+            { key: 'actions', label: '纪念动作栏', children: <ActionsBar graveId={1} /> },
+            { key: 'visibility', label: '可见性设置', children: <VisibilitySettings /> },
+            { key: 'policy', label: '策略/关注查看', children: <PolicyViewer /> },
           ]}
         />
       </div>

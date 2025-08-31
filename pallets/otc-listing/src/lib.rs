@@ -49,8 +49,25 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        ListingCreated { id: u64 },
+        /// 函数级中文注释：创建挂单事件（为 Subsquid 索引补充快照字段，避免读存储）。
+        /// - 包含 maker/side/base/quote/价格与数量信息、有效期、是否允许部分成交等。
+        ListingCreated {
+            id: u64,
+            maker: T::AccountId,
+            side: u8,
+            base: u32,
+            quote: u32,
+            price: BalanceOf<T>,
+            min_qty: BalanceOf<T>,
+            max_qty: BalanceOf<T>,
+            total: BalanceOf<T>,
+            remaining: BalanceOf<T>,
+            partial: bool,
+            expire_at: BlockNumberFor<T>,
+        },
+        /// 占位（未来编辑事件）。
         ListingUpdated { id: u64 },
+        /// 函数级中文注释：取消挂单（含 id）。
         ListingCanceled { id: u64 },
     }
 
@@ -93,8 +110,21 @@ pub mod pallet {
                 terms_commit,
                 active: true,
             };
-            Listings::<T>::insert(id, listing);
-            Self::deposit_event(Event::ListingCreated { id });
+            Listings::<T>::insert(id, &listing);
+            Self::deposit_event(Event::ListingCreated {
+                id,
+                maker: listing.maker.clone(),
+                side: listing.side,
+                base: listing.base,
+                quote: listing.quote,
+                price: listing.price,
+                min_qty: listing.min_qty,
+                max_qty: listing.max_qty,
+                total: listing.total,
+                remaining: listing.remaining,
+                partial: listing.partial,
+                expire_at: listing.expire_at,
+            });
             Ok(())
         }
 

@@ -266,6 +266,7 @@ parameter_types! {
     pub const ParkMaxRegionLen: u32 = 64;
     pub const ParkMaxCidLen: u32 = 64;
     pub const ParkMaxPerCountry: u32 = 100_000;
+    pub const GraveMaxFollowers: u32 = 100_000;
 }
 pub struct RootOnlyParkAdmin;
 impl pallet_memo_park::Config for Runtime {
@@ -296,6 +297,7 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxIdsPerName = GraveMaxIdsPerName;
     type MaxComplaintsPerGrave = GraveMaxComplaints;
     type MaxAdminsPerGrave = GraveMaxAdmins;
+    type MaxFollowers = GraveMaxFollowers;
 }
 
 // ===== deceased 配置 =====
@@ -371,19 +373,11 @@ impl pallet_deceased_media::Config for Runtime {
     type DeceasedProvider = DeceasedProviderAdapter;
 }
 
-// ===== grave-ledger 配置 =====
-parameter_types! {
-    pub const GraveLedgerMaxRecentPerGrave: u32 = 256;
-    pub const GraveLedgerMaxMemoLen: u32 = 64;
-    pub const GraveLedgerMaxTop: u32 = 100;
-}
-impl pallet_grave_ledger::Config for Runtime {
+// ===== ledger 配置（精简） =====
+impl pallet_ledger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type GraveId = u64;
-    type MaxRecentPerGrave = GraveLedgerMaxRecentPerGrave;
-    type MaxMemoLen = GraveLedgerMaxMemoLen;
     type Balance = Balance;
-    type MaxTopGraves = GraveLedgerMaxTop;
     /// 一周按 6s/块 × 60 × 60 × 24 × 7 = 100_800 块（可由治理升级调整）
     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
 }
@@ -415,6 +409,10 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
     fn grave_exists(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
     /// 函数级中文注释：成员判定，从 memo-grave Members 存储读取。
     fn is_member(grave_id: u64, who: &AccountId) -> bool { pallet_memo_grave::pallet::Members::<Runtime>::contains_key(grave_id, who) }
+    /// 函数级中文注释：读取 memo-grave 策略，判断是否开放公共留言
+    fn is_public_guestbook(grave_id: u64) -> bool { pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(grave_id).public_guestbook }
+    /// 函数级中文注释：读取 memo-grave 策略，判断是否开放公共扫墓
+    fn is_public_sweep(grave_id: u64) -> bool { pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(grave_id).public_sweep }
 }
 
 impl pallet_grave_guestbook::pallet::Config for Runtime {
@@ -486,7 +484,11 @@ impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTar
         let who = frame_system::ensure_signed(origin)?;
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
-            ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
+            // 若墓位公开供奉，则放行；否则必须为成员
+            let policy = pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(target.1);
+            if !policy.public_offering {
+                ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
+            }
         }
         Ok(())
     }
@@ -503,14 +505,14 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
         if target.0 == DOMAIN_GRAVE {
             let amt: Option<Balance> = amount.map(|a| a as Balance);
             // 1) 记录供奉流水
-            pallet_grave_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None);
+            pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None);
             // 2) 标记有效供奉周期：
             // - 若为 Timed（duration_weeks=Some），无论是否转账成功，均标记从当周起连续 w 周
             // - 若为 Instant（None），仅当存在金额落账时标记当周
             let should_mark = duration_weeks.is_some() || amount.is_some();
             if should_mark {
                 let now = <frame_system::Pallet<Runtime>>::block_number();
-                pallet_grave_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
+                pallet_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
                 // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
                 if let Some(pay) = amt {
                     pallet_memo_affiliate::Pallet::<Runtime>::report(who, pay, Some(target), now, duration_weeks);
@@ -714,6 +716,7 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
 
 // ===== exchange 配置 =====
 use frame_support::PalletId;
+use frame_support::parameter_types;
 
 // 已移除：pallet-exchange 参数与 Config
 
@@ -746,6 +749,7 @@ impl pallet_memo_endowment::Config for Runtime {
     type YieldPalletId = EndowmentYieldId;
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
     type WeightInfo = ();
+    type Sla = SlaFromIpfs;
 }
 
 // ===== memo-ipfs（存储+OCW）配置 =====
@@ -758,6 +762,38 @@ impl pallet_memo_ipfs::Config for Runtime {
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
     type AuthorityId = pallet_memo_ipfs::AuthorityId;
     type MaxCidHashLen = IpfsMaxCidHashLen;
+    type MaxPeerIdLen = frame_support::traits::ConstU32<128>;
+    type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
+    type MinCapacityGiB = frame_support::traits::ConstU32<100>; // 至少 100 GiB 示例
+    type WeightInfo = ();
+}
+
+/// 函数级中文注释：SLA 数据提供者，从 `pallet-memo-ipfs` 读取运营者统计
+pub struct SlaFromIpfs;
+impl pallet_memo_endowment::SlaProvider<AccountId, BlockNumber> for SlaFromIpfs {
+    fn visit<F: FnMut(&AccountId, u32, u32, BlockNumber)>(mut f: F) {
+        use pallet_memo_ipfs::pallet::{OperatorSla as SlaMap, Operators as OpMap};
+        for (op, s) in SlaMap::<Runtime>::iter() {
+            if let Some(info) = OpMap::<Runtime>::get(&op) {
+                if info.status == 0 { f(&op, s.probe_ok, s.probe_fail, s.last_update); }
+            }
+        }
+    }
+}
+
+// ===== scheduler & preimage 运行时配置 =====
+impl pallet_preimage::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = ();
+}
+
+parameter_types! { pub const MaxScheduledPerBlock: u32 = 64; }
+impl pallet_scheduler::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
+    type ScheduleOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxScheduledPerBlock = MaxScheduledPerBlock;
+    type Preimages = pallet_preimage::Pallet<Runtime>;
     type WeightInfo = ();
 }
 

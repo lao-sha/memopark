@@ -163,7 +163,17 @@ pub mod pallet {
         OfferingUpdated { kind_code: u8 },
         /// 设置模板是否启用
         OfferingEnabled { kind_code: u8, enabled: bool },
-        OfferingCommitted { id: u64, target: (u8, u64), kind_code: u8 },
+        /// 函数级中文注释：供奉已确认并落账（便于 Subsquid 索引）。
+        /// - 增补字段：who/amount/duration_weeks/block，降低索引端读取存储的复杂度与成本。
+        OfferingCommitted {
+            id: u64,
+            target: (u8, u64),
+            kind_code: u8,
+            who: T::AccountId,
+            amount: Option<u128>,
+            duration_weeks: Option<u32>,
+            block: BlockNumberFor<T>,
+        },
     }
 
     #[pallet::error]
@@ -181,6 +191,10 @@ pub mod pallet {
         DurationRequired,
         /// 时长越界
         DurationOutOfRange,
+        /// 必须提供金额
+        AmountRequired,
+        /// 金额必须大于 0
+        AmountTooLow,
     }
 
     #[pallet::call]
@@ -278,17 +292,13 @@ pub mod pallet {
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
             // 校验时长策略
             ensure_duration_allowed::<T>(&spec, &duration)?;
-            // 若声明了金额，则先进行真实转账，确保资金安全
-            let mut settled_amount: Option<u128> = None;
-            if let Some(amt) = amount {
-                if amt > 0 {
-                    let dest = T::DonationResolver::account_for(target);
-                    // 安全转换：将 u128 金额饱和转换为链上 Balance 类型，避免 From<u128> 约束
-                    let amt_balance: BalanceOf<T> = amt.saturated_into();
-                    T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
-                    settled_amount = Some(amt);
-                }
-            }
+            // 供奉为付费动作：要求 amount>0，并完成实际转账
+            let amt = amount.ok_or(Error::<T>::AmountRequired)?;
+            ensure!(amt > 0, Error::<T>::AmountTooLow);
+            let dest = T::DonationResolver::account_for(target);
+            let amt_balance: BalanceOf<T> = amt.saturated_into();
+            T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
+            let settled_amount: Option<u128> = Some(amt);
             // 将输入 media 转换为受上限约束的 BoundedVec<MediaItem>
             let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
             for (cid, commit) in media.into_iter() {
@@ -303,7 +313,7 @@ pub mod pallet {
             // 传递以“周”为单位的有效期：Instant=None，Timed=Some(duration)
             let duration_weeks: Option<u32> = match &spec.kind { OfferingKind::Instant => None, OfferingKind::Timed { .. } => duration };
             T::OnOffering::on_offering(target, kind_code, &who, settled_amount, duration_weeks);
-            Self::deposit_event(Event::OfferingCommitted { id, target, kind_code });
+            Self::deposit_event(Event::OfferingCommitted { id, target, kind_code, who, amount: settled_amount, duration_weeks, block: now });
             Ok(())
         }
 

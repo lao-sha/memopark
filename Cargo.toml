@@ -20,7 +20,7 @@ members = [
     
     "pallets/memo-park",
     "pallets/memo-grave",
-    "pallets/grave-ledger",
+    "pallets/ledger",
     "pallets/grave-guestbook",
     "pallets/deceased",
     "pallets/deceased-media",
@@ -99,6 +99,8 @@ sp-transaction-pool = { version = "36.0.0", default-features = false }
 sp-version = { version = "39.0.0", default-features = false }
 substrate-wasm-builder = { version = "26.0.1", default-features = false }
 sp-application-crypto = { version = "40.1.0", default-features = false }
+pallet-preimage = { version = "40.0.0", default-features = false }
+pallet-scheduler = { version = "40.0.0", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

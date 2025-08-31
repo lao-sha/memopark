@@ -18,6 +18,10 @@ pub trait GraveAccess<Origin, AccountId, GraveId> {
     fn grave_exists(grave_id: GraveId) -> bool;
     /// 检查是否为该墓位成员（经 Open/Whitelist 流程加入）。
     fn is_member(grave_id: GraveId, who: &AccountId) -> bool;
+    /// 是否开放公共留言
+    fn is_public_guestbook(grave_id: GraveId) -> bool { let _ = grave_id; false }
+    /// 是否开放公共扫墓
+    fn is_public_sweep(grave_id: GraveId) -> bool { let _ = grave_id; false }
 }
 
 /// 函数级中文注释：媒体类型（与 deceased-media 对齐，便于前端统一渲染）。
@@ -116,6 +120,8 @@ pub mod pallet {
     #[pallet::storage] pub type RecentByGrave<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, BoundedVec<T::MessageId, T::MaxRecentPerGrave>, ValueQuery>;
     #[pallet::storage] pub type MessageCountByGrave<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, u64, ValueQuery>;
     #[pallet::storage] pub type LastPostBy<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::GraveId, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, ValueQuery>;
+    /// 函数级中文注释：扫墓限频存储（按墓位与账户记录最近一次扫墓区块号）。
+    #[pallet::storage] pub type LastSweepBy<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::GraveId, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, ValueQuery>;
 
     // 事件
     #[pallet::event]
@@ -126,11 +132,14 @@ pub mod pallet {
         RelativeRemoved(T::GraveId, T::AccountId),
         ModeratorAdded(T::GraveId, T::AccountId),
         ModeratorRemoved(T::GraveId, T::AccountId),
+        /// 函数级中文注释：新增留言（补充内容长度与是否含附件，便于索引快速过滤）。
         MessagePosted(T::GraveId, T::MessageId, T::AccountId),
         MessageEdited(T::MessageId),
         MessageHidden(T::MessageId),
         MessageDeleted(T::MessageId),
         Pinned(T::GraveId, Option<T::MessageId>),
+        /// 扫墓已记录（免费动作，受限频与权限控制）
+        GraveSwept(T::GraveId, T::AccountId),
     }
 
     // 错误
@@ -224,8 +233,11 @@ pub mod pallet {
             let is_mod = cfg.moderators.iter().any(|m| m == &who);
             let is_relative = RelativesOf::<T>::get(grave_id).iter().any(|a| a == &who);
             let is_member = T::GraveProvider::is_member(grave_id, &who);
-            // 成员或版主或亲人可发言；否则拒绝
-            ensure!(is_member || is_mod || is_relative, Error::<T>::NotAuthorized);
+            let is_public = T::GraveProvider::is_public_guestbook(grave_id);
+            // 公开留言：仅需 Signed + 限频；否则需成员/版主/亲人
+            if !is_public {
+                ensure!(is_member || is_mod || is_relative, Error::<T>::NotAuthorized);
+            }
 
             // 反刷：同账号在同一 grave 的最小发言间隔
             let now = <frame_system::Pallet<T>>::block_number();
@@ -319,6 +331,28 @@ pub mod pallet {
             MessageOf::<T>::remove(message_id);
             RecentByGrave::<T>::mutate(grave_id, |list| { if let Some(i) = list.iter().position(|x| x == &message_id) { list.swap_remove(i); } });
             Self::deposit_event(Event::MessageDeleted(message_id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：扫墓（清扫/维护）——免费动作
+        /// - 权限：成员或管理员；
+        /// - 限频：沿用 MinPostBlocksPerAccount 作为最小间隔；
+        /// - 记录事件，便于前端时间轴统一展示；不落链上大文本以控制状态量。
+        #[pallet::weight(10_000)]
+        pub fn sweep(origin: OriginFor<T>, grave_id: T::GraveId, _note: Option<Vec<u8>>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
+            let is_member = T::GraveProvider::is_member(grave_id, &who);
+            let is_public = T::GraveProvider::is_public_sweep(grave_id);
+            if !is_public && !is_member { T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?; }
+            let now = <frame_system::Pallet<T>>::block_number();
+            let last = LastSweepBy::<T>::get(grave_id, &who);
+            if last != Default::default() {
+                let min_gap: BlockNumberFor<T> = T::MinPostBlocksPerAccount::get().into();
+                ensure!(now.saturating_sub(last) >= min_gap, Error::<T>::RateLimited);
+            }
+            LastSweepBy::<T>::insert(grave_id, &who, now);
+            Self::deposit_event(Event::GraveSwept(grave_id, who));
             Ok(())
         }
     }

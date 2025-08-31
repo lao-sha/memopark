@@ -22,6 +22,10 @@
 - `Members: (GraveId, AccountId) -> ()`
 - `PendingApplications: (GraveId, AccountId) -> BlockNumber`
 
+### 新增（可见性与关注）
+- `VisibilityPolicyOf: GraveId -> { public_offering, public_guestbook, public_sweep, public_follow }`
+- `FollowersOf: GraveId -> BoundedVec<AccountId, MaxFollowers>`
+
 ## Extrinsics
 - `create_grave(park_id, kind_code, capacity?, metadata_cid)`
 - `update_grave(id, kind_code?, capacity?, metadata_cid?, active?)`
@@ -35,9 +39,11 @@
  - `add_admin(id, who)` / `remove_admin(id, who)`（仅墓主或园区管理员）
  - 新增：`set_policy(id, policy)`（0/1）
  - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
+ - 新增：`set_visibility(id, public_offering, public_guestbook, public_sweep, public_follow)`
+ - 新增：`follow(id)` / `unfollow(id)`
 
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
 - 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。
-- 存储版本：StorageVersion=1，兼容 Slug/成员/策略升级。
+- 存储版本：StorageVersion=2，新增可见性与关注；向前兼容（默认策略为关闭）。
