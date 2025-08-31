@@ -49,6 +49,13 @@ impl pallet_deceased::Config for Runtime {
   - `update_relation_note(from, to, note?)`
 - 事件：RelationProposed/Approved/Rejected/Revoked/Updated
 
+### 关系规范与迁移
+- 方向：0=ParentOf（有向），1=SpouseOf（无向），2=SiblingOf（无向），3=ChildOf（有向）。
+- 无向 canonical：存储使用 `(min(id1), max(id2))` 单条记录，并在 `RelationsByDeceased` 为双方写索引；撤销时对称移除索引。
+- 冲突矩阵：父母/子女 与 配偶/兄弟姐妹互斥；父母 与 子女互斥（方向相反视为同类）。
+- 去重：主记录与 Pending 均做无向对称去重与冲突校验。
+- 迁移：StorageVersion=1（`on_runtime_upgrade` 写入版本），为后续状态机与押金/TTL 迁移预留。
+
 ## 安全与隐私
 - 不在链上存储敏感个人信息；仅存少量文本与链下链接（IPFS/HTTPS 等）。
 - 不进行任何 MEMO 代币相关操作，避免资金风险。

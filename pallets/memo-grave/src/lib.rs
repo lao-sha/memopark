@@ -36,6 +36,8 @@ pub mod pallet {
         #[pallet::constant] type MaxAdminsPerGrave: Get<u32>;
         /// 函数级中文注释：人类可读 ID（Slug）长度（固定 10 位数字）。
         #[pallet::constant] type SlugLen: Get<u32>;
+        /// 函数级中文注释：关注者上限
+        #[pallet::constant] type MaxFollowers: Get<u32>;
     }
 
     /// 函数级中文注释：墓地信息结构。仅存储加密 CID，不落明文。
@@ -61,8 +63,11 @@ pub mod pallet {
         pub note_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
     }
 
+    // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
+
     #[pallet::pallet]
-    #[pallet::storage_version(StorageVersion::new(1))]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::storage]
@@ -123,6 +128,17 @@ pub mod pallet {
     #[pallet::storage]
     pub type PendingApplications<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
+    /// 可见性策略：是否公开供奉/留言/扫墓/关注
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    pub struct VisibilityPolicy { pub public_offering: bool, pub public_guestbook: bool, pub public_sweep: bool, pub public_follow: bool }
+
+    #[pallet::storage]
+    pub type VisibilityPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, VisibilityPolicy, ValueQuery>;
+
+    /// 关注者列表
+    #[pallet::storage]
+    pub type FollowersOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxFollowers>, ValueQuery>;
+
     /// 函数级中文注释：成员↔逝者亲属关系记录
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
@@ -181,6 +197,11 @@ pub mod pallet {
         KinshipUpdated { id: u64, deceased_id: u64, who: T::AccountId, code: u8 },
         KinshipRemoved { id: u64, deceased_id: u64, who: T::AccountId },
         KinshipPolicyChanged { id: u64, policy: u8 },
+        /// 可见性策略变更
+        VisibilityUpdated { id: u64, policy: VisibilityPolicy },
+        /// 关注/取消关注
+        Followed { id: u64, who: T::AccountId },
+        Unfollowed { id: u64, who: T::AccountId },
     }
 
     #[pallet::error]
@@ -211,6 +232,8 @@ pub mod pallet {
         KinshipExists,
         /// 亲属关系不存在
         KinshipNotFound,
+        /// 已关注
+        AlreadyFollowing,
     }
 
     #[pallet::call]
@@ -488,6 +511,45 @@ pub mod pallet {
             ensure!(PendingApplications::<T>::contains_key(id, &who), Error::<T>::NotApplied);
             PendingApplications::<T>::remove(id, &who);
             Self::deposit_event(Event::MemberRejected { id, who });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：设置可见性策略（是否公开供奉/留言/扫墓/关注）
+        #[pallet::weight(10_000)]
+        pub fn set_visibility(origin: OriginFor<T>, id: u64, public_offering: bool, public_guestbook: bool, public_sweep: bool, public_follow: bool) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                let o = origin.clone();
+                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } }
+            } else { return Err(Error::<T>::NotFound.into()); }
+            let policy = VisibilityPolicy { public_offering, public_guestbook, public_sweep, public_follow };
+            VisibilityPolicyOf::<T>::insert(id, policy.clone());
+            Self::deposit_event(Event::VisibilityUpdated { id, policy });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：关注纪念馆；若策略允许公开关注，则任意签名账户可关注，否则仅成员可关注。
+        #[pallet::weight(10_000)]
+        pub fn follow(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            let policy = VisibilityPolicyOf::<T>::get(id);
+            if !policy.public_follow { ensure!(Members::<T>::contains_key(id, &who), Error::<T>::NotMember); }
+            FollowersOf::<T>::try_mutate(id, |list| -> DispatchResult {
+                if list.iter().any(|a| a == &who) { return Err(Error::<T>::AlreadyFollowing.into()); }
+                list.try_push(who.clone()).map_err(|_| Error::<T>::CapacityExceeded)?;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::Followed { id, who });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：取消关注
+        #[pallet::weight(10_000)]
+        pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            FollowersOf::<T>::mutate(id, |list| { if let Some(p) = list.iter().position(|a| a == &who) { list.swap_remove(p); } });
+            Self::deposit_event(Event::Unfollowed { id, who });
             Ok(())
         }
 

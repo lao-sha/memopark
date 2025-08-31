@@ -68,9 +68,9 @@ Storage：
 常量参数：
 - MaxAlbumsPerDeceased, MaxMediaPerAlbum, StringLimit, MaxTags, MaxReorderBatch
 
-## pallet-grave-ledger
+## pallet-ledger
 
-- 模块说明：按墓位记录供奉历史，链上保留“最近 N 条明细”和累计计数，避免状态膨胀；详细数量/金额建议由索引器从 `pallet-memorial-offerings` 事件补全。
+- 模块说明：按墓位记录最小统计（累计次数/累计金额/按周活跃标记）。明细/排行/分类统计等高变动查询交由 Subsquid 从事件与只读状态聚合。
 
 Extrinsics：
 - prune_grave(grave_id: u64, keep_last: u32)
@@ -78,15 +78,13 @@ Extrinsics：
   - 作用：仅保留最近 keep_last 条明细
 
 Hook：
-- OnOfferingCommitted(target: (u8,u64), kind_code: u8, who: AccountId)
-  - 运行时将该 Hook 实现为写入 `pallet-grave-ledger::record_from_hook`（仅当 target 域为 grave 时）
+- OnOfferingCommitted(target: (u8,u64), kind_code: u8, who: AccountId, amount?: Balance, duration_weeks?: u32)
+  - 运行时将该 Hook 实现为写入 `pallet-ledger::{record_from_hook_with_amount, mark_weekly_active}`（仅当 target 域为 grave 时）
 
 Storage：
-- NextLogId: u64
-- LogOf: u64 -> { grave_id, who, kind_code, block, memo? }
-- RecentByGrave: u64 -> BoundedVec<u64>
 - TotalsByGrave: u64 -> u64
-- TotalsByGraveKind: (u64, u8) -> u64
+- TotalMemoByGrave: u64 -> Balance
+- WeeklyActive: (u64, AccountId, u64) -> ()
 
 ## pallet-grave-guestbook
 
@@ -178,13 +176,11 @@ Storage：
   - set_mode(mode: Escrow|Immediate) -> ModeChanged（Root）
   - settle(cycle: u32, max_pay: u32) -> Settled（任意人可触发分页结算；完成后支付当周 Burn/Treasury）
 
-## pallet-grave-ledger（供奉台账/排行/活跃周）
+## pallet-ledger（供奉台账/周活跃）
 
-- 作用：供奉明细与累计、TopN 排行，以及“按周有效供奉”标记（供统计/计酬使用）。
-- Extrinsics：
-  - prune_grave(grave_id: u64, keep_last: u32) -> Pruned（Root）
-- 只读：`LogOf`/`RecentByGrave`/`TotalsByGrave`/`TotalsByGraveKind`/`TotalMemoByGrave`/`TotalMemoByGraveUser`/`TopGraves`/`WeeklyActive`
-- 事件：OfferingLogged / TopUpdated / WeeklyActiveMarked
+- 作用：累计统计和“按周有效供奉”标记（供统计/计酬使用）。
+- 只读：`TotalsByGrave` / `TotalMemoByGrave` / `WeeklyActive`
+- 事件：WeeklyActiveMarked
 
 ## pallet-escrow（托管）
 

@@ -60,6 +60,8 @@ pub struct Deceased<T: Config> {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use frame_support::traits::StorageVersion;
+    use sp_runtime::traits::SaturatedConversion;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -153,7 +155,11 @@ pub mod pallet {
         PendingApproval,
     }
 
+    // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// 函数级中文注释：逝者关系记录。
@@ -174,6 +180,29 @@ pub mod pallet {
 
     #[pallet::storage]
     pub type PendingRelationRequests<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, (u8, T::AccountId, BoundedVec<u8, T::StringLimit>, BlockNumberFor<T>), OptionQuery>;
+
+    /// 函数级详细中文注释：关系工具函数与规范
+    /// - 0=ParentOf(有向) 1=SpouseOf(无向) 2=SiblingOf(无向) 3=ChildOf(有向)
+    fn is_undirected_kind(kind: u8) -> bool { matches!(kind, 1 | 2) }
+
+    /// 函数级详细中文注释：关系冲突矩阵（最小实现）
+    /// - 父母/子女 与 配偶/兄弟姐妹 互斥；父母 与 子女 互斥（方向相反视为同类）
+    fn is_conflicting_kind(a: u8, b: u8) -> bool {
+        let dir_a = matches!(a, 0 | 3);
+        let dir_b = matches!(b, 0 | 3);
+        if dir_a && dir_b { return true; }
+        if (dir_a && is_undirected_kind(b)) || (dir_b && is_undirected_kind(a)) { return true; }
+        false
+    }
+
+    /// 函数级详细中文注释：对无向关系使用 canonical(min,max) 键；有向关系保持 (from,to) 原样
+    fn canonical_ids<TC: Config>(from: TC::DeceasedId, to: TC::DeceasedId, kind: u8) -> (TC::DeceasedId, TC::DeceasedId) {
+        if is_undirected_kind(kind) {
+            let af: u128 = from.saturated_into::<u128>();
+            let bf: u128 = to.saturated_into::<u128>();
+            if af <= bf { (from, to) } else { (to, from) }
+        } else { (from, to) }
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -323,7 +352,13 @@ pub mod pallet {
             ensure!(T::GraveProvider::can_attach(&who, a.grave_id), Error::<T>::NotAuthorized);
             ensure!(from != to, Error::<T>::BadInput);
             ensure!(matches!(kind, 0..=3), Error::<T>::BadRelationKind);
-            ensure!(!Relations::<T>::contains_key(from, to), Error::<T>::RelationExists);
+            // 去重：主记录存在则拒绝；无向需同时检查反向
+            if Relations::<T>::contains_key(from, to) { return Err(Error::<T>::RelationExists.into()); }
+            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) { return Err(Error::<T>::RelationExists.into()); }
+            // Pending 去重：无向需阻止反向重复提案
+            if is_undirected_kind(kind) && PendingRelationRequests::<T>::contains_key(to, from) { return Err(Error::<T>::PendingApproval.into()); }
+            // 冲突：若另一方向已存在且冲突
+            if let Some(r) = Relations::<T>::get(to, from) { if is_conflicting_kind(r.kind, kind) { return Err(Error::<T>::BadRelationKind.into()); } }
             let now = <frame_system::Pallet<T>>::block_number();
             let note_bv: BoundedVec<_, T::StringLimit> = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
             PendingRelationRequests::<T>::insert(from, to, (kind, who, note_bv, now));
@@ -338,14 +373,17 @@ pub mod pallet {
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
             ensure!(T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
             let (kind, created_by, note, _created_at) = PendingRelationRequests::<T>::get(from, to).ok_or(Error::<T>::RelationNotFound)?;
+            // 二次防冲突：避免并发与方向不一致
+            if Relations::<T>::contains_key(from, to) { return Err(Error::<T>::RelationExists.into()); }
+            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) { return Err(Error::<T>::RelationExists.into()); }
+            if let Some(r) = Relations::<T>::get(to, from) { if is_conflicting_kind(r.kind, kind) { return Err(Error::<T>::BadRelationKind.into()); } }
             let now = <frame_system::Pallet<T>>::block_number();
             let rec = Relation::<T> { kind, note: note.clone(), created_by, since: now };
-            Relations::<T>::insert(from, to, &rec);
-            RelationsByDeceased::<T>::try_mutate(from, |list| list.try_push((to, kind)).map_err(|_| Error::<T>::BadInput))?;
-            // 无向关系（示例：1/2）反向也写入
-            if matches!(kind, 1 | 2) {
-                Relations::<T>::insert(to, from, &rec);
-                RelationsByDeceased::<T>::try_mutate(to, |list| list.try_push((from, kind)).map_err(|_| Error::<T>::BadInput))?;
+            let (ff, tt) = canonical_ids::<T>(from, to, kind);
+            Relations::<T>::insert(ff, tt, &rec);
+            RelationsByDeceased::<T>::try_mutate(ff, |list| list.try_push((tt, kind)).map_err(|_| Error::<T>::BadInput))?;
+            if is_undirected_kind(kind) && ff != tt {
+                RelationsByDeceased::<T>::try_mutate(tt, |list| list.try_push((ff, kind)).map_err(|_| Error::<T>::BadInput))?;
             }
             PendingRelationRequests::<T>::remove(from, to);
             Self::deposit_event(Event::RelationApproved(from, to, kind));
@@ -371,13 +409,11 @@ pub mod pallet {
             let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
             ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
-            ensure!(Relations::<T>::contains_key(from, to), Error::<T>::RelationNotFound);
-            let kind = Relations::<T>::get(from, to).map(|r| r.kind).unwrap_or_default();
-            Relations::<T>::remove(from, to);
-            RelationsByDeceased::<T>::mutate(from, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == to) { list.swap_remove(i); } });
-            if matches!(kind, 1 | 2) {
-                Relations::<T>::remove(to, from);
-                RelationsByDeceased::<T>::mutate(to, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == from) { list.swap_remove(i); } });
+            let (ff, tt, kind) = if let Some(r) = Relations::<T>::get(from, to) { (from, to, r.kind) } else if let Some(r) = Relations::<T>::get(to, from) { (to, from, r.kind) } else { return Err(Error::<T>::RelationNotFound.into()) };
+            Relations::<T>::remove(ff, tt);
+            RelationsByDeceased::<T>::mutate(ff, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == tt) { list.swap_remove(i); } });
+            if is_undirected_kind(kind) && ff != tt {
+                RelationsByDeceased::<T>::mutate(tt, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == ff) { list.swap_remove(i); } });
             }
             Self::deposit_event(Event::RelationRevoked(from, to));
             Ok(())
@@ -390,13 +426,32 @@ pub mod pallet {
             let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
             ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
-            Relations::<T>::try_mutate(from, to, |maybe| -> DispatchResult {
+            // 同时尝试两个方向，支持无向 canonical
+            if Relations::<T>::try_mutate(from, to, |maybe| -> DispatchResult {
                 let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
                 r.note = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
                 Ok(())
-            })?;
+            }).is_err() {
+                Relations::<T>::try_mutate(to, from, |maybe| -> DispatchResult {
+                    let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
+                    r.note = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                    Ok(())
+                })?;
+            }
             Self::deposit_event(Event::RelationUpdated(from, to));
             Ok(())
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// 函数级详细中文注释：运行时升级钩子（迁移到 StorageVersion=1）。
+        /// - 当前仅写入版本号；为后续关系矩阵与状态机升级做准备。
+        fn on_runtime_upgrade() -> Weight {
+            if <Pallet<T>>::on_chain_storage_version() < 1 {
+                StorageVersion::new(1).put::<Pallet<T>>();
+            }
+            Weight::zero()
         }
     }
 }

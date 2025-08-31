@@ -34,7 +34,7 @@ pallet-arbitration = { path = "../pallets/arbitration", default-features = false
 # replaced old ritual/cemetery
 pallet-memo-park = { path = "../pallets/memo-park", default-features = false }
 pallet-memo-grave = { path = "../pallets/memo-grave", default-features = false }
-pallet-grave-ledger = { path = "../pallets/grave-ledger", default-features = false }
+pallet-ledger = { path = "../pallets/ledger", default-features = false }
 pallet-grave-guestbook = { path = "../pallets/grave-guestbook", default-features = false }
 pallet-deceased = { path = "../pallets/deceased", default-features = false }
 pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }
@@ -45,6 +45,8 @@ pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
 pallet-memo-endowment = { path = "../pallets/memo-endowment", default-features = false }
 pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
+pallet-preimage.workspace = true
+pallet-scheduler.workspace = true
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -93,7 +95,7 @@ std = [
 	"pallet-arbitration/std",
 	"pallet-memo-park/std",
 	"pallet-memo-grave/std",
-	"pallet-grave-ledger/std",
+	"pallet-ledger/std",
 	"pallet-grave-guestbook/std",
 	"pallet-deceased/std",
 	"pallet-deceased-media/std",
@@ -104,6 +106,8 @@ std = [
 	"pallet-identity/std",
 	"pallet-memo-endowment/std",
 	"pallet-memo-ipfs/std",
+	"pallet-preimage/std",
+	"pallet-scheduler/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
