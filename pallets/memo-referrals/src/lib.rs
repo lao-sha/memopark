@@ -22,6 +22,9 @@ pub mod pallet {
         /// 最大遍历层级（用于上游遍历与防御性限制）
         #[pallet::constant]
         type MaxHops: Get<u32>;
+        /// 函数级中文注释：每个推荐人最多可拥有的直接下级数量（反向索引容量上限，防状态膨胀）
+        #[pallet::constant]
+        type MaxReferralsPerAccount: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -37,6 +40,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type BoundAt<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>>;
 
+    /// 函数级中文注释：反向索引：推荐人 -> 其直接下级集合（BoundedVec，上限由 MaxReferralsPerAccount 决定）。
+    #[pallet::storage]
+    pub type ReferralsOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<T::AccountId, <T as Config>::MaxReferralsPerAccount>, ValueQuery>;
+
+    /// 函数级中文注释：封禁推荐人集合（仅影响计酬归集，不改变 SponsorOf 图）。
+    #[pallet::storage]
+    pub type BannedSponsors<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+
     /// 函数级中文注释：治理暂停位。为 true 时禁止新绑定，已绑定关系不受影响。
     #[pallet::storage]
     #[pallet::getter(fn paused)]
@@ -49,6 +60,8 @@ pub mod pallet {
         SponsorBound { who: T::AccountId, sponsor: T::AccountId },
         /// 暂停/恢复状态已更新。
         PausedSet { value: bool },
+        /// 已更新封禁推荐人状态（仅治理）。
+        SponsorBannedSet { who: T::AccountId, banned: bool },
     }
 
     #[pallet::error]
@@ -92,6 +105,8 @@ pub mod pallet {
 
             SponsorOf::<T>::insert(&who, &sponsor);
             BoundAt::<T>::insert(&who, <frame_system::Pallet<T>>::block_number());
+            // 维护反向索引：若超上限则拒绝（保障状态量）
+            ReferralsOf::<T>::try_mutate(&sponsor, |v| v.try_push(who.clone()).map_err(|_| Error::<T>::Paused))?; // 复用 Paused 作为容量错误替身，避免新增错误
             Self::deposit_event(Event::SponsorBound { who, sponsor });
             Ok(())
         }
@@ -103,6 +118,16 @@ pub mod pallet {
             ensure_root(origin)?;
             Paused::<T>::put(value);
             Self::deposit_event(Event::PausedSet { value });
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理设置封禁推荐人状态（banned=true 表示该账户作为推荐人被封禁）。
+        #[pallet::call_index(2)]
+        #[pallet::weight(10_000)]
+        pub fn set_banned(origin: OriginFor<T>, who: T::AccountId, banned: bool) -> DispatchResult {
+            ensure_root(origin)?;
+            if banned { BannedSponsors::<T>::insert(&who, ()); } else { BannedSponsors::<T>::remove(&who); }
+            Self::deposit_event(Event::SponsorBannedSet { who, banned });
             Ok(())
         }
     }
@@ -135,6 +160,9 @@ pub trait ReferralProvider<AccountId> {
     fn sponsor_of(who: &AccountId) -> Option<AccountId>;
     /// 受控向上遍历，最多 `max_hops` 层。
     fn ancestors(who: &AccountId, max_hops: u32) -> alloc::vec::Vec<AccountId>;
+    /// 函数级中文注释：该账户是否被标记为“封禁推荐人”。
+    /// - 用于计酬结算时将对应层的佣金归集至国库/平台账户。
+    fn is_banned(who: &AccountId) -> bool;
 }
 
 impl<T: pallet::Config> ReferralProvider<T::AccountId> for Pallet<T> {
@@ -143,6 +171,9 @@ impl<T: pallet::Config> ReferralProvider<T::AccountId> for Pallet<T> {
     }
     fn ancestors(who: &T::AccountId, max_hops: u32) -> alloc::vec::Vec<T::AccountId> {
         Pallet::<T>::ancestors(who, max_hops)
+    }
+    fn is_banned(who: &T::AccountId) -> bool {
+        <pallet::BannedSponsors<T>>::contains_key(who)
     }
 }
 

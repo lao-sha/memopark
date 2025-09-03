@@ -10,17 +10,18 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, StorageVersion, Currency, ExistenceRequirement}, weights::Weight};
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
-    use sp_runtime::traits::SaturatedConversion;
+    use sp_runtime::traits::{SaturatedConversion, Saturating};
 
     /// 函数级中文注释：目标控制接口。
     /// - exists：目标是否存在；
     /// - ensure_allowed：是否允许对目标发起供奉（如墓地关闭、逝者隐私等）。
-    pub trait TargetControl<Origin> {
+    /// - 说明：为避免引用私有 OriginTrait，直接将 AccountId 作为独立泛型注入。
+    pub trait TargetControl<Origin, AccountId> {
         fn exists(target: (u8, u64)) -> bool;
         fn ensure_allowed(origin: Origin, target: (u8, u64)) -> DispatchResult;
         /// 函数级中文注释：用于成员制的允许策略（例如仅允许成员供奉）。
         /// - 返回 true 表示该调用者为目标的成员。
-        fn is_member_of(target: (u8, u64), who: &<Origin as frame_system::OriginTrait>::AccountId) -> bool { let _ = (target, who); true }
+        fn is_member_of(target: (u8, u64), who: &AccountId) -> bool { let _ = (target, who); true }
     }
 
     /// 函数级中文注释：供奉提交后的回调接口，用于统计或联动积分。
@@ -52,8 +53,14 @@ pub mod pallet {
         #[pallet::constant] type MaxMediaPerOffering: Get<u32>;
         /// 函数级中文注释：单条媒体的可选备注（memo）最大长度（如前端显示用途），当前未使用，保留扩展。
         #[pallet::constant] type MaxMemoLen: Get<u32>;
-        // 函数级中文注释：目标控制器，使用 runtime 的 Origin 类型以进行权限校验
-        type TargetCtl: TargetControl<Self::RuntimeOrigin>;
+        /// 函数级中文注释：供奉限频窗口大小（以块为单位，常量默认，存储参数可覆盖）。
+        #[pallet::constant] type OfferWindow: Get<BlockNumberFor<Self>>;
+        /// 函数级中文注释：窗口内最多供奉次数（常量默认，存储参数可覆盖）。
+        #[pallet::constant] type OfferMaxInWindow: Get<u32>;
+        /// 函数级中文注释：最小供奉金额（以 u128 表示，常量默认，存储参数可覆盖）。
+        #[pallet::constant] type MinOfferAmount: Get<u128>;
+        // 函数级中文注释：目标控制器，使用 runtime 的 Origin 与 AccountId 类型以进行权限校验
+        type TargetCtl: TargetControl<Self::RuntimeOrigin, <Self as frame_system::Config>::AccountId>;
         type OnOffering: OnOfferingCommitted<Self::AccountId>;
         /// 函数级中文注释：管理员 Origin（Root / Council / 多签等），用于上架/下架/编辑。
         type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
@@ -116,8 +123,28 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
+    // ===== 可治理风控参数（以存储参数为准，常量作为默认）=====
+    #[pallet::type_value] pub fn DefaultOfferWindow<T: Config>() -> BlockNumberFor<T> { T::OfferWindow::get() }
+    #[pallet::type_value] pub fn DefaultOfferMaxInWindow<T: Config>() -> u32 { T::OfferMaxInWindow::get() }
+    #[pallet::type_value] pub fn DefaultMinOfferAmount<T: Config>() -> u128 { T::MinOfferAmount::get() }
+
+    /// 供奉限频窗口（块）
+    #[pallet::storage] pub type OfferWindowParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultOfferWindow<T>>;
+    /// 窗口内最多供奉次数
+    #[pallet::storage] pub type OfferMaxInWindowParam<T: Config> = StorageValue<_, u32, ValueQuery, DefaultOfferMaxInWindow<T>>;
+    /// 最小供奉金额
+    #[pallet::storage] pub type MinOfferAmountParam<T: Config> = StorageValue<_, u128, ValueQuery, DefaultMinOfferAmount<T>>;
+    /// 限频计数（账户 -> (窗口起点, 计数)）
+    #[pallet::storage] pub type OfferRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+
     #[pallet::storage]
     pub type Specs<T: Config> = StorageMap<_, Blake2_128Concat, u8, OfferingSpec<T>, OptionQuery>;
+
+    /// 函数级中文注释：定价（独立存储，避免变更规格结构导致迁移）。
+    /// - Instant：使用 FixedPriceOf(kind_code)；
+    /// - Timed：使用 UnitPricePerWeekOf(kind_code) × duration；
+    #[pallet::storage] pub type FixedPriceOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
+    #[pallet::storage] pub type UnitPricePerWeekOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
 
     #[pallet::storage]
     pub type OfferingsByTarget<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), BoundedVec<u64, T::MaxOfferingsPerTarget>, ValueQuery>;
@@ -163,6 +190,8 @@ pub mod pallet {
         OfferingUpdated { kind_code: u8 },
         /// 设置模板是否启用
         OfferingEnabled { kind_code: u8, enabled: bool },
+        /// 函数级中文注释：定价已更新（快照）。
+        OfferingPriceUpdated { kind_code: u8, fixed_price: Option<u128>, unit_price_per_week: Option<u128> },
         /// 函数级中文注释：供奉已确认并落账（便于 Subsquid 索引）。
         /// - 增补字段：who/amount/duration_weeks/block，降低索引端读取存储的复杂度与成本。
         OfferingCommitted {
@@ -174,6 +203,8 @@ pub mod pallet {
             duration_weeks: Option<u32>,
             block: BlockNumberFor<T>,
         },
+        /// 函数级中文注释：供奉风控参数已更新（Root）。
+        OfferParamsUpdated,
     }
 
     #[pallet::error]
@@ -292,9 +323,29 @@ pub mod pallet {
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
             // 校验时长策略
             ensure_duration_allowed::<T>(&spec, &duration)?;
-            // 供奉为付费动作：要求 amount>0，并完成实际转账
+            // 限频：以账户为粒度的滑动窗口
+            let now = <frame_system::Pallet<T>>::block_number();
+            let (win_start, cnt) = OfferRate::<T>::get(&who);
+            let window = OfferWindowParam::<T>::get();
+            let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
+            ensure!(cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            OfferRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
+            // 供奉为付费动作：要求 amount ≥ MinOfferAmount，并完成实际转账
             let amt = amount.ok_or(Error::<T>::AmountRequired)?;
-            ensure!(amt > 0, Error::<T>::AmountTooLow);
+            ensure!(amt >= MinOfferAmountParam::<T>::get(), Error::<T>::AmountTooLow);
+            // 定价校验：Instant → fixed；Timed → unit×duration
+            match &spec.kind {
+                OfferingKind::Instant => {
+                    if let Some(p) = FixedPriceOf::<T>::get(kind_code) { ensure!(amt == p, Error::<T>::AmountTooLow); }
+                }
+                OfferingKind::Timed { .. } => {
+                    if let Some(u) = UnitPricePerWeekOf::<T>::get(kind_code) {
+                        let d = duration.ok_or(Error::<T>::DurationRequired)? as u128;
+                        let expect = u.saturating_mul(d);
+                        ensure!(amt == expect, Error::<T>::AmountTooLow);
+                    }
+                }
+            }
             let dest = T::DonationResolver::account_for(target);
             let amt_balance: BalanceOf<T> = amt.saturated_into();
             T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
@@ -321,6 +372,46 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn batch_offer(origin: OriginFor<T>, calls: Vec<(u8, u64, u8, Option<u128>, Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>, Option<u32>)>) -> DispatchResult {
             for (d,id,k,a,m,dur) in calls { Self::offer(origin.clone(), (d,id), k, a, m, dur)?; }
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理更新供奉风控参数（Root）。
+        /// - 未提供的参数保持不变；
+        /// - OfferWindow（块）/OfferMaxInWindow（次数）/MinOfferAmount（u128）。
+        #[pallet::weight(10_000)]
+        pub fn set_offer_params(
+            origin: OriginFor<T>,
+            offer_window: Option<BlockNumberFor<T>>,
+            offer_max_in_window: Option<u32>,
+            min_offer_amount: Option<u128>,
+        ) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            if let Some(v) = offer_window { OfferWindowParam::<T>::put(v); }
+            if let Some(v) = offer_max_in_window { OfferMaxInWindowParam::<T>::put(v); }
+            if let Some(v) = min_offer_amount { MinOfferAmountParam::<T>::put(v); }
+            Self::deposit_event(Event::OfferParamsUpdated);
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置/更新定价（Root/Admin）。
+        /// - Instant：fixed_price；Timed：unit_price_per_week；未提供的字段不变；
+        #[pallet::weight(10_000)]
+        pub fn set_offering_price(
+            origin: OriginFor<T>,
+            kind_code: u8,
+            fixed_price: Option<Option<u128>>,
+            unit_price_per_week: Option<Option<u128>>,
+        ) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            if let Some(fp) = fixed_price {
+                match fp { Some(v) => FixedPriceOf::<T>::insert(kind_code, v), None => FixedPriceOf::<T>::remove(kind_code) }
+            }
+            if let Some(up) = unit_price_per_week {
+                match up { Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v), None => UnitPricePerWeekOf::<T>::remove(kind_code) }
+            }
+            let cur_fp = FixedPriceOf::<T>::get(kind_code);
+            let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
+            Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
             Ok(())
         }
     }

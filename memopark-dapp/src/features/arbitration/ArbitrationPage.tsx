@@ -4,13 +4,17 @@ import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { buildForwardRequest, NAMESPACES, pretty } from '../../lib/forwarder'
 import { AppConfig } from '../../lib/config'
 import { signAndSend } from '../../lib/polkadot'
+import { useWallet } from '../../providers/WalletProvider'
 
 /**
  * 函数级详细中文注释：仲裁（代付元交易导出）
  * - 提供 dispute/arbitrate 两类操作的元交易 JSON 生成。
  */
 const ArbitrationPage: React.FC = () => {
+  const wallet = useWallet()
   const [output, setOutput] = React.useState('')
+  const [formDispute] = Form.useForm()
+  const [formArbitrate] = Form.useForm()
 
   const onExport = async (values: any) => {
     try {
@@ -51,15 +55,15 @@ const ArbitrationPage: React.FC = () => {
 
   const onDirectSend = async (values: any) => {
     try {
-      const address = values.owner?.trim()
-      if (!address) throw new Error('缺少地址(owner)')
+      const address = values.owner?.trim() || wallet.current
+      if (!address) throw new Error('缺少地址(owner) 或未连接钱包')
       if (values.method === 'dispute') {
         const args = [values.domain, values.id, []]
-        const txHash = await signAndSend(address, 'arbitration', 'dispute', args)
+        const txHash = await wallet.signAndSend('arbitration', 'dispute', args)
         message.success(`已上链：${txHash}`)
       } else if (values.method === 'arbitrate') {
         const args = [values.domain, values.id, values.decision_code, values.bps || null]
-        const txHash = await signAndSend(address, 'arbitration', 'arbitrate', args)
+        const txHash = await wallet.signAndSend('arbitration', 'arbitrate', args)
         message.success(`已上链：${txHash}`)
       }
     } catch (e: any) {
@@ -88,7 +92,7 @@ const ArbitrationPage: React.FC = () => {
               key: 'dispute',
               label: 'dispute',
               children: (
-                <Form layout="vertical" onFinish={onExport}>
+                <Form form={formDispute} layout="vertical" onFinish={onExport}>
                   <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
                     <Input placeholder="5F..." size="large" />
                   </Form.Item>
@@ -114,6 +118,15 @@ const ArbitrationPage: React.FC = () => {
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <Button type="primary" htmlType="submit" block size="large">生成代付 JSON</Button>
                       <Button onClick={onSubmitSponsor} block size="large">一键提交平台代付</Button>
+                      <Button onClick={()=>{
+                        formDispute.validateFields().then(async (values:any)=>{
+                          const owner = values.owner?.trim() || wallet.current
+                          if(!owner) throw new Error('缺少地址(owner) 或未连接钱包')
+                          const args = [ values.domain, values.id, [] ]
+                          const hash = await wallet.sendViaForwarder('arbitration' as any, 'arbitration', 'dispute', args)
+                          message.success(`已提交代付：${hash}`)
+                        }).catch(()=>{})
+                      }} block size="large">代付提交</Button>
                       <Button onClick={() => (document.querySelector('#dispute-form-submit') as HTMLButtonElement)?.click()} block size="large" disabled>直接上链(非代付)</Button>
                     </Space>
                   </Form.Item>
@@ -124,7 +137,7 @@ const ArbitrationPage: React.FC = () => {
               key: 'arbitrate',
               label: 'arbitrate',
               children: (
-                <Form layout="vertical" onFinish={onExport}>
+                <Form form={formArbitrate} layout="vertical" onFinish={onExport}>
                   <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
                     <Input placeholder="5F..." size="large" />
                   </Form.Item>
@@ -153,6 +166,15 @@ const ArbitrationPage: React.FC = () => {
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <Button type="primary" htmlType="submit" block size="large">生成代付 JSON</Button>
                       <Button onClick={onSubmitSponsor} block size="large">一键提交平台代付</Button>
+                      <Button onClick={()=>{
+                        formArbitrate.validateFields().then(async (values:any)=>{
+                          const owner = values.owner?.trim() || wallet.current
+                          if(!owner) throw new Error('缺少地址(owner) 或未连接钱包')
+                          const args = [ values.domain, values.id, values.decision_code, values.bps || null ]
+                          const hash = await wallet.sendViaForwarder('arbitration' as any, 'arbitration', 'arbitrate', args)
+                          message.success(`已提交代付：${hash}`)
+                        }).catch(()=>{})
+                      }} block size="large">代付提交</Button>
                       <Button onClick={() => (document.querySelector('#arbitrate-form-submit') as HTMLButtonElement)?.click()} block size="large" disabled>直接上链(非代付)</Button>
                     </Space>
                   </Form.Item>

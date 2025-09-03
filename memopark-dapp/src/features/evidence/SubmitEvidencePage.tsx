@@ -3,7 +3,8 @@ import { Alert, Button, Form, Input, InputNumber, Tabs, Typography, message, Spa
 import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { buildForwardRequest, NAMESPACES, pretty } from '../../lib/forwarder'
 import { AppConfig } from '../../lib/config'
-import { getApi, signAndSend } from '../../lib/polkadot'
+import { getApi } from '../../lib/polkadot'
+import { useWallet } from '../../providers/WalletProvider'
 
 /**
  * 函数级详细中文注释：证据提交（支持代付元交易导出）
@@ -13,6 +14,7 @@ import { getApi, signAndSend } from '../../lib/polkadot'
  * - 字段：与 pallet-evidence::commit/commit_hash/link/link_by_ns/unlink/unlink_by_ns 映射。
  */
 const SubmitEvidencePage: React.FC = () => {
+  const wallet = useWallet()
   const [form] = Form.useForm()
   const [output, setOutput] = React.useState('')
 
@@ -60,16 +62,16 @@ const SubmitEvidencePage: React.FC = () => {
   const onDirectSend = async (values: any) => {
     try {
       const api = await getApi()
-      const address = values.owner?.trim()
-      if (!address) throw new Error('缺少地址(owner)')
+      const address = values.owner?.trim() || wallet.current
+      if (!address) throw new Error('缺少地址(owner) 或未连接钱包')
       const method = values.method
       if (method === 'commit') {
         const args = [values.domain, values.target_id, [], [], [], values.memo || null]
-        const txHash = await signAndSend(address, 'evidence', 'commit', args)
+        const txHash = await wallet.signAndSend('evidence', 'commit', args)
         message.success(`已上链：${txHash}`)
       } else if (method === 'commitHash') {
         const args = [values.ns, values.subject_id, values.commit, values.memo || null]
-        const txHash = await signAndSend(address, 'evidence', 'commitHash', args)
+        const txHash = await wallet.signAndSend('evidence', 'commitHash', args)
         message.success(`已上链：${txHash}`)
       }
     } catch (e: any) {

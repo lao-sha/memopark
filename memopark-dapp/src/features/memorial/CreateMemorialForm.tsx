@@ -1,5 +1,6 @@
-import React from 'react'
-import { Button, Form, Input, Upload, Row, Col, Switch, Typography, Checkbox, message } from 'antd'
+import React, { useState } from 'react'
+import { Button, Form, Input, Upload, Row, Col, Switch, Typography, Checkbox, message, Alert, Space } from 'antd'
+import { signAndSend, getApi } from '../../lib/polkadot'
 import { UploadOutlined, CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 
 /**
@@ -15,8 +16,21 @@ const CreateMemorialForm: React.FC = () => {
    * - 当前占位：提示成功并打印参数。
    */
   const onFinish = async (values: any) => {
-    message.success('已提交（占位）')
-    console.log('CreateMemorial:', values)
+    try {
+      const owner = values.owner?.trim()
+      if (!owner) throw new Error('请输入你的地址(owner)')
+      // 1) 可选：先创建 deceased（此处省略，保留扩展点）
+      // 2) 直接创建 Hall(kind=Person=0)
+      const meta = new TextEncoder().encode(JSON.stringify({ name: values.name || '' }))
+      const api = await getApi()
+      const cid = Array.from(meta) // 简化演示：直接用 JSON bytes；实际应使用 IPFS CID 字节
+      const args = [ Number(values.park_id || 0), 0, 1, cid ]
+      const txHash = await signAndSend(owner, 'memoGrave', 'createHall', args)
+      message.success(`已上链：${txHash}`)
+      form.resetFields()
+    } catch (e: any) {
+      message.error(e?.message || '提交失败')
+    }
   }
 
   return (
@@ -40,6 +54,15 @@ const CreateMemorialForm: React.FC = () => {
       {/* 表单主体 */}
       <div style={{ padding: 12 }}>
         <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ solar_birth: true, solar_death: true, agree: true }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Alert type="info" showIcon message="将创建纪念馆(Hall)，支持平台代付（可选）" />
+          </Space>
+          <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
+            <Input placeholder="5F..." size="large" />
+          </Form.Item>
+          <Form.Item name="park_id" label="园区ID(可选)" >
+            <Input placeholder="无则留空或填0" size="large" />
+          </Form.Item>
           <Form.Item name="name" label="逝者姓名" rules={[{ required: true, message: '请填写姓名' }]}>
             <Input size="large" placeholder="请输入" />
           </Form.Item>

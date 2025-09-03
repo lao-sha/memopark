@@ -33,10 +33,57 @@
 - `SettleCursor(WeekNo) -> u32`：分页结算进度。
 
 ## 参数（可治理）
-- `BlocksPerWeek = 100_800`；`MaxLevels = 15`；`PerLevelNeed = 3`；
-- `LevelRatesBps = [2000,1000,400×13]`（82%）；`BurnBps = 1000`（10%）；`TreasuryBps = 800`（8%）；
-- `MaxSearchHops` 防御性限制；`SettlementMode` 默认 Escrow。
+- 基础：`BlocksPerWeek = 100_800`；`MaxLevels = 15`；`PerLevelNeed = 3`；
+- 比例：`LevelRatesBps = [2000,1000,400×13]`（82%）；`BurnBps = 1000`（10%）；`TreasuryBps = 800`（8%）；
+- 防御：`MaxSearchHops`；`SettlementMode` 默认 Escrow。
+- 新增（存储参数，运行时可通过 Root 更新）：
+  - `BudgetSourceAccount`：奖励资金来源账户（默认为 Escrow PalletId 派生账户）。
+  - `BudgetCapPerCycle`：每周奖励发放上限（0 表示不限制）。
+  - `CycleRewardUsed(cycle)`：本周已计入的上级奖励额度。
+  - `MinStakeForReward`：上级最小持仓门槛，未达则该层份额并入国库。
+  - `MinQualifyingAction`：最小有效行为次数（占位，默认 0）。
+
+读取方式（前端）：
+```ts
+// 读取预算上限与门槛（示例）
+const cap = await api.query.memoAffiliate.budgetCapPerCycle();
+const minStake = await api.query.memoAffiliate.minStakeForReward();
+```
+
+治理更新：
+```ts
+// Root: 更新奖励参数（未提供的字段保持不变）
+api.tx.memoAffiliate.setRewardParams(
+  /* budget_source: Option<AccountId> */ null,
+  /* budget_cap_per_cycle: Option<Balance> */ someCap,
+  /* min_stake_for_reward: Option<Balance> */ someMinStake,
+  /* min_qual_actions: Option<u32> */ 0,
+)
+```
 
 ## 安全与注意
 - 所有转账使用 `transfer_keep_alive`，避免误杀账户；比例恒等校验；分页结算避免单块过重。
 - 推荐环与自推由 `pallet-memo-referrals` 保证（只读）；本模块不维护反向索引，重查询交给索引器。
+ - 预算与门槛：
+   - 分配时按 `BudgetCapPerCycle` 控制：本周额度不足时，仅按 `min(share, allowed)` 计入，超出部分并入国库；
+   - `MinStakeForReward` 未达到、上级被封禁或不满足直推门槛时，该层份额并入国库；
+   - 记账精度向下取整，remainder 并库，确保不超发。
+
+## 事件
+- `RewardClaimed { cycle, to, amount }`：结算时支付给账户；
+- `RewardParamsUpdated`：治理更新奖励参数；
+- 其余：`EscrowRecorded / Entitled / Settled / ActiveMarked / ModeChanged`。
+
+## 封禁推荐人归集（风控）
+- 依赖 `pallet-memo-referrals::BannedSponsors` 与 `ReferralProvider::is_banned(who)`：
+  - 在 `record_distribution` 的逐层分配中，若某层上级被封禁，直接将该层份额并入当周 `treasury_extra`，不发放给该上级；
+  - 该机制不改变推荐关系图（SponsorOf 不变），仅影响结算归集，满足风控与合规；
+  - Root 可通过 `pallet-memo-referrals::set_banned(who, banned)` 动态管理封禁名单。
+
+### 示例（治理操作）
+1) 封禁某账户作为推荐人：
+   - 调用：`memoReferrals.setBanned(who, true)`
+2) 解除封禁：
+   - 调用：`memoReferrals.setBanned(who, false)`
+3) 结算某周：
+   - 调用：`memoAffiliate.settle(cycle, max_pay)`；本周被封禁上游的份额将并入国库在尾部统一划拨。

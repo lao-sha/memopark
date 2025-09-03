@@ -26,6 +26,11 @@
 - `VisibilityPolicyOf: GraveId -> { public_offering, public_guestbook, public_sweep, public_follow }`
 - `FollowersOf: GraveId -> BoundedVec<AccountId, MaxFollowers>`
 
+### 新增（Hall 附加与风控）
+- `HallInfoOf: GraveId -> { kind: u8(Person=0/Event=1), primary_deceased_id?: u64 }`
+- `CreateHallRate: AccountId -> (window_start, count)`
+- `CreateHallWindowParam / CreateHallMaxInWindowParam / RequireKycParam`
+
 ## Extrinsics
 - `create_grave(park_id, kind_code, capacity?, metadata_cid)`
 - `update_grave(id, kind_code?, capacity?, metadata_cid?, active?)`
@@ -42,8 +47,15 @@
  - 新增：`set_visibility(id, public_offering, public_guestbook, public_sweep, public_follow)`
  - 新增：`follow(id)` / `unfollow(id)`
 
+### 新增（纪念馆相关）
+- `create_hall(park_id, kind(Person/Event), capacity?, metadata_cid)`
+- `attach_deceased(id, deceased_id)`
+- `set_park(id, park_id)`
+- `set_hall_params(create_window?, create_max_in_window?, require_kyc?)`（Root）
+
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
 - 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。
 - 存储版本：StorageVersion=2，新增可见性与关注；向前兼容（默认策略为关闭）。
+  - Hall 为附加信息与事件，未修改核心 `Grave` 结构字段的含义与序列化布局。

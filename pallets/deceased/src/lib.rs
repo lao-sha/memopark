@@ -429,12 +429,12 @@ pub mod pallet {
             // 同时尝试两个方向，支持无向 canonical
             if Relations::<T>::try_mutate(from, to, |maybe| -> DispatchResult {
                 let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
-                r.note = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                r.note = match note.as_ref() { Some(v) => BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
                 Ok(())
             }).is_err() {
                 Relations::<T>::try_mutate(to, from, |maybe| -> DispatchResult {
                     let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
-                    r.note = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                    r.note = match note.as_ref() { Some(v) => BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
                     Ok(())
                 })?;
             }

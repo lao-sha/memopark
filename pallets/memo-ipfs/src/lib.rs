@@ -13,7 +13,7 @@ use frame_system::{
 };
 use pallet_memo_endowment::EndowmentInterface;
 use sp_core::crypto::KeyTypeId;
-use sp_runtime::{offchain::{http, StorageKind, storage_lock::{StorageLock, BlockAndTime}}, traits::AtLeast32BitUnsigned};
+use sp_runtime::{offchain::{http, StorageKind}, traits::AtLeast32BitUnsigned};
 use sp_std::{vec::Vec, str};
 use codec::Encode;
 use alloc::string::String;
@@ -38,6 +38,12 @@ pub type AuthorityId = sr25519_app::Public;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use frame_support::traits::StorageVersion;
+    use frame_support::traits::ConstU32;
+    use sp_runtime::traits::Saturating;
+    use frame_system::offchain::SendSignedTransaction;
+    use frame_support::traits::tokens::Imbalance;
+    use alloc::string::ToString;
 
     /// 余额别名
     pub type BalanceOf<T> = <T as Config>::Balance;
@@ -80,13 +86,16 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
     }
 
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
     #[pallet::pallet]
-    #[pallet::storage_version(StorageVersion::new(0))]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// 定价参数原始字节（骨架）
     #[pallet::storage]
-    pub type PricingParams<T: Config> = StorageValue<_, Vec<u8>, ValueQuery>;
+    /// 函数级中文注释：定价参数原始字节（使用 BoundedVec 以满足 MaxEncodedLen 要求）
+    pub type PricingParams<T: Config> = StorageValue<_, BoundedVec<u8, ConstU32<8192>>, ValueQuery>;
 
     /// Pin 订单：存储 `cid_hash` 等元数据（骨架）
     #[pallet::storage]
@@ -127,7 +136,7 @@ pub mod pallet {
     pub type OperatorBond<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
 
     /// 运营者 SLA 统计
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct SlaStats<T: Config> {
         pub pinned_bytes: u64,
@@ -135,6 +144,14 @@ pub mod pallet {
         pub probe_fail: u32,
         pub degraded: u32,
         pub last_update: BlockNumberFor<T>,
+    }
+
+    impl<T: Config> Default for SlaStats<T> {
+        /// 函数级中文注释：为 SlaStats<T> 提供显式的 Default 实现，避免对 T 施加 Default 约束
+        /// - 将计数置 0，last_update 使用 BlockNumber 的默认值
+        fn default() -> Self {
+            Self { pinned_bytes: 0, probe_ok: 0, probe_fail: 0, degraded: 0, last_update: Default::default() }
+        }
     }
 
     #[pallet::storage]
@@ -196,11 +213,11 @@ pub mod pallet {
         OperatorNotAssigned,
     }
 
-    #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：CID 解密/映射接口（OCW 本地）
-        /// - 从 offchain local storage 读取 `/memo/ipfs/cid/<hash_hex>` → 明文 CID 字符串；
-        /// - 若不存在则返回占位 `"<redacted>"`，让上层逻辑启用退避而不报错。
+        /// 函数级详细中文注释：CID 解密/映射内部工具函数（非外部可调用）
+        /// - 从 offchain local storage 读取 `/memo/ipfs/cid/<hash_hex>` 对应的明文 CID；
+        /// - 若不存在，返回占位 `"<redacted>"`，用于上层降级处理。
+        #[inline]
         fn resolve_cid(cid_hash: &T::Hash) -> alloc::string::String {
             let mut key = b"/memo/ipfs/cid/".to_vec();
             let hex = hex::encode(cid_hash.as_ref());
@@ -210,6 +227,10 @@ pub mod pallet {
             }
             "<redacted>".into()
         }
+    }
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
         /// 函数级详细中文注释：用户请求 Pin（一次性付费进入基金会）
         /// - 输入为 `cid_hash`（避免泄露明文 CID）、大小与副本数；
         /// - 价格计算在链上依据 `PricingParams` 得出；当前骨架由外部直接给出 `price`；
@@ -395,9 +416,10 @@ pub mod pallet {
             T::GovernanceOrigin::ensure_origin(origin)?;
             ensure!(Operators::<T>::contains_key(&who), Error::<T>::OperatorNotFound);
             let (slashed, _remaining) = <T as Config>::Currency::slash_reserved(&who, amount);
-            // 记录剩余 bond（无法直接得知，简化为读取原值再减去 slashed）
+            // 记录剩余 bond（slash_reserved 返回负不平衡，使用 peek 获取相应余额值再进行安全减法）
             let old = OperatorBond::<T>::get(&who);
-            let new = old.saturating_sub(slashed);
+            let slashed_amount = slashed.peek();
+            let new = old.saturating_sub(slashed_amount);
             OperatorBond::<T>::insert(&who, new);
             Ok(())
         }
@@ -411,11 +433,11 @@ pub mod pallet {
         /// - HTTP 令牌与集群端点从本地 offchain storage 读取，避免上链泄露。
         fn offchain_worker(_n: BlockNumberFor<T>) {
             // 读取本地配置（示例键）："/memo/ipfs/cluster_endpoint" 与 "/memo/ipfs/token"
-            let endpoint = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/cluster_endpoint")
-                .and_then(|v| str::from_utf8(&v).ok().map(|s| s.to_string()))
-                .unwrap_or_else(|| "http://127.0.0.1:9094".into());
-            let token = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/token")
-                .and_then(|v| str::from_utf8(&v).ok().map(|s| s.to_string()));
+            let endpoint: alloc::string::String = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/cluster_endpoint")
+                .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()))
+                .unwrap_or_else(|| alloc::string::String::from("http://127.0.0.1:9094"));
+            let token: Option<alloc::string::String> = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/token")
+                .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()));
 
             // 分配与 Pin：遍历 PendingPins，若无分配则创建；否则尝试 POST /pins 携带 allocations
             if let Some((cid_hash, (_payer, replicas, _size, _price))) = <PendingPins<T>>::iter().next() {
@@ -429,7 +451,7 @@ pub mod pallet {
                     if !selected.is_empty() { PinAssignments::<T>::insert(&cid_hash, &selected); Self::deposit_event(Event::AssignmentCreated(cid_hash, selected.len() as u32)); }
                 }
                 // 发起 Pin 请求（MVP 不在 body 中传 allocations，真实集群应携带）
-                let _ = Self::submit_pin_request::<T>(&endpoint, &token, cid_hash);
+                let _ = Self::submit_pin_request(&endpoint, &token, cid_hash);
                 PinStateOf::<T>::insert(&cid_hash, 1u8);
                 Self::deposit_event(Event::PinStateChanged(cid_hash, 1));
             }
@@ -439,12 +461,12 @@ pub mod pallet {
             if let Some(body) = peers_resp {
                 // 使用任意本地签名账户（期望为运营者账户）上报探测结果
                 let signer = Signer::<T, T::AuthorityId>::any_account();
-                if let Some((acc, _)) = signer.account() {
-                    if let Some(op) = Operators::<T>::get(&acc.id) {
-                        let ok = body.windows(op.peer_id.len()).any(|w| w == op.peer_id.as_slice());
-                        let _ = signer.send_signed_transaction(|_acct| Call::report_probe { ok });
-                    }
-                }
+                let _ = signer.send_signed_transaction(|acct| {
+                    let ok = if let Some(op) = Operators::<T>::get(&acct.id) {
+                        body.windows(op.peer_id.len()).any(|w| w == op.peer_id.as_slice())
+                    } else { false };
+                    Call::report_probe { ok }
+                });
             }
 
             // 巡检：针对已 Pinned/Pinning 的对象，GET /pins/{cid} 矫正副本；若缺少则再 Pin
@@ -459,7 +481,8 @@ pub mod pallet {
                         if ok_count < expect {
                             // 解析 /pins/{cid}，对比分配并触发降级/修复事件
                             let cid_str = Self::resolve_cid(&cid_hash);
-                            if let Some(body) = Self::submit_get_pin_status_collect(&endpoint, &token, &cid_str) {
+                            // 直接 GET /pins/{cid} 获取状态（Plan B 替换 submit_get_pin_status_collect）
+                            if let Some(body) = Self::http_get_bytes(&endpoint, &token, &alloc::format!("/pins/{}", cid_str)) {
                                 let mut online_peers: Vec<Vec<u8>> = Vec::new();
                                 if let Ok(json) = serde_json::from_slice::<JsonValue>(&body) {
                                     // 兼容两类结构：{peer_map:{"peerid":{status:"pinned"|...}}} 或 {allocations:["peerid",...]}
@@ -490,7 +513,7 @@ pub mod pallet {
                                 }
                             }
                             // 再 Pin（带退避）
-                            if !Self::backoff_should_delay(&cid_hash) { let _ = Self::submit_pin_request::<T>(&endpoint, &token, cid_hash); }
+                            let _ = Self::submit_pin_request(&endpoint, &token, cid_hash);
                             PinStateOf::<T>::insert(&cid_hash, 1u8);
                             Self::deposit_event(Event::PinStateChanged(cid_hash, 1));
                         }
@@ -506,17 +529,21 @@ pub mod pallet {
             let url = alloc::format!("{}{}", endpoint, path);
             let mut req = http::Request::get(&url);
             if let Some(t) = token.as_ref() {
-                let header = alloc::format!("Authorization: Bearer {}", t);
-                let _ = req.add_header(&header);
+                req = req.add_header("Authorization", &alloc::format!("Bearer {}", t));
             }
-            let timeout = sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3_000));
-            if let Ok(pending) = req.deadline(timeout).send() {
-                if let Ok(Ok(resp)) = pending.try_wait(timeout) {
-                    if resp.code / 100 == 2 { return Some(resp.body().collect::<Vec<u8>>()); }
-                }
+            let timeout = sp_io::offchain::timestamp()
+                .add(sp_runtime::offchain::Duration::from_millis(3_000));
+            let pending = req.deadline(timeout).send().ok()?;
+            // try_wait 返回 Result<Option<Response>, _> → ok()?.ok()? 解包为 Response
+            let resp = pending.try_wait(timeout).ok()?.ok()?;
+            let code: u16 = resp.code;
+            if (200..300).contains(&code) {
+                Some(resp.body().collect::<Vec<u8>>())
+            } else {
+                None
             }
-            None
         }
+
         /// 函数级详细中文注释：通过 OCW 发送 HTTP POST /pins 请求到 ipfs-cluster
         /// - 仅示例：构造最小 JSON 体，包含 `cid` 字段（此处我们只有 `cid_hash`，生产应由 OCW 从密文解出 CID）。
         /// - 返回：若 HTTP 状态为 2xx 则认为提交成功，随后发起 `mark_pinned` 外部交易。
@@ -525,80 +552,25 @@ pub mod pallet {
             token: &Option<String>,
             cid_hash: T::Hash,
         ) -> Result<(), ()> where T: CreateSignedTransaction<Call<T>> {
+            let cid_hex = hex::encode(cid_hash.as_ref());
+            // 构造最小 JSON（根据你的 API 需要调整）
+            let body_json = alloc::format!(r#"{{"cid":"{}"}}"#, cid_hex);
+            let body_vec: Vec<u8> = body_json.into_bytes();
             let url = alloc::format!("{}/pins", endpoint);
-            // 使用明文 CID 与 allocations 构造 JSON
-            let cid_plain = Self::resolve_cid(&cid_hash);
-            let mut json = String::from("{\"cid\":\"");
-            json.push_str(&cid_plain);
-            json.push_str("\",\"allocations\`:");
-            let mut alloc_json = String::from("[");
-            if let Some(ops) = PinAssignments::<T>::get(&cid_hash) {
-                let mut first = true;
-                for op in ops.iter() {
-                    if let Some(info) = Operators::<T>::get(op) {
-                        if let Ok(s) = core::str::from_utf8(&info.peer_id) {
-                            if !s.is_empty() {
-                                if !first { alloc_json.push(','); }
-                                first = false;
-                                alloc_json.push('"'); alloc_json.push_str(s); alloc_json.push('"');
-                            }
-                        }
-                    }
-                }
-            }
-            alloc_json.push(']');
-            json.push_str(&alloc_json);
-            json.push('}');
-            let json = json.replace("allocations`", "allocations");
-            let body = json.as_bytes().to_vec();
-            let mut req = http::Request::post(&url, body);
-            // Bearer 令牌
+            // 不用切片：使用 Vec<Vec<u8>> 作为 POST body，以满足 add_header/deadline 的 T: Default 约束
+            let chunks: Vec<Vec<u8>> = alloc::vec![body_vec];
+            let mut req = http::Request::post(&url, chunks);
             if let Some(t) = token.as_ref() {
-                let header = alloc::format!("Authorization: Bearer {}", t);
-                let _ = req.add_header(&header);
-                let _ = req.add_header("Content-Type: application/json");
+                req = req
+                    .add_header("Authorization", &alloc::format!("Bearer {}", t))
+                    .add_header("Content-Type", "application/json");
             }
-            let timeout = sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3_000));
+            let timeout = sp_io::offchain::timestamp()
+                .add(sp_runtime::offchain::Duration::from_millis(5_000));
             let pending = req.deadline(timeout).send().map_err(|_| ())?;
             let resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
-            let ok = resp.code / 100 == 2;
-
-            // 使用本地签名提交外部交易
-            let signer = Signer::<T, T::AuthorityId>::any_account();
-            if ok { let _ = signer.send_signed_transaction(|_acct| Call::mark_pinned { cid_hash, replicas: 1 }); }
-            else { let _ = signer.send_signed_transaction(|_acct| Call::mark_pin_failed { cid_hash, code: 500 }); }
-            Ok(())
-        }
-
-        /// 函数级详细中文注释：通过 OCW 发送 HTTP GET /pins/{cid} 查询状态（示例）
-        /// - 参数 `cid_str` 为明文 CID 字符串；生产中应由 OCW 从密文解出。
-        /// - 返回：2xx 视为成功，其余失败；不触发上链，仅作为探活。
-        fn submit_get_pin_status(
-            endpoint: &str,
-            token: &Option<String>,
-            cid_str: &str,
-        ) -> Result<(), ()> {
-            let url = alloc::format!("{}/pins/{}", endpoint, cid_str);
-            let mut req = http::Request::get(&url);
-            if let Some(t) = token.as_ref() {
-                let header = alloc::format!("Authorization: Bearer {}", t);
-                let _ = req.add_header(&header);
-            }
-            let timeout = sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3_000));
-            let pending = req.deadline(timeout).send().map_err(|_| ())?;
-            let _resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
-            Ok(())
-        }
-
-        /// 函数级详细中文注释：GET /pins/{cid} 并返回原始主体（便于 JSON 解析）
-        fn submit_get_pin_status_collect(endpoint: &str, token: &Option<String>, cid_str: &str) -> Option<Vec<u8>> {
-            let url = alloc::format!("{}/pins/{}", endpoint, cid_str);
-            let mut req = http::Request::get(&url);
-            if let Some(t) = token.as_ref() { let header = alloc::format!("Authorization: Bearer {}", t); let _ = req.add_header(&header); }
-            let timeout = sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3_000));
-            let pending = req.deadline(timeout).send().ok()?;
-            let resp = pending.try_wait(timeout).ok()??;
-            if resp.code / 100 == 2 { Some(resp.body().collect::<Vec<u8>>()) } else { None }
+            let code: u16 = resp.code;
+            if (200..300).contains(&code) { Ok(()) } else { Err(()) }
         }
 
         /// 函数级详细中文注释：通过 OCW 发送 HTTP DELETE /pins/{cid}（示例）
@@ -610,16 +582,19 @@ pub mod pallet {
             cid_str: &str,
         ) -> Result<(), ()> {
             let url = alloc::format!("{}/pins/{}", endpoint, cid_str);
-            let mut req = http::Request::post(&url, Vec::new());
-            let _ = req.add_header("X-HTTP-Method-Override: DELETE");
+            // 不用切片：空体使用 Vec<Vec<u8>>
+            let chunks: Vec<Vec<u8>> = alloc::vec![Vec::new()];
+            let mut req = http::Request::post(&url, chunks)
+                .add_header("X-HTTP-Method-Override", "DELETE");
             if let Some(t) = token.as_ref() {
-                let header = alloc::format!("Authorization: Bearer {}", t);
-                let _ = req.add_header(&header);
+                req = req.add_header("Authorization", &alloc::format!("Bearer {}", t));
             }
-            let timeout = sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3_000));
+            let timeout = sp_io::offchain::timestamp()
+                .add(sp_runtime::offchain::Duration::from_millis(5_000));
             let pending = req.deadline(timeout).send().map_err(|_| ())?;
-            let _resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
-            Ok(())
+            let resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
+            let code: u16 = resp.code;
+            if (200..300).contains(&code) { Ok(()) } else { Err(()) }
         }
     }
 
@@ -630,9 +605,9 @@ pub mod pallet {
         fn mark_pin_failed() -> Weight;
     }
     impl WeightInfo for () {
-        fn request_pin() -> Weight { 10_000 }
-        fn mark_pinned() -> Weight { 10_000 }
-        fn mark_pin_failed() -> Weight { 10_000 }
+        fn request_pin() -> Weight { Weight::from_parts(10_000, 0) }
+        fn mark_pinned() -> Weight { Weight::from_parts(10_000, 0) }
+        fn mark_pin_failed() -> Weight { Weight::from_parts(10_000, 0) }
     }
 }
 
