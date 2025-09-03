@@ -25,12 +25,13 @@
 
 // Substrate and Polkadot dependencies
 use frame_support::{
-	derive_impl, parameter_types,
-	traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, VariantCountOf},
-	weights::{
-		constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
-		IdentityFee, Weight,
-	},
+    derive_impl, parameter_types,
+    traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, VariantCountOf},
+    weights::{
+        constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
+        IdentityFee, Weight,
+    },
+    ensure,
 };
 use frame_system::limits::{BlockLength, BlockWeights};
 use alloc::vec::Vec;
@@ -92,6 +93,15 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 			(n, RuntimeCall::OtcListing(inner)) if n == OtcListingNsBytes::get() => matches!(
 				inner,
 				pallet_otc_listing::Call::create_listing { .. }
+			),
+			// 纪念馆/供奉：沿用证据命名空间演示开白名单（可按需新增独立 NS）
+			(n, RuntimeCall::MemoGrave(inner)) if n == EvidenceNsBytes::get() => matches!(
+				inner,
+				pallet_memo_grave::Call::create_hall { .. }
+			),
+			(n, RuntimeCall::MemoOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
+				inner,
+				pallet_memo_offerings::Call::offer { .. }
 			),
 			_ => false,
 		}
@@ -298,6 +308,10 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxComplaintsPerGrave = GraveMaxComplaints;
     type MaxAdminsPerGrave = GraveMaxAdmins;
     type MaxFollowers = GraveMaxFollowers;
+    type CreateHallWindow = ConstU32<600>;
+    type CreateHallMaxInWindow = ConstU32<10>;
+    type RequireKyc = ConstBool<false>;
+    type Kyc = KycByIdentity;
 }
 
 // ===== deceased 配置 =====
@@ -445,6 +459,9 @@ impl pallet_memo_offerings::Config for Runtime {
     type MaxOfferingsPerTarget = OfferMaxPerTarget;
     type MaxMediaPerOffering = OfferMaxMediaPerOffering;
     type MaxMemoLen = OfferMaxMemoLen;
+    type OfferWindow = ConstU32<600>;
+    type OfferMaxInWindow = ConstU32<100>;
+    type MinOfferAmount = ConstU128<1_000_000_000>; // 0.001 UNIT
     type TargetCtl = AllowAllTargetControl;
     type OnOffering = GraveOfferingHook;
     /// 函数级中文注释：管理员 Origin 注入；当前使用 Root（后续可切换为 council/多签）。
@@ -674,16 +691,51 @@ impl pallet_identity::Config for Runtime {
     #[cfg(feature = "runtime-benchmarks")]
     type BenchmarkHelper = ();
 }
+parameter_types! {
+    pub const OtcListingFee: u128 = 0;
+    pub const OtcListingBond: u128 = 0;
+    pub const OtcFeePalletId: PalletId = PalletId(*b"otc/fees");
+}
+pub struct OtcFeeReceiver;
+impl sp_core::Get<AccountId> for OtcFeeReceiver {
+    fn get() -> AccountId { OtcFeePalletId::get().into_account_truncating() }
+}
+
 impl pallet_otc_listing::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type MaxCidLen = OtcMaxCidLen;
+    /// 函数级中文注释：托管接口对接，用于库存模式在创建挂单时锁入 Maker 库存
+    type Escrow = pallet_escrow::Pallet<Runtime>;
+    /// 每块最多处理的过期挂单数
+    type MaxExpiringPerBlock = frame_support::traits::ConstU32<100>;
+    /// 启用 KYC 校验
+    type RequireKyc = frame_support::traits::ConstBool<true>;
+    /// 创建挂单限频窗口（块）
+    type CreateWindow = ConstU32<600>;
+    /// 窗口内最多创建数
+    type CreateMaxInWindow = ConstU32<5>;
+    /// 上架费（默认 0 关闭）
+    type ListingFee = OtcListingFee;
+    /// 保证金（默认 0 关闭）
+    type ListingBond = OtcListingBond;
+    /// 费用接收账户
+    type FeeReceiver = OtcFeeReceiver;
 }
 parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
 impl pallet_otc_order::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type ConfirmTTL = OtcOrderConfirmTTL;
+    /// 函数级中文注释：托管接口（用于订单锁定/释放/退款），对接 pallet-escrow
+    type Escrow = pallet_escrow::Pallet<Runtime>;
+    /// 每块最多处理过期订单数
+    type MaxExpiringPerBlock = frame_support::traits::ConstU32<200>;
+    /// 吃单与标记支付的限频窗口与上限（示例：各 600 块窗口内最多 30 次/100 次）
+    type OpenWindow = ConstU32<600>;
+    type OpenMaxInWindow = ConstU32<30>;
+    type PaidWindow = ConstU32<600>;
+    type PaidMaxInWindow = ConstU32<100>;
 }
 
 parameter_types! { pub const EscrowPalletId: frame_support::PalletId = frame_support::PalletId(*b"otc/escw"); }
@@ -708,15 +760,30 @@ impl pallet_arbitration::Config for Runtime {
 // ===== 仲裁域路由：把仲裁请求分发到对应业务 pallet（当前无业务接入） =====
 pub struct ArbitrationRouter;
 impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRouter {
-    fn can_dispute(_domain: [u8; 8], _who: &AccountId, _id: u64) -> bool { false }
-    fn apply_decision(_domain: [u8; 8], _id: u64, _decision: pallet_arbitration::pallet::Decision) -> frame_support::dispatch::DispatchResult {
-        Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
+    /// 函数级中文注释：支持 OTC 订单域 (b"otc_ord_") 的争议校验
+    fn can_dispute(domain: [u8; 8], who: &AccountId, id: u64) -> bool {
+        if domain == OtcOrderNsBytes::get() {
+            pallet_otc_order::pallet::Pallet::<Runtime>::can_dispute(who, id)
+        } else { false }
+    }
+    /// 函数级中文注释：将仲裁裁决应用到对应域
+    /// - Release → 托管释放给买家；Refund → 托管退款给卖家；Partial(bps) → 按 bps 分账
+    fn apply_decision(domain: [u8; 8], id: u64, decision: pallet_arbitration::pallet::Decision) -> frame_support::dispatch::DispatchResult {
+        use pallet_arbitration::pallet::Decision as D;
+        if domain == OtcOrderNsBytes::get() {
+            match decision {
+                D::Release => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_release(id),
+                D::Refund => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_refund(id),
+                D::Partial(bps) => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps),
+            }
+        } else {
+            Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
+        }
     }
 }
 
 // ===== exchange 配置 =====
 use frame_support::PalletId;
-use frame_support::parameter_types;
 
 // 已移除：pallet-exchange 参数与 Config
 
@@ -728,12 +795,16 @@ use frame_support::parameter_types;
 parameter_types! {
     /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
     pub const RefMaxHops: u32 = 10;
+    /// 函数级中文注释：每个推荐人最多可拥有的直接下级数量（反向索引容量上限）。
+    pub const RefMaxChildren: u32 = 100_000;
 }
 impl pallet_memo_referrals::Config for Runtime {
     /// 函数级中文注释：事件类型绑定到运行时事件。
     type RuntimeEvent = RuntimeEvent;
     /// 函数级中文注释：最大层级限制（防环遍历的边界）。
     type MaxHops = RefMaxHops;
+    /// 函数级中文注释：反向索引容量上限。
+    type MaxReferralsPerAccount = RefMaxChildren;
 }
 
 // ===== memo-endowment（基金会）配置 =====
@@ -847,6 +918,9 @@ impl pallet_memo_affiliate::Config for Runtime {
     type BurnBps = frame_support::traits::ConstU16<1000>; // 10%
     type TreasuryBps = frame_support::traits::ConstU16<800>; // 8%
 }
+
+// 运行时可读默认值说明（前端读取 storage）：
+// - memoAffiliate.budgetCapPerCycle / minStakeForReward / budgetSourceAccount / minQualifyingAction
 
 /// 函数级中文注释：分层比例数组 [L1=2000, L2=1000, L3..L15=400]
 pub struct LevelRatesArray;

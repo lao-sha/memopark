@@ -43,7 +43,16 @@ pub mod pallet {
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event<T: Config> { Locked { id: u64, amount: BalanceOf<T> }, Released { id: u64, to: T::AccountId, amount: BalanceOf<T> }, Refunded { id: u64, to: T::AccountId, amount: BalanceOf<T> } }
+    pub enum Event<T: Config> {
+        /// 锁定到托管账户（listing_id 或 order_id 作为 id）
+        Locked { id: u64, amount: BalanceOf<T> },
+        /// 从托管部分划转（多次分账）
+        Transfered { id: u64, to: T::AccountId, amount: BalanceOf<T>, remaining: BalanceOf<T> },
+        /// 全额释放
+        Released { id: u64, to: T::AccountId, amount: BalanceOf<T> },
+        /// 全额退款
+        Refunded { id: u64, to: T::AccountId, amount: BalanceOf<T> },
+    }
 
     #[pallet::error]
     pub enum Error<T> { Insufficient, NoLock }
@@ -69,6 +78,7 @@ pub mod pallet {
             let escrow = Self::account();
             T::Currency::transfer(&escrow, to, amount, ExistenceRequirement::KeepAlive).map_err(|_| Error::<T>::NoLock)?;
             if new.is_zero() { Locked::<T>::remove(id); }
+            Self::deposit_event(Event::Transfered { id, to: to.clone(), amount, remaining: new });
             Ok(())
         }
         fn release_all(id: u64, to: &T::AccountId) -> DispatchResult {

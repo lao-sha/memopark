@@ -7,7 +7,7 @@ use frame_support::{
 use frame_system::pallet_prelude::*;
 use sp_runtime::traits::AccountIdConversion;
 use sp_std::vec::Vec;
-use sp_arithmetic::Permill;
+use sp_runtime::Permill;
 
 pub use pallet::*;
 
@@ -41,9 +41,12 @@ pub mod pallet {
     use super::*;
     use frame_support::{
         pallet_prelude::*,
-        traits::{tokens::Balance as BalanceT, Currency},
+        traits::{tokens::Balance as BalanceT, Currency, ConstU32},
         PalletId,
     };
+    use frame_support::traits::StorageVersion;
+    use frame_support::weights::Weight;
+    use sp_runtime::traits::Saturating;
 
     /// 余额别名
     pub type BalanceOf<T> = <T as Config>::Balance;
@@ -77,13 +80,17 @@ pub mod pallet {
         type Sla: SlaProvider<Self::AccountId, BlockNumberFor<Self>>;
     }
 
+    // 存储版本常量（FRAME v2 需要常量参数）
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
     #[pallet::pallet]
-    #[pallet::storage_version(StorageVersion::new(0))]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// 基金参数（示例：目标收益率、结算周期等；此处骨架暂存占位字段）
+    /// 使用 BoundedVec 以满足 MaxEncodedLen 约束，限制为 8KiB。
     #[pallet::storage]
-    pub type EndowmentParams<T: Config> = StorageValue<_, Vec<u8>, OptionQuery>;
+    pub type EndowmentParams<T: Config> = StorageValue<_, BoundedVec<u8, ConstU32<8192>>, OptionQuery>;
 
     /// 审计年报哈希留档
     #[pallet::storage]
@@ -175,12 +182,15 @@ pub mod pallet {
 
         /// 函数级详细中文注释：更新基金参数（骨架）
         /// - 仅治理来源允许；
-        /// - 以原始字节形式暂存，后续迁移为结构体并提供 StorageVersion 变更。
+        /// - 以原始字节形式暂存，后续迁移为结构体并提供 StorageVersion 变更；
+        /// - 存储为 `BoundedVec<u8, 8192>`，若超过 8KiB 将拒绝（防止膨胀）。
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::set_params())]
         pub fn set_params(origin: OriginFor<T>, raw: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            EndowmentParams::<T>::put(raw);
+            let bounded: BoundedVec<u8, ConstU32<8192>> = BoundedVec::try_from(raw)
+                .map_err(|_| Error::<T>::OverAnnualBudget)?; // 复用错误码：可改为 ParamsTooLarge
+            EndowmentParams::<T>::put(bounded);
             Self::deposit_event(Event::ParamsUpdated);
             Ok(())
         }
@@ -286,7 +296,10 @@ pub mod pallet {
             let max_stale = MaxSlaStaleBlocks::<T>::get();
             T::Sla::visit(|op, ok, fail, last_update| {
                 if Blacklisted::<T>::contains_key(&op) { return; }
-                if max_stale != Default::default() && now.saturating_sub(last_update) > max_stale { return; }
+                if max_stale != Default::default() {
+                    let deadline = last_update.saturating_add(max_stale);
+                    if now > deadline { return; }
+                }
                 let ok_u = ok as u128; let fail_u = fail as u128;
                 let denom = ok_u + fail_u;
                 let score = if denom == 0 { 0 } else { ok_u * scale / denom };
@@ -304,7 +317,7 @@ pub mod pallet {
             let mut paid_total: BalanceOf<T> = Default::default();
             let mut skipped: u32 = 0;
             for (op, score) in items.into_iter() {
-                let share = sp_arithmetic::per_things::Permill::from_parts(((score.saturating_mul(1_000_000u128) / total_score) as u32).min(1_000_000));
+                let share = Permill::from_parts(((score.saturating_mul(1_000_000u128) / total_score) as u32).min(1_000_000));
                 let amt: BalanceOf<T> = share * effective_budget;
                 if amt == BalanceOf::<T>::default() { Self::deposit_event(Event::OperatorSkipped(op, 5)); skipped = skipped.saturating_add(1); continue; }
                 let recipient = PayoutRecipientOf::<T>::get(&op).unwrap_or(op.clone());
@@ -368,9 +381,9 @@ pub mod pallet {
     }
 
     impl WeightInfo for () {
-        fn publish_annual_report() -> Weight { 10_000 }
-        fn set_params() -> Weight { 10_000 }
-        fn close_epoch_and_pay() -> Weight { 50_000 }
+        fn publish_annual_report() -> Weight { Weight::from_parts(10_000, 0) }
+        fn set_params() -> Weight { Weight::from_parts(10_000, 0) }
+        fn close_epoch_and_pay() -> Weight { Weight::from_parts(50_000, 0) }
     }
 }
 

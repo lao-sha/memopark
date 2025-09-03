@@ -9,7 +9,9 @@ pub mod pallet {
     use super::*;
     use frame_support::{pallet_prelude::*, BoundedVec, traits::StorageVersion};
     use frame_system::pallet_prelude::*;
-    use sp_runtime::SaturatedConversion;
+    use sp_runtime::{SaturatedConversion, traits::Saturating};
+    use alloc::vec::Vec;
+    use codec::DecodeWithMemTracking;
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
     pub trait OnIntermentCommitted {
@@ -21,6 +23,9 @@ pub mod pallet {
     pub trait ParkAdminOrigin<Origin> {
         fn ensure(park_id: u64, origin: Origin) -> DispatchResult;
     }
+
+    /// 函数级中文注释：KYC 提供者抽象（由 runtime 实现，例如基于 pallet-identity 的判定）。
+    pub trait KycProvider<AccountId> { fn is_verified(who: &AccountId) -> bool; }
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -38,6 +43,14 @@ pub mod pallet {
         #[pallet::constant] type SlugLen: Get<u32>;
         /// 函数级中文注释：关注者上限
         #[pallet::constant] type MaxFollowers: Get<u32>;
+        /// 函数级中文注释：创建纪念馆限频窗口（块）。
+        #[pallet::constant] type CreateHallWindow: Get<BlockNumberFor<Self>>;
+        /// 函数级中文注释：窗口内最多创建数。
+        #[pallet::constant] type CreateHallMaxInWindow: Get<u32>;
+        /// 函数级中文注释：是否要求 KYC。
+        #[pallet::constant] type RequireKyc: Get<bool>;
+        /// 函数级中文注释：KYC 提供者（由 runtime 绑定）。
+        type Kyc: KycProvider<Self::AccountId>;
     }
 
     /// 函数级中文注释：墓地信息结构。仅存储加密 CID，不落明文。
@@ -129,7 +142,8 @@ pub mod pallet {
     pub type PendingApplications<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
     /// 可见性策略：是否公开供奉/留言/扫墓/关注
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    use sp_runtime::RuntimeDebug;
+    #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default, RuntimeDebug)]
     pub struct VisibilityPolicy { pub public_offering: bool, pub public_guestbook: bool, pub public_sweep: bool, pub public_follow: bool }
 
     #[pallet::storage]
@@ -160,6 +174,23 @@ pub mod pallet {
     /// 函数级中文注释：亲属关系声明策略：0=Auto（自动通过），1=Approve（需管理员审核）。
     #[pallet::storage]
     pub type KinshipPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u8, ValueQuery>;
+
+    // ===== Hall（纪念馆）增强：附加信息与风控 =====
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    pub struct HallInfo { pub kind: u8, pub primary_deceased_id: Option<u64> } // kind: 0=Person,1=Event
+    #[pallet::storage]
+    pub type HallInfoOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, HallInfo, OptionQuery>;
+
+    /// 纪念馆创建限频（账户 -> (窗口起点, 计数)）
+    #[pallet::storage]
+    pub type CreateHallRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+
+    #[pallet::type_value] pub fn DefaultCreateHallWindow<T: Config>() -> BlockNumberFor<T> { T::CreateHallWindow::get() }
+    #[pallet::type_value] pub fn DefaultCreateHallMaxInWindow<T: Config>() -> u32 { T::CreateHallMaxInWindow::get() }
+    #[pallet::type_value] pub fn DefaultRequireKyc<T: Config>() -> bool { T::RequireKyc::get() }
+    #[pallet::storage] pub type CreateHallWindowParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultCreateHallWindow<T>>;
+    #[pallet::storage] pub type CreateHallMaxInWindowParam<T: Config> = StorageValue<_, u32, ValueQuery, DefaultCreateHallMaxInWindow<T>>;
+    #[pallet::storage] pub type RequireKycParam<T: Config> = StorageValue<_, bool, ValueQuery, DefaultRequireKyc<T>>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -202,6 +233,14 @@ pub mod pallet {
         /// 关注/取消关注
         Followed { id: u64, who: T::AccountId },
         Unfollowed { id: u64, who: T::AccountId },
+        /// 纪念馆创建
+        HallCreated { id: u64, kind: u8, owner: T::AccountId, park_id: u64 },
+        /// 绑定主逝者
+        HallLinkedDeceased { id: u64, deceased_id: u64 },
+        /// 设置园区
+        HallSetPark { id: u64, park_id: u64 },
+        /// 风控参数更新
+        HallParamsUpdated,
     }
 
     #[pallet::error]
@@ -255,13 +294,97 @@ pub mod pallet {
             Graves::<T>::insert(id, &grave);
             GravesByPark::<T>::try_mutate(park_id, |v| v.try_push(id).map_err(|_| Error::<T>::CapacityExceeded))?;
             // 生成 10 位数字 Slug（基于 id 与创建者），确保唯一
-            let slug = Self::gen_unique_slug::<T::SlugLen>(id, &who)?;
+            let slug = Self::gen_unique_slug(id, &who)?;
             GraveBySlug::<T>::insert(&slug, id);
             SlugOf::<T>::insert(id, &slug);
             // 默认策略：Open
             JoinPolicyOf::<T>::insert(id, 0u8);
             Self::deposit_event(Event::GraveCreated { id, park_id, owner: who });
             Self::deposit_event(Event::SlugAssigned { id, slug });
+            Ok(())
+        }
+
+        /// 函数级中文注释：创建纪念馆（Hall）。
+        /// - kind: 0=Person,1=Event；风控：KYC 可选、创建限频。
+        #[pallet::weight(10_000)]
+        pub fn create_hall(
+            origin: OriginFor<T>,
+            park_id: u64,
+            kind: u8,
+            capacity: Option<u16>,
+            metadata_cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            // KYC
+            if RequireKycParam::<T>::get() { ensure!(<T as Config>::Kyc::is_verified(&who), Error::<T>::PolicyViolation); }
+            // 限频
+            let now = <frame_system::Pallet<T>>::block_number();
+            let (win_start, cnt) = CreateHallRate::<T>::get(&who);
+            let window = CreateHallWindowParam::<T>::get();
+            let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
+            ensure!(cnt < CreateHallMaxInWindowParam::<T>::get(), Error::<T>::PolicyViolation);
+            CreateHallRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
+
+            ensure!(kind == 0 || kind == 1, Error::<T>::InvalidKind);
+            let id = NextGraveId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
+            let grave = Grave::<T> { park_id, owner: who.clone(), admin_group: None, kind_code: 0, capacity: capacity.unwrap_or(1), metadata_cid, active: true };
+            Graves::<T>::insert(id, &grave);
+            GravesByPark::<T>::mutate(park_id, |v| { let _ = v.try_push(id); });
+            let slug = Self::gen_unique_slug(id, &who)?;
+            GraveBySlug::<T>::insert(&slug, id);
+            SlugOf::<T>::insert(id, &slug);
+            JoinPolicyOf::<T>::insert(id, 0u8);
+            HallInfoOf::<T>::insert(id, HallInfo { kind, primary_deceased_id: None });
+            Self::deposit_event(Event::GraveCreated { id, park_id, owner: who.clone() });
+            Self::deposit_event(Event::SlugAssigned { id, slug });
+            Self::deposit_event(Event::HallCreated { id, kind, owner: who, park_id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：为纪念馆绑定主逝者（仅馆主或园区管理员）。
+        #[pallet::weight(10_000)]
+        pub fn attach_deceased(origin: OriginFor<T>, id: u64, deceased_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            if let Some(g) = Graves::<T>::get(id) { if who != g.owner { T::ParkAdmin::ensure(g.park_id, origin)?; } } else { return Err(Error::<T>::NotFound.into()); }
+            HallInfoOf::<T>::mutate(id, |m| { let mut v = m.take().unwrap_or_default(); v.primary_deceased_id = Some(deceased_id); *m = Some(v); });
+            Self::deposit_event(Event::HallLinkedDeceased { id, deceased_id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置纪念馆所属园区（仅馆主或园区管理员）。
+        #[pallet::weight(10_000)]
+        pub fn set_park(origin: OriginFor<T>, id: u64, park_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                if who != g.owner { T::ParkAdmin::ensure(g.park_id, origin.clone())?; }
+                if g.park_id != park_id {
+                    let old = g.park_id;
+                    let mut lst = GravesByPark::<T>::get(old);
+                    if let Some(pos) = lst.iter().position(|x| *x == id) { lst.swap_remove(pos); }
+                    GravesByPark::<T>::insert(old, lst);
+                    GravesByPark::<T>::mutate(park_id, |v| { let _ = v.try_push(id); });
+                    g.park_id = park_id;
+                }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::HallSetPark { id, park_id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理更新 Hall 创建风控参数（Root）。
+        #[pallet::weight(10_000)]
+        pub fn set_hall_params(
+            origin: OriginFor<T>,
+            create_window: Option<BlockNumberFor<T>>,
+            create_max_in_window: Option<u32>,
+            require_kyc: Option<bool>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            if let Some(v) = create_window { CreateHallWindowParam::<T>::put(v); }
+            if let Some(v) = create_max_in_window { CreateHallMaxInWindowParam::<T>::put(v); }
+            if let Some(v) = require_kyc { RequireKycParam::<T>::put(v); }
+            Self::deposit_event(Event::HallParamsUpdated);
             Ok(())
         }
 
@@ -654,7 +777,7 @@ pub mod pallet {
         /// 函数级中文注释：生成唯一的 10 位数字 Slug。
         /// - 基于 (id, who, block_number) 的 blake2 哈希映射为 10 位数字；
         /// - 若冲突则尝试多次（最多 10 次），最终回退为 id 左填充 0 的 10 位。
-        pub fn gen_unique_slug<const L: u32>(id: u64, who: &T::AccountId) -> Result<BoundedVec<u8, T::SlugLen>, Error<T>> {
+        pub fn gen_unique_slug(id: u64, who: &T::AccountId) -> Result<BoundedVec<u8, T::SlugLen>, Error<T>> {
             let mut try_idx: u8 = 0;
             while try_idx < 10 {
                 let now = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>();

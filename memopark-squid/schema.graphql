@@ -1,0 +1,164 @@
+# Listing（挂单）与时间线
+type Listing @entity {
+  id: ID!
+  maker: String!
+  side: Int!
+  base: Int!
+  quote: Int!
+  price: BigInt!
+  minQty: BigInt!
+  maxQty: BigInt!
+  total: BigInt!
+  remaining: BigInt!
+  partial: Boolean!
+  expireAt: Int!
+  active: Boolean!
+  createdAt: Int!
+  actions: [ListingAction!]! @derivedFrom(field: "listing")
+}
+
+type ListingAction @entity {
+  id: ID!
+  listing: Listing!
+  kind: String!
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+
+# Order（订单）与时间线
+type Order @entity {
+  id: ID!
+  listingId: BigInt!
+  maker: String!
+  taker: String!
+  price: BigInt!
+  qty: BigInt!
+  amount: BigInt!
+  state: String!
+  createdAt: Int!
+  expireAt: Int!
+  actions: [OrderAction!]! @derivedFrom(field: "order")
+}
+
+type OrderAction @entity {
+  id: ID!
+  order: Order!
+  kind: String!
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+
+
+# Arbitration（仲裁案件与时间线）
+type ArbitrationCase @entity {
+  id: ID!              # 组合键："<domainHex>-<id>"
+  domain: String!
+  objectId: BigInt!
+  state: String!       # Disputed | Closed
+  openedAt: Int!
+  closedAt: Int
+  decision: String     # Release | Refund | Partial
+  bps: Int
+  evidenceCount: Int!
+  actions: [ArbitrationAction!]! @derivedFrom(field: "case")
+}
+
+type ArbitrationAction @entity {
+  id: ID!
+  case: ArbitrationCase!
+  kind: String!        # Disputed | Arbitrated | AppendEvidence
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+
+# Notification（事件中心，统一时间线）
+type Notification @entity {
+  id: ID!
+  module: String!
+  kind: String!
+  refId: String
+  actor: String
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+
+# 仲裁日指标（仪表盘）
+type ArbDailyStat @entity {
+  id: ID!        # day key (blockHeight / blocksPerDay)
+  day: Int!
+  disputes: Int!
+  arbitrated: Int!
+  release: Int!
+  refund: Int!
+  partial: Int!
+}
+
+# Hall（纪念馆）与时间线、供奉/留言/媒体（只读层）
+type Hall @entity {
+  id: ID!                # grave_id
+  owner: String!
+  parkId: BigInt!
+  kind: String!
+  primaryDeceasedId: BigInt
+  slug: String
+  createdAt: Int!
+  active: Boolean!
+  offeringsCount: Int!
+  offeringsAmount: BigInt!
+  actions: [HallAction!]! @derivedFrom(field: "hall")
+}
+
+type HallAction @entity {
+  id: ID!
+  hall: Hall!
+  kind: String!          # HallCreated | HallLinkedDeceased | HallSetPark | VisibilityUpdated
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+
+type Offering @entity {
+  id: ID!
+  hallId: BigInt!
+  who: String!
+  amount: BigInt!
+  block: Int!
+}
+
+type GuestbookMessage @entity {
+  id: ID!
+  hallId: BigInt!
+  who: String!
+  text: String!
+  block: Int!
+}
+
+type MediaItem @entity {
+  id: ID!
+  hallId: BigInt!
+  kind: String!
+  uri: String!
+  block: Int!
+}
+
+# 推荐关系
+type ReferralLink @entity {
+  id: ID!
+  who: String!
+  sponsor: String!
+  block: Int!
+}
+
+# Offering 价格快照（治理变更时间轴）
+type OfferingPriceSnapshot @entity {
+  id: ID!                 # 组合键："<kindCode>-<block>"
+  kindCode: Int!
+  fixedPrice: BigInt
+  unitPricePerWeek: BigInt
+  block: Int!
+}
+

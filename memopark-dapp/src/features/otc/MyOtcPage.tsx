@@ -1,6 +1,7 @@
 import React from 'react'
-import { Alert, Tabs, List, Skeleton, Button, Tag, Typography } from 'antd'
+import { Alert, Tabs, List, Skeleton, Button, Tag, Typography, message } from 'antd'
 import { query } from '../../lib/graphql'
+import { signAndSend } from '../../lib/polkadot'
 
 /**
  * 函数级详细中文注释：我的OTC（Subsquid + 链上操作）
@@ -43,7 +44,13 @@ const MyOtcPage: React.FC = () => {
         <Tabs activeKey={tab} onChange={k=>setTab(k as any)} items={[
           { key:'listings', label:'我的挂单', children: loading? <Skeleton active/> : (
             <List dataSource={items} renderItem={(it:any)=> (
-              <List.Item actions={[<Button key="cancel" size="small">取消挂单</Button>] }>
+              <List.Item actions={[<Button key="cancel" size="small" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const tx = await signAndSend(addr,'otcListing','cancelListing',[Number(it.id)])
+                  message.success(`已提交取消：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>取消挂单</Button>] }>
                 <List.Item.Meta
                   title={`#${it.id} ${it.base}/${it.quote} 价格 ${String(it.price)}`}
                   description={<>
@@ -58,7 +65,54 @@ const MyOtcPage: React.FC = () => {
           ) },
           { key:'orders', label:'我的订单', children: loading? <Skeleton active/> : (
             <List dataSource={items} renderItem={(it:any)=> (
-              <List.Item actions={[<Button key="paid" size="small">标记已付</Button>, <Button key="dispute" size="small">发起争议</Button>] }>
+              <List.Item actions={[
+                <Button key="paid" size="small" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const tx = await signAndSend(addr,'otcOrder','markPaid',[Number(it.id)])
+                  message.success(`已标记：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>标记已付</Button>,
+              <Button key="release" size="small" type="primary" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const tx = await signAndSend(addr,'otcOrder','release',[Number(it.id)])
+                  message.success(`已放行：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>放行(卖家)</Button>,
+              <Button key="timeout" size="small" danger onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const tx = await signAndSend(addr,'otcOrder','refundOnTimeout',[Number(it.id)])
+                  message.success(`已提交：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>超时退款</Button>,
+              <Button key="revealPay" size="small" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const payload = prompt('输入支付明文')||''
+                  const salt = prompt('输入 salt')||''
+                  const tx = await signAndSend(addr,'otcOrder','revealPayment',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+                  message.success(`已揭示支付：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>揭示支付</Button>,
+              <Button key="revealContact" size="small" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const payload = prompt('输入联系方式明文')||''
+                  const salt = prompt('输入 salt')||''
+                  const tx = await signAndSend(addr,'otcOrder','revealContact',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+                  message.success(`已揭示联系方式：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>揭示联系方式</Button>,
+              <Button key="dispute" size="small" onClick={async()=>{
+                try{
+                  if(!addr) throw new Error('请先填写地址')
+                  const tx = await signAndSend(addr,'otcOrder','markDisputed',[Number(it.id)])
+                  message.success(`已发起：${tx}`)
+                }catch(e:any){ message.error(e?.message||'失败') }
+              }}>发起争议</Button>
+            ] }>
                 <List.Item.Meta
                   title={`订单 #${it.id} 挂单 ${String(it.listingId)} 金额 ${String(it.amount)}`}
                   description={<>

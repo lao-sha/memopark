@@ -23,7 +23,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use core::convert::TryInto;
-    use frame_support::sp_runtime::traits::{AccountIdConversion};
+    use frame_support::sp_runtime::traits::{AccountIdConversion, Saturating};
     use pallet_memo_referrals::ReferralProvider;
 
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -80,6 +80,32 @@ pub mod pallet {
     #[pallet::storage]
     pub type Mode<T: Config> = StorageValue<_, SettlementMode, ValueQuery>;
 
+    // ====== 可治理参数（以存储为准；常量/默认由 runtime 注入） ======
+    #[pallet::type_value]
+    pub fn DefaultBudgetSourceAccount<T: Config>() -> T::AccountId { T::EscrowPalletId::get().into_account_truncating() }
+    #[pallet::type_value]
+    pub fn DefaultBudgetCapPerCycle<T: Config>() -> BalanceOf<T> { 0u32.into() }
+    #[pallet::type_value]
+    pub fn DefaultMinStakeForReward<T: Config>() -> BalanceOf<T> { 0u32.into() }
+    #[pallet::type_value]
+    pub fn DefaultMinQualActions<T: Config>() -> u32 { 0u32 }
+
+    /// 支付预算来源账户（默认为 PalletId 派生的托管账户）。
+    #[pallet::storage]
+    pub type BudgetSourceAccount<T: Config> = StorageValue<_, T::AccountId, ValueQuery, DefaultBudgetSourceAccount<T>>;
+    /// 每周期（周）奖励上限（仅对发放给上级的份额生效，基础销毁/国库不计入此上限）。0 表示不限制。
+    #[pallet::storage]
+    pub type BudgetCapPerCycle<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultBudgetCapPerCycle<T>>;
+    /// 周期内已累计用于发放上级奖励的金额（记账），用于上限控制。
+    #[pallet::storage]
+    pub type CycleRewardUsed<T: Config> = StorageMap<_, Blake2_128Concat, u32, BalanceOf<T>, ValueQuery>;
+    /// 最小参与门槛：上级需持有至少该余额方可获得奖励（0 表示不限制）。
+    #[pallet::storage]
+    pub type MinStakeForReward<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinStakeForReward<T>>;
+    /// 最小有效行为次数（占位，默认 0，联动外部行为统计后启用）。
+    #[pallet::storage]
+    pub type MinQualifyingAction<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMinQualActions<T>>;
+
     /// 函数级中文注释：账户活跃截至周（含）。
     #[pallet::storage]
     pub type ActiveUntilWeek<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
@@ -125,6 +151,10 @@ pub mod pallet {
         ActiveMarked { who: T::AccountId, until_week: u32 },
         /// 结算模式变更。
         ModeChanged { mode_code: u8 },
+        /// 已支付给账户的奖励。
+        RewardClaimed { cycle: u32, to: T::AccountId, amount: BalanceOf<T> },
+        /// 参数更新（预算来源/上限/门槛）。
+        RewardParamsUpdated,
     }
 
     #[pallet::error]
@@ -182,13 +212,14 @@ pub mod pallet {
             ensure!(!list.is_empty() || BurnAccrued::<T>::get().0 == cycle || TreasuryAccrued::<T>::get().0 == cycle, Error::<T>::NothingToSettle);
 
             let mut cursor = SettleCursor::<T>::get(cycle);
-            let escrow = T::EscrowPalletId::get().into_account_truncating();
+            let src = BudgetSourceAccount::<T>::get();
             let mut paid: u32 = 0;
             while (cursor as usize) < list.len() && paid < max_pay {
                 let who = &list[cursor as usize];
                 let amt = Entitlement::<T>::take(cycle, who);
                 if !amt.is_zero() {
-                    let _ = T::Currency::transfer(&escrow, who, amt, KeepAlive);
+                    let _ = T::Currency::transfer(&src, who, amt, KeepAlive);
+                    Self::deposit_event(Event::RewardClaimed { cycle, to: who.clone(), amount: amt });
                     paid = paid.saturating_add(1);
                 }
                 cursor = cursor.saturating_add(1);
@@ -199,17 +230,39 @@ pub mod pallet {
             if (cursor as usize) >= list.len() {
                 let (_, burn_amt) = BurnAccrued::<T>::take();
                 if !burn_amt.is_zero() {
-                    let _ = T::Currency::transfer(&escrow, &T::BurnAccount::get(), burn_amt, KeepAlive);
+                    let _ = T::Currency::transfer(&src, &T::BurnAccount::get(), burn_amt, KeepAlive);
                 }
                 let (_, trea_amt) = TreasuryAccrued::<T>::take();
                 if !trea_amt.is_zero() {
-                    let _ = T::Currency::transfer(&escrow, &T::TreasuryAccount::get(), trea_amt, KeepAlive);
+                    let _ = T::Currency::transfer(&src, &T::TreasuryAccount::get(), trea_amt, KeepAlive);
                 }
                 EntitledAccounts::<T>::remove(cycle);
                 SettleCursor::<T>::remove(cycle);
+                CycleRewardUsed::<T>::remove(cycle);
             }
 
             Self::deposit_event(Event::Settled { cycle, paid });
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理更新奖励参数（预算来源/周期上限/门槛）。
+        /// - 未提供的参数保持不变；
+        /// - 预算来源为直接支付账户（默认为 EscrowPalletId 派生账户）。
+        #[pallet::call_index(2)]
+        #[pallet::weight(10_000)]
+        pub fn set_reward_params(
+            origin: OriginFor<T>,
+            budget_source: Option<T::AccountId>,
+            budget_cap_per_cycle: Option<BalanceOf<T>>,
+            min_stake_for_reward: Option<BalanceOf<T>>,
+            min_qual_actions: Option<u32>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            if let Some(acc) = budget_source { BudgetSourceAccount::<T>::put(acc); }
+            if let Some(cap) = budget_cap_per_cycle { BudgetCapPerCycle::<T>::put(cap); }
+            if let Some(ms) = min_stake_for_reward { MinStakeForReward::<T>::put(ms); }
+            if let Some(mq) = min_qual_actions { MinQualifyingAction::<T>::put(mq); }
+            Self::deposit_event(Event::RewardParamsUpdated);
             Ok(())
         }
     }
@@ -276,14 +329,37 @@ pub mod pallet {
                     Some(ref up) => {
                         let active = ActiveUntilWeek::<T>::get(up) >= cur_week;
                         let can_take = (DirectActiveCount::<T>::get(up) / per_need) >= layer;
-                        if active && can_take {
-                            Entitlement::<T>::mutate(cur_week, up, |v| *v += share);
-                            let mut idx = EntitledAccounts::<T>::get(cur_week);
-                            if !idx.iter().any(|x| x == up) {
-                                let _ = idx.try_push(up.clone());
-                                EntitledAccounts::<T>::insert(cur_week, idx);
+                        // 若该层推荐人被封禁/不满足门槛/预算已达上限，则将份额归入国库累积（treasury_extra）
+                        let banned = <T as Config>::Referrals::is_banned(up);
+                        let stake_ok = {
+                            let min_stake = MinStakeForReward::<T>::get();
+                            if min_stake == 0u32.into() { true } else { T::Currency::free_balance(up) >= min_stake }
+                        };
+                        if active && can_take && stake_ok && !banned {
+                            // 预算上限控制
+                            let cap = BudgetCapPerCycle::<T>::get();
+                            if cap.is_zero() {
+                                Entitlement::<T>::mutate(cur_week, up, |v| *v += share);
+                                let mut idx = EntitledAccounts::<T>::get(cur_week);
+                                if !idx.iter().any(|x| x == up) { let _ = idx.try_push(up.clone()); EntitledAccounts::<T>::insert(cur_week, idx); }
+                                Self::deposit_event(Event::Entitled { cycle: cur_week, to: up.clone(), amount: share });
+                            } else {
+                                let used = CycleRewardUsed::<T>::get(cur_week);
+                                let allowed = cap.saturating_sub(used);
+                                if allowed.is_zero() {
+                                    treasury_extra += share;
+                                } else {
+                                    let alloc = if share > allowed { allowed } else { share };
+                                    if !alloc.is_zero() {
+                                        Entitlement::<T>::mutate(cur_week, up, |v| *v += alloc);
+                                        let mut idx = EntitledAccounts::<T>::get(cur_week);
+                                        if !idx.iter().any(|x| x == up) { let _ = idx.try_push(up.clone()); EntitledAccounts::<T>::insert(cur_week, idx); }
+                                        CycleRewardUsed::<T>::insert(cur_week, used.saturating_add(alloc));
+                                        Self::deposit_event(Event::Entitled { cycle: cur_week, to: up.clone(), amount: alloc });
+                                    }
+                                    if share > allowed { treasury_extra += share - allowed; }
+                                }
                             }
-                            Self::deposit_event(Event::Entitled { cycle: cur_week, to: up.clone(), amount: share });
                         } else {
                             treasury_extra += share;
                         }
@@ -297,7 +373,7 @@ pub mod pallet {
             }
 
             // 其他两部分：burn 与 treasury 基础 + 未匹配层数
-            let mut burn = base / 10_000u32.into() * (burn_bps as u32).into();
+            let burn = base / 10_000u32.into() * (burn_bps as u32).into();
             let mut trea = base / 10_000u32.into() * (tres_bps as u32).into();
             trea += treasury_extra;
             BurnAccrued::<T>::mutate(|x| { x.0 = cur_week; x.1 += burn; });
@@ -313,6 +389,8 @@ pub mod pallet {
         }
     }
 
+    
+
     /// 函数级中文注释：只读推荐关系视图（复用 referrals Pallet）。
     pub trait ReferralView<T: Config> {
         fn sponsor_of(who: &T::AccountId) -> Option<T::AccountId>;
@@ -322,7 +400,7 @@ pub mod pallet {
     }
 }
 
-impl<T: pallet::Config> ConsumptionReporter<T::AccountId, BalanceOf<T>, BlockNumberFor<T>> for Pallet<T> {
+impl<T: pallet::Config> ConsumptionReporter<<T as frame_system::Config>::AccountId, pallet::BalanceOf<T>, pallet::BlockNumberFor<T>> for pallet::Pallet<T> {
     /// 函数级中文注释：供奉来源调用：标记活跃 + 记账式 15 层压缩分配；即时模式下仍优先记账，再由治理触发批量支付。
     fn report(who: &T::AccountId, amount: BalanceOf<T>, _meta: Option<(u8, u64)>, now: BlockNumberFor<T>, duration_weeks: Option<u32>) {
         Pallet::<T>::mark_active(who, now, duration_weeks);
