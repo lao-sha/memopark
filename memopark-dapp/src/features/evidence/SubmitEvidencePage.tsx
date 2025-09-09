@@ -67,11 +67,11 @@ const SubmitEvidencePage: React.FC = () => {
       const method = values.method
       if (method === 'commit') {
         const args = [values.domain, values.target_id, [], [], [], values.memo || null]
-        const txHash = await wallet.signAndSend('evidence', 'commit', args)
+        const txHash = await wallet.signAndSendLocal('evidence', 'commit', args)
         message.success(`已上链：${txHash}`)
       } else if (method === 'commitHash') {
         const args = [values.ns, values.subject_id, values.commit, values.memo || null]
-        const txHash = await wallet.signAndSend('evidence', 'commitHash', args)
+        const txHash = await wallet.signAndSendLocal('evidence', 'commitHash', args)
         message.success(`已上链：${txHash}`)
       }
     } catch (e: any) {

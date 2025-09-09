@@ -58,7 +58,7 @@ const CreateListingForm: React.FC = () => {
         Number(values.expire_at),
         null,
       ]
-      const txHash = await wallet.signAndSend('otcListing', 'createListing', args)
+      const txHash = await wallet.signAndSendLocal('otcListing', 'createListing', args)
       message.success(`已上链：${txHash}`)
       form.resetFields()
     } catch (e: any) {

@@ -1,74 +1,138 @@
-import React, { useState } from 'react'
-import { Button, Card, Form, Input, Typography } from 'antd'
+import React, { useState } from 'react';
+import { Card, Button, Typography, Alert, Space } from 'antd';
+import { WalletOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useWallet } from '../../providers/WalletProvider';
+
+const { Title, Text } = Typography;
 
 /**
- * 函数级详细中文注释：DApp 登录注册页面（移动端）
- * - 两个主动作：创建新钱包（注册）/ 使用口令登录（已有账号）。
- * - 仅做前端占位与校验，后续可对接“托管私钥”网关：注册时请求创建托管账户并返回口令；登录时校验口令并返回会话 token。
+ * 函数级详细中文注释：认证页面组件
+ * - 显示链连接状态
+ * - 本地钱包模式：不提供扩展连接与账户选择
  */
 const AuthPage: React.FC = () => {
-  const [mode, setMode] = useState<'register' | 'login'>('register')
-  const [form] = Form.useForm()
+  console.log('AuthPage组件开始渲染');
+  
+  const { 
+    api, 
+    isConnected, 
+    isLoading, 
+    error 
+  } = useWallet();
+  
+  const [connecting] = useState(false);
 
   /**
-   * 函数级详细中文注释：提交处理（占位）
-   * - 注册：采集昵称/手机号(可选)，生成随机助记词（此处不实现），展示“保存口令”提示。
-   * - 登录：采集口令，调用后端校验换取会话。
+   * 函数级详细中文注释：处理钱包连接
+   * - 设置连接状态
+   * - 调用钱包连接函数
+   * - 处理连接错误
    */
-  const onFinish = async (values: any) => {
-    if (mode === 'register') {
-      // TODO: 对接后端创建托管账户
-      alert('注册成功（占位）。请妥善保存生成的口令。')
-    } else {
-      // TODO: 对接后端登录
-      alert('登录成功（占位）。')
-    }
-    console.log('auth submit:', mode, values)
-  }
+  const handleConnectWallet = async () => {};
+
+  console.log('AuthPage渲染状态:', { api: !!api, isConnected, hasError: !!error });
 
   return (
-    <div style={{ maxWidth: 420, margin: '0 auto', padding: '16px 12px' }}>
-      <div style={{ textAlign: 'center', marginTop: 24 }}>
-        <img src="https://picsum.photos/seed/wallet/240/180" style={{ width: 180, height: 135, objectFit: 'cover' }} />
-        <Typography.Title level={3} style={{ marginTop: 16, color: '#16a34a' }}>钱包设置</Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-          创建新的电子钱包或使用口令登录（如果已有账户）
-        </Typography.Paragraph>
-      </div>
+    <div style={{ 
+      padding: '20px', 
+      maxWidth: '640px', 
+      margin: '0 auto',
+      minHeight: '100vh',
+      background: '#f5f5f5',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <Card style={{ width: '100%', maxWidth: '500px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <Title level={2} style={{ color: '#1890ff' }}>
+            <WalletOutlined /> Memopark
+          </Title>
+          <Text type="secondary">纪念园区块链应用</Text>
+        </div>
 
-      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-        <Button block type={mode === 'register' ? 'primary' : 'default'} size="large" onClick={() => setMode('register')}>创建一个新钱包</Button>
-        <Button block type={mode === 'login' ? 'primary' : 'default'} size="large" onClick={() => setMode('login')}>使用口令登录</Button>
-      </div>
+        {/* 区块链连接状态 */}
+        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+          <Space>
+            <Text type="secondary">区块链状态:</Text>
+            {api ? (
+              <Text style={{ color: '#52c41a' }}>✅ 已连接</Text>
+            ) : (
+              <Text style={{ color: '#ff4d4f' }}>❌ 未连接</Text>
+            )}
+          </Space>
+        </div>
 
-      <Card style={{ marginTop: 16 }}>
-        {mode === 'register' ? (
-          <Form form={form} layout="vertical" onFinish={onFinish}>
-            <Form.Item name="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]}>
-              <Input placeholder="用于展示的昵称" />
-            </Form.Item>
-            <Form.Item name="phone" label="手机号（可选）">
-              <Input placeholder="便于找回与通知（可选）" />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" block size="large">创建钱包（生成口令）</Button>
-            </Form.Item>
-          </Form>
+        {/* 错误信息显示 */}
+        {error && (
+          <Alert 
+            message="连接提示" 
+            description={error} 
+            type="warning" 
+            style={{ marginBottom: '16px' }}
+            showIcon
+            action={
+              <Button size="small" icon={<ReloadOutlined />} onClick={handleConnectWallet}>
+                重试
+              </Button>
+            }
+          />
+        )}
+
+        {/* 主要内容区域 */}
+        {!isConnected ? (
+          <div style={{ textAlign: 'center' }}>
+            <Button 
+              type="primary" 
+              size="large"
+              icon={<WalletOutlined />}
+              onClick={()=>{}}
+              loading={connecting}
+              style={{ width: '100%', height: '50px' }}
+              disabled={!api}
+            >
+              { !api ? '等待区块链节点连接...' : '本地钱包模式' }
+            </Button>
+            
+            <div style={{ marginTop: '16px', padding: '16px', background: '#f9f9f9', borderRadius: '8px' }}>
+              <Text type="secondary" style={{ fontSize: '14px' }}>
+                🔹 本地钱包模式，无需浏览器扩展<br />
+                🔹 如果长时间无法连接，请检查区块链节点是否正在运行<br />
+                🔹 节点地址：ws://localhost:9944
+              </Text>
+            </div>
+          </div>
         ) : (
-          <Form form={form} layout="vertical" onFinish={onFinish}>
-            <Form.Item name="passphrase" label="登录口令" rules={[{ required: true, message: '请输入口令' }]}>
-              <Input.Password placeholder="请输入后端发放的登录口令" />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" block size="large">登录</Button>
-            </Form.Item>
-          </Form>
+          <div>
+            <Alert message="🎉 链连接成功！" type="success" style={{ marginBottom: '16px' }} showIcon />
+
+            <div style={{ textAlign: 'center', marginTop: '24px' }}>
+              <Button 
+                type="primary" 
+                size="large" 
+                style={{ width: '100%', height: '50px' }}
+              >
+                🚀 进入应用
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* 调试信息 */}
+        {process.env.NODE_ENV === 'development' && (
+          <Card size="small" style={{ marginTop: '16px', background: '#fafafa' }} title="🔧 调试信息">
+            <Text style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+              • API连接: {api ? '✅ Connected' : '❌ Disconnected'}<br />
+              • 账户数量: n/a（本地钱包）<br />
+              • 钱包状态: {isConnected ? '✅ Connected' : '❌ Disconnected'}<br />
+              • 加载状态: {isLoading ? '⏳ Loading' : '✅ Ready'}<br />
+              • 错误状态: {error ? '❌ Has Error' : '✅ No Error'}
+            </Text>
+          </Card>
         )}
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default AuthPage
-
-
+export default AuthPage;

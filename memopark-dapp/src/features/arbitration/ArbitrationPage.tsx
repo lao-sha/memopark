@@ -59,11 +59,11 @@ const ArbitrationPage: React.FC = () => {
       if (!address) throw new Error('缺少地址(owner) 或未连接钱包')
       if (values.method === 'dispute') {
         const args = [values.domain, values.id, []]
-        const txHash = await wallet.signAndSend('arbitration', 'dispute', args)
+        const txHash = await wallet.signAndSendLocal('arbitration', 'dispute', args)
         message.success(`已上链：${txHash}`)
       } else if (values.method === 'arbitrate') {
         const args = [values.domain, values.id, values.decision_code, values.bps || null]
-        const txHash = await wallet.signAndSend('arbitration', 'arbitrate', args)
+        const txHash = await wallet.signAndSendLocal('arbitration', 'arbitrate', args)
         message.success(`已上链：${txHash}`)
       }
     } catch (e: any) {

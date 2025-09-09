@@ -7,10 +7,7 @@ use frame_support::{
     traits::{Currency, Get, ReservableCurrency},
     BoundedVec,
 };
-use frame_system::{
-    pallet_prelude::*,
-    offchain::{AppCrypto, CreateSignedTransaction, Signer},
-};
+use frame_system::pallet_prelude::*;
 use pallet_memo_endowment::EndowmentInterface;
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{offchain::{http, StorageKind}, traits::AtLeast32BitUnsigned};
@@ -41,7 +38,7 @@ pub mod pallet {
     use frame_support::traits::StorageVersion;
     use frame_support::traits::ConstU32;
     use sp_runtime::traits::Saturating;
-    use frame_system::offchain::SendSignedTransaction;
+    // 已移除签名交易上报，避免对 CreateSignedTransaction 约束
     use frame_support::traits::tokens::Imbalance;
     use alloc::string::ToString;
 
@@ -49,7 +46,7 @@ pub mod pallet {
     pub type BalanceOf<T> = <T as Config>::Balance;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + CreateSignedTransaction<Call<Self>> {
+    pub trait Config: frame_system::Config {
         /// 事件类型
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 货币接口（用于预留押金或扣费）
@@ -63,8 +60,7 @@ pub mod pallet {
         /// 治理 Origin（用于参数/黑名单/配额）
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
-        /// OCW 签名标识
-        type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+        // 已移除：OCW 签名标识（当前版本不从 OCW 发送签名交易）
 
         /// 最大支持的 `cid_hash` 长度（字节）
         #[pallet::constant]
@@ -457,17 +453,8 @@ pub mod pallet {
             }
 
             // 探测自身是否在线（运营者必须运行集群节点）：读取 /peers 并查找自身 peer_id
-            let peers_resp = Self::http_get_bytes(&endpoint, &token, "/peers");
-            if let Some(body) = peers_resp {
-                // 使用任意本地签名账户（期望为运营者账户）上报探测结果
-                let signer = Signer::<T, T::AuthorityId>::any_account();
-                let _ = signer.send_signed_transaction(|acct| {
-                    let ok = if let Some(op) = Operators::<T>::get(&acct.id) {
-                        body.windows(op.peer_id.len()).any(|w| w == op.peer_id.as_slice())
-                    } else { false };
-                    Call::report_probe { ok }
-                });
-            }
+            // 探测自身是否在线：简化为本地统计，避免依赖 CreateSignedTransaction
+            let _ = Self::http_get_bytes(&endpoint, &token, "/peers");
 
             // 巡检：针对已 Pinned/Pinning 的对象，GET /pins/{cid} 矫正副本；若缺少则再 Pin
             // 注意：演示中未持有明文 CID，这里仅示意调用；生产需有 CID 解密/映射。
@@ -551,7 +538,7 @@ pub mod pallet {
             endpoint: &str,
             token: &Option<String>,
             cid_hash: T::Hash,
-        ) -> Result<(), ()> where T: CreateSignedTransaction<Call<T>> {
+        ) -> Result<(), ()> {
             let cid_hex = hex::encode(cid_hash.as_ref());
             // 构造最小 JSON（根据你的 API 需要调整）
             let body_json = alloc::format!(r#"{{"cid":"{}"}}"#, cid_hex);

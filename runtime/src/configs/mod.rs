@@ -43,7 +43,7 @@ use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
 
 // 引入以区块数表示的一天常量
-use crate::DAYS;
+use crate::{DAYS, OriginCaller};
 // 引入以区块数表示的一分钟常量，用于设备挑战 TTL 等时间参数
 // 引入余额单位常量（已移除与设备/挖矿相关依赖，无需引入 MINUTES/MILLI_UNIT）
 
@@ -95,11 +95,11 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 				pallet_otc_listing::Call::create_listing { .. }
 			),
 			// 纪念馆/供奉：沿用证据命名空间演示开白名单（可按需新增独立 NS）
-			(n, RuntimeCall::MemoGrave(inner)) if n == EvidenceNsBytes::get() => matches!(
+			(n, RuntimeCall::Grave(inner)) if n == EvidenceNsBytes::get() => matches!(
 				inner,
 				pallet_memo_grave::Call::create_hall { .. }
 			),
-			(n, RuntimeCall::MemoOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
+			(n, RuntimeCall::MemorialOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
 				inner,
 				pallet_memo_offerings::Call::offer { .. }
 			),
@@ -294,6 +294,8 @@ parameter_types! {
     pub const GraveMaxIdsPerName: u32 = 1024;
     pub const GraveMaxComplaints: u32 = 100;
     pub const GraveMaxAdmins: u32 = 16;
+    /// 函数级中文注释：人类可读 ID（Slug）长度（固定为 10 位数字），与 `pallet-memo-grave` 中的约束一致
+    pub const GraveSlugLen: u32 = 10;
 }
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
@@ -308,9 +310,12 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxComplaintsPerGrave = GraveMaxComplaints;
     type MaxAdminsPerGrave = GraveMaxAdmins;
     type MaxFollowers = GraveMaxFollowers;
+    /// 函数级中文注释：绑定 Slug 长度常量（10 位）
+    type SlugLen = GraveSlugLen;
     type CreateHallWindow = ConstU32<600>;
     type CreateHallMaxInWindow = ConstU32<10>;
     type RequireKyc = ConstBool<false>;
+    /// 函数级中文注释：KYC 提供者实现绑定到 memo-grave 所需 trait
     type Kyc = KycByIdentity;
 }
 
@@ -493,7 +498,8 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
     fn on_interment(_grave_id: u64, _deceased_id: u64) {}
 }
 
-impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin> for AllowAllTargetControl {
+/// 函数级中文注释：供奉目标控制器（允许所有目标，Grave 域做成员校验）
+impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for AllowAllTargetControl {
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
     fn exists(_target: (u8, u64)) -> bool { true }
     /// 函数级中文注释：权限检查：若目标域为 Grave(=1)，则要求发起者为该墓位成员；否则放行。
@@ -619,6 +625,16 @@ impl pallet_otc_maker::Config for Runtime {
 
 // ===== KYC 适配器（基于 pallet-identity 的 judgement） =====
 pub struct KycByIdentity;
+/// 函数级中文注释：KYC 适配器同时实现 memo-grave 与 otc-maker 所需的 Provider 接口。
+impl pallet_memo_grave::pallet::KycProvider<AccountId> for KycByIdentity {
+    fn is_verified(who: &AccountId) -> bool {
+        use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
+        if let Some(reg) = IdOf::<Runtime>::get(who) {
+            return reg.judgements.iter().any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
+        }
+        false
+    }
+}
 impl pallet_otc_maker::pallet::KycProvider<AccountId> for KycByIdentity {
     /// 函数级中文注释：判断账户是否已通过 KYC
     /// - 读取 identity::IdentityOf，检测存在且含有正向 judgement（如 KnownGood/Reasonable）。
@@ -759,10 +775,13 @@ impl pallet_arbitration::Config for Runtime {
 
 // ===== 仲裁域路由：把仲裁请求分发到对应业务 pallet（当前无业务接入） =====
 pub struct ArbitrationRouter;
+/// 函数级中文注释：仲裁域路由器实现。转发到 OTC 订单 Pallet 上的校验与执行接口。
 impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRouter {
     /// 函数级中文注释：支持 OTC 订单域 (b"otc_ord_") 的争议校验
     fn can_dispute(domain: [u8; 8], who: &AccountId, id: u64) -> bool {
         if domain == OtcOrderNsBytes::get() {
+            // 引入 trait 以启用方法解析
+            use pallet_otc_order::ArbitrationHook;
             pallet_otc_order::pallet::Pallet::<Runtime>::can_dispute(who, id)
         } else { false }
     }
@@ -772,9 +791,9 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
         use pallet_arbitration::pallet::Decision as D;
         if domain == OtcOrderNsBytes::get() {
             match decision {
-                D::Release => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_release(id),
-                D::Refund => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_refund(id),
-                D::Partial(bps) => pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps),
+                D::Release => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_release(id) },
+                D::Refund => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_refund(id) },
+                D::Partial(bps) => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps) },
             }
         } else {
             Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
@@ -825,13 +844,13 @@ impl pallet_memo_endowment::Config for Runtime {
 
 // ===== memo-ipfs（存储+OCW）配置 =====
 parameter_types! { pub const IpfsMaxCidHashLen: u32 = 64; }
+/// 函数级中文注释：为 memo-ipfs 绑定运行时类型。注意 OCW 需要签名类型约束。
 impl pallet_memo_ipfs::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Balance = Balance;
     type Endowment = pallet_memo_endowment::Pallet<Runtime>;
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
-    type AuthorityId = pallet_memo_ipfs::AuthorityId;
     type MaxCidHashLen = IpfsMaxCidHashLen;
     type MaxPeerIdLen = frame_support::traits::ConstU32<128>;
     type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
@@ -854,17 +873,45 @@ impl pallet_memo_endowment::SlaProvider<AccountId, BlockNumber> for SlaFromIpfs 
 
 // ===== scheduler & preimage 运行时配置 =====
 impl pallet_preimage::Config for Runtime {
+    /// 事件类型
     type RuntimeEvent = RuntimeEvent;
+    /// 费用货币
+    type Currency = Balances;
+    /// 管理者 Origin（允许清理/强制操作）
+    type ManagerOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 费用考虑（占位）：无成本（`()`) 实现 Consideration，便于先行集成
+    type Consideration = ();
+    /// 权重信息（占位）
     type WeightInfo = ();
 }
 
-parameter_types! { pub const MaxScheduledPerBlock: u32 = 64; }
+parameter_types! {
+    pub const MaxScheduledPerBlock: u32 = 64;
+    /// 调度允许的最大权重（2 秒计算上限；以参考权重为单位）。
+    pub const SchedulerMaximumWeight: Weight = Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX);
+}
 impl pallet_scheduler::Config for Runtime {
+    /// 事件类型
     type RuntimeEvent = RuntimeEvent;
+    /// Origin 类型
     type RuntimeOrigin = RuntimeOrigin;
+    /// 可调度权限
     type ScheduleOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 每块最多调度任务数
     type MaxScheduledPerBlock = MaxScheduledPerBlock;
+    /// Preimage Pallet
     type Preimages = pallet_preimage::Pallet<Runtime>;
+    /// PalletsOrigin（使用 runtime 宏导出的 OriginCaller）
+    type PalletsOrigin = OriginCaller;
+    /// RuntimeCall（由 runtime 宏导出）
+    type RuntimeCall = RuntimeCall;
+    /// 最大权重（占位：2 秒计算上限）
+    type MaximumWeight = SchedulerMaximumWeight;
+    /// Origin 权限比较器（默认允许 Root 更高）
+    type OriginPrivilegeCmp = frame_support::traits::EqualPrivilegeOnly;
+    /// BlockNumber 提供者
+    type BlockNumberProvider = frame_system::Pallet<Runtime>;
+    /// 权重信息
     type WeightInfo = ();
 }
 

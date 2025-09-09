@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Form, Input, InputNumber, message } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
-import { web3Enable, web3FromAddress } from '@polkadot/extension-dapp'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：存储下单最小实现表单
  * - 允许用户输入 `cid_hash`（十六进制 H256）、大小（字节）、副本数、一次性价格（MEMO 单位的最小单位）。
- * - 通过 polkadot.js extension 进行签名，调用 `memoIpfs.requestPin` extrinsic。
+ * - 使用本地 keystore 签名并发送，调用 `memoIpfs.requestPin` extrinsic。
  * - 仅作 MVP 示例：未做价格预估/校验，cid_hash 也未在前端计算。
  */
 export default function RequestPinForm() {
@@ -18,7 +18,6 @@ export default function RequestPinForm() {
     const provider = new WsProvider('ws://127.0.0.1:9944')
     const api = await ApiPromise.create({ provider })
     setApi(api)
-    await web3Enable('memopark-dapp')
   }, [])
 
   useEffect(() => { init() }, [init])
@@ -28,28 +27,11 @@ export default function RequestPinForm() {
     if (!account) return message.warning('请先输入签名账户地址（SS58）')
     try {
       setLoading(true)
-      const injector = await web3FromAddress(account)
       const { cidHashHex, sizeBytes, replicas, price } = values
       const cidHash = cidHashHex
-      const tx = (api.tx as any).memoIpfs.requestPin(cidHash, sizeBytes, replicas, price)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`链上错误: ${decoded.section}.${decoded.name}`)
-          } else { message.error(dispatchError.toString()) }
-          unsub()
-          setLoading(false)
-          return
-        }
-        if (status.isInBlock) {
-          message.success('已打包上链')
-        } else if (status.isFinalized) {
-          message.success('交易已最终确认')
-          unsub()
-          setLoading(false)
-        }
-      })
+      await signAndSendLocalFromKeystore('memoIpfs','requestPin',[cidHash, sizeBytes, replicas, price])
+      message.success('已提交交易')
+      setLoading(false)
     } catch (e: any) {
       console.error(e)
       message.error(e?.message || '提交失败')

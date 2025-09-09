@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Button, Flex, Modal, Form, InputNumber, Select, message, Input } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
-import { web3Enable, web3FromAddress } from '@polkadot/extension-dapp'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：纪念馆动作栏（花圈/蜡烛/清香/供品/扫墓）最小实现
@@ -22,7 +22,6 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
     if (api) return api
     const provider = new WsProvider('ws://127.0.0.1:9944')
     const apiNew = await ApiPromise.create({ provider })
-    await web3Enable('memopark-dapp')
     setApi(apiNew)
     return apiNew
   }, [api])
@@ -32,21 +31,11 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoading(true)
-      const injector = await web3FromAddress(account)
       const target = [1, graveId]
       const amount = BigInt(v.amount)
       const duration = v.kind === 12 || v.kind === 13 ? Number(v.duration || 1) : null
-      const tx = (api.tx as any).memoOfferings.offer(target, v.kind, amount, [], duration)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoading(false); unsub()
-        }
-        if (status.isFinalized) { message.success('供奉已上链'); setLoading(false); setOpenOffer(false); unsub() }
-      })
+      await signAndSendLocalFromKeystore('memoOfferings','offer',[target, v.kind, amount, [], duration])
+      message.success('供奉已上链'); setLoading(false); setOpenOffer(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
   }, [ensureApi, account, graveId])
 
@@ -55,18 +44,8 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoading(true)
-      const injector = await web3FromAddress(account)
-      const tx = (api.tx as any).memoGraveGuestbook.sweep(graveId, null)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoading(false); unsub()
-        }
-        if (status.isFinalized) { message.success('已记录扫墓'); setLoading(false); setOpenSweep(false); unsub() }
-      })
+      await signAndSendLocalFromKeystore('memoGraveGuestbook','sweep',[graveId, null])
+      message.success('已记录扫墓'); setLoading(false); setOpenSweep(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
   }, [ensureApi, account, graveId])
 
@@ -79,18 +58,8 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoadingFollow(true)
-      const injector = await web3FromAddress(account)
-      const tx = (api.tx as any).memoGrave.follow(graveId)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoadingFollow(false); unsub()
-        }
-        if (status.isFinalized) { message.success('已关注'); setLoadingFollow(false); unsub() }
-      })
+      await signAndSendLocalFromKeystore('memoGrave','follow',[graveId])
+      message.success('已关注'); setLoadingFollow(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoadingFollow(false) }
   }, [ensureApi, account, graveId])
 
@@ -102,18 +71,8 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoadingFollow(true)
-      const injector = await web3FromAddress(account)
-      const tx = (api.tx as any).memoGrave.unfollow(graveId)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoadingFollow(false); unsub()
-        }
-        if (status.isFinalized) { message.success('已取消关注'); setLoadingFollow(false); unsub() }
-      })
+      await signAndSendLocalFromKeystore('memoGrave','unfollow',[graveId])
+      message.success('已取消关注'); setLoadingFollow(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoadingFollow(false) }
   }, [ensureApi, account, graveId])
 

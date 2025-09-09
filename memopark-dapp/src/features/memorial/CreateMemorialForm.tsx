@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Button, Form, Input, Upload, Row, Col, Switch, Typography, Checkbox, message, Alert, Space } from 'antd'
-import { signAndSend, getApi } from '../../lib/polkadot'
+import { getApi } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { UploadOutlined, CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 
 /**
@@ -25,7 +26,7 @@ const CreateMemorialForm: React.FC = () => {
       const api = await getApi()
       const cid = Array.from(meta) // 简化演示：直接用 JSON bytes；实际应使用 IPFS CID 字节
       const args = [ Number(values.park_id || 0), 0, 1, cid ]
-      const txHash = await signAndSend(owner, 'memoGrave', 'createHall', args)
+      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'createHall', args)
       message.success(`已上链：${txHash}`)
       form.resetFields()
     } catch (e: any) {

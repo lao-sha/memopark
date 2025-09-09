@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Button, Form, InputNumber, Switch, message, Input, Card } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
-import { web3Enable, web3FromAddress } from '@polkadot/extension-dapp'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：可见性设置最小实现页面
@@ -18,7 +18,6 @@ export default function VisibilitySettings() {
     if (api) return api
     const provider = new WsProvider('ws://127.0.0.1:9944')
     const apiNew = await ApiPromise.create({ provider })
-    await web3Enable('memopark-dapp')
     setApi(apiNew)
     return apiNew
   }, [api])
@@ -28,24 +27,14 @@ export default function VisibilitySettings() {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoading(true)
-      const injector = await web3FromAddress(account)
-      const tx = (api.tx as any).memoGrave.setVisibility(
+      await signAndSendLocalFromKeystore('memoGrave','setVisibility',[
         Number(v.graveId),
         Boolean(v.public_offering),
         Boolean(v.public_guestbook),
         Boolean(v.public_sweep),
         Boolean(v.public_follow),
-      )
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoading(false); unsub()
-        }
-        if (status.isFinalized) { message.success('策略已更新'); setLoading(false); unsub() }
-      })
+      ])
+      message.success('策略已更新'); setLoading(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
   }, [ensureApi, account])
 

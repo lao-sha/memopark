@@ -1,7 +1,7 @@
 import React from 'react'
 import { Alert, Card, Descriptions, Typography, Button, message } from 'antd'
 import { query } from '../../lib/graphql'
-import { signAndSend } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：订单详情（Subsquid + 直发操作）
@@ -36,7 +36,7 @@ const OrderDetailPage: React.FC = () => {
     try {
       const owner = prompt('请输入 Maker 地址以签名放行:')
       if(!owner) return
-      const tx = await signAndSend(owner,'otcOrder','release',[Number(orderId)])
+      const tx = await signAndSendLocalFromKeystore('otcOrder','release',[Number(orderId)])
       message.success(`已放行：${tx}`)
     } catch(e:any){ message.error(e?.message||'失败') }
   }
@@ -44,7 +44,7 @@ const OrderDetailPage: React.FC = () => {
     try {
       const owner = prompt('请输入地址以提交超时退款:')
       if(!owner) return
-      const tx = await signAndSend(owner,'otcOrder','refundOnTimeout',[Number(orderId)])
+      const tx = await signAndSendLocalFromKeystore('otcOrder','refundOnTimeout',[Number(orderId)])
       message.success(`已提交：${tx}`)
     } catch(e:any){ message.error(e?.message||'失败') }
   }
@@ -54,7 +54,7 @@ const OrderDetailPage: React.FC = () => {
       if(!owner) return
       const payload = prompt('输入支付明文(将与 salt 拼接后哈希)')||''
       const salt = prompt('输入 salt (十六进制或任意字符串)')||''
-      const tx = await signAndSend(owner,'otcOrder','revealPayment',[Number(orderId), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+      const tx = await signAndSendLocalFromKeystore('otcOrder','revealPayment',[Number(orderId), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
       message.success(`已揭示：${tx}`)
     } catch(e:any){ message.error(e?.message||'失败') }
   }
@@ -64,7 +64,7 @@ const OrderDetailPage: React.FC = () => {
       if(!owner) return
       const payload = prompt('输入联系方式明文')||''
       const salt = prompt('输入 salt')||''
-      const tx = await signAndSend(owner,'otcOrder','revealContact',[Number(orderId), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+      const tx = await signAndSendLocalFromKeystore('otcOrder','revealContact',[Number(orderId), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
       message.success(`已揭示：${tx}`)
     } catch(e:any){ message.error(e?.message||'失败') }
   }

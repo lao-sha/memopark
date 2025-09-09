@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Card, Tabs, Form, Input, InputNumber, Button, Switch, message } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
-import { web3Enable, web3FromAddress } from '@polkadot/extension-dapp'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：基金会治理与风控最小管理页（仅 Root 测试环境用）
@@ -17,30 +17,20 @@ export default function EndowmentAdminPage() {
     if (api) return api
     const provider = new WsProvider('ws://127.0.0.1:9944')
     const apiNew = await ApiPromise.create({ provider })
-    await web3Enable('memopark-dapp')
     setApi(apiNew)
     return apiNew
   }, [api])
 
   const signSend = useCallback(async (tx: any) => {
-    const api = await ensureApi()
+    await ensureApi()
     if (!account) { message.warning('请输入 Root 账户'); throw new Error('no account') }
     setLoading(true)
-    const injector = await web3FromAddress(account)
-    return new Promise<void>(async (resolve, reject) => {
-      try {
-        const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-          if (dispatchError) {
-            if (dispatchError.isModule) {
-              const decoded = api.registry.findMetaError(dispatchError.asModule)
-              message.error(`${decoded.section}.${decoded.name}`)
-            } else message.error(dispatchError.toString())
-            setLoading(false); unsub(); reject(dispatchError); return
-          }
-          if (status.isFinalized) { message.success('已上链'); setLoading(false); unsub(); resolve() }
-        })
-      } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false); reject(e) }
-    })
+    try {
+      await signAndSendLocalFromKeystore(tx.section, tx.method, tx.args)
+      message.success('已上链')
+    } catch (e: any) {
+      console.error(e); message.error(e?.message || '提交失败')
+    } finally { setLoading(false) }
   }, [ensureApi, account])
 
   return (
