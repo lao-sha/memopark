@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Tabs, Typography, List, Button, Input, Row, Col, message, Space, Alert } from 'antd'
 import { query } from '../../lib/graphql'
-import { signAndSend } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：纪念馆 Hall 展示页
@@ -29,7 +29,7 @@ const HallPage: React.FC<{ id: number }> = ({ id }) => {
   const onAttachDeceased = async () => {
     try {
       if (!owner) throw new Error('请输入你的地址(owner)')
-      const txHash = await signAndSend(owner, 'memoGrave', 'attachDeceased', [id, Number(bindDeceased)])
+      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'attachDeceased', [id, Number(bindDeceased)])
       message.success(`已上链：${txHash}`)
       setBindDeceased(''); refetch()
     } catch (e:any) { message.error(e?.message||'失败') }
@@ -37,7 +37,7 @@ const HallPage: React.FC<{ id: number }> = ({ id }) => {
   const onSetPark = async () => {
     try {
       if (!owner) throw new Error('请输入你的地址(owner)')
-      const txHash = await signAndSend(owner, 'memoGrave', 'setPark', [id, Number(setParkId)])
+      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'setPark', [id, Number(setParkId)])
       message.success(`已上链：${txHash}`)
       setSetParkId(''); refetch()
     } catch (e:any) { message.error(e?.message||'失败') }

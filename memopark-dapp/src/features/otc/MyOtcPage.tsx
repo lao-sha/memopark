@@ -1,7 +1,7 @@
 import React from 'react'
 import { Alert, Tabs, List, Skeleton, Button, Tag, Typography, message } from 'antd'
 import { query } from '../../lib/graphql'
-import { signAndSend } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：我的OTC（Subsquid + 链上操作）
@@ -47,7 +47,7 @@ const MyOtcPage: React.FC = () => {
               <List.Item actions={[<Button key="cancel" size="small" onClick={async()=>{
                 try{
                   if(!addr) throw new Error('请先填写地址')
-                  const tx = await signAndSend(addr,'otcListing','cancelListing',[Number(it.id)])
+                  const tx = await signAndSendLocalFromKeystore('otcListing','cancelListing',[Number(it.id)])
                   message.success(`已提交取消：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>取消挂单</Button>] }>
@@ -69,21 +69,21 @@ const MyOtcPage: React.FC = () => {
                 <Button key="paid" size="small" onClick={async()=>{
                 try{
                   if(!addr) throw new Error('请先填写地址')
-                  const tx = await signAndSend(addr,'otcOrder','markPaid',[Number(it.id)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','markPaid',[Number(it.id)])
                   message.success(`已标记：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>标记已付</Button>,
               <Button key="release" size="small" type="primary" onClick={async()=>{
                 try{
                   if(!addr) throw new Error('请先填写地址')
-                  const tx = await signAndSend(addr,'otcOrder','release',[Number(it.id)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','release',[Number(it.id)])
                   message.success(`已放行：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>放行(卖家)</Button>,
               <Button key="timeout" size="small" danger onClick={async()=>{
                 try{
                   if(!addr) throw new Error('请先填写地址')
-                  const tx = await signAndSend(addr,'otcOrder','refundOnTimeout',[Number(it.id)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','refundOnTimeout',[Number(it.id)])
                   message.success(`已提交：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>超时退款</Button>,
@@ -92,7 +92,7 @@ const MyOtcPage: React.FC = () => {
                   if(!addr) throw new Error('请先填写地址')
                   const payload = prompt('输入支付明文')||''
                   const salt = prompt('输入 salt')||''
-                  const tx = await signAndSend(addr,'otcOrder','revealPayment',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','revealPayment',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
                   message.success(`已揭示支付：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>揭示支付</Button>,
@@ -101,14 +101,14 @@ const MyOtcPage: React.FC = () => {
                   if(!addr) throw new Error('请先填写地址')
                   const payload = prompt('输入联系方式明文')||''
                   const salt = prompt('输入 salt')||''
-                  const tx = await signAndSend(addr,'otcOrder','revealContact',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','revealContact',[Number(it.id), new TextEncoder().encode(payload), new TextEncoder().encode(salt)])
                   message.success(`已揭示联系方式：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>揭示联系方式</Button>,
               <Button key="dispute" size="small" onClick={async()=>{
                 try{
                   if(!addr) throw new Error('请先填写地址')
-                  const tx = await signAndSend(addr,'otcOrder','markDisputed',[Number(it.id)])
+                  const tx = await signAndSendLocalFromKeystore('otcOrder','markDisputed',[Number(it.id)])
                   message.success(`已发起：${tx}`)
                 }catch(e:any){ message.error(e?.message||'失败') }
               }}>发起争议</Button>

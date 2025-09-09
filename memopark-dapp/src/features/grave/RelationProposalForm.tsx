@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Card, Form, Input, InputNumber, Select, Button, message } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
-import { web3Enable, web3FromAddress } from '@polkadot/extension-dapp'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：逝者关系绑定的最小申请表单
@@ -18,7 +18,6 @@ export default function RelationProposalForm() {
       const provider = new WsProvider('ws://127.0.0.1:9944')
       const api = await ApiPromise.create({ provider })
       setApi(api)
-      await web3Enable('memopark-dapp')
     })()
   }, [])
 
@@ -27,18 +26,9 @@ export default function RelationProposalForm() {
     if (!account) return message.warning('请输入签名账户')
     try {
       setLoading(true)
-      const injector = await web3FromAddress(account)
-      const tx = (api.tx as any).deceased.proposeRelation(v.fromId, v.toId, v.kind, v.note ? Array.from(new TextEncoder().encode(v.note)) : null)
-      const unsub = await tx.signAndSend(account, { signer: injector.signer }, ({ status, dispatchError }: any) => {
-        if (dispatchError) {
-          if (dispatchError.isModule) {
-            const decoded = api.registry.findMetaError(dispatchError.asModule)
-            message.error(`${decoded.section}.${decoded.name}`)
-          } else message.error(dispatchError.toString())
-          setLoading(false); unsub();
-        }
-        if (status.isFinalized) { message.success('已提交'); setLoading(false); unsub() }
-      })
+      const note = v.note ? Array.from(new TextEncoder().encode(v.note)) : null
+      await signAndSendLocalFromKeystore('deceased','proposeRelation',[v.fromId, v.toId, v.kind, note])
+      message.success('已提交'); setLoading(false)
     } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
   }, [api, account])
 

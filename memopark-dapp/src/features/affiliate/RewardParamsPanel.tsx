@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Typography, Space, Alert, Divider, Form, Input, InputNumber, Button, Radio } from 'antd'
-import { getApi, signAndSend } from '../../lib/polkadot'
+import { getApi } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { buildForwardRequest, NAMESPACES, pretty } from '../../lib/forwarder'
 import { AppConfig } from '../../lib/config'
 
@@ -129,7 +130,7 @@ const RewardParamsPanel: React.FC = () => {
                   // 通过 sudo 提升为 Root 执行
                   const sudo = (api.tx as any).sudo?.sudo
                   if(!sudo) throw new Error('链上未启用 sudo')
-                  const hash = await signAndSend(owner, 'sudo', 'sudo', [tx])
+                  const hash = await signAndSendLocalFromKeystore('sudo', 'sudo', [tx])
                   // hash 为 inBlock/finalized 区块哈希
                   // 简单回显
                   alert(`已提交：${hash}`)

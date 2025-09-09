@@ -175,6 +175,13 @@ pub type UncheckedExtrinsic =
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
+// ===== Offchain Worker 签名支持（供 pallet-memo-ipfs 使用）=====
+impl frame_system::offchain::SigningTypes for Runtime {
+    /// 函数级中文注释：OCW 使用与交易签名相同的签名类型
+    type Public = <Signature as Verify>::Signer;
+    type Signature = Signature;
+}
+
 /// All migrations of the runtime, aside from the ones declared in the pallets.
 ///
 /// This can be a tuple of types, each implementing `OnRuntimeUpgrade`.

@@ -12,9 +12,12 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@polkadot/api": "^16.4.6",
-    "@polkadot/extension-dapp": "^0.61.6",
+    "@polkadot/keyring": "^13.5.6",
+    "@polkadot/util-crypto": "^13.5.6",
     "@tanstack/react-query": "^5.85.5",
+    "@types/crypto-js": "^4.2.2",
     "antd": "^5.27.1",
+    "crypto-js": "^4.2.0",
     "dayjs": "^1.11.14",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@types/node": "^24.3.1",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
@@ -32,7 +36,7 @@
     "prettier": "^3.6.2",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
-    "vite": "^7.1.2",
+    "vite": "^7.1.4",
     "vite-plugin-node-polyfills": "^0.24.0"
   }
 }

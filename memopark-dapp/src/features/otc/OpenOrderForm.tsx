@@ -50,7 +50,7 @@ const OpenOrderForm: React.FC = () => {
         values.payment_commit,
         values.contact_commit,
       ]
-      const txHash = await wallet.signAndSend('otcOrder', 'openOrder', args)
+      const txHash = await wallet.signAndSendLocal('otcOrder', 'openOrder', args)
       message.success(`已上链：${txHash}`)
       form.resetFields()
     } catch (e: any) {

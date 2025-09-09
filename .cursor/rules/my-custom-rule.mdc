@@ -21,3 +21,4 @@ alwaysApply: true
 15、检查修改前端用户操作的合理性、便利性
 16、设计项目修改源代码过程中，使用Subsquid用于区块数据 ETL（抽取-转换-加载）+ 查询层框架，友好支持 ETL，易膨胀/高变动查询交由 Subsquid
 17、Subsquid相关源代码放到memopark-squid文件夹
+18、构建钱包相关功能时，全局不用浏览器扩展

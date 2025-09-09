@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Alert, Button, Form, Input, InputNumber, Typography, message, Space } from 'antd'
 import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
-import { getApi, signAndSend } from '../../lib/polkadot'
+import { getApi } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { useWallet } from '../../providers/WalletProvider'
 
 /**
@@ -37,7 +38,7 @@ const OfferPage: React.FC = () => {
         media,
         v.duration? Number(v.duration) : null,
       ] as any[]
-      const txHash = await signAndSend(address, 'memoOfferings', 'offer', args)
+      const txHash = await signAndSendLocalFromKeystore('memoOfferings', 'offer', args)
       message.success(`已上链：${txHash}`)
       form.resetFields()
     } catch (e:any) { message.error(e?.message || '提交失败') }
