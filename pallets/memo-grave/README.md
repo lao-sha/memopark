@@ -2,12 +2,12 @@
 
 - 作用：管理墓地（单/双/多人）、归属陵园、容量/转让、安葬/起掘记录。
 - 隐私：仅记录承诺/加密 CID 的元数据；不落明文；媒体走 `pallet-evidence`。
-- 解耦：与陵园通过 `park_id` 关联；与逝者通过 `deceased_id` 关联；安葬事件通过 `OnIntermentCommitted` 钩子联动。
+- 解耦：与陵园通过 `park_id` 关联（可选 `Option<ParkId>`）；与逝者通过 `deceased_id` 关联；安葬事件通过 `OnIntermentCommitted` 钩子联动。
 
 ## 存储
 - `NextGraveId: u64`
-- `Graves: GraveId -> Grave { park_id, owner, admin_group, kind_code, capacity, metadata_cid, active }`
-- `GravesByPark: ParkId -> BoundedVec<GraveId>`
+- `Graves: GraveId -> Grave { park_id?: Option<ParkId>, owner, admin_group, kind_code, capacity, metadata_cid, active }`
+- `GravesByPark: ParkId -> BoundedVec<GraveId>`（仅当 `park_id=Some(park)` 时维护索引）
 - `Interments: GraveId -> BoundedVec<IntermentRecord>`
  - `GraveMetaOf: GraveId -> { categories: u32, religion: u8 }`
  - `ModerationOf: GraveId -> { restricted: bool, removed: bool, reason_code: u8 }`
@@ -26,13 +26,11 @@
 - `VisibilityPolicyOf: GraveId -> { public_offering, public_guestbook, public_sweep, public_follow }`
 - `FollowersOf: GraveId -> BoundedVec<AccountId, MaxFollowers>`
 
-### 新增（Hall 附加与风控）
-- `HallInfoOf: GraveId -> { kind: u8(Person=0/Event=1), primary_deceased_id?: u64 }`
-- `CreateHallRate: AccountId -> (window_start, count)`
-- `CreateHallWindowParam / CreateHallMaxInWindowParam / RequireKycParam`
+### 变更（Hall 拆分）
+- Hall 相关逻辑已迁移至独立 `pallet-memo-hall`；本模块不再包含 Hall 的存储与调用。
 
 ## Extrinsics
-- `create_grave(park_id, kind_code, capacity?, metadata_cid)`
+- `create_grave(park_id?: Option<ParkId>, kind_code, capacity?, metadata_cid)`
 - `update_grave(id, kind_code?, capacity?, metadata_cid?, active?)`
 - `transfer_grave(id, new_owner)`
 - `inter(id, deceased_id, slot?, note_cid?)`
@@ -46,16 +44,16 @@
  - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
  - 新增：`set_visibility(id, public_offering, public_guestbook, public_sweep, public_follow)`
  - 新增：`follow(id)` / `unfollow(id)`
-
-### 新增（纪念馆相关）
-- `create_hall(park_id, kind(Person/Event), capacity?, metadata_cid)`
-- `attach_deceased(id, deceased_id)`
-- `set_park(id, park_id)`
-- `set_hall_params(create_window?, create_max_in_window?, require_kyc?)`（Root）
+- （移除）`create_hall/attach_deceased/set_hall_params` 已迁移至 `pallet-memo-hall`
 
 ## 权限
-- 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。
+- 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。当 `park_id=None` 时，仅墓主可管理（园区管理员校验不可用）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
-- 命名变更：本模块已由 `pallet-grave` 更名为 `pallet-memo-grave`，与 `memo-*` 命名统一。
-- 存储版本：StorageVersion=2，新增可见性与关注；向前兼容（默认策略为关闭）。
-  - Hall 为附加信息与事件，未修改核心 `Grave` 结构字段的含义与序列化布局。
+- 存储版本：StorageVersion=4（v3: `park_id` 改为 Option；v4: 移除 Hall），提供迁移以兼容旧数据。
+- 与 `pallet-memo-hall` 的关系：通过 `Hall::link_grave_id` 可选关联，无循环依赖，建议由查询层整合展示。
+
+### 编译零警告策略（-D warnings）
+- 全仓库已启用 `-D warnings`：所有警告视为错误，确保上链代码安全可审计。
+- 本 pallet 已为每个 extrinsic 显式声明 `#[pallet::call_index(N)]`，避免隐式索引弃用警告。
+- 权重标注将由临时常量迁移到 `weights::WeightInfo`：后续将补充基准测试与 `weights.rs`，逐步移除常量权重。
+- 迁移 API 使用 `in_code_storage_version` 替代已弃用的 `current_storage_version`。

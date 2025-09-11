@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`（常量权重），后续将迁移至 WeightInfo 并移除
+#![allow(deprecated)]
 
 pub use pallet::*;
 
@@ -6,7 +8,8 @@ pub use pallet::*;
 pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec, traits::{Get, Currency, ExistenceRequirement}};
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{Saturating, SaturatedConversion, Zero};
+    // 移除未使用的 SaturatedConversion 以消除警告
+    use sp_runtime::traits::{Saturating, Zero};
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     use pallet_otc_maker::KycProvider;
 

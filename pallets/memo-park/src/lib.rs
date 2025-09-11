@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -22,6 +24,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 国家地区编码与元数据等字段的长度上限
         #[pallet::constant] type MaxRegionLen: Get<u32>;
@@ -84,12 +87,17 @@ pub mod pallet {
         TooMany,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：创建陵园记录。
         /// - 入参使用原生类型与 `BoundedVec`，避免复杂解码；
         /// - 仅记录加密 CID，不落明文；
         /// - 将 park_id 加入对应国家索引中。
+        #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn create_park(
             origin: OriginFor<T>,
@@ -110,6 +118,8 @@ pub mod pallet {
         /// 函数级中文注释：更新陵园的地区/元数据/状态。
         /// - 允许所有者或陵园管理员；
         /// - 更新不改变国家索引（如需迁国，应先停用后重建）。
+        #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn update_park(
             origin: OriginFor<T>, id: u64,
@@ -135,6 +145,8 @@ pub mod pallet {
 
         /// 函数级中文注释：设置或清空管理员集合标识。
         /// - 仅允许所有者或当前管理员 origin。
+        #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_park_admin(origin: OriginFor<T>, id: u64, admin_group: Option<u64>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -150,6 +162,8 @@ pub mod pallet {
 
         /// 函数级中文注释：转让陵园所有权。
         /// - 仅当前所有者可调用。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn transfer_park(origin: OriginFor<T>, id: u64, new_owner: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;

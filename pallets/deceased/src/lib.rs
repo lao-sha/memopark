@@ -9,7 +9,7 @@ use frame_system::pallet_prelude::*;
 use sp_std::vec::Vec;
 use sp_runtime::traits::AtLeast32BitUnsigned;
 use frame_support::weights::Weight;
-use sp_runtime::Saturating;
+// use sp_runtime::Saturating;
 
 /// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
 /// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
@@ -66,6 +66,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// 事件类型
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// 逝者 ID 类型
@@ -210,6 +211,8 @@ pub mod pallet {
         /// - 权限：`GraveProvider::can_attach(origin, grave_id)` 必须为真；
         /// - 安全：限制文本与链接长度；敏感信息仅存链下链接；
         /// - 事件：`DeceasedCreated`。
+        #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::create())]
         pub fn create_deceased(
             origin: OriginFor<T>,
@@ -261,6 +264,8 @@ pub mod pallet {
         /// - 权限：仅记录 `owner`；
         /// - 可选字段逐项更新；
         /// - 事件：`DeceasedUpdated`。
+        #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn update_deceased(
             origin: OriginFor<T>,
@@ -299,6 +304,8 @@ pub mod pallet {
         /// 函数级中文注释：删除逝者记录，并从墓位索引中移除。
         /// - 权限：仅 `owner`；
         /// - 事件：`DeceasedRemoved`。
+        #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove())]
         pub fn remove_deceased(origin: OriginFor<T>, id: T::DeceasedId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -316,6 +323,8 @@ pub mod pallet {
         /// 函数级中文注释：迁移逝者到新的墓位。
         /// - 权限：仅 `owner` 且新墓位需通过 `GraveProvider::can_attach`；
         /// - 事件：`DeceasedTransferred`。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer())]
         pub fn transfer_deceased(origin: OriginFor<T>, id: T::DeceasedId, new_grave: T::GraveId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -344,6 +353,8 @@ pub mod pallet {
 
         /// 函数级中文注释：从 A(发起方) → B(对方) 发起关系绑定请求。
         /// - 权限：A 所属墓位的管理员（通过 GraveProvider::can_attach(sender, A.grave_id) 判定）。
+        #[pallet::call_index(4)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn propose_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, kind: u8, note: Option<Vec<u8>>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -367,6 +378,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：B 方管理员批准关系绑定。
+        #[pallet::call_index(5)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn approve_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -391,6 +404,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：B 方管理员拒绝关系绑定。
+        #[pallet::call_index(6)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn reject_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -403,6 +418,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：任一方管理员撤销已建立的关系。
+        #[pallet::call_index(7)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn revoke_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -420,6 +437,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：更新关系备注。
+        #[pallet::call_index(8)]
+        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn update_relation_note(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, note: Option<Vec<u8>>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;

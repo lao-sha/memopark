@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 pub use pallet::*;
 
@@ -17,6 +19,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 最大支付承诺 CID 长度（加密 CID 对应的哈希承诺）
         type MaxCidLen: Get<u32>;
@@ -47,6 +50,8 @@ pub mod pallet {
         NotMaker,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级详细中文注释：注册/更新做市商资料
@@ -70,7 +75,7 @@ pub mod pallet {
         pub fn set_active(origin: OriginFor<T>, active: bool) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Makers::<T>::try_mutate(&who, |maybe| -> Result<(), DispatchError> {
-                let mut v = maybe.as_mut().ok_or(Error::<T>::NotMaker)?;
+                let v = maybe.as_mut().ok_or(Error::<T>::NotMaker)?;
                 // 启用前仍校验 KYC 状态
                 if active { ensure!(<T as Config>::Kyc::is_verified(&who), Error::<T>::NotMaker); }
                 v.1 = active;

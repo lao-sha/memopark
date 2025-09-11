@@ -8,7 +8,7 @@ pub mod pallet {
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     use sp_core::hashing::blake2_256;
     use pallet_otc_listing::pallet::Listings as ListingsMap;
-    use sp_runtime::traits::{Saturating, Zero, SaturatedConversion};
+    use sp_runtime::traits::{Saturating, Zero};
     use sp_std::vec::Vec;
 
     // Balance aliases 将在 Config 定义之后重新声明
@@ -37,7 +37,6 @@ pub mod pallet {
     #[pallet::config]
     // Plan B: 仅依赖 listing 与 escrow（listing 已经 transitively 依赖 maker/KYC），去掉直接对 maker pallet 的耦合。
     pub trait Config: frame_system::Config + pallet_otc_listing::Config + pallet_escrow::pallet::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type Currency: Currency<Self::AccountId>;
         type ConfirmTTL: Get<BlockNumberFor<Self>>;
         /// 托管接口（用于锁定/释放/退款）
@@ -156,7 +155,7 @@ pub mod pallet {
         ///   4) 剩余库存必须足够。
         /// - 资金：下单即按订单金额将买家资金锁入托管账户（Escrow）。
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(3, 3))]
         pub fn open_order(
             origin: OriginFor<T>,
             listing_id: u64,
@@ -218,7 +217,7 @@ pub mod pallet {
         /// 函数级详细中文注释：买家标记“已支付/已提交凭据”，进入待放行阶段。
         /// - 要求：调用者必须为订单 taker，状态为 Created。
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(2, 2))]
         pub fn mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // 标记支付限频：滑动窗口检查与更新
@@ -245,7 +244,7 @@ pub mod pallet {
         ///   2) 超过 expire_at 且任一方不同意自动流程。
         ///   3) 仍在 evidence_until 窗口内（证据追加期）。
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn mark_disputed(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let now = <frame_system::Pallet<T>>::block_number();
@@ -266,7 +265,7 @@ pub mod pallet {
         /// 函数级详细中文注释：卖家放行（将托管金额划转给买家，订单完成）。
         /// - 要求：调用者为 maker；状态为 PaidOrCommitted 或 Disputed。
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(2, 2))]
         pub fn release(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
@@ -285,7 +284,7 @@ pub mod pallet {
         /// 函数级详细中文注释：超时退款（任意人可触发，在状态与时窗满足时退回买家或卖家）。
         /// - 最小实现：仅当未放行且超过 expire_at，并处于 Created/PaidOrCommitted/Disputed 之一时，退回买家。
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(2, 2))]
         pub fn refund_on_timeout(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let _ = ensure_signed(origin)?;
             let now = <frame_system::Pallet<T>>::block_number();
@@ -305,7 +304,7 @@ pub mod pallet {
         /// 函数级详细中文注释：揭示支付承诺
         /// - 计算 blake2_256(payload||salt) 与存储的 payment_commit 比较，不一致则报错
         #[pallet::call_index(5)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn reveal_payment(origin: OriginFor<T>, id: u64, payload: Vec<u8>, salt: Vec<u8>) -> DispatchResult {
             let _ = ensure_signed(origin)?;
             let ok = if let Some(o) = Orders::<T>::get(id) {
@@ -321,7 +320,7 @@ pub mod pallet {
         /// 函数级详细中文注释：揭示联系方式承诺
         /// - 校验哈希一致性
         #[pallet::call_index(6)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn reveal_contact(origin: OriginFor<T>, id: u64, payload: Vec<u8>, salt: Vec<u8>) -> DispatchResult {
             let _ = ensure_signed(origin)?;
             let ok = if let Some(o) = Orders::<T>::get(id) {
@@ -337,7 +336,7 @@ pub mod pallet {
         /// 函数级详细中文注释：治理更新订单风控参数
         /// - 仅允许 Root 调用；未提供的参数保持不变。
         #[pallet::call_index(7)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn set_order_params(
             origin: OriginFor<T>,
             open_window: Option<BlockNumberFor<T>>,

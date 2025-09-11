@@ -1,9 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：本文件不使用常量权重；无需全局 deprecated 放宽
 
 use frame_support::{
-    pallet_prelude::*,
-    traits::{Currency, ExistenceRequirement, Get},
+    traits::{ExistenceRequirement, Get},
 };
+use frame_support::pallet_prelude::DispatchResult;
 use frame_system::pallet_prelude::*;
 use sp_runtime::traits::AccountIdConversion;
 use sp_std::vec::Vec;
@@ -44,7 +45,7 @@ pub mod pallet {
         traits::{tokens::Balance as BalanceT, Currency, ConstU32},
         PalletId,
     };
-    use frame_support::traits::StorageVersion;
+    // 函数级中文注释：移除未使用的 StorageVersion 导入以消除未使用警告
     use frame_support::weights::Weight;
     use sp_runtime::traits::Saturating;
 
@@ -54,6 +55,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// 事件类型
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// 货币接口（MEMO 主币）

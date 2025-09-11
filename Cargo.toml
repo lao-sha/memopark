@@ -20,6 +20,7 @@ members = [
     
     "pallets/memo-park",
     "pallets/memo-grave",
+    "pallets/memo-hall",
     "pallets/ledger",
     "pallets/grave-guestbook",
     "pallets/deceased",
@@ -105,9 +106,10 @@ pallet-scheduler = { git = "https://github.com/paritytech/polkadot-sdk.git", rev
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+warnings = "deny"
 
 [workspace.lints.clippy]
-all = "warn"
+all = "deny"
 
 [profile.release]
 opt-level = 3

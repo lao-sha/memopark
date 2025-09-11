@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -63,6 +65,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// 事件类型
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 运行时聚合调用类型（用于封装真实调用）
         /// 要求其 PostInfo 与标准 `PostDispatchInfo` 一致，以便返回类型统一
@@ -130,12 +133,16 @@ pub mod pallet {
         ForbiddenCall,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 开启会话：由赞助者代付将已签名的许可上链（本 MVP 省略许可签名校验，聚焦集成）
         ///
         /// 安全说明：生产环境应校验 SessionPermit 是由 `owner` 主钱包签名授权的。
         #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn open_session(origin: OriginFor<T>, permit_bytes: BoundedVec<u8, T::MaxPermitLen>) -> DispatchResult {
             let sponsor = ensure_signed(origin)?;
@@ -155,6 +162,7 @@ pub mod pallet {
 
         /// 关闭会话：由所有者主动撤销
         #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn close_session(origin: OriginFor<T>, ns: [u8; 8], session_id: [u8; 16]) -> DispatchResult {
             let owner = ensure_signed(origin)?;
@@ -168,6 +176,7 @@ pub mod pallet {
         ///
         /// 安全说明：生产环境应校验 `session_sig` 确实由 `session_pubkey` 对 `meta` 的 SCALE 编码签发。
         #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn forward(
             origin: OriginFor<T>,

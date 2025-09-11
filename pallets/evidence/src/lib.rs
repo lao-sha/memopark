@@ -4,6 +4,7 @@ extern crate alloc;
 
 pub use pallet::*;
 
+#[allow(deprecated)]
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -42,6 +43,7 @@ pub mod pallet {
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
+		#[allow(deprecated)]
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		#[pallet::constant] type MaxCidLen: Get<u32>;
 		#[pallet::constant] type MaxImg: Get<u32>;
@@ -85,9 +87,12 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> { NotAuthorized, NotFound }
 
+	#[allow(deprecated)]
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		/// 函数级中文注释：提交证据，生成 EvidenceId 并落库；仅授权账户可提交。
+		#[pallet::call_index(0)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn commit(
 			origin: OriginFor<T>,
@@ -114,6 +119,8 @@ pub mod pallet {
 		/// - ns：8 字节命名空间（如 b"kyc_____"、b"otc_ord_"）。
 		/// - subject_id：业务主体 id（如订单号、账户短码等）。
 		/// - commit：承诺哈希（例如 blake2b256(ns||subject_id||cid_enc||salt||ver)）。
+		#[pallet::call_index(1)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn commit_hash(
 			origin: OriginFor<T>,
@@ -147,6 +154,8 @@ pub mod pallet {
 		}
 
 		/// 函数级中文注释：为目标链接已存在的证据（允许复用）；仅授权账户可调用。
+		#[pallet::call_index(2)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn link(origin: OriginFor<T>, domain: u8, target_id: u64, id: u64) -> DispatchResult {
 			let who = ensure_signed(origin)?;
@@ -159,6 +168,8 @@ pub mod pallet {
 		}
 
 		/// 函数级中文注释（V2）：按命名空间与主体链接既有证据 id（仅保存引用，不触碰明文）。
+		#[pallet::call_index(3)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn link_by_ns(origin: OriginFor<T>, ns: [u8; 8], subject_id: u64, id: u64) -> DispatchResult {
 			let who = ensure_signed(origin)?;
@@ -170,6 +181,8 @@ pub mod pallet {
 		}
 
 		/// 函数级中文注释：取消目标与证据的链接；仅授权账户可调用。
+		#[pallet::call_index(4)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn unlink(origin: OriginFor<T>, domain: u8, target_id: u64, id: u64) -> DispatchResult {
 			let who = ensure_signed(origin)?;
@@ -181,6 +194,8 @@ pub mod pallet {
 		}
 
 		/// 函数级中文注释（V2）：按命名空间与主体取消链接。
+		#[pallet::call_index(5)]
+		#[allow(deprecated)]
 		#[pallet::weight(10_000)]
 		pub fn unlink_by_ns(origin: OriginFor<T>, ns: [u8; 8], subject_id: u64, id: u64) -> DispatchResult {
 			let who = ensure_signed(origin)?;

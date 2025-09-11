@@ -15,6 +15,7 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// 事件类型
+		#[allow(deprecated)]
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// 墓位 ID 类型（与 pallet-memo-grave 对齐）
 		type GraveId: Parameter + Member + Copy + MaxEncodedLen;

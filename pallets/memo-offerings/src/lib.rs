@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -7,7 +9,8 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, StorageVersion, Currency, ExistenceRequirement}, weights::Weight};
+    // 函数级中文注释：移除未使用的 StorageVersion 导入以消除未使用警告
+    use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, Currency, ExistenceRequirement}};
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
     use sp_runtime::traits::{SaturatedConversion, Saturating};
@@ -45,6 +48,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         #[pallet::constant] type MaxCidLen: Get<u32>;
         #[pallet::constant] type MaxNameLen: Get<u32>;
@@ -228,11 +232,16 @@ pub mod pallet {
         AmountTooLow,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：管理员上架（创建）供奉品规格模板。
         /// - 仅允许 AdminOrigin 调用；
         /// - kind_flag: 0=Instant；1=Timed（需配 min/max/can_renew/expire_action）。
+        #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn create_offering(
             origin: OriginFor<T>,
@@ -260,6 +269,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：管理员编辑供奉品规格（可选字段）。
+        #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn update_offering(
             origin: OriginFor<T>,
@@ -290,6 +301,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：管理员设置模板启用状态（上/下架）。
+        #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_offering_enabled(origin: OriginFor<T>, kind_code: u8, enabled: bool) -> DispatchResult {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
@@ -306,6 +319,8 @@ pub mod pallet {
         /// - 校验目标存在性与调用者是否被允许；
         /// - 可选 `amount` 仅作记录，真实支付建议走 `order+escrow`；
         /// - `media`：本次供奉关联的媒体列表（仅 CID 与可选承诺），不落明文；长度受上限约束。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn offer(
             origin: OriginFor<T>,
@@ -369,6 +384,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：批量提交供奉记录（减少链上交互次数）。
+        #[pallet::call_index(4)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn batch_offer(origin: OriginFor<T>, calls: Vec<(u8, u64, u8, Option<u128>, Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>, Option<u32>)>) -> DispatchResult {
             for (d,id,k,a,m,dur) in calls { Self::offer(origin.clone(), (d,id), k, a, m, dur)?; }
@@ -378,6 +395,8 @@ pub mod pallet {
         /// 函数级中文注释：治理更新供奉风控参数（Root）。
         /// - 未提供的参数保持不变；
         /// - OfferWindow（块）/OfferMaxInWindow（次数）/MinOfferAmount（u128）。
+        #[pallet::call_index(5)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_offer_params(
             origin: OriginFor<T>,
@@ -395,6 +414,8 @@ pub mod pallet {
 
         /// 函数级中文注释：设置/更新定价（Root/Admin）。
         /// - Instant：fixed_price；Timed：unit_price_per_week；未提供的字段不变；
+        #[pallet::call_index(6)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_offering_price(
             origin: OriginFor<T>,

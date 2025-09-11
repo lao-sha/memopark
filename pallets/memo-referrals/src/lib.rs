@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -18,6 +20,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// 运行时事件类型
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 最大遍历层级（用于上游遍历与防御性限制）
         #[pallet::constant]
@@ -76,6 +79,9 @@ pub mod pallet {
         Paused,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：一次性绑定直属推荐人。
@@ -86,6 +92,7 @@ pub mod pallet {
         /// - 祖先链防环；
         /// - 未被治理暂停。
         #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn bind_sponsor(origin: OriginFor<T>, sponsor: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -113,6 +120,7 @@ pub mod pallet {
 
         /// 函数级中文注释：设置暂停位，仅 Root 可调用。
         #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_paused(origin: OriginFor<T>, value: bool) -> DispatchResult {
             ensure_root(origin)?;
@@ -123,6 +131,7 @@ pub mod pallet {
 
         /// 函数级中文注释：治理设置封禁推荐人状态（banned=true 表示该账户作为推荐人被封禁）。
         #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_banned(origin: OriginFor<T>, who: T::AccountId, banned: bool) -> DispatchResult {
             ensure_root(origin)?;

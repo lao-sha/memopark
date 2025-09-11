@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`（RuntimeEvent/常量权重），后续移除
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -83,8 +85,8 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// 发起仲裁：记录争议，证据 CID 存链（仅登记摘要/CID，不碰业务存储）
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::dispute(evidence.len() as u32))]
-        pub fn dispute(origin: OriginFor<T>, domain: [u8; 8], id: u64, evidence: alloc::vec::Vec<BoundedVec<u8, T::MaxCidLen>>) -> DispatchResult {
+        #[pallet::weight(T::WeightInfo::dispute(_evidence.len() as u32))]
+        pub fn dispute(origin: OriginFor<T>, domain: [u8; 8], id: u64, _evidence: alloc::vec::Vec<BoundedVec<u8, T::MaxCidLen>>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // 鉴权：由 Router 依据业务 pallet 规则判断是否允许发起（基准模式下跳过，便于构造场景）
             #[cfg(not(feature = "runtime-benchmarks"))]

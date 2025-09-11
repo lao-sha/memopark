@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -94,6 +96,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type GraveId: Parameter + Member + Copy + MaxEncodedLen;
         type MessageId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
@@ -155,9 +158,14 @@ pub mod pallet {
         RateLimited,
     }
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：开关公共留言；仅墓主或园区管理员可调用。
+        #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn set_public(origin: OriginFor<T>, grave_id: T::GraveId, enabled: bool) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -169,6 +177,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：添加/移除亲人白名单；仅墓主或园区管理员。
+        #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn add_relative(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -177,6 +187,8 @@ pub mod pallet {
             Ok(())
         }
 
+        #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn remove_relative(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -186,6 +198,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：添加/移除版主；仅墓主或园区管理员。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn add_moderator(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -196,6 +210,8 @@ pub mod pallet {
             Ok(())
         }
 
+        #[pallet::call_index(4)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn remove_moderator(origin: OriginFor<T>, grave_id: T::GraveId, who: T::AccountId) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -207,6 +223,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：置顶某条留言；仅墓主或园区管理员。
+        #[pallet::call_index(5)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn pin_message(origin: OriginFor<T>, grave_id: T::GraveId, msg_id: Option<T::MessageId>) -> DispatchResult {
             T::GraveProvider::ensure_owner_or_admin(grave_id, origin)?;
@@ -218,6 +236,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：发布留言；公共关闭时仅墓主/版主/亲人可发言；支持附件（链下 URI）。
+        #[pallet::call_index(6)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn post(
             origin: OriginFor<T>,
@@ -277,6 +297,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：编辑留言；作者或版主可编辑；更新 edited 时间戳。
+        #[pallet::call_index(7)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn edit(
             origin: OriginFor<T>,
@@ -312,6 +334,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：隐藏留言；版主或墓主/园区管理员可操作。
+        #[pallet::call_index(8)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn hide(origin: OriginFor<T>, message_id: T::MessageId) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
@@ -323,6 +347,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：删除留言；作者或版主可操作（此处直接硬删，亦可改为软删）。
+        #[pallet::call_index(9)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn delete(origin: OriginFor<T>, message_id: T::MessageId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -338,6 +364,8 @@ pub mod pallet {
         /// - 权限：成员或管理员；
         /// - 限频：沿用 MinPostBlocksPerAccount 作为最小间隔；
         /// - 记录事件，便于前端时间轴统一展示；不落链上大文本以控制状态量。
+        #[pallet::call_index(10)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn sweep(origin: OriginFor<T>, grave_id: T::GraveId, _note: Option<Vec<u8>>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
