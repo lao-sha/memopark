@@ -34,7 +34,6 @@ use frame_support::{
     ensure,
 };
 use frame_system::limits::{BlockLength, BlockWeights};
-use alloc::vec::Vec;
 use sp_runtime::traits::AccountIdConversion;
 use sp_core::Get;
 use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
@@ -94,11 +93,7 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 				inner,
 				pallet_otc_listing::Call::create_listing { .. }
 			),
-			// 纪念馆/供奉：沿用证据命名空间演示开白名单（可按需新增独立 NS）
-			(n, RuntimeCall::Grave(inner)) if n == EvidenceNsBytes::get() => matches!(
-				inner,
-				pallet_memo_grave::Call::create_hall { .. }
-			),
+			// 纪念馆已拆分至 pallet-memo-hall：不再匹配旧 create_hall
 			(n, RuntimeCall::MemorialOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
 				inner,
 				pallet_memo_offerings::Call::offer { .. }
@@ -300,7 +295,8 @@ parameter_types! {
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
 impl pallet_memo_grave::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：暂用零权重占位，后续以基准生成权重类型替换
+    type WeightInfo = pallet_memo_grave::weights::TestWeights;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
     type MaxIntermentsPerGrave = GraveMaxIntermentsPerGrave;
@@ -312,11 +308,7 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxFollowers = GraveMaxFollowers;
     /// 函数级中文注释：绑定 Slug 长度常量（10 位）
     type SlugLen = GraveSlugLen;
-    type CreateHallWindow = ConstU32<600>;
-    type CreateHallMaxInWindow = ConstU32<10>;
-    type RequireKyc = ConstBool<false>;
-    /// 函数级中文注释：KYC 提供者实现绑定到 memo-grave 所需 trait
-    type Kyc = KycByIdentity;
+    // Hall 已拆分至独立 pallet，移除此处 KYC/限频参数
 }
 
 // ===== deceased 配置 =====
@@ -343,7 +335,9 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             if admins.iter().any(|a| a == who) { return true; }
             // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
-            <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(grave.park_id, origin).is_ok()
+            if let Some(pid) = grave.park_id {
+                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
+            } else { false }
         } else { false }
     }
 }
@@ -420,7 +414,9 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
             if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
                 if who == g.owner { return Ok(()); }
             }
-            <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(g.park_id, origin)
+            if let Some(pid) = g.park_id {
+                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin)
+            } else { Err(sp_runtime::DispatchError::Other("NoPark")) }
         } else {
             Err(sp_runtime::DispatchError::Other("GraveNotFound"))
         }
@@ -740,7 +736,6 @@ impl pallet_otc_listing::Config for Runtime {
 }
 parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
 impl pallet_otc_order::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type ConfirmTTL = OtcOrderConfirmTTL;
     /// 函数级中文注释：托管接口（用于订单锁定/释放/退款），对接 pallet-escrow

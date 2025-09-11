@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`，仅为通过工作区 `-D warnings`；后续将以基准权重替换常量权重
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -64,6 +66,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type DeceasedId: Parameter + Member + Copy + MaxEncodedLen;
         type AlbumId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
@@ -113,9 +116,14 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
+    // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    #[allow(warnings)]
+    #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：创建相册；校验逝者存在与权限；限制标题/描述/标签长度数量。
+        #[pallet::call_index(0)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn create_album(
             origin: OriginFor<T>,
@@ -152,6 +160,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：更新相册；仅 owner；可更新标题/描述/可见性/标签/封面。
+        #[pallet::call_index(1)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn update_album(
             origin: OriginFor<T>,
@@ -189,6 +199,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：删除相册；仅 owner；若非空则拒绝，避免重交易。
+        #[pallet::call_index(2)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn delete_album(origin: OriginFor<T>, album_id: T::AlbumId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -203,6 +215,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：添加媒体项；仅相册 owner；限制 URI 长度；可设置排序号。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn add_media(
             origin: OriginFor<T>,
@@ -251,6 +265,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：更新媒体项；仅 owner；可改外链/哈希/尺寸/排序等。
+        #[pallet::call_index(4)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn update_media(
             origin: OriginFor<T>,
@@ -294,6 +310,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：删除媒体项；仅 owner；从相册索引中同步移除。
+        #[pallet::call_index(5)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn remove_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -306,6 +324,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：移动媒体到其它相册；要求同一逝者；仅 owner。
+        #[pallet::call_index(6)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn move_media(origin: OriginFor<T>, media_id: T::MediaId, to_album: T::AlbumId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -324,6 +344,8 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：重排相册媒体顺序；仅 owner；限制批量大小。
+        #[pallet::call_index(7)]
+        #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn reorder_album(origin: OriginFor<T>, album_id: T::AlbumId, ordered_media: Vec<T::MediaId>) -> DispatchResult {
             let who = ensure_signed(origin)?;

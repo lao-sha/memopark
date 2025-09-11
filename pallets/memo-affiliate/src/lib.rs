@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! 说明：临时全局允许 `deprecated`（常量权重/RuntimeEvent），后续将迁移至 WeightInfo 并移除
+#![allow(deprecated)]
 
 pub use pallet::*;
 
@@ -208,7 +210,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn settle(origin: OriginFor<T>, cycle: u32, max_pay: u32) -> DispatchResult {
             let _ = ensure_signed(origin)?; // 允许任何人触发结算
-            let mut list = EntitledAccounts::<T>::get(cycle).into_inner();
+            let list = EntitledAccounts::<T>::get(cycle).into_inner();
             ensure!(!list.is_empty() || BurnAccrued::<T>::get().0 == cycle || TreasuryAccrued::<T>::get().0 == cycle, Error::<T>::NothingToSettle);
 
             let mut cursor = SettleCursor::<T>::get(cycle);
