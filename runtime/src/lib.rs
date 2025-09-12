@@ -304,4 +304,14 @@ mod runtime {
 
 	#[runtime::pallet_index(28)]
 	pub type Scheduler = pallet_scheduler;
+
+	#[runtime::pallet_index(29)]
+	pub type Treasury = pallet_treasury;
+
+	// OpenGov pallets
+	#[runtime::pallet_index(30)]
+	pub type ConvictionVoting = pallet_conviction_voting;
+
+	#[runtime::pallet_index(31)]
+	pub type Referenda = pallet_referenda;
 }

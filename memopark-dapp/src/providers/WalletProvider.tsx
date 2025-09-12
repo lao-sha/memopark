@@ -7,6 +7,8 @@ import { createPolkadotApi } from '../lib/polkadot';
 import { signAndSend as polkadotSignAndSend, sendViaForwarder as polkadotSendViaForwarder } from '../lib/polkadot-safe';
 import { Spin } from 'antd';
 import { signAndSendLocalFromKeystore } from '../lib/polkadot-safe'
+import { sessionManager } from '../lib/sessionManager'
+import { getCurrentAddress, loadAllKeystores } from '../lib/keystore'
 
 /**
  * 函数级详细中文注释：钱包上下文接口定义
@@ -68,6 +70,19 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     console.log('WalletProvider useEffect 触发');
     const timer = setTimeout(() => {
       initializeApi();
+      // 自动恢复当前地址与账户列表
+      try {
+        const cur = getCurrentAddress()
+        const list = loadAllKeystores().map(k=>({ address: k.address, meta: { name: k.address.slice(0,6)+'…'+k.address.slice(-4) } }))
+        setAccounts(list)
+        if (cur) setSelectedAccount({ address: cur, meta: { name: '当前账户' } })
+        // 若 session 为空且有地址，自动创建开发会话，便于“我的治理”能读取地址
+        const s = sessionManager.getCurrentSession() || sessionManager.init()
+        if (!s && cur) {
+          try { sessionManager.forceCreateDevSession(cur) } catch {}
+        }
+        setIsConnected(true)
+      } catch {}
     }, 100);
     return () => clearTimeout(timer);
   }, []);

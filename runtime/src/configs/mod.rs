@@ -55,6 +55,7 @@ use super::{
 
 // ===== Forwarder 集成所需的适配与类型 =====
 use pallet_forwarder::ForwarderAuthorizer;
+use sp_runtime::traits::IdentityLookup;
 
 /// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
 pub struct AuthorizerAdapter;
@@ -291,24 +292,27 @@ parameter_types! {
     pub const GraveMaxAdmins: u32 = 16;
     /// 函数级中文注释：人类可读 ID（Slug）长度（固定为 10 位数字），与 `pallet-memo-grave` 中的约束一致
     pub const GraveSlugLen: u32 = 10;
+    pub const GraveFollowCooldownBlocks: u32 = 30;
+    pub const GraveFollowDeposit: Balance = 0;
 }
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
 impl pallet_memo_grave::Config for Runtime {
-    /// 函数级中文注释：暂用零权重占位，后续以基准生成权重类型替换
     type WeightInfo = pallet_memo_grave::weights::TestWeights;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
     type MaxIntermentsPerGrave = GraveMaxIntermentsPerGrave;
     type OnInterment = NoopIntermentHook;
-    type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
+    type ParkAdmin = RootOnlyParkAdmin;
     type MaxIdsPerName = GraveMaxIdsPerName;
     type MaxComplaintsPerGrave = GraveMaxComplaints;
     type MaxAdminsPerGrave = GraveMaxAdmins;
     type MaxFollowers = GraveMaxFollowers;
-    /// 函数级中文注释：绑定 Slug 长度常量（10 位）
     type SlugLen = GraveSlugLen;
-    // Hall 已拆分至独立 pallet，移除此处 KYC/限频参数
+    type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
+    type FollowCooldownBlocks = GraveFollowCooldownBlocks;
+    type Currency = Balances;
+    type FollowDeposit = GraveFollowDeposit;
 }
 
 // ===== deceased 配置 =====
@@ -316,6 +320,7 @@ parameter_types! {
     pub const DeceasedMaxPerGrave: u32 = 128;
     pub const DeceasedStringLimit: u32 = 256;
     pub const DeceasedMaxLinks: u32 = 8;
+    pub const DeceasedMaxPerGraveSoft: u32 = 6;
 }
 
 /// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
@@ -340,6 +345,10 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             } else { false }
         } else { false }
     }
+    /// 冗余校验：读取 memo-grave 的已安葬令牌缓存长度（最多 6）。
+    fn cached_deceased_tokens_len(grave_id: u64) -> Option<u32> {
+        pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.deceased_tokens.len() as u32)
+    }
 }
 
 impl pallet_deceased::Config for Runtime {
@@ -349,6 +358,8 @@ impl pallet_deceased::Config for Runtime {
     type MaxDeceasedPerGrave = DeceasedMaxPerGrave;
     type StringLimit = DeceasedStringLimit;
     type MaxLinks = DeceasedMaxLinks;
+    type MaxDeceasedPerGraveSoft = DeceasedMaxPerGraveSoft;
+    type TokenLimit = GraveMaxCidLen;
     type GraveProvider = GraveProviderAdapter;
     type WeightInfo = ();
 }
@@ -370,6 +381,20 @@ impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderA
     /// 检查操作者是否可管理该逝者（当前：记录 owner）
     fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+    }
+}
+
+/// 函数级中文注释：Deceased token 适配器，将 `pallet-deceased` 的 `deceased_token` 转换为 `BoundedVec<u8, GraveMaxCidLen>`。
+pub struct DeceasedTokenProviderAdapter;
+impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for DeceasedTokenProviderAdapter {
+    fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
+            let bytes: Vec<u8> = d.deceased_token.to_vec();
+            let max = GraveMaxCidLen::get() as usize;
+            let mut v = bytes;
+            if v.len() > max { v.truncate(max); }
+            frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
+        } else { None }
     }
 }
 
@@ -422,12 +447,12 @@ impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for Grav
         }
     }
     fn grave_exists(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
-    /// 函数级中文注释：成员判定，从 memo-grave Members 存储读取。
+    /// 成员判定
     fn is_member(grave_id: u64, who: &AccountId) -> bool { pallet_memo_grave::pallet::Members::<Runtime>::contains_key(grave_id, who) }
-    /// 函数级中文注释：读取 memo-grave 策略，判断是否开放公共留言
-    fn is_public_guestbook(grave_id: u64) -> bool { pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(grave_id).public_guestbook }
-    /// 函数级中文注释：读取 memo-grave 策略，判断是否开放公共扫墓
-    fn is_public_sweep(grave_id: u64) -> bool { pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(grave_id).public_sweep }
+    /// 公共留言：取 is_public
+    fn is_public_guestbook(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.is_public).unwrap_or(false) }
+    /// 公共扫墓：取 is_public
+    fn is_public_sweep(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.is_public).unwrap_or(false) }
 }
 
 impl pallet_grave_guestbook::pallet::Config for Runtime {
@@ -473,6 +498,56 @@ impl pallet_memo_offerings::Config for Runtime {
     type DonationResolver = GraveDonationResolver;
 }
 
+// ===== Treasury 配置 =====
+parameter_types! {
+    pub const TreasuryPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/trsry");
+    pub const TreasurySpendPeriod: BlockNumber = 7 * DAYS;
+    pub const TreasuryPayoutPeriod: BlockNumber = 7 * DAYS;
+    pub const TreasuryBurn: sp_runtime::Permill = sp_runtime::Permill::from_percent(0);
+    pub const TreasuryMaxApprovals: u32 = 100;
+}
+
+pub struct NativePaymaster;
+impl frame_support::traits::tokens::Pay for NativePaymaster {
+    type Balance = Balance;
+    type AssetKind = (); // 仅原生
+    type Beneficiary = AccountId;
+    type Id = ();
+    type Error = sp_runtime::DispatchError;
+    fn pay(who: &Self::Beneficiary, _asset_kind: Self::AssetKind, amount: Self::Balance) -> Result<Self::Id, Self::Error> {
+        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(&PlatformAccount::get(), who, amount, frame_support::traits::tokens::Preservation::Expendable)?;
+        Ok(())
+    }
+    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus { frame_support::traits::tokens::PaymentStatus::Success }
+}
+
+pub struct UnitBalanceConverter;
+impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance> for UnitBalanceConverter {
+    type Error = sp_runtime::DispatchError;
+    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> { Ok(amount) }
+}
+
+impl pallet_treasury::Config for Runtime {
+    type Currency = Balances;
+    type RejectOrigin = frame_system::EnsureRoot<AccountId>;
+    type SpendPeriod = TreasurySpendPeriod;
+    type Burn = TreasuryBurn;
+    type PalletId = TreasuryPalletId;
+    type BurnDestination = (); // 丢弃
+    type WeightInfo = pallet_treasury::weights::SubstrateWeight<Runtime>;
+    type SpendFunds = ();
+    type MaxApprovals = TreasuryMaxApprovals;
+    type SpendOrigin = frame_system::EnsureRootWithSuccess<AccountId, ConstU128<1_000_000_000_000_000_000>>; // Root 最多可一次性支出 1e18 单位
+    type AssetKind = ();
+    type Beneficiary = AccountId;
+    type BeneficiaryLookup = IdentityLookup<AccountId>;
+    type RuntimeEvent = RuntimeEvent;
+    type Paymaster = NativePaymaster;
+    type BalanceConverter = UnitBalanceConverter;
+    type PayoutPeriod = TreasuryPayoutPeriod;
+    type BlockNumberProvider = frame_system::Pallet<Runtime>;
+}
+
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
 // 修正命名：由旧 crate 前缀 memorial 切换为 memo，保证与 `pallets/memo-park` 对应
 impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
@@ -503,9 +578,9 @@ impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for 
         let who = frame_system::ensure_signed(origin)?;
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
-            // 若墓位公开供奉，则放行；否则必须为成员
-            let policy = pallet_memo_grave::pallet::VisibilityPolicyOf::<Runtime>::get(target.1);
-            if !policy.public_offering {
+            // 若墓位公开则放行，否则必须为成员
+            let is_public = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1).map(|g| g.is_public).unwrap_or(false);
+            if !is_public {
                 ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
             }
         }
@@ -975,4 +1050,81 @@ impl sp_core::Get<&'static [u16]> for LevelRatesArray {
         ];
         RATES
     }
+}
+
+use pallet_conviction_voting as cv;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+
+parameter_types! {
+    pub const MaxVotesPerAccount: u32 = 256;
+    pub const VoteLockingPeriod: BlockNumber = 7 * DAYS; // 约 7 天
+}
+parameter_types! { pub const MaxVotes: u32 = 256; }
+parameter_types! { pub const MaxTurnoutLimit: Balance = 0; }
+
+impl cv::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type Polls = pallet_referenda::Pallet<Runtime>;
+    type MaxTurnout = MaxTurnoutLimit;
+    type MaxVotes = MaxVotes;
+    type VoteLockingPeriod = VoteLockingPeriod;
+    type BlockNumberProvider = frame_system::Pallet<Runtime>;
+    type VotingHooks = ();
+    type WeightInfo = ();
+}
+
+parameter_types! { pub const UndecidingTimeout: BlockNumber = 7 * DAYS; }
+
+pub struct TracksInfo;
+impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
+    type Id = u16;
+    type RuntimeOrigin = <RuntimeOrigin as frame_support::traits::OriginTrait>::PalletsOrigin;
+
+    fn tracks() -> impl Iterator<Item = Cow<'static, pallet_referenda::Track<Self::Id, Balance, BlockNumber>>> {
+        const NAME: [u8; 25] = *b"Root_____________________";
+        let root = pallet_referenda::Track {
+            id: 0u16,
+            info: pallet_referenda::TrackInfo {
+                name: NAME,
+                max_deciding: 1,
+                decision_deposit: 0,
+                prepare_period: 0,
+                decision_period: 14 * DAYS,
+                confirm_period: 2 * DAYS,
+                min_enactment_period: 1 * DAYS,
+                min_approval: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
+                min_support: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
+            }
+        };
+        core::iter::once(Cow::Owned(root))
+    }
+
+    fn track_for(_origin: &Self::RuntimeOrigin) -> Result<Self::Id, ()> { Ok(0u16) }
+}
+
+parameter_types! { pub const SubmissionDeposit: Balance = 0; }
+parameter_types! { pub const MaxQueued: u32 = 100; }
+parameter_types! { pub const AlarmInterval: BlockNumber = 10; }
+
+impl pallet_referenda::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type WeightInfo = ();
+    type Scheduler = pallet_scheduler::Pallet<Runtime>;
+    type Currency = Balances;
+    type SubmitOrigin = frame_support::traits::AsEnsureOriginWithArg<frame_system::EnsureSigned<AccountId>>;
+    type CancelOrigin = frame_system::EnsureRoot<AccountId>;
+    type KillOrigin = frame_system::EnsureRoot<AccountId>;
+    type Slash = ();
+    type Votes = pallet_conviction_voting::VotesOf<Runtime>;
+    type Tally = pallet_conviction_voting::TallyOf<Runtime>;
+    type SubmissionDeposit = SubmissionDeposit;
+    type MaxQueued = MaxQueued;
+    type UndecidingTimeout = UndecidingTimeout;
+    type AlarmInterval = AlarmInterval;
+    type Tracks = TracksInfo;
+    type Preimages = pallet_preimage::Pallet<Runtime>;
+    type BlockNumberProvider = frame_system::Pallet<Runtime>;
 }

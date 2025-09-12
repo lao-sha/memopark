@@ -86,6 +86,7 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
             <Space>
               <Button type="primary" onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'transfer' } }))}>转账</Button>
               <Button onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create-grave' } }))}>创建墓地</Button>
+              <Button onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'gov-home' } }))}>治理</Button>
               <Button onClick={()=> window.scrollTo({ top: 0, behavior: 'smooth' })}>返回顶部</Button>
               <Button danger onClick={handleLogout}>退出登录</Button>
             </Space>

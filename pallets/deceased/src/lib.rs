@@ -17,6 +17,10 @@ use frame_support::weights::Weight;
 pub trait GraveInspector<AccountId, GraveId> {
     fn grave_exists(grave_id: GraveId) -> bool;
     fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
+    /// 函数级中文注释：可选的冗余校验接口——返回墓地下缓存的逝者令牌数量（若无实现则返回 None）。
+    /// - 默认由 runtime 适配器从 `pallet-memo-grave::Graves[id].deceased_tokens.len()` 读取；
+    /// - 仅作为快速拒绝优化，最终仍以本模块 `DeceasedByGrave` 的长度为准。
+    fn cached_deceased_tokens_len(grave_id: GraveId) -> Option<u32> { let _ = grave_id; None }
 }
 
 /// 函数级中文注释：权重信息占位接口，后续可通过 benchmarking 生成并替换。
@@ -35,6 +39,11 @@ impl WeightInfo for () {
     fn transfer() -> Weight { Weight::from_parts(10_000, 0) }
 }
 
+/// 函数级中文注释：性别枚举。
+/// - 仅三种取值：M(男)、F(女)、B(保密/双性/未指明)。
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+pub enum Gender { M, F, B }
+
 /// 函数级中文注释：逝者实体，链上仅存最小必要信息与链下指针。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
@@ -45,11 +54,23 @@ pub struct Deceased<T: Config> {
     pub owner: T::AccountId,
     /// 姓名（限长，避免敏感信息超量上链）
     pub name: BoundedVec<u8, T::StringLimit>,
+    /// 姓名拼音徽标（大写，不含空格与特殊字符）。
+    pub name_badge: BoundedVec<u8, T::StringLimit>,
+    /// 性别枚举：M/F/B。
+    pub gender: Gender,
     /// 简介/悼词（限长，敏感详情放链下）
     pub bio: BoundedVec<u8, T::StringLimit>,
-    /// 出生与离世时间戳（可选）
-    pub birth_ts: Option<u64>,
-    pub death_ts: Option<u64>,
+    /// 函数级中文注释：全名的链下指针 CID（IPFS/HTTPS 等），建议前端使用该字段展示完整姓名；
+    /// - 隐私：不在链上直接存储超长姓名明文；
+    /// - 约束：可选字段；长度受 `TokenLimit` 约束，建议与外部引用者的 MaxCidLen 对齐；
+    pub name_full_cid: Option<BoundedVec<u8, T::TokenLimit>>,
+    /// 出生与离世日期（可选，格式：YYYYMMDD，如 19811224）
+    pub birth_ts: Option<BoundedVec<u8, T::StringLimit>>,
+    pub death_ts: Option<BoundedVec<u8, T::StringLimit>>,
+    /// 逝者令牌（在 pallet 内构造）：gender + birth + death + name_badge
+    /// 例如：M1981122420250901LIUXIAODONG
+    /// 长度上限单独由 `Config::TokenLimit` 约束，便于与外部引用保持一致。
+    pub deceased_token: BoundedVec<u8, T::TokenLimit>,
     /// 外部资源链接（IPFS/HTTPS），每条与数量均受限
     pub links: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks>,
     /// 创建与更新区块号
@@ -86,6 +107,18 @@ pub mod pallet {
         /// 最大外部链接条数
         #[pallet::constant]
         type MaxLinks: Get<u32>;
+
+        /// 函数级中文注释：业务上每个墓位下允许的逝者上限（软上限）。
+        /// - 与泛型 `MaxDeceasedPerGrave`（硬上限）并存；
+        /// - 本模块在创建/迁移时同时检查软上限，默认值建议为 6；
+        /// - 可通过治理升级灵活调整，兼容未来迁移。
+        #[pallet::constant]
+        type MaxDeceasedPerGraveSoft: Get<u32>;
+
+        /// 函数级中文注释：`deceased_token` 的最大长度上限（字节）。
+        /// - 设计目标：与外部引用者（如 `pallet-memo-grave`）的 `MaxCidLen` 对齐，避免跨 pallet 不一致。
+        #[pallet::constant]
+        type TokenLimit: Get<u32>;
 
         /// 墓位校验与权限提供者（低耦合关键）
         type GraveProvider: GraveInspector<Self::AccountId, Self::GraveId>;
@@ -157,7 +190,7 @@ pub mod pallet {
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -218,17 +251,49 @@ pub mod pallet {
             origin: OriginFor<T>,
             grave_id: T::GraveId,
             name: Vec<u8>,
+            name_badge: Vec<u8>,
+            gender_code: u8, // 0=M,1=F,2=B
             bio: Vec<u8>,
-            birth_ts: Option<u64>,
-            death_ts: Option<u64>,
+            name_full_cid: Option<Vec<u8>>, // 可选：完整姓名的链下 CID
+            birth_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
+            death_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
             links: Vec<Vec<u8>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
             ensure!(T::GraveProvider::can_attach(&who, grave_id), Error::<T>::NotAuthorized);
+            // 冗余快速校验：若外部缓存的令牌数已达软上限，也直接拒绝（最终仍以下方 DeceasedByGrave 为准）
+            if let Some(cached) = T::GraveProvider::cached_deceased_tokens_len(grave_id) {
+                ensure!(cached < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+            }
+            // 软上限权威校验：每墓位最多允许的逝者数量（默认 6）。
+            let existing_in_grave = DeceasedByGrave::<T>::get(grave_id).len() as u32;
+            ensure!(existing_in_grave < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
 
+            // 校验与规范化字段
             let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
             let bio_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(bio).map_err(|_| Error::<T>::BadInput)?;
+            // name_badge：仅保留 [A-Z]，并转为大写
+            fn to_badge(input: Vec<u8>) -> Vec<u8> {
+                input.into_iter().filter_map(|b| {
+                    let up = if (b'a'..=b'z').contains(&b) { b - 32 } else { b };
+                    if (b'A'..=b'Z').contains(&up) { Some(up) } else { None }
+                }).collect::<Vec<u8>>()
+            }
+            let badge_vec = to_badge(name_badge);
+            let name_badge_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(badge_vec).map_err(|_| Error::<T>::BadInput)?;
+            let gender: Gender = match gender_code { 0 => Gender::M, 1 => Gender::F, _ => Gender::B };
+            // 校验日期：若提供则必须为 8 位数字
+            fn is_yyyymmdd(v: &Vec<u8>) -> bool { v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b)) }
+            ensure!(is_yyyymmdd(&birth_ts), Error::<T>::BadInput);
+            ensure!(is_yyyymmdd(&death_ts), Error::<T>::BadInput);
+            let birth_bv: Option<BoundedVec<_, T::StringLimit>> = Some(BoundedVec::try_from(birth_ts).map_err(|_| Error::<T>::BadInput)?);
+            let death_bv: Option<BoundedVec<_, T::StringLimit>> = Some(BoundedVec::try_from(death_ts).map_err(|_| Error::<T>::BadInput)?);
+            // 可选 CID 校验（仅限长度）
+            let name_full_cid_bv: Option<BoundedVec<u8, T::TokenLimit>> = match name_full_cid {
+                Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
+                None => None,
+            };
 
             let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
             for l in links.into_iter() {
@@ -241,13 +306,32 @@ pub mod pallet {
             NextDeceasedId::<T>::put(next);
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
+            // 构造 token：GENDER + birth + death + name_badge
+            fn build_token<TC: Config>(g: &Gender, birth: &Option<BoundedVec<u8, TC::StringLimit>>, death: &Option<BoundedVec<u8, TC::StringLimit>>, badge: &BoundedVec<u8, TC::StringLimit>) -> BoundedVec<u8, TC::TokenLimit> {
+                let mut v: Vec<u8> = Vec::new();
+                let c = match g { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
+                v.push(c);
+                if let Some(b) = birth { v.extend_from_slice(b.as_slice()); }
+                if let Some(d) = death { v.extend_from_slice(d.as_slice()); }
+                v.extend_from_slice(badge.as_slice());
+                // 若超长则按 TokenLimit 截断，优先保留前缀信息
+                let max = <TC as Config>::TokenLimit::get() as usize;
+                let mut out = v;
+                if out.len() > max { out.truncate(max); }
+                BoundedVec::<u8, TC::TokenLimit>::try_from(out).unwrap_or_default()
+            }
+            let deceased_token = build_token::<T>(&gender, &birth_bv, &death_bv, &name_badge_bv);
             let deceased = Deceased::<T> {
                 grave_id,
                 owner: who.clone(),
                 name: name_bv,
+                name_badge: name_badge_bv,
+                gender,
                 bio: bio_bv,
-                birth_ts,
-                death_ts,
+                name_full_cid: name_full_cid_bv,
+                birth_ts: birth_bv,
+                death_ts: death_bv,
+                deceased_token,
                 links: links_bv,
                 created: now,
                 updated: now,
@@ -271,9 +355,12 @@ pub mod pallet {
             origin: OriginFor<T>,
             id: T::DeceasedId,
             name: Option<Vec<u8>>,
+            name_badge: Option<Vec<u8>>,
+            gender_code: Option<u8>,
             bio: Option<Vec<u8>>,
-            birth_ts: Option<Option<u64>>,
-            death_ts: Option<Option<u64>>,
+            name_full_cid: Option<Option<Vec<u8>>>,
+            birth_ts: Option<Option<Vec<u8>>>,
+            death_ts: Option<Option<Vec<u8>>>,
             links: Option<Vec<Vec<u8>>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -282,9 +369,24 @@ pub mod pallet {
                 ensure!(d.owner == who, Error::<T>::NotAuthorized);
 
                 if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(nb) = name_badge {
+                    let vec = nb.into_iter().filter_map(|b| { let up = if (b'a'..=b'z').contains(&b) { b-32 } else { b }; if (b'A'..=b'Z').contains(&up) { Some(up) } else { None } }).collect::<Vec<u8>>();
+                    d.name_badge = BoundedVec::try_from(vec).map_err(|_| Error::<T>::BadInput)?;
+                }
+                if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
                 if let Some(b) = bio { d.bio = BoundedVec::try_from(b).map_err(|_| Error::<T>::BadInput)?; }
-                if let Some(bi) = birth_ts { d.birth_ts = bi; }
-                if let Some(de) = death_ts { d.death_ts = de; }
+                if let Some(cid_opt) = name_full_cid {
+                    d.name_full_cid = match cid_opt {
+                        Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?),
+                        None => None,
+                    };
+                }
+                if let Some(bi) = birth_ts {
+                    d.birth_ts = match bi { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                }
+                if let Some(de) = death_ts {
+                    d.death_ts = match de { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                }
                 if let Some(ls) = links {
                     let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
                     for l in ls.into_iter() {
@@ -294,6 +396,16 @@ pub mod pallet {
                     d.links = links_bv;
                 }
                 d.updated = <frame_system::Pallet<T>>::block_number();
+                // 重新构造 token
+                let mut v: Vec<u8> = Vec::new();
+                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
+                v.push(c);
+                if let Some(ref b) = d.birth_ts { v.extend_from_slice(b.as_slice()); }
+                if let Some(ref de) = d.death_ts { v.extend_from_slice(de.as_slice()); }
+                v.extend_from_slice(d.name_badge.as_slice());
+                let max = <T as Config>::TokenLimit::get() as usize;
+                if v.len() > max { v.truncate(max); }
+                d.deceased_token = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
                 Ok(())
             })?;
 
@@ -330,6 +442,9 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             ensure!(T::GraveProvider::grave_exists(new_grave), Error::<T>::GraveNotFound);
             ensure!(T::GraveProvider::can_attach(&who, new_grave), Error::<T>::NotAuthorized);
+            // 软上限校验：目标墓位是否已达上限
+            let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
+            ensure!(existing_in_target < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
 
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
@@ -467,10 +582,106 @@ pub mod pallet {
         /// 函数级详细中文注释：运行时升级钩子（迁移到 StorageVersion=1）。
         /// - 当前仅写入版本号；为后续关系矩阵与状态机升级做准备。
         fn on_runtime_upgrade() -> Weight {
-            if <Pallet<T>>::on_chain_storage_version() < 1 {
+            let mut weight = Weight::zero();
+            let current = <Pallet<T>>::on_chain_storage_version();
+            if current < 1 {
                 StorageVersion::new(1).put::<Pallet<T>>();
             }
-            Weight::zero()
+            if current < 2 {
+                // 旧结构：与 v1 定义保持一致
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldDeceased<TC: Config> {
+                    grave_id: TC::GraveId,
+                    owner: TC::AccountId,
+                    name: BoundedVec<u8, TC::StringLimit>,
+                    bio: BoundedVec<u8, TC::StringLimit>,
+                    birth_ts: Option<u64>,
+                    death_ts: Option<u64>,
+                    links: BoundedVec<BoundedVec<u8, TC::StringLimit>, TC::MaxLinks>,
+                    created: BlockNumberFor<TC>,
+                    updated: BlockNumberFor<TC>,
+                }
+
+                let mut migrated: u64 = 0;
+                DeceasedOf::<T>::translate(|_key, old: OldDeceased<T>| {
+                    migrated = migrated.saturating_add(1);
+                    // 迁移：
+                    let name_badge: BoundedVec<u8, T::StringLimit> = {
+                        let vec = old.name.clone().into_inner().into_iter().filter_map(|b| { let up = if (b'a'..=b'z').contains(&b) { b-32 } else { b }; if (b'A'..=b'Z').contains(&up) { Some(up) } else { None } }).collect::<Vec<u8>>();
+                        BoundedVec::try_from(vec).unwrap_or_default()
+                    };
+                    let birth_str: Option<BoundedVec<u8, T::StringLimit>> = None;
+                    let death_str: Option<BoundedVec<u8, T::StringLimit>> = None;
+                    let gender = Gender::B;
+                    let mut token: Vec<u8> = Vec::new();
+                    token.push(b'B');
+                    token.extend_from_slice(name_badge.as_slice());
+                    let max = <T as Config>::TokenLimit::get() as usize;
+                    if token.len() > max { let _ = token.split_off(max); }
+                    let deceased_token = BoundedVec::<u8, T::TokenLimit>::try_from(token).unwrap_or_default();
+                    Some(Deceased::<T> {
+                        grave_id: old.grave_id,
+                        owner: old.owner,
+                        name: old.name,
+                        name_badge,
+                        gender,
+                        bio: old.bio,
+                        name_full_cid: None,
+                        birth_ts: birth_str,
+                        death_ts: death_str,
+                        deceased_token,
+                        links: old.links,
+                        created: old.created,
+                        updated: old.updated,
+                    })
+                });
+                StorageVersion::new(2).put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(50_000) as u64, 0));
+            }
+            if current < 3 {
+                // v2 -> v3：新增字段 name_full_cid: Option<BoundedVec<u8, TokenLimit>>
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV2<TC: Config> {
+                    grave_id: TC::GraveId,
+                    owner: TC::AccountId,
+                    name: BoundedVec<u8, TC::StringLimit>,
+                    name_badge: BoundedVec<u8, TC::StringLimit>,
+                    gender: super::Gender,
+                    bio: BoundedVec<u8, TC::StringLimit>,
+                    birth_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    death_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    deceased_token: BoundedVec<u8, TC::TokenLimit>,
+                    links: BoundedVec<BoundedVec<u8, TC::StringLimit>, TC::MaxLinks>,
+                    created: BlockNumberFor<TC>,
+                    updated: BlockNumberFor<TC>,
+                }
+                let mut migrated: u64 = 0;
+                DeceasedOf::<T>::translate(|_key, old: OldV2<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Deceased::<T> {
+                        grave_id: old.grave_id,
+                        owner: old.owner,
+                        name: old.name,
+                        name_badge: old.name_badge,
+                        gender: old.gender,
+                        bio: old.bio,
+                        name_full_cid: None,
+                        birth_ts: old.birth_ts,
+                        death_ts: old.death_ts,
+                        deceased_token: old.deceased_token,
+                        links: old.links,
+                        created: old.created,
+                        updated: old.updated,
+                    })
+                });
+                StorageVersion::new(3).put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(30_000) as u64, 0));
+            }
+            weight
         }
     }
 }

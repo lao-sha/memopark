@@ -19,8 +19,18 @@ impl pallet_deceased::Config for Runtime {
 
 ## Extrinsics
 
-- create_deceased(grave_id, name, bio, birth_ts, death_ts, links)
-- update_deceased(id, name?, bio?, birth_ts??, death_ts??, links?)
+- create_deceased(grave_id, name, name_badge, gender_code, bio, birth_ts, death_ts, links)
+  - 新增：name_full_cid?（可选，链下全名 CID）→ 实际签名接口为
+    `create_deceased(grave_id, name, name_badge, gender_code, bio, name_full_cid?, birth_ts, death_ts, links)`
+  - 说明：
+    - name_badge：姓名拼音徽标（仅 A-Z，大写，去空格/符号）；
+    - gender_code：0=M，1=F，2=B；
+    - birth_ts/death_ts：字符串，格式 YYYYMMDD（如 19811224），必填；
+    - deceased_token：链上自动生成，不需作为参数传入，格式为 性别字母 + 出生 + 去世 + name_badge，例如 M1981122420250901LIUXIAODONG。
+- update_deceased(id, name?, name_badge?, gender_code?, bio?, birth_ts??, death_ts??, links?)
+  - 新增：name_full_cid??（外层 Option 表示是否修改，内层 Option 表示设置/清空）
+  - 说明：
+    - birth_ts??/death_ts??：外层 Option 表示是否更新；内层 Option 表示设置为 Some(YYYYMMDD) 或 None（清空）。
 - remove_deceased(id)
 - transfer_deceased(id, new_grave)
 
@@ -36,6 +46,24 @@ impl pallet_deceased::Config for Runtime {
 - NextDeceasedId: DeceasedId
 - DeceasedOf: DeceasedId -> Deceased
 - DeceasedByGrave: GraveId -> BoundedVec<DeceasedId>
+
+### Deceased 结构体
+- 增加字段：
+  - name_badge: BoundedVec<u8>（仅 A-Z 大写）
+  - gender: 枚举 M/F/B
+  - birth_ts: Option<BoundedVec<u8>>（YYYYMMDD）
+  - death_ts: Option<BoundedVec<u8>>（YYYYMMDD）
+  - deceased_token: BoundedVec<u8>（自动生成：gender+birth+death+name_badge）
+  - name_full_cid: Option<BoundedVec<u8>>（完整姓名链下指针，建议前端通过该 CID 展示全名）
+
+### 迁移
+- StorageVersion = 2：
+  - 从旧版 (v1) 迁移至新版：
+    - 将旧记录填充为 gender=B、birth_ts/death_ts=None；
+    - name_badge 由旧 name 上按规则提取（仅 A-Z 大写）；
+    - 生成 deceased_token。
+- StorageVersion = 3：
+  - 从 v2 迁移至 v3：新增 `name_full_cid=None`，不改变既有字段含义。
 
 ## 逝者↔逝者关系（族谱）
 - 存储：

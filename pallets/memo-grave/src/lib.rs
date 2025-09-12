@@ -10,13 +10,13 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec, traits::StorageVersion};
+    use frame_support::{pallet_prelude::*, BoundedVec, traits::{StorageVersion, Currency, ReservableCurrency}};
     use frame_support::weights::Weight;
     use crate::weights::WeightInfo;
     use frame_system::pallet_prelude::*;
     use sp_runtime::SaturatedConversion;
     use alloc::vec::Vec;
-    use codec::DecodeWithMemTracking;
+    // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
     pub trait OnIntermentCommitted {
@@ -27,6 +27,13 @@ pub mod pallet {
     /// 函数级中文注释：陵园管理员权限校验接口，占位以便 grave 在需要时允许上级管理员操作。
     pub trait ParkAdminOrigin<Origin> {
         fn ensure(park_id: u64, origin: Origin) -> DispatchResult;
+    }
+
+    /// 函数级中文注释：逝者令牌访问抽象，降低与 `pallet-deceased` 的耦合。
+    /// - 运行时通过适配器实现本 Trait，从 `pallet-deceased` 读取 `deceased_token`；
+    /// - 返回值长度与本模块 `MaxCidLen` 对齐，便于直接存入 `Grave.deceased_tokens`。
+    pub trait DeceasedTokenAccess<MaxCidLen: Get<u32>> {
+        fn token_of(id: u64) -> Option<BoundedVec<u8, MaxCidLen>>;
     }
 
     /// 函数级中文注释：KYC 提供者抽象（由 runtime 实现，例如基于 pallet-identity 的判定）。
@@ -49,7 +56,24 @@ pub mod pallet {
         #[pallet::constant] type SlugLen: Get<u32>;
         /// 函数级中文注释：关注者上限
         #[pallet::constant] type MaxFollowers: Get<u32>;
+
+        /// 函数级中文注释：逝者令牌提供者适配器，由 runtime 连接 `pallet-deceased`。
+        type DeceasedTokenProvider: DeceasedTokenAccess<Self::MaxCidLen>;
+
+        /// 函数级中文注释：关注冷却时间（以块为单位）。同一 (grave, follower) 的连续关注/取关操作的最小间隔。
+        #[pallet::constant]
+        type FollowCooldownBlocks: Get<u32>;
+
+        /// 函数级中文注释：押金货币接口与押金常量。
+        /// - Currency 必须实现 ReservableCurrency（支持保留/释放押金）。
+        type Currency: ReservableCurrency<Self::AccountId>;
+        /// 每次关注所需的保留押金（可为 0）。
+        #[pallet::constant]
+        type FollowDeposit: Get<BalanceOf<Self>>;
     }
+
+    /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
+    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// 函数级中文注释：墓地信息结构。仅存储加密 CID，不落明文。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -59,9 +83,12 @@ pub mod pallet {
         pub park_id: Option<u64>,
         pub owner: T::AccountId,
         pub admin_group: Option<u64>,
-        pub kind_code: u8, // 0=Single,1=Double,2=Multi 多人墓
-        pub capacity: u16, // 已安葬数量
-        pub metadata_cid: BoundedVec<u8, T::MaxCidLen>,
+        /// 函数级中文注释：墓地名称链下 CID（不落明文）。
+        pub name: BoundedVec<u8, T::MaxCidLen>,
+        /// 函数级中文注释：该墓地下已安葬的逝者令牌列表（最多 6 人）。
+        pub deceased_tokens: BoundedVec<BoundedVec<u8, T::MaxCidLen>, ConstU32<6>>,
+        /// 函数级中文注释：是否公开（用于简单的对外可见性控制，细粒度策略见 VisibilityPolicy）。
+        pub is_public: bool,
         pub active: bool,
     }
 
@@ -76,7 +103,7 @@ pub mod pallet {
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(9);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -140,17 +167,23 @@ pub mod pallet {
     #[pallet::storage]
     pub type PendingApplications<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
-    /// 可见性策略：是否公开供奉/留言/扫墓/关注
-    use sp_runtime::RuntimeDebug;
-    #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default, RuntimeDebug)]
-    pub struct VisibilityPolicy { pub public_offering: bool, pub public_guestbook: bool, pub public_sweep: bool, pub public_follow: bool }
-
-    #[pallet::storage]
-    pub type VisibilityPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, VisibilityPolicy, ValueQuery>;
+    // 已取消 VisibilityPolicy 策略，改由 `is_public` 简化控制。
 
     /// 关注者列表
     #[pallet::storage]
     pub type FollowersOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxFollowers>, ValueQuery>;
+
+    /// 函数级中文注释：去重与快速授权映射，判定某账户是否关注了某墓地。
+    #[pallet::storage]
+    pub type IsFollower<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+
+    /// 函数级中文注释：关注冷却计时：记录 (grave_id, who) 最近一次 follow/unfollow 操作的块号。
+    #[pallet::storage]
+    pub type LastFollowAction<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
+
+    /// 函数级中文注释：黑名单：被列入者无法关注该墓地。
+    #[pallet::storage]
+    pub type BannedFollowers<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     /// 函数级中文注释：成员↔逝者亲属关系记录
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -216,7 +249,7 @@ pub mod pallet {
         KinshipRemoved { id: u64, deceased_id: u64, who: T::AccountId },
         KinshipPolicyChanged { id: u64, policy: u8 },
         /// 可见性策略变更
-        VisibilityUpdated { id: u64, policy: VisibilityPolicy },
+        // 取消 VisibilityPolicy 后移除此事件
         /// 关注/取消关注
         Followed { id: u64, who: T::AccountId },
         Unfollowed { id: u64, who: T::AccountId },
@@ -254,6 +287,8 @@ pub mod pallet {
         KinshipNotFound,
         /// 已关注
         AlreadyFollowing,
+        /// 押金保留失败或余额不足
+        DepositFailed,
     }
 
     #[pallet::call]
@@ -265,15 +300,11 @@ pub mod pallet {
         pub fn create_grave(
             origin: OriginFor<T>,
             park_id: Option<u64>,
-            kind_code: u8,
-            capacity: Option<u16>,
-            metadata_cid: BoundedVec<u8, T::MaxCidLen>,
+            name: BoundedVec<u8, T::MaxCidLen>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(matches!(kind_code, 0|1|2), Error::<T>::InvalidKind);
-            let cap = capacity.unwrap_or_else(|| if kind_code == 2 { 8 } else { 1 + (kind_code as u16) });
             let id = NextGraveId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
-            let grave = Grave::<T> { park_id, owner: who.clone(), admin_group: None, kind_code, capacity: cap, metadata_cid, active: true };
+            let grave = Grave::<T> { park_id, owner: who.clone(), admin_group: None, name, deceased_tokens: BoundedVec::default(), is_public: true, active: true };
             Graves::<T>::insert(id, &grave);
             if let Some(pid) = grave.park_id { GravesByPark::<T>::try_mutate(pid, |v| v.try_push(id).map_err(|_| Error::<T>::CapacityExceeded))?; }
             // 生成 10 位数字 Slug（基于 id 与创建者），确保唯一
@@ -321,16 +352,15 @@ pub mod pallet {
 
         // 已移至 pallet-memo-hall：set_hall_params
 
-        /// 函数级中文注释：更新墓地的类型/容量/元数据/状态，允许所有者或陵园管理员。
+        /// 函数级中文注释：更新墓地名称/元数据/状态，允许所有者或陵园管理员。
         #[pallet::call_index(2)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn update_grave(
             origin: OriginFor<T>, id: u64,
-            kind_code: Option<u8>,
-            capacity: Option<u16>,
-            metadata_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            name: Option<BoundedVec<u8, T::MaxCidLen>>,
             active: Option<bool>,
+            is_public: Option<bool>,
         ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -338,10 +368,9 @@ pub mod pallet {
                 if who != g.owner {
                     if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
                 }
-                if let Some(k) = kind_code { ensure!(matches!(k,0|1|2), Error::<T>::InvalidKind); g.kind_code = k; }
-                if let Some(c) = capacity { g.capacity = c; }
-                if let Some(cid) = metadata_cid { g.metadata_cid = cid; }
+                if let Some(n) = name { g.name = n; }
                 if let Some(a) = active { g.active = a; }
+                if let Some(p) = is_public { g.is_public = p; }
                 Ok(())
             })?;
             Self::deposit_event(Event::GraveUpdated { id });
@@ -379,11 +408,20 @@ pub mod pallet {
                     if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
                 }
                 let mut records = Interments::<T>::get(id);
-                ensure!((records.len() as u16) < g.capacity, Error::<T>::CapacityExceeded);
                 let use_slot = slot.unwrap_or(records.len() as u16);
                 // 简化：不做重复槽校验，记录层面由上层约束（可扩展）
                 records.try_push(IntermentRecord::<T> { deceased_id, slot: use_slot, time: now, note_cid }).map_err(|_| Error::<T>::CapacityExceeded)?;
                 Interments::<T>::insert(id, records);
+                // 同步令牌列表：拉取 token 并加入 deceased_tokens（最多保留 6 条，先进先出）
+                if let Some(mut g) = Graves::<T>::get(id) {
+                    if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
+                        let mut lst = g.deceased_tokens.clone();
+                        if lst.len() as u32 >= 6 { let _ = lst.remove(0); }
+                        let _ = lst.try_push(tok);
+                        g.deceased_tokens = lst;
+                        Graves::<T>::insert(id, g);
+                    }
+                }
                 Ok(())
             })?;
             T::OnInterment::on_interment(id, deceased_id);
@@ -411,6 +449,17 @@ pub mod pallet {
                     Err(Error::<T>::NotFound.into())
                 }
             })?;
+            // 同步令牌列表：从 deceased_tokens 中移除对应 token（模糊移除，若存在）
+            if let Some(mut g) = Graves::<T>::get(id) {
+                // 获取 token 以比对；若无法获取则尝试删除最早一条作为近似（避免持久脏数据）
+                let maybe_tok = <T as Config>::DeceasedTokenProvider::token_of(deceased_id);
+                if let Some(tok) = maybe_tok {
+                    g.deceased_tokens.retain(|t| t != &tok);
+                } else {
+                    if !g.deceased_tokens.is_empty() { let _ = g.deceased_tokens.remove(0); }
+                }
+                Graves::<T>::insert(id, g);
+            }
             Self::deposit_event(Event::Exhumed { id, deceased_id });
             Ok(())
         }
@@ -614,16 +663,7 @@ pub mod pallet {
         #[pallet::call_index(19)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_visibility())]
-        pub fn set_visibility(origin: OriginFor<T>, id: u64, public_offering: bool, public_guestbook: bool, public_sweep: bool, public_follow: bool) -> DispatchResult {
-            if let Some(g) = Graves::<T>::get(id) {
-                let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            let policy = VisibilityPolicy { public_offering, public_guestbook, public_sweep, public_follow };
-            VisibilityPolicyOf::<T>::insert(id, policy.clone());
-            Self::deposit_event(Event::VisibilityUpdated { id, policy });
-            Ok(())
-        }
+        pub fn set_visibility(_origin: OriginFor<T>, _id: u64, _public_offering: bool, _public_guestbook: bool, _public_sweep: bool, _public_follow: bool) -> DispatchResult { Err(Error::<T>::PolicyViolation.into()) }
 
         /// 函数级详细中文注释：关注纪念馆；若策略允许公开关注，则任意签名账户可关注，否则仅成员可关注。
         #[pallet::call_index(20)]
@@ -632,13 +672,33 @@ pub mod pallet {
         pub fn follow(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            let policy = VisibilityPolicyOf::<T>::get(id);
-            if !policy.public_follow { ensure!(Members::<T>::contains_key(id, &who), Error::<T>::NotMember); }
+            // 访问控制：依据 is_public 与成员/管理员
+            let g = Graves::<T>::get(id).ok_or(Error::<T>::NotFound)?;
+            if !g.is_public {
+                let is_admin = GraveAdmins::<T>::get(id).iter().any(|a| a == &who);
+                ensure!(who == g.owner || is_admin || Members::<T>::contains_key(id, &who), Error::<T>::NotMember);
+            }
+            // 黑名单
+            ensure!(!BannedFollowers::<T>::contains_key(id, &who), Error::<T>::PolicyViolation);
+            // 冷却
+            if let Some(last) = LastFollowAction::<T>::get(id, &who) {
+                let now = <frame_system::Pallet<T>>::block_number();
+                let min = last + BlockNumberFor::<T>::from(T::FollowCooldownBlocks::get());
+                ensure!(now >= min, Error::<T>::PolicyViolation);
+            }
+            // 去重
+            ensure!(!IsFollower::<T>::contains_key(id, &who), Error::<T>::AlreadyFollowing);
+            // 押金：保留
+            let deposit = T::FollowDeposit::get();
+            if !deposit.is_zero() {
+                T::Currency::reserve(&who, deposit).map_err(|_| Error::<T>::DepositFailed)?;
+            }
             FollowersOf::<T>::try_mutate(id, |list| -> DispatchResult {
-                if list.iter().any(|a| a == &who) { return Err(Error::<T>::AlreadyFollowing.into()); }
                 list.try_push(who.clone()).map_err(|_| Error::<T>::CapacityExceeded)?;
                 Ok(())
             })?;
+            IsFollower::<T>::insert(id, &who, ());
+            LastFollowAction::<T>::insert(id, &who, <frame_system::Pallet<T>>::block_number());
             Self::deposit_event(Event::Followed { id, who });
             Ok(())
         }
@@ -650,7 +710,23 @@ pub mod pallet {
         pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            // 授权：关注者本人或墓主/园区管理员
+            let g = Graves::<T>::get(id).ok_or(Error::<T>::NotFound)?;
+            if who != g.owner {
+                // 若不是本人取关，则需园区管理员
+                if !IsFollower::<T>::contains_key(id, &who) {
+                    // 非关注者本人：检查园区管理员
+                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, frame_system::RawOrigin::Signed(who.clone()).into())?; }
+                }
+            }
             FollowersOf::<T>::mutate(id, |list| { if let Some(p) = list.iter().position(|a| a == &who) { list.swap_remove(p); } });
+            IsFollower::<T>::remove(id, &who);
+            // 押金：释放
+            let deposit = T::FollowDeposit::get();
+            if !deposit.is_zero() {
+                T::Currency::unreserve(&who, deposit);
+            }
+            LastFollowAction::<T>::insert(id, &who, <frame_system::Pallet<T>>::block_number());
             Self::deposit_event(Event::Unfollowed { id, who });
             Ok(())
         }
@@ -768,7 +844,7 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// 函数级详细中文注释：运行时升级钩子。从 v2 -> v3 进行存储迁移：
+        /// 函数级详细中文注释：运行时升级钩子。
         /// - 旧版 `Grave` 的 `park_id` 为 `u64`，新版改为 `Option<u64>`；
         /// - 迁移时将旧值封装为 `Some(park_id)`；
         /// - `GravesByPark` 无需迁移（键仍为 `u64`），事件无需回溯。
@@ -799,14 +875,102 @@ pub mod pallet {
                         park_id: Some(old.park_id),
                         owner: old.owner,
                         admin_group: old.admin_group,
-                        kind_code: old.kind_code,
-                        capacity: old.capacity,
-                        metadata_cid: old.metadata_cid,
+                        name: BoundedVec::<u8, T::MaxCidLen>::default(),
+                        deceased_tokens: BoundedVec::default(),
+                        is_public: true,
                         active: old.active,
                     })
                 });
                 STORAGE_VERSION.put::<Pallet<T>>();
                 // 简化：估算权重 = 常数 + 每条迁移成本（此处返回迁移项数）
+                weight = weight.saturating_add(Weight::from_parts(1_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+            }
+            // v4 -> v5：删除 kind_code/capacity，新增 name 字段，默认置空
+            if current < 5 {
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV4<TC: Config> {
+                    park_id: Option<u64>,
+                    owner: TC::AccountId,
+                    admin_group: Option<u64>,
+                    kind_code: u8,
+                    capacity: u16,
+                    metadata_cid: BoundedVec<u8, TC::MaxCidLen>,
+                    active: bool,
+                }
+                let mut migrated: u64 = 0;
+                Graves::<T>::translate(|_k, old: OldV4<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Grave::<T> {
+                        park_id: old.park_id,
+                        owner: old.owner,
+                        admin_group: old.admin_group,
+                        name: BoundedVec::<u8, T::MaxCidLen>::default(),
+                        deceased_tokens: BoundedVec::default(),
+                        is_public: true,
+                        active: old.active,
+                    })
+                });
+                STORAGE_VERSION.put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(1_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+            }
+            if current < 6 {
+                // v5 -> v6：移除 metadata_cid 字段
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV5<TC: Config> {
+                    park_id: Option<u64>,
+                    owner: TC::AccountId,
+                    admin_group: Option<u64>,
+                    name: BoundedVec<u8, TC::MaxCidLen>,
+                    metadata_cid: BoundedVec<u8, TC::MaxCidLen>,
+                    active: bool,
+                }
+                let mut migrated: u64 = 0;
+                Graves::<T>::translate(|_k, old: OldV5<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Grave::<T> {
+                        park_id: old.park_id,
+                        owner: old.owner,
+                        admin_group: old.admin_group,
+                        name: old.name,
+                        deceased_tokens: BoundedVec::default(),
+                        is_public: true,
+                        active: old.active,
+                    })
+                });
+                STORAGE_VERSION.put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(1_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+            }
+            if current < 8 {
+                // v7 -> v8：新增 is_public 字段，默认 true
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV7<TC: Config> {
+                    park_id: Option<u64>,
+                    owner: TC::AccountId,
+                    admin_group: Option<u64>,
+                    name: BoundedVec<u8, TC::MaxCidLen>,
+                    deceased_tokens: BoundedVec<BoundedVec<u8, TC::MaxCidLen>, ConstU32<6>>,
+                    active: bool,
+                }
+                let mut migrated: u64 = 0;
+                Graves::<T>::translate(|_k, old: OldV7<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Grave::<T> {
+                        park_id: old.park_id,
+                        owner: old.owner,
+                        admin_group: old.admin_group,
+                        name: old.name,
+                        deceased_tokens: old.deceased_tokens,
+                        is_public: true,
+                        active: old.active,
+                    })
+                });
+                STORAGE_VERSION.put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
                 weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
             }
