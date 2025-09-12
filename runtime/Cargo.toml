@@ -47,9 +47,12 @@ pallet-memo-endowment = { path = "../pallets/memo-endowment", default-features =
 pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
 pallet-preimage.workspace = true
 pallet-scheduler.workspace = true
+pallet-referenda.workspace = true
+pallet-conviction-voting.workspace = true
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
+pallet-treasury = { path = "../pallets/treasury", default-features = false }
 pallet-transaction-payment-rpc-runtime-api.workspace = true
 pallet-transaction-payment.workspace = true
 scale-info = { features = ["derive", "serde"], workspace = true }
@@ -108,9 +111,12 @@ std = [
 	"pallet-memo-ipfs/std",
 	"pallet-preimage/std",
 	"pallet-scheduler/std",
+	"pallet-referenda/std",
+	"pallet-conviction-voting/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
+	"pallet-treasury/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"scale-info/std",

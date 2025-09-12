@@ -7,6 +7,12 @@ import { sessionManager } from '../../lib/sessionManager'
 import TransferPage from '../ledger/TransferPage'
 import CreateGraveForm from '../grave/CreateGraveForm'
 import GraveListPage from '../grave/GraveListPage'
+import GovernanceHomePage from '../governance/GovernanceHomePage'
+import ReferendaListPage from '../governance/ReferendaListPage'
+import ReferendumDetailPage from '../governance/ReferendumDetailPage'
+import NewProposalPage from '../governance/NewProposalPage'
+import MyGovernancePage from '../governance/MyGovernancePage'
+import TreasuryPage from '../treasury/TreasuryPage'
 
 const AuthEntryPage: React.FC = () => {
   const [active, setActive] = useState<string>('login')
@@ -33,6 +39,12 @@ const AuthEntryPage: React.FC = () => {
           { key: 'transfer', label: '转账', children: <TransferPage /> },
           { key: 'create-grave', label: '创建墓地', children: <CreateGraveForm /> },
           { key: 'grave-list', label: '墓地列表', children: <GraveListPage /> },
+          { key: 'gov-home', label: '治理', children: <GovernanceHomePage /> },
+          { key: 'gov-list', label: '公投列表', children: <ReferendaListPage /> },
+          { key: 'gov-detail', label: '公投详情', children: <ReferendumDetailPage /> },
+          { key: 'gov-new', label: '发起提案', children: <NewProposalPage /> },
+          { key: 'gov-me', label: '我的治理', children: <MyGovernancePage /> },
+          { key: 'treasury', label: '国库', children: <TreasuryPage /> },
           { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> }
         ]}
       />

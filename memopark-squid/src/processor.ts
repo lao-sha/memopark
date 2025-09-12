@@ -1,7 +1,7 @@
 // @ts-nocheck
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {SubstrateBatchProcessor} from '@subsquid/substrate-processor'
-import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Hall, HallAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot} from './model'
+import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot} from './model'
 
 const processor = new SubstrateBatchProcessor()
   .setDataSource({
@@ -39,13 +39,13 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         continue
       }
 
-      // ===== Hall mapping =====
+      // ===== Grave mapping =====
       if (name?.endsWith('memo_grave.HallCreated')) {
         const ev: any = i.event
         const {id, kind, owner, park_id} = ev.args
         const createdAt = b.header.height
-        await ctx.store.save(new Hall({ id: id.toString(), owner: owner.toString(), parkId: BigInt(park_id), kind: kind==0?'Person':'Event', primaryDeceasedId: null, slug: null, createdAt, active: true, offeringsCount: 0, offeringsAmount: 0n }))
-        await ctx.store.save(new HallAction({ id: `${id}-HallCreated-${createdAt}`, hall: new Hall({ id: id.toString() }), kind: 'HallCreated', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        await ctx.store.save(new Grave({ id: id.toString(), owner: owner.toString(), parkId: BigInt(park_id), kind: kind==0?'Person':'Event', primaryDeceasedId: null, slug: null, createdAt, active: true, offeringsCount: 0, offeringsAmount: 0n }))
+        await ctx.store.save(new GraveAction({ id: `${id}-GraveCreated-${createdAt}`, grave: new Grave({ id: id.toString() }), kind: 'GraveCreated', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_grave', kind: 'HallCreated', refId: id.toString(), actor: owner.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
       }
@@ -53,18 +53,18 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {id, deceased_id} = ev.args
         const createdAt = b.header.height
-        const h = await ctx.store.findOneBy(Hall, { id: id.toString() })
-        if (h) { h.primaryDeceasedId = BigInt(deceased_id); await ctx.store.save(h) }
-        await ctx.store.save(new HallAction({ id: `${id}-HallLinkedDeceased-${createdAt}`, hall: new Hall({ id: id.toString() }), kind: 'HallLinkedDeceased', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        const g = await ctx.store.findOneBy(Grave, { id: id.toString() })
+        if (g) { g.primaryDeceasedId = BigInt(deceased_id); await ctx.store.save(g) }
+        await ctx.store.save(new GraveAction({ id: `${id}-GraveLinkedDeceased-${createdAt}`, grave: new Grave({ id: id.toString() }), kind: 'GraveLinkedDeceased', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
       }
       if (name?.endsWith('memo_grave.HallSetPark')) {
         const ev: any = i.event
         const {id, park_id} = ev.args
         const createdAt = b.header.height
-        const h = await ctx.store.findOneBy(Hall, { id: id.toString() })
-        if (h) { h.parkId = BigInt(park_id); await ctx.store.save(h) }
-        await ctx.store.save(new HallAction({ id: `${id}-HallSetPark-${createdAt}`, hall: new Hall({ id: id.toString() }), kind: 'HallSetPark', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        const g = await ctx.store.findOneBy(Grave, { id: id.toString() })
+        if (g) { g.parkId = BigInt(park_id); await ctx.store.save(g) }
+        await ctx.store.save(new GraveAction({ id: `${id}-GraveSetPark-${createdAt}`, grave: new Grave({ id: id.toString() }), kind: 'GraveSetPark', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
       }
 
@@ -73,10 +73,10 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {id, target, who, amount, block} = ev.args
         const createdAt = b.header.height
-        if (Number(target[0]) === 0) { // domain 0 代表 Hall/Grave
+        if (Number(target[0]) === 0) { // domain 0 代表 Grave
           await ctx.store.save(new Offering({ id: id.toString(), hallId: BigInt(target[1]), who: who.toString(), amount: BigInt(amount||0), block: Number(block) }))
-          const hall = await ctx.store.findOneBy(Hall, { id: target[1].toString() })
-          if (hall) { hall.offeringsCount += 1; hall.offeringsAmount = BigInt(hall.offeringsAmount) + BigInt(amount||0); await ctx.store.save(hall) }
+          const grave = await ctx.store.findOneBy(Grave, { id: target[1].toString() })
+          if (grave) { grave.offeringsCount += 1; grave.offeringsAmount = BigInt(grave.offeringsAmount) + BigInt(amount||0); await ctx.store.save(grave) }
           await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingCommitted', refId: id.toString(), actor: who.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ target: target[1].toString() }) }))
         }
         continue

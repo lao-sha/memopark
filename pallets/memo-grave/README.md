@@ -6,7 +6,7 @@
 
 ## 存储
 - `NextGraveId: u64`
-- `Graves: GraveId -> Grave { park_id?: Option<ParkId>, owner, admin_group, kind_code, capacity, metadata_cid, active }`
+- `Graves: GraveId -> Grave { park_id?: Option<ParkId>, owner, admin_group, name(CID), deceased_tokens[], active }`
 - `GravesByPark: ParkId -> BoundedVec<GraveId>`（仅当 `park_id=Some(park)` 时维护索引）
 - `Interments: GraveId -> BoundedVec<IntermentRecord>`
  - `GraveMetaOf: GraveId -> { categories: u32, religion: u8 }`
@@ -30,8 +30,8 @@
 - Hall 相关逻辑已迁移至独立 `pallet-memo-hall`；本模块不再包含 Hall 的存储与调用。
 
 ## Extrinsics
-- `create_grave(park_id?: Option<ParkId>, kind_code, capacity?, metadata_cid)`
-- `update_grave(id, kind_code?, capacity?, metadata_cid?, active?)`
+- `create_grave(park_id?: Option<ParkId>, name)`
+- `update_grave(id, name?, active?)`
 - `transfer_grave(id, new_owner)`
 - `inter(id, deceased_id, slot?, note_cid?)`
 - `exhume(id, deceased_id)`
@@ -49,7 +49,7 @@
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。当 `park_id=None` 时，仅墓主可管理（园区管理员校验不可用）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
-- 存储版本：StorageVersion=4（v3: `park_id` 改为 Option；v4: 移除 Hall），提供迁移以兼容旧数据。
+- 存储版本：StorageVersion=7（v3: `park_id` 改为 Option；v4: 移除 Hall；v5: 删除 kind/capacity，新增 name；v6: 删除 metadata_cid；v7: 新增 deceased_tokens），提供迁移以兼容旧数据。
 - 与 `pallet-memo-hall` 的关系：通过 `Hall::link_grave_id` 可选关联，无循环依赖，建议由查询层整合展示。
 
 ### 编译零警告策略（-D warnings）

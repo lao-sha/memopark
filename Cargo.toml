@@ -44,10 +44,14 @@ sp-keystore = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f
 clap = { version = "4.5.13" }
 frame-benchmarking-cli = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 frame-metadata-hash-extension = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
+docify = { version = "0.2.9", default-features = false }
+impl-trait-for-tuples = { version = "0.2.2", default-features = false }
+serde = { version = "1", default-features = false }
 frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 futures = { version = "0.3.31" }
 jsonrpsee = { version = "0.24.3" }
 pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
+pallet-utility = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 pallet-transaction-payment-rpc = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 sc-basic-authorship = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 sc-cli = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
@@ -103,6 +107,8 @@ substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk.git
 sp-application-crypto = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 pallet-preimage = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 pallet-scheduler = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
+pallet-referenda = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
+pallet-conviction-voting = { git = "https://github.com/paritytech/polkadot-sdk.git", rev = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

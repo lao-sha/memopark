@@ -97,8 +97,8 @@ type ArbDailyStat @entity {
   partial: Int!
 }
 
-# Hall（纪念馆）与时间线、供奉/留言/媒体（只读层）
-type Hall @entity {
+# Grave（墓地/纪念馆）与时间线、供奉/留言/媒体（只读层）
+type Grave @entity {
   id: ID!                # grave_id
   owner: String!
   parkId: BigInt!
@@ -109,13 +109,13 @@ type Hall @entity {
   active: Boolean!
   offeringsCount: Int!
   offeringsAmount: BigInt!
-  actions: [HallAction!]! @derivedFrom(field: "hall")
+  actions: [GraveAction!]! @derivedFrom(field: "grave")
 }
 
-type HallAction @entity {
+type GraveAction @entity {
   id: ID!
-  hall: Hall!
-  kind: String!          # HallCreated | HallLinkedDeceased | HallSetPark | VisibilityUpdated
+  grave: Grave!
+  kind: String!          # GraveCreated | GraveLinkedDeceased | GraveSetPark | VisibilityUpdated
   block: Int!
   extrinsicHash: String
   meta: String
