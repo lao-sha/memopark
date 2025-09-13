@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react'
 import { Button, Flex, Modal, Form, InputNumber, Select, message, Input } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { mapDispatchErrorMessage } from '../../lib/errors'
 
 /**
  * 函数级详细中文注释：纪念馆动作栏（花圈/蜡烛/清香/供品/扫墓）最小实现
@@ -36,7 +37,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
       const duration = v.kind === 12 || v.kind === 13 ? Number(v.duration || 1) : null
       await signAndSendLocalFromKeystore('memoOfferings','offer',[target, v.kind, amount, [], duration])
       message.success('供奉已上链'); setLoading(false); setOpenOffer(false)
-    } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
+    } catch (e: any) { console.error(e); message.error(mapDispatchErrorMessage(e, '提交失败')); setLoading(false) }
   }, [ensureApi, account, graveId])
 
   const onSweep = useCallback(async () => {
@@ -46,7 +47,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
       setLoading(true)
       await signAndSendLocalFromKeystore('memoGraveGuestbook','sweep',[graveId, null])
       message.success('已记录扫墓'); setLoading(false); setOpenSweep(false)
-    } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoading(false) }
+    } catch (e: any) { console.error(e); message.error(mapDispatchErrorMessage(e, '提交失败')); setLoading(false) }
   }, [ensureApi, account, graveId])
 
   /**
@@ -54,27 +55,17 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
    * - 若开启 public_follow，则任意签名账户可关注；否则需成员
    */
   const onFollow = useCallback(async () => {
-    const api = await ensureApi()
-    if (!account) return message.warning('请输入签名账户')
-    try {
-      setLoadingFollow(true)
-      await signAndSendLocalFromKeystore('memoGrave','follow',[graveId])
-      message.success('已关注'); setLoadingFollow(false)
-    } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoadingFollow(false) }
-  }, [ensureApi, account, graveId])
+    // 方案B：墓位关注已停用，提示用户前往“亲友团”（以逝者为主体）
+    message.info('墓位关注已停用，请前往“亲友团”在逝者下加入。')
+    window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'friends' } }))
+  }, [])
 
   /**
    * 函数级详细中文注释：取消关注纪念馆
    */
   const onUnfollow = useCallback(async () => {
-    const api = await ensureApi()
-    if (!account) return message.warning('请输入签名账户')
-    try {
-      setLoadingFollow(true)
-      await signAndSendLocalFromKeystore('memoGrave','unfollow',[graveId])
-      message.success('已取消关注'); setLoadingFollow(false)
-    } catch (e: any) { console.error(e); message.error(e?.message || '提交失败'); setLoadingFollow(false) }
-  }, [ensureApi, account, graveId])
+    message.info('墓位关注已停用，无需取消；请使用“亲友团”管理关系。')
+  }, [])
 
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -82,8 +73,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
       <Flex gap={8}>
         <Button onClick={() => setOpenOffer(true)}>供奉</Button>
         <Button onClick={() => setOpenSweep(true)}>扫墓</Button>
-        <Button onClick={onFollow} loading={loadingFollow}>关注</Button>
-        <Button onClick={onUnfollow} loading={loadingFollow}>取消关注</Button>
+        <Button onClick={onFollow} loading={loadingFollow}>亲友团</Button>
       </Flex>
       <Modal open={openOffer} onCancel={() => setOpenOffer(false)} onOk={() => {}} footer={null} title='供奉'>
         <Form layout='vertical' onFinish={onOffer}>
