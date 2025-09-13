@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from 'react'
-import { Card, Form, Input, InputNumber, Button, Space, Typography, Switch, message } from 'antd'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Card, Form, Input, InputNumber, Button, Space, Typography, Switch, message, List, Tag } from 'antd'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { getApi } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：逝者亲友团管理页（最小可用版）
@@ -16,6 +17,8 @@ const FriendsPage: React.FC = () => {
   const [target, setTarget] = useState('')
   const [role, setRole] = useState<number>(0)
   const [loading, setLoading] = useState(false)
+  const [pending, setPending] = useState<Array<{ who: string; when: string }>>([])
+  const [members, setMembers] = useState<Array<{ who: string; role: string; since: string; note?: string }>>([])
 
   const ensureId = useCallback(() => {
     if (deceasedId === null || deceasedId === undefined) { message.warning('请输入逝者ID'); return false }
@@ -27,11 +30,52 @@ const FriendsPage: React.FC = () => {
     try {
       await signAndSendLocalFromKeystore('deceased', method, args)
       message.success('已提交交易')
+      // 交易提交后尝试刷新列表
+      setTimeout(() => { void refresh() }, 1200)
     } catch (e: any) {
       console.error(e)
       message.error(e?.message || '交易失败')
     } finally { setLoading(false) }
   }, [])
+
+  /**
+   * 函数级中文注释：刷新待审批与成员列表
+   * - FriendJoinRequests: DeceasedId -> BoundedVec<(AccountId, BlockNumber)>
+   * - FriendsOf: (DeceasedId, AccountId) -> FriendRecord { role, since, note }
+   */
+  const refresh = useCallback(async () => {
+    if (!ensureId()) return
+    try {
+      const api = await getApi()
+      const did = deceasedId as number
+      // 读取待审批
+      const reqAny: any = await (api.query as any).deceased.friendJoinRequests(did)
+      const req = (reqAny?.toJSON?.() as any[]) || []
+      setPending(req.map((x: any) => ({ who: String(x[0]), when: String(x[1]) })))
+      // 读取成员列表：通过 double map 的前缀 keys(did)
+      const keys: any[] = await (api.query as any).deceased.friendsOf.keys(did)
+      const accounts: string[] = keys.map((k: any) => {
+        try { return String(k.args?.[1]?.toString?.() || k.toHuman?.()) } catch { return '' }
+      }).filter(Boolean)
+      if (accounts.length) {
+        const vals: any[] = await (api.query as any).deceased.friendsOf.multi(accounts.map(a => [did, a]))
+        const items = vals.map((v: any, i: number) => {
+          const h: any = v?.toHuman?.() || v?.toJSON?.() || {}
+          const role = String(h?.role || 'Member')
+          const since = String(h?.since || '')
+          const note = String(h?.note || '')
+          return { who: accounts[i], role, since, note }
+        })
+        setMembers(items)
+      } else {
+        setMembers([])
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, [deceasedId, ensureId])
+
+  useEffect(() => { if (deceasedId !== null) { void refresh() } }, [deceasedId])
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -77,6 +121,28 @@ const FriendsPage: React.FC = () => {
               <Button loading={loading} onClick={()=>{ if (!ensureId()||!target) return; call('setFriendRole', [deceasedId, target, role]) }}>设置角色</Button>
             </Space>
           </Form>
+          <Space>
+            <Button onClick={()=>refresh()} loading={loading}>刷新列表</Button>
+          </Space>
+
+          <Typography.Title level={5} style={{ marginTop: 16 }}>待审批</Typography.Title>
+          <List bordered dataSource={pending} locale={{ emptyText: '暂无待审批' }} renderItem={(it) => (
+            <List.Item actions={[
+              <Button key="ok" size="small" onClick={()=>{ if (!ensureId()) return; call('approveJoin', [deceasedId, it.who]) }}>通过</Button>,
+              <Button key="no" size="small" danger onClick={()=>{ if (!ensureId()) return; call('rejectJoin', [deceasedId, it.who]) }}>拒绝</Button>
+            ]}>
+              <List.Item.Meta title={<Space><Tag color="gold">申请</Tag><Typography.Text code>{it.who}</Typography.Text></Space>} description={`申请于区块：${it.when}`} />
+            </List.Item>
+          )} />
+
+          <Typography.Title level={5} style={{ marginTop: 16 }}>成员</Typography.Title>
+          <List bordered dataSource={members} locale={{ emptyText: '暂无成员' }} renderItem={(it) => (
+            <List.Item actions={[
+              <Button key="kick" size="small" danger onClick={()=>{ if (!ensureId()) return; call('kickFriend', [deceasedId, it.who]) }}>移出</Button>
+            ]}>
+              <List.Item.Meta title={<Space><Tag color="blue">{it.role}</Tag><Typography.Text code>{it.who}</Typography.Text></Space>} description={`加入于区块：${it.since}${it.note? ' ｜ 备注：'+it.note : ''}`} />
+            </List.Item>
+          )} />
         </Space>
       </Card>
     </div>
