@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Form, Input, InputNumber, Select, Button, message } from 'antd'
+import { Card, Form, Input, InputNumber, Select, Button, message, Alert } from 'antd'
 import { ApiPromise, WsProvider } from '@polkadot/api'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
@@ -34,6 +34,7 @@ export default function RelationProposalForm() {
 
   return (
     <Card style={{ maxWidth: 640, margin: '0 auto' }}>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="亲友团申请：当检测到同样的 deceased_token 已存在时，可在此发起族谱绑定，加入对方的亲友团。" />
       <Form layout="vertical" onFinish={onFinish}>
         <Form.Item label="签名账户地址" required>
           <Input value={account} onChange={e => setAccount(e.target.value)} placeholder="SS58 地址" />

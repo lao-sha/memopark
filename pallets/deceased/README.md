@@ -27,11 +27,18 @@ impl pallet_deceased::Config for Runtime {
     - gender_code：0=M，1=F，2=B；
     - birth_ts/death_ts：字符串，格式 YYYYMMDD（如 19811224），必填；
     - deceased_token：链上自动生成，不需作为参数传入，格式为 性别字母 + 出生 + 去世 + name_badge，例如 M1981122420250901LIUXIAODONG。
+    - 去重规则：创建前将按 `deceased_token` 做唯一性校验，若已存在相同 token，则拒绝创建并返回错误 `DeceasedTokenExists`。
 - update_deceased(id, name?, name_badge?, gender_code?, bio?, birth_ts??, death_ts??, links?)
   - 新增：name_full_cid??（外层 Option 表示是否修改，内层 Option 表示设置/清空）
   - 说明：
     - birth_ts??/death_ts??：外层 Option 表示是否更新；内层 Option 表示设置为 Some(YYYYMMDD) 或 None（清空）。
+    - 令牌约束：上述字段变更会导致 `deceased_token` 重新生成；若新 token 与他人记录冲突，将拒绝更新并返回 `DeceasedTokenExists`，不会移除旧 token 或写入新 token。
+    - 所有权：`owner` 为创建者且永久不可更换；任何试图变更所有者的行为将被拒绝（OwnerImmutable）。
 - remove_deceased(id)
+  - 已禁用：为合规与审计保全，逝者创建后不可删除；本调用将始终返回 `DeletionForbidden`。
+  - 替代方案：
+    1) 使用 `transfer_deceased(id, new_grave)` 将逝者迁移至新的 GRAVE；
+    2) 通过逝者关系功能，加入亲友团（族谱）以表示关联。
 - transfer_deceased(id, new_grave)
 
 权限：
@@ -40,7 +47,7 @@ impl pallet_deceased::Config for Runtime {
     - 若 `who` 为墓主 → 允许
     - 若 `who` 在 `pallet-memo-grave::GraveAdmins[grave_id]` 中 → 允许
     - 若 `who` 为墓位所在陵园的管理员（`ParkAdminOrigin::ensure(park_id, Signed(who))` 通过）→ 允许
-- 修改/删除：记录 `owner`。
+- 修改：记录 `owner`；删除已禁用（参见上文）。
 
 ## 存储
 - NextDeceasedId: DeceasedId

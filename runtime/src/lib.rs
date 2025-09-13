@@ -314,4 +314,10 @@ mod runtime {
 
 	#[runtime::pallet_index(31)]
 	pub type Referenda = pallet_referenda;
+
+	#[runtime::pallet_index(32)]
+	pub type OriginRestriction = pallet_origin_restriction;
+
+	#[runtime::pallet_index(33)]
+	pub type FeeGuard = pallet_fee_guard;
 }

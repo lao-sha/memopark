@@ -7,6 +7,7 @@ import CurrentAccountBar from '../../components/wallet/CurrentAccountBar'
 import RecentTxList from '../../components/wallet/RecentTxList'
 import type { SessionData } from '../../lib/sessionManager'
 import { useWallet } from '../../providers/WalletProvider'
+import FeeGuardCard from './FeeGuardCard'
 
 const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
   const [session, setSession] = useState<SessionData | null>(null)
@@ -81,6 +82,7 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
             </Card>
 
             <AccountsOverview />
+            <FeeGuardCard />
             <RecentTxList />
 
             <Space>

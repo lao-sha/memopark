@@ -1,4 +1,5 @@
 import { getApi, signAndSendLocalWithPassword } from '../../../lib/polkadot-safe';
+import { encodeAddress } from '@polkadot/util-crypto'
 import { loadTxHistory } from '../../../lib/txHistory'
 
 /**
@@ -190,6 +191,91 @@ export async function buildBalancesForceTransferPreimage(
 }
 
 /**
+ * 函数级详细中文注释：尝试解析不同 section 命名的 deceased-media pallet
+ * - 不同 runtime 里 pallet 名可能为 deceasedMedia / deceased_media 等
+ * - 返回可用的 section 名称，若均不可用则抛错
+ */
+async function resolveDeceasedMediaSection(api: any): Promise<string> {
+  const candidates = ['deceasedMedia', 'deceased_media', 'deceasedmedia']
+  for (const name of candidates) {
+    if ((api.tx as any)[name]) return name
+  }
+  throw new Error('运行时未启用 deceased-media 模块（或名称不匹配）')
+}
+
+/**
+ * 函数级详细中文注释：构建 deceased-media 治理动作的通用预映像（按 method 透传）
+ * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveMedia | govSetAlbumMeta
+ * - args: 对应上述方法的参数数组
+ */
+export async function buildDeceasedMediaGovPreimage(method: string, args: any[]): Promise<{ hex: string; hash: string }>{
+  const api = await getApi()
+  const section = await resolveDeceasedMediaSection(api)
+  return buildCallPreimageHex(section, method, args)
+}
+
+/**
+ * 函数级详细中文注释：快捷构建 deceased-media.governance 预映像（若 method 名与运行时一致）
+ */
+export async function buildMediaGovFreezeAlbum(albumId: number, frozen: boolean) {
+  return buildDeceasedMediaGovPreimage('govFreezeAlbum', [albumId, frozen])
+}
+export async function buildMediaGovSetMediaHidden(mediaId: number, hidden: boolean) {
+  return buildDeceasedMediaGovPreimage('govSetMediaHidden', [mediaId, hidden])
+}
+export async function buildMediaGovReplaceMediaUri(mediaId: number, newUri: string) {
+  // uri 以字节传输，前端传入 UTF-8 字符串
+  return buildDeceasedMediaGovPreimage('govReplaceMediaUri', [mediaId, newUri])
+}
+export async function buildMediaGovRemoveMedia(mediaId: number) {
+  return buildDeceasedMediaGovPreimage('govRemoveMedia', [mediaId])
+}
+
+/**
+ * 函数级详细中文注释：deceased-media 申诉与裁决预映像构建辅助
+ * - complain_album(albumId) / complain_media(mediaId)
+ * - gov_resolve_album_complaint(albumId, uphold) / gov_resolve_media_complaint(mediaId, uphold)
+ */
+export async function buildMediaComplainAlbum(albumId: number) {
+  const api = await getApi()
+  const section = await resolveDeceasedMediaSection(api)
+  return buildCallPreimageHex(section, 'complainAlbum', [albumId])
+}
+export async function buildMediaComplainMedia(mediaId: number) {
+  const api = await getApi()
+  const section = await resolveDeceasedMediaSection(api)
+  return buildCallPreimageHex(section, 'complainMedia', [mediaId])
+}
+export async function buildMediaGovResolveAlbumComplaint(albumId: number, uphold: boolean) {
+  return buildDeceasedMediaGovPreimage('govResolveAlbumComplaint', [albumId, uphold])
+}
+export async function buildMediaGovResolveMediaComplaint(mediaId: number, uphold: boolean) {
+  return buildDeceasedMediaGovPreimage('govResolveMediaComplaint', [mediaId, uphold])
+}
+
+/**
+ * 函数级详细中文注释：解析不同 section 命名的 origin-restriction pallet 名。
+ * - 运行时可能导出为 originRestriction 或 origin_restriction 等不同写法。
+ */
+async function resolveOriginRestrictionSection(api: any): Promise<string> {
+  const candidates = ['originRestriction', 'origin_restriction', 'originrestriction']
+  for (const name of candidates) {
+    if ((api.tx as any)[name]?.setGlobalAllow) return name
+  }
+  throw new Error('运行时未启用 origin-restriction 模块或缺少 setGlobalAllow')
+}
+
+/**
+ * 函数级详细中文注释：构建 originRestriction.setGlobalAllow(allow) 预映像。
+ * - allow=true 全局放行；allow=false 准备收紧（当前过滤器仍默认放行，后续细化）。
+ */
+export async function buildOriginRestrictionSetGlobalAllowPreimage(allow: boolean): Promise<{ hex: string; hash: string }>{
+  const api = await getApi()
+  const section = await resolveOriginRestrictionSection(api)
+  return buildCallPreimageHex(section, 'setGlobalAllow', [allow])
+}
+
+/**
  * 函数级详细中文注释：提交预映像（占位）
  * - 未来调用 api.tx.preimage.notePreimage(bytes)
  */
@@ -242,7 +328,7 @@ export async function submitProposal(
   track: number,
   preimage: PreparedPreimage,
   password?: string,
-  opts?: { origin?: 'Root' | 'Signed'; signer?: string; enactmentAfter?: number }
+  opts?: { origin?: 'Root' | 'Signed' | 'Content'; signer?: string; enactmentAfter?: number }
 ): Promise<string> {
   try {
     const api = await getApi()
@@ -250,10 +336,7 @@ export async function submitProposal(
     if (!ref) return `0xproposal_${track}_${Date.now()}`
     // 优先尝试 v41+ 接口：submit(proposal_origin, bounded_call, enactment)
     if (ref.submit && ref.submit.meta?.args?.length >= 3) {
-      const useRoot = opts?.origin === 'Root' || !opts?.origin
-      const origin = useRoot
-        ? (api.createType as any)('PalletsOrigin', { system: { Root: null } })
-        : (api.createType as any)('PalletsOrigin', { system: { Signed: opts?.signer } })
+      const origin = await buildPalletsOrigin(opts)
       const bounded = (api.createType as any)('BoundedCall', { Lookup: { hash: preimage.hash, len: preimage.len } })
       const enactment = { After: Math.max(0, opts?.enactmentAfter ?? 0) }
       if (password) return await signAndSendLocalWithPassword('referenda', 'submit', [origin, bounded, enactment], password)
@@ -273,6 +356,31 @@ export async function submitProposal(
   } catch {
     return `0xproposal_${track}_${Date.now()}`
   }
+}
+
+/**
+ * 函数级详细中文注释：构造 PalletsOrigin（Root / system.Signed / 内容治理账户签名）。
+ * - Content：使用运行时约定的“内容治理签名账户”（AccountId32 = bytes("memo/cgov") + zeros），SS58=42。
+ */
+async function buildPalletsOrigin(opts?: { origin?: 'Root' | 'Signed' | 'Content'; signer?: string }) {
+  const api = await getApi()
+  const o = opts?.origin || 'Root'
+  if (o === 'Root') return (api.createType as any)('PalletsOrigin', { system: { Root: null } })
+  if (o === 'Signed') return (api.createType as any)('PalletsOrigin', { system: { Signed: opts?.signer } })
+  // Content：构造固定账户地址
+  const addr = getContentGovernorAddress()
+  return (api.createType as any)('PalletsOrigin', { system: { Signed: addr } })
+}
+
+/**
+ * 函数级详细中文注释：获取“内容治理签名账户”的 SS58 地址（Prefix 42）。
+ * - 与运行时 `ContentGovernorAccount` 生成方式一致：AccountId32(bytes("memo/cgov") + zeros)。
+ */
+export function getContentGovernorAddress(prefix = 42): string {
+  const bytes = new Uint8Array(32)
+  const seed = new TextEncoder().encode('memo/cgov')
+  bytes.set(seed.slice(0, Math.min(32, seed.length)))
+  return encodeAddress(bytes, prefix)
 }
 
 /**
@@ -549,6 +657,33 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
     const section = call.section
     const method = call.method
     const args = (call.args || []).map((x: any) => (x?.toString ? x.toString() : String(x)))
+    // deceased-media 系摘要
+    if (/^deceased[_-]?media$/i.test(section) || /^deceasedmedia$/i.test(section)) {
+      if (method === 'govFreezeAlbum') {
+        return `deceased-media.govFreezeAlbum → 相册 ${args[0]} ${args[1]==='true'?'冻结':'解冻'}`
+      }
+      if (method === 'govSetMediaHidden') {
+        return `deceased-media.govSetMediaHidden → 媒体 ${args[0]} ${args[1]==='true'?'隐藏':'取消隐藏'}`
+      }
+      if (method === 'govReplaceMediaUri') {
+        return `deceased-media.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
+      }
+      if (method === 'govRemoveMedia') {
+        return `deceased-media.govRemoveMedia → 移除媒体 ${args[0]}`
+      }
+      if (method === 'complainAlbum') {
+        return `deceased-media.complainAlbum → 申诉相册 ${args[0]}`
+      }
+      if (method === 'complainMedia') {
+        return `deceased-media.complainMedia → 申诉媒体 ${args[0]}`
+      }
+      if (method === 'govResolveAlbumComplaint') {
+        return `deceased-media.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+      }
+      if (method === 'govResolveMediaComplaint') {
+        return `deceased-media.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+      }
+    }
     if (section === 'treasury' && (method === 'spend' || method === 'proposeSpend')) {
       // arg0: amount (Planck), arg1: beneficiary
       const { decimals, symbol } = await getTokenInfo()

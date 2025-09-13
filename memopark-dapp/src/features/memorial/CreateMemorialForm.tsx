@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Button, Form, Input, Upload, Row, Col, Switch, Typography, Checkbox, message, Alert, Space } from 'antd'
+import { Button, Form, Input, Upload, Row, Col, Switch, Typography, Checkbox, message, Alert, Space, Modal } from 'antd'
 import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { UploadOutlined, CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
@@ -30,7 +30,32 @@ const CreateMemorialForm: React.FC = () => {
       message.success(`已上链：${txHash}`)
       form.resetFields()
     } catch (e: any) {
-      message.error(e?.message || '提交失败')
+      // 函数级详细中文注释：捕获并识别来自链上的模块错误（尤其是 DeceasedTokenExists），给出引导。
+      const errText = String(e?.message || e || '')
+      const isDeceasedTokenExists = /DeceasedTokenExists/i.test(errText)
+      const isOwnerImmutable = /OwnerImmutable/i.test(errText)
+      if (isDeceasedTokenExists) {
+        Modal.confirm({
+          title: '该逝者已存在',
+          content: '是否申请加入亲友团（族谱关系）或关注该逝者？也可联系墓主发起迁移到你的墓位。',
+          okText: '申请加入亲友团',
+          cancelText: '关闭',
+          onOk: () => {
+            try {
+              window.location.hash = '#grave/relation-proposal'
+              window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'grave-relation' } }))
+            } catch {}
+          },
+        })
+      } else if (isOwnerImmutable) {
+        Modal.info({
+          title: '所有权不可更换',
+          content: '所有权不可更换，如需协作，请申请加入亲友团或联系墓主进行迁移。',
+          okText: '我知道了',
+        })
+      } else {
+        message.error(e?.message || '提交失败')
+      }
     }
   }
 
@@ -57,6 +82,7 @@ const CreateMemorialForm: React.FC = () => {
         <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ solar_birth: true, solar_death: true, agree: true }}>
           <Space direction="vertical" style={{ width: '100%' }}>
             <Alert type="info" showIcon message="将创建纪念馆(Hall)，支持平台代付（可选）" />
+            <Alert type="warning" showIcon message="重要提示：逝者一经创建不可删除。若需调整，请使用“迁移至新墓位(transfer_deceased)”或加入亲友团（通过逝者关系功能）。" />
           </Space>
           <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
             <Input placeholder="5F..." size="large" />

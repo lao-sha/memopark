@@ -8,7 +8,7 @@ import { fetchMyVoting, fetchMyProposals } from '../lib/governance'
  */
 export interface MyVoteItem { referendumId: number; track: number; aye: boolean; conviction: number; amount: string }
 export interface MyLockItem { until: number; amount: string }
-export interface MyProposalItem { id: number; title: string; track: number; status: 'Deciding' | 'Approved' | 'Rejected' | 'Cancelled' | 'TimedOut'; submittedAt?: number }
+export interface MyProposalItem { id: number; title: string; track: number; status: 'Deciding' | 'Approved' | 'Rejected' | 'Cancelled' | 'TimedOut'; submittedAt?: number; referendumId?: number }
 
 export function useMyVoting(address?: string) {
   const [loading, setLoading] = useState(!!address)
@@ -52,7 +52,7 @@ export function useMyProposals(address?: string) {
       setLoading(true)
       setError(null)
       try {
-        const list = await fetchMyProposals(address)
+        const list = await fetchMyProposals(address as string)
         setItems(list)
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
@@ -62,7 +62,7 @@ export function useMyProposals(address?: string) {
     })()
     // 监听本地交易历史更新，自动刷新“我的提案”
     function onTxUpdate() {
-      fetchMyProposals(address).then(setItems).catch(()=>{})
+      fetchMyProposals(address as string).then(setItems).catch(()=>{})
     }
     window.addEventListener('mp.txUpdate', onTxUpdate)
     return () => window.removeEventListener('mp.txUpdate', onTxUpdate)

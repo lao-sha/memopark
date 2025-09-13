@@ -10,6 +10,8 @@ use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
 use sp_std::vec::Vec;
 use sp_runtime::traits::AtLeast32BitUnsigned;
+use frame_support::traits::{Currency as CurrencyTrait, ReservableCurrency, ExistenceRequirement};
+use sp_runtime::traits::{Zero, SaturatedConversion};
 
 /// 函数级中文注释：访问 `pallet-deceased` 的抽象接口，保持低耦合。
 /// - `deceased_exists`：校验逝者存在。
@@ -17,6 +19,12 @@ use sp_runtime::traits::AtLeast32BitUnsigned;
 pub trait DeceasedAccess<AccountId, DeceasedId> {
     fn deceased_exists(id: DeceasedId) -> bool;
     fn can_manage(who: &AccountId, deceased_id: DeceasedId) -> bool;
+}
+
+/// 函数级中文注释：逝者令牌访问接口（低耦合）。
+/// - 由 runtime 适配器从 `pallet-deceased::DeceasedOf` 读取 `deceased_token` 并按本 Pallet 的 `MaxTokenLen` 截断。
+pub trait DeceasedTokenAccess<MaxTokenLen: Get<u32>, DeceasedId> {
+    fn token_of(id: DeceasedId) -> Option<BoundedVec<u8, MaxTokenLen>>;
 }
 
 /// 函数级中文注释：媒体类型与可见性定义。
@@ -31,6 +39,8 @@ pub enum Visibility { Public, Unlisted, Private }
 #[scale_info(skip_type_params(T))]
 pub struct Album<T: Config> {
     pub deceased_id: T::DeceasedId,
+    /// 函数级中文注释：逝者令牌（来自 `pallet-deceased`），用于弱关联展示与联动；避免跨 pallet 读写耦合。
+    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
     pub owner: T::AccountId,
     pub title: BoundedVec<u8, T::StringLimit>,
     pub desc: BoundedVec<u8, T::StringLimit>,
@@ -47,6 +57,8 @@ pub struct Album<T: Config> {
 pub struct Media<T: Config> {
     pub album_id: T::AlbumId,
     pub deceased_id: T::DeceasedId,
+    /// 函数级中文注释：逝者令牌（来自 `pallet-deceased`），用于前端快速渲染与联动。
+    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
     pub owner: T::AccountId,
     pub kind: MediaKind,
     pub uri: BoundedVec<u8, T::StringLimit>,
@@ -63,6 +75,8 @@ pub struct Media<T: Config> {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    /// 函数级中文注释：余额与押金类型别名，统一本 pallet 内 Balance 表达。
+    pub type BalanceOf<T> = <<T as Config>::Currency as CurrencyTrait<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -77,8 +91,36 @@ pub mod pallet {
         #[pallet::constant] type StringLimit: Get<u32>;
         #[pallet::constant] type MaxTags: Get<u32>;
         #[pallet::constant] type MaxReorderBatch: Get<u32>;
+        /// 函数级中文注释：本模块内部缓存的 `deceased_token` 最大长度；建议与 `pallet-deceased::TokenLimit`/`GraveMaxCidLen` 对齐。
+        #[pallet::constant] type MaxTokenLen: Get<u32>;
 
         type DeceasedProvider: DeceasedAccess<Self::AccountId, Self::DeceasedId>;
+        /// 函数级中文注释：逝者令牌提供者（低耦合读取 `deceased_token`）。
+        type DeceasedTokenProvider: DeceasedTokenAccess<Self::MaxTokenLen, Self::DeceasedId>;
+
+        /// 函数级中文注释：治理起源（Root/议会等），用于冻结/隐藏/替换等治理动作。
+        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// 函数级中文注释：货币接口，支持 reserve/unreserve 与转账。
+        type Currency: ReservableCurrency<Self::AccountId>;
+        /// 函数级中文注释：创建相册需保留的押金金额。
+        #[pallet::constant]
+        type AlbumDeposit: Get<BalanceOf<Self>>;
+        /// 函数级中文注释：添加媒体需保留的押金金额。
+        #[pallet::constant]
+        type MediaDeposit: Get<BalanceOf<Self>>;
+        /// 函数级中文注释：申诉押金金额（由申诉方在 complain_* 时保留）。
+        #[pallet::constant]
+        type ComplaintDeposit: Get<BalanceOf<Self>>;
+        /// 函数级中文注释：小额手续费（优先用于相册创建），转入费用账户。
+        #[pallet::constant]
+        type CreateFee: Get<BalanceOf<Self>>;
+        /// 函数级中文注释：费用接收账户（建议指向国库 PalletId 派生地址）。
+        type FeeCollector: Get<Self::AccountId>;
+        /// 函数级中文注释：仲裁费用接收账户（败诉押金的 5%）。
+        type ArbitrationAccount: Get<Self::AccountId>;
+        /// 函数级中文注释：投诉观察/成熟期（区块数）。到期且无投诉时可退款；删除后同等待期再退。
+        #[pallet::constant]
+        type ComplaintPeriod: Get<BlockNumberFor<Self>>;
     }
 
     #[pallet::storage] pub type NextAlbumId<T: Config> = StorageValue<_, T::AlbumId, ValueQuery>;
@@ -87,6 +129,24 @@ pub mod pallet {
     #[pallet::storage] pub type MediaOf<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, Media<T>, OptionQuery>;
     #[pallet::storage] pub type AlbumsByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<T::AlbumId, T::MaxAlbumsPerDeceased>, ValueQuery>;
     #[pallet::storage] pub type MediaByAlbum<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, BoundedVec<T::MediaId, T::MaxMediaPerAlbum>, ValueQuery>;
+    /// 函数级中文注释：相册押金记录（who, amount）。
+    #[pallet::storage] pub type AlbumDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, (T::AccountId, BalanceOf<T>), OptionQuery>;
+    /// 函数级中文注释：媒体押金记录（who, amount）。
+    #[pallet::storage] pub type MediaDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, (T::AccountId, BalanceOf<T>), OptionQuery>;
+    /// 函数级中文注释：申诉存证（域+目标ID → 案件）。域：1=Album, 2=Media。
+    #[pallet::storage] pub type ComplaintOf<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), ComplaintCase<T>, OptionQuery>;
+    /// 函数级中文注释：相册冻结标志（治理设定）。
+    #[pallet::storage] pub type AlbumFrozen<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, bool, ValueQuery>;
+    /// 函数级中文注释：媒体隐藏标志（治理设定）。
+    #[pallet::storage] pub type MediaHidden<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, bool, ValueQuery>;
+    /// 函数级中文注释：相册投诉计数。
+    #[pallet::storage] pub type AlbumComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, u32, ValueQuery>;
+    /// 函数级中文注释：媒体投诉计数。
+    #[pallet::storage] pub type MediaComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, u32, ValueQuery>;
+    /// 函数级中文注释：相册押金成熟区块（创建或删除时设置为 now + ComplaintPeriod）。
+    #[pallet::storage] pub type AlbumMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, BlockNumberFor<T>, OptionQuery>;
+    /// 函数级中文注释：媒体押金成熟区块（创建或删除时设置为 now + ComplaintPeriod）。
+    #[pallet::storage] pub type MediaMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, BlockNumberFor<T>, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -99,6 +159,27 @@ pub mod pallet {
         MediaRemoved(T::MediaId),
         MediaMoved(T::MediaId, T::AlbumId, T::AlbumId),
         AlbumReordered(T::AlbumId),
+        /// 函数级中文注释：治理事件：相册冻结/解冻。
+        GovAlbumFrozen(T::AlbumId, bool),
+        /// 函数级中文注释：治理事件：媒体隐藏/取消隐藏。
+        GovMediaHidden(T::MediaId, bool),
+        /// 函数级中文注释：治理事件：替换媒体 URI。
+        GovMediaReplaced(T::MediaId),
+        /// 函数级中文注释：投诉事件（相册/媒体）。
+        AlbumComplained(T::AlbumId, u32),
+        MediaComplained(T::MediaId, u32),
+        /// 函数级中文注释：治理裁决完成（Upheld=维持投诉/隐藏，Dismiss=驳回），并包含胜诉方与金额明细。
+        ComplaintResolved(u8, u64, bool),
+        /// 函数级中文注释：申诉押金分账：胜诉方收到奖励。
+        ComplaintPayoutWinner(T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：申诉押金分账：仲裁账户收到费用。
+        ComplaintPayoutArbitration(T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：申诉押金分账：败诉方退回剩余押金。
+        ComplaintPayoutLoserRefund(T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：相册押金退款成功。
+        AlbumDepositRefunded(T::AlbumId, T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：媒体押金退款成功。
+        MediaDepositRefunded(T::MediaId, T::AccountId, BalanceOf<T>),
     }
 
     #[pallet::error]
@@ -111,10 +192,36 @@ pub mod pallet {
         BadInput,
         MismatchDeceased,
         Overflow,
+        /// 函数级中文注释：押金/费用失败（余额不足或保留失败）。
+        DepositFailed,
+        /// 函数级中文注释：相册已冻结。
+        Frozen,
+        /// 函数级中文注释：媒体被隐藏（只读提示，不阻止写）。
+        Hidden,
+        /// 函数级中文注释：押金未成熟或存在投诉。
+        NotMatured,
+        /// 函数级中文注释：无可退款押金。
+        NoDepositToClaim,
+        /// 函数级中文注释：当前无进行中的申诉。
+        NoActiveComplaint,
     }
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
+
+    /// 函数级中文注释：申诉状态。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
+    pub enum ComplaintStatus { Pending, Resolved }
+
+    /// 函数级中文注释：申诉案件。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
+    #[scale_info(skip_type_params(T))]
+    pub struct ComplaintCase<T: Config> {
+        pub complainant: T::AccountId,
+        pub deposit: BalanceOf<T>,
+        pub created: BlockNumberFor<T>,
+        pub status: ComplaintStatus,
+    }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
     #[allow(warnings)]
@@ -145,16 +252,32 @@ pub mod pallet {
                 tags_bv.try_push(tb).map_err(|_| Error::<T>::BadInput)?;
             }
 
+            // 小额手续费：转入费用账户
+            let fee = T::CreateFee::get();
+            if !fee.is_zero() {
+                T::Currency::transfer(&who, &T::FeeCollector::get(), fee, ExistenceRequirement::KeepAlive)
+                    .map_err(|_| Error::<T>::DepositFailed)?;
+            }
+
             let id = NextAlbumId::<T>::get();
             let next = id.checked_add(&T::AlbumId::from(1u32)).ok_or(Error::<T>::Overflow)?;
             NextAlbumId::<T>::put(next);
 
             let vis = match visibility { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) };
             let now = <frame_system::Pallet<T>>::block_number();
-            let album = Album::<T> { deceased_id, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, cover_media_id: None, created: now, updated: now };
+            let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
+            let album = Album::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, cover_media_id: None, created: now, updated: now };
 
             AlbumOf::<T>::insert(id, album);
             AlbumsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            // 押金 reserve 并设置成熟时间
+            let dep = T::AlbumDeposit::get();
+            if !dep.is_zero() {
+                T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+                AlbumDeposits::<T>::insert(id, (who.clone(), dep));
+                let mature_at = now + T::ComplaintPeriod::get();
+                AlbumMaturity::<T>::insert(id, mature_at);
+            }
             Self::deposit_event(Event::AlbumCreated(id, deceased_id, who));
             Ok(())
         }
@@ -176,6 +299,7 @@ pub mod pallet {
             AlbumOf::<T>::try_mutate(album_id, |maybe_a| -> DispatchResult {
                 let a = maybe_a.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
                 ensure!(a.owner == who, Error::<T>::NotAuthorized);
+                ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
                 if let Some(t) = title { a.title = BoundedVec::try_from(t).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(d) = desc { a.desc = BoundedVec::try_from(d).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(v) = visibility { a.visibility = match v { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) }; }
@@ -206,10 +330,16 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(album.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
             let medias = MediaByAlbum::<T>::get(album_id);
             ensure!(medias.is_empty(), Error::<T>::BadInput);
             AlbumOf::<T>::remove(album_id);
             AlbumsByDeceased::<T>::mutate(album.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &album_id) { list.swap_remove(pos); } });
+            // 删除后，若存在押金，重置成熟期等待投诉期结束再可退款
+            if AlbumDeposits::<T>::contains_key(album_id) {
+                let now = <frame_system::Pallet<T>>::block_number();
+                AlbumMaturity::<T>::insert(album_id, now + T::ComplaintPeriod::get());
+            }
             Self::deposit_event(Event::AlbumDeleted(album_id));
             Ok(())
         }
@@ -233,6 +363,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(album.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
 
             let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
             let thumb_bv = match thumbnail_uri { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
@@ -255,11 +386,19 @@ pub mod pallet {
             let mut list = MediaByAlbum::<T>::get(album_id);
             let ord = order_index.unwrap_or(list.len() as u32);
             let now = <frame_system::Pallet<T>>::block_number();
-            let media = Media::<T> { album_id, deceased_id: album.deceased_id, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width, height, order_index: ord, created: now, updated: now };
+            let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
+            let media = Media::<T> { album_id, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width, height, order_index: ord, created: now, updated: now };
 
             MediaOf::<T>::insert(id, media);
             list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
             MediaByAlbum::<T>::insert(album_id, list);
+            // 媒体押金 reserve 与成熟设置
+            let dep = T::MediaDeposit::get();
+            if !dep.is_zero() {
+                T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+                MediaDeposits::<T>::insert(id, (who.clone(), dep));
+                MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
+            }
             Self::deposit_event(Event::MediaAdded(id, album_id));
             Ok(())
         }
@@ -283,6 +422,7 @@ pub mod pallet {
             MediaOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
                 let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
                 ensure!(m.owner == who, Error::<T>::NotAuthorized);
+                ensure!(!AlbumFrozen::<T>::get(m.album_id), Error::<T>::Frozen);
                 if let Some(u) = uri { m.uri = BoundedVec::try_from(u).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(t) = thumbnail_uri { m.thumbnail_uri = match t { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None }; }
                 if let Some(h) = content_hash { m.content_hash = h; }
@@ -317,8 +457,14 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let m = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
             ensure!(m.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!AlbumFrozen::<T>::get(m.album_id), Error::<T>::Frozen);
             MediaOf::<T>::remove(media_id);
             MediaByAlbum::<T>::mutate(m.album_id, |list| { if let Some(pos) = list.iter().position(|x| x == &media_id) { list.swap_remove(pos); } });
+            // 删除后，若存在押金，重置成熟期等待投诉期结束再可退款
+            if MediaDeposits::<T>::contains_key(media_id) {
+                let now = <frame_system::Pallet<T>>::block_number();
+                MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
+            }
             Self::deposit_event(Event::MediaRemoved(media_id));
             Ok(())
         }
@@ -331,6 +477,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let mut media = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
             ensure!(media.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!AlbumFrozen::<T>::get(media.album_id), Error::<T>::Frozen);
             let dst = AlbumOf::<T>::get(to_album).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(dst.deceased_id == media.deceased_id, Error::<T>::MismatchDeceased);
             MediaByAlbum::<T>::try_mutate(to_album, |dst_list| dst_list.try_push(media_id).map_err(|_| Error::<T>::TooMany))?;
@@ -351,6 +498,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(album.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
             ensure!((ordered_media.len() as u32) <= T::MaxReorderBatch::get(), Error::<T>::BadInput);
             for (idx, mid) in ordered_media.iter().enumerate() {
                 MediaOf::<T>::try_mutate(*mid, |maybe_m| -> DispatchResult {
@@ -363,6 +511,291 @@ pub mod pallet {
             }
             MediaByAlbum::<T>::insert(album_id, BoundedVec::try_from(ordered_media).map_err(|_| Error::<T>::BadInput)?);
             Self::deposit_event(Event::AlbumReordered(album_id));
+            Ok(())
+        }
+
+        // ===================== 投诉与押金退款 =====================
+        /// 函数级中文注释：投诉相册（累加计数 + 申诉押金 reserve）。存在投诉将阻止押金退款。
+        #[pallet::call_index(8)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn complain_album(origin: OriginFor<T>, album_id: T::AlbumId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
+            // 每次仅允许一个有效申诉
+            let key = (1u8, album_id.saturated_into::<u64>());
+            ensure!(ComplaintOf::<T>::get(key).is_none(), Error::<T>::NoActiveComplaint);
+            // 申诉押金：与媒体押金等额或由常量指定
+            let dep = T::ComplaintDeposit::get();
+            if !dep.is_zero() {
+                T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+            }
+            let now = <frame_system::Pallet<T>>::block_number();
+            ComplaintOf::<T>::insert(key, ComplaintCase { complainant: who.clone(), deposit: dep, created: now, status: ComplaintStatus::Pending });
+            let cnt = AlbumComplaints::<T>::get(album_id).saturating_add(1);
+            AlbumComplaints::<T>::insert(album_id, cnt);
+            Self::deposit_event(Event::AlbumComplained(album_id, cnt));
+            Ok(())
+        }
+
+        /// 函数级中文注释：投诉媒体（累加计数 + 申诉押金 reserve）。存在投诉将阻止押金退款。
+        #[pallet::call_index(9)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn complain_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
+            let key = (2u8, media_id.saturated_into::<u64>());
+            ensure!(ComplaintOf::<T>::get(key).is_none(), Error::<T>::NoActiveComplaint);
+            let dep = T::ComplaintDeposit::get();
+            if !dep.is_zero() {
+                T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+            }
+            let now = <frame_system::Pallet<T>>::block_number();
+            ComplaintOf::<T>::insert(key, ComplaintCase { complainant: who.clone(), deposit: dep, created: now, status: ComplaintStatus::Pending });
+            let cnt = MediaComplaints::<T>::get(media_id).saturating_add(1);
+            MediaComplaints::<T>::insert(media_id, cnt);
+            Self::deposit_event(Event::MediaComplained(media_id, cnt));
+            Ok(())
+        }
+
+        /// 函数级中文注释：领取相册押金（需到期且无投诉）。删除后同等待期可退。
+        #[pallet::call_index(10)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn claim_album_deposit(origin: OriginFor<T>, album_id: T::AlbumId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let (owner, amt) = AlbumDeposits::<T>::get(album_id).ok_or(Error::<T>::NoDepositToClaim)?;
+            ensure!(who == owner, Error::<T>::NotAuthorized);
+            ensure!(AlbumComplaints::<T>::get(album_id) == 0, Error::<T>::NotMatured);
+            let mature_at = AlbumMaturity::<T>::get(album_id).ok_or(Error::<T>::NotMatured)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            ensure!(now >= mature_at, Error::<T>::NotMatured);
+            T::Currency::unreserve(&who, amt);
+            AlbumDeposits::<T>::remove(album_id);
+            AlbumMaturity::<T>::remove(album_id);
+            Self::deposit_event(Event::AlbumDepositRefunded(album_id, who, amt));
+            Ok(())
+        }
+
+        /// 函数级中文注释：领取媒体押金（需到期且无投诉）。删除后同等待期可退。
+        #[pallet::call_index(11)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn claim_media_deposit(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let (owner, amt) = MediaDeposits::<T>::get(media_id).ok_or(Error::<T>::NoDepositToClaim)?;
+            ensure!(who == owner, Error::<T>::NotAuthorized);
+            ensure!(MediaComplaints::<T>::get(media_id) == 0, Error::<T>::NotMatured);
+            let mature_at = MediaMaturity::<T>::get(media_id).ok_or(Error::<T>::NotMatured)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            ensure!(now >= mature_at, Error::<T>::NotMatured);
+            T::Currency::unreserve(&who, amt);
+            MediaDeposits::<T>::remove(media_id);
+            MediaMaturity::<T>::remove(media_id);
+            Self::deposit_event(Event::MediaDepositRefunded(media_id, who, amt));
+            Ok(())
+        }
+
+        // ===================== 治理动作 =====================
+        /// 函数级中文注释：【治理】裁决相册申诉（true=维持投诉；false=驳回）。
+        #[pallet::call_index(17)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_resolve_album_complaint(origin: OriginFor<T>, album_id: T::AlbumId, uphold: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
+            let key = (1u8, album_id.saturated_into::<u64>());
+            let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::NoActiveComplaint)?;
+            let (uploader, upload_dep) = AlbumDeposits::<T>::get(album_id).unwrap_or_else(|| (T::FeeCollector::get(), Zero::zero()));
+            let arb = T::ArbitrationAccount::get();
+            // 按败诉方押金 D 分配：20% → 胜诉；5% → 仲裁；75% → 败诉退款
+            if uphold {
+                // 败诉：上传者；胜诉：投诉者
+                let d = upload_dep;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    // 从上传者保留押金划转
+                    T::Currency::repatriate_reserved(&uploader, &case.complainant, win, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::repatriate_reserved(&uploader, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&uploader, back);
+                    // 清除上传侧押金记录
+                    AlbumDeposits::<T>::remove(album_id);
+                    AlbumMaturity::<T>::remove(album_id);
+                    Self::deposit_event(Event::ComplaintPayoutWinner(case.complainant.clone(), win));
+                    Self::deposit_event(Event::ComplaintPayoutArbitration(arb.clone(), fee));
+                    Self::deposit_event(Event::ComplaintPayoutLoserRefund(uploader.clone(), back));
+                }
+                // 胜诉方申诉押金全额退回
+                if !case.deposit.is_zero() { T::Currency::unreserve(&case.complainant, case.deposit); }
+            } else {
+                // 败诉：投诉者；胜诉：上传者
+                let d = case.deposit;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    T::Currency::repatriate_reserved(&case.complainant, &uploader, win, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::repatriate_reserved(&case.complainant, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&case.complainant, back);
+                    Self::deposit_event(Event::ComplaintPayoutWinner(uploader.clone(), win));
+                    Self::deposit_event(Event::ComplaintPayoutArbitration(arb.clone(), fee));
+                    Self::deposit_event(Event::ComplaintPayoutLoserRefund(case.complainant.clone(), back));
+                }
+                // 上传者押金保持原成熟路径（不动）
+            }
+            // 结案与计数归零
+            case.status = ComplaintStatus::Resolved;
+            ComplaintOf::<T>::remove(key);
+            AlbumComplaints::<T>::insert(album_id, 0);
+            let id_u64: u64 = album_id.saturated_into::<u64>();
+            Self::deposit_event(Event::ComplaintResolved(1u8, id_u64, uphold));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】裁决媒体申诉（true=维持投诉；false=驳回）。
+        #[pallet::call_index(18)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_resolve_media_complaint(origin: OriginFor<T>, media_id: T::MediaId, uphold: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
+            let key = (2u8, media_id.saturated_into::<u64>());
+            let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::NoActiveComplaint)?;
+            let (uploader, upload_dep) = MediaDeposits::<T>::get(media_id).unwrap_or_else(|| (T::FeeCollector::get(), Zero::zero()));
+            let arb = T::ArbitrationAccount::get();
+            if uphold {
+                // 败诉：上传者；胜诉：投诉者
+                let d = upload_dep;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    T::Currency::repatriate_reserved(&uploader, &case.complainant, win, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::repatriate_reserved(&uploader, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&uploader, back);
+                    MediaDeposits::<T>::remove(media_id);
+                    MediaMaturity::<T>::remove(media_id);
+                    Self::deposit_event(Event::ComplaintPayoutWinner(case.complainant.clone(), win));
+                    Self::deposit_event(Event::ComplaintPayoutArbitration(arb.clone(), fee));
+                    Self::deposit_event(Event::ComplaintPayoutLoserRefund(uploader.clone(), back));
+                }
+                if !case.deposit.is_zero() { T::Currency::unreserve(&case.complainant, case.deposit); }
+            } else {
+                // 败诉：投诉者；胜诉：上传者
+                let d = case.deposit;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    T::Currency::repatriate_reserved(&case.complainant, &uploader, win, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::repatriate_reserved(&case.complainant, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&case.complainant, back);
+                    Self::deposit_event(Event::ComplaintPayoutWinner(uploader.clone(), win));
+                    Self::deposit_event(Event::ComplaintPayoutArbitration(arb.clone(), fee));
+                    Self::deposit_event(Event::ComplaintPayoutLoserRefund(case.complainant.clone(), back));
+                }
+            }
+            case.status = ComplaintStatus::Resolved;
+            ComplaintOf::<T>::remove(key);
+            MediaComplaints::<T>::insert(media_id, 0);
+            let id_u64: u64 = media_id.saturated_into::<u64>();
+            Self::deposit_event(Event::ComplaintResolved(2u8, id_u64, uphold));
+            Ok(())
+        }
+        /// 函数级中文注释：【治理】冻结/解冻相册。
+        #[pallet::call_index(12)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_freeze_album(origin: OriginFor<T>, album_id: T::AlbumId, frozen: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
+            AlbumFrozen::<T>::insert(album_id, frozen);
+            Self::deposit_event(Event::GovAlbumFrozen(album_id, frozen));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置相册元数据与封面（任选）。
+        #[pallet::call_index(13)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_album_meta(
+            origin: OriginFor<T>,
+            album_id: T::AlbumId,
+            title: Option<Vec<u8>>,
+            desc: Option<Vec<u8>>,
+            visibility: Option<u8>,
+            tags: Option<Vec<Vec<u8>>>,
+            cover_media_id: Option<Option<T::MediaId>>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            AlbumOf::<T>::try_mutate(album_id, |maybe_a| -> DispatchResult {
+                let a = maybe_a.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
+                if let Some(t) = title { a.title = BoundedVec::try_from(t).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(d) = desc { a.desc = BoundedVec::try_from(d).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(v) = visibility { a.visibility = match v { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) }; }
+                if let Some(ts) = tags {
+                    let mut tags_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags> = Default::default();
+                    for t in ts.into_iter() {
+                        let tb: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(t).map_err(|_| Error::<T>::BadInput)?;
+                        tags_bv.try_push(tb).map_err(|_| Error::<T>::BadInput)?;
+                    }
+                    a.tags = tags_bv;
+                }
+                if let Some(cov) = cover_media_id {
+                    if let Some(mid) = cov { let m = MediaOf::<T>::get(mid).ok_or(Error::<T>::MediaNotFound)?; ensure!(m.album_id == album_id, Error::<T>::BadInput); }
+                    a.cover_media_id = cov;
+                }
+                a.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::AlbumUpdated(album_id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】隐藏/取消隐藏媒体。
+        #[pallet::call_index(14)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_media_hidden(origin: OriginFor<T>, media_id: T::MediaId, hidden: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
+            MediaHidden::<T>::insert(media_id, hidden);
+            Self::deposit_event(Event::GovMediaHidden(media_id, hidden));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】替换媒体 URI（例如涉敏内容替换为打码资源）。
+        #[pallet::call_index(15)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::MediaId, new_uri: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            MediaOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
+                let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
+                m.uri = BoundedVec::try_from(new_uri).map_err(|_| Error::<T>::BadInput)?;
+                m.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::GovMediaReplaced(media_id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】移除媒体（押金保留，删除后等待成熟可退）。
+        #[pallet::call_index(16)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_remove_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let m = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
+            MediaOf::<T>::remove(media_id);
+            MediaByAlbum::<T>::mutate(m.album_id, |list| { if let Some(pos) = list.iter().position(|x| x == &media_id) { list.swap_remove(pos); } });
+            // 重置成熟时间，待期后可退押金
+            let now = <frame_system::Pallet<T>>::block_number();
+            MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
+            Self::deposit_event(Event::MediaRemoved(media_id));
             Ok(())
         }
     }

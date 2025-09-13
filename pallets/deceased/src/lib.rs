@@ -142,6 +142,13 @@ pub mod pallet {
     /// 墓位下的逝者列表：GraveId -> BoundedVec<DeceasedId>
     pub type DeceasedByGrave<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, BoundedVec<T::DeceasedId, T::MaxDeceasedPerGrave>, ValueQuery>;
 
+    /// 函数级中文注释：按 `deceased_token` 建立的唯一索引，用于防止重复创建。
+    /// - Key：`deceased_token`（BoundedVec<u8, TokenLimit>）。
+    /// - Val：`DeceasedId`。
+    /// - 说明：在 create/update 时分别插入与维护，禁止同 token 的重复记录。
+    #[pallet::storage]
+    pub type DeceasedIdByToken<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::TokenLimit>, T::DeceasedId, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -187,6 +194,12 @@ pub mod pallet {
         BadRelationKind,
         /// 对方管理员未批准
         PendingApproval,
+        /// 函数级中文注释：出于合规与审计需求，逝者一经创建不可删除；请改用迁移或关系功能。
+        DeletionForbidden,
+        /// 函数级中文注释：同样的 `deceased_token` 已存在，禁止重复创建。
+        DeceasedTokenExists,
+        /// 函数级中文注释：owner 为创建者且永久不可变更。
+        OwnerImmutable,
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
@@ -321,6 +334,8 @@ pub mod pallet {
                 BoundedVec::<u8, TC::TokenLimit>::try_from(out).unwrap_or_default()
             }
             let deceased_token = build_token::<T>(&gender, &birth_bv, &death_bv, &name_badge_bv);
+            // 唯一性检查：同 token 已存在则拒绝创建
+            ensure!(DeceasedIdByToken::<T>::get(&deceased_token).is_none(), Error::<T>::DeceasedTokenExists);
             let deceased = Deceased::<T> {
                 grave_id,
                 owner: who.clone(),
@@ -339,6 +354,8 @@ pub mod pallet {
 
             DeceasedOf::<T>::insert(id, deceased);
             DeceasedByGrave::<T>::try_mutate(grave_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
+            // 建立 token -> id 索引
+            if let Some(d) = DeceasedOf::<T>::get(id) { DeceasedIdByToken::<T>::insert(d.deceased_token, id); }
 
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
             Ok(())
@@ -367,6 +384,10 @@ pub mod pallet {
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 ensure!(d.owner == who, Error::<T>::NotAuthorized);
+                // 捕获初始 owner，保证不可变更
+                let original_owner = d.owner.clone();
+                // 记录旧 token 以便更新索引
+                let old_token = d.deceased_token.clone();
 
                 if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(nb) = name_badge {
@@ -405,7 +426,20 @@ pub mod pallet {
                 v.extend_from_slice(d.name_badge.as_slice());
                 let max = <T as Config>::TokenLimit::get() as usize;
                 if v.len() > max { v.truncate(max); }
-                d.deceased_token = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                // 若 token 发生变化，需检查唯一性并更新索引
+                if new_token != old_token {
+                    if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) {
+                        // 已存在同 token 且不是当前记录 → 拒绝
+                        if existing_id != id { return Err(Error::<T>::DeceasedTokenExists.into()); }
+                    }
+                    // 更新存储与索引
+                    d.deceased_token = new_token.clone();
+                    DeceasedIdByToken::<T>::remove(old_token);
+                    DeceasedIdByToken::<T>::insert(new_token, id);
+                }
+                // 结束前再次断言 owner 未被篡改
+                ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
                 Ok(())
             })?;
 
@@ -413,23 +447,20 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：删除逝者记录，并从墓位索引中移除。
-        /// - 权限：仅 `owner`；
-        /// - 事件：`DeceasedRemoved`。
+        /// 函数级中文注释：删除逝者（已禁用）。
+        /// - 设计原则：为保证历史可追溯与家族谱系稳定，逝者一经创建不可删除；
+        /// - 替代方案：
+        ///   1) 使用 `transfer_deceased` 迁移至新的墓位（GRAVE）；
+        ///   2) 通过逝者关系（亲友团）将成员关系维护到其他逝者名下；
+        /// - 行为：本函数保持签名以兼容旧调用索引，但始终返回 `DeletionForbidden` 错误。
         #[pallet::call_index(2)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove())]
         pub fn remove_deceased(origin: OriginFor<T>, id: T::DeceasedId) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            let d = DeceasedOf::<T>::get(id).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(d.owner == who, Error::<T>::NotAuthorized);
-
-            DeceasedOf::<T>::remove(id);
-            DeceasedByGrave::<T>::mutate(d.grave_id, |list| {
-                if let Some(pos) = list.iter().position(|x| x == &id) { list.swap_remove(pos); }
-            });
-            Self::deposit_event(Event::DeceasedRemoved(id));
-            Ok(())
+            let _ = ensure_signed(origin)?;
+            let _ = id;
+            // 始终拒绝删除
+            Err(Error::<T>::DeletionForbidden.into())
         }
 
         /// 函数级中文注释：迁移逝者到新的墓位。
@@ -449,6 +480,7 @@ pub mod pallet {
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 ensure!(d.owner == who, Error::<T>::NotAuthorized);
+                let original_owner = d.owner.clone();
 
                 // 先检查新墓位容量
                 DeceasedByGrave::<T>::try_mutate(new_grave, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
@@ -461,6 +493,7 @@ pub mod pallet {
                 let old = d.grave_id;
                 d.grave_id = new_grave;
                 d.updated = <frame_system::Pallet<T>>::block_number();
+                ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
                 Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
                 Ok(())
             })

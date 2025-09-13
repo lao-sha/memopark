@@ -31,6 +31,8 @@ members = [
     "pallets/evidence",
     "pallets/memo-endowment",
     "pallets/memo-ipfs",
+    "pallets/origin-restriction",
+    "pallets/fee-guard",
     "runtime",
 ]
 resolver = "2"

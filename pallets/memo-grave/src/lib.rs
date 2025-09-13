@@ -16,6 +16,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_runtime::SaturatedConversion;
     use alloc::vec::Vec;
+    use frame_support::traits::tokens::ExistenceRequirement;
     // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
@@ -70,6 +71,17 @@ pub mod pallet {
         /// 每次关注所需的保留押金（可为 0）。
         #[pallet::constant]
         type FollowDeposit: Get<BalanceOf<Self>>;
+
+        /// 函数级中文注释：创建墓地的一次性协议费（无押金）。
+        /// - 该费用在执行 `create_grave` 前即从发起账户转入费用接收账户；
+        /// - 若费用为 0，则不收取；
+        /// - 使用 KeepAlive 模式，确保扣费后账户不因低于 ED 被移除。
+        #[pallet::constant]
+        type CreateFee: Get<BalanceOf<Self>>;
+
+        /// 函数级中文注释：创建费接收账户（例如：国库账户）。
+        /// - 由运行时实现返回一个稳定账户（可由 PalletId 派生或直接指向 Treasury）。
+        type FeeCollector: Get<Self::AccountId>;
     }
 
     /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
@@ -289,11 +301,16 @@ pub mod pallet {
         AlreadyFollowing,
         /// 押金保留失败或余额不足
         DepositFailed,
+        /// 创建费扣款失败（余额不足或 KeepAlive 保护触发）
+        FeePaymentFailed,
     }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：创建墓地（单/双/多人），隶属某陵园。
+        /// - 先行收取一次性创建费：将 `T::CreateFee` 从发起者转入 `T::FeeCollector`；
+        /// - 扣费使用 KeepAlive，确保不会导致账户余额低于 ED 被回收；
+        /// - 费用收取成功后再写入状态，任一步骤失败则不产生任何状态变更。
         #[pallet::call_index(0)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::create_grave())]
@@ -303,6 +320,13 @@ pub mod pallet {
             name: BoundedVec<u8, T::MaxCidLen>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            // 创建费：若常量 > 0，则从发起人转至费用接收账户
+            let fee = T::CreateFee::get();
+            if !fee.is_zero() {
+                let collector = T::FeeCollector::get();
+                T::Currency::transfer(&who, &collector, fee, ExistenceRequirement::KeepAlive)
+                    .map_err(|_| Error::<T>::FeePaymentFailed)?;
+            }
             let id = NextGraveId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
             let grave = Grave::<T> { park_id, owner: who.clone(), admin_group: None, name, deceased_tokens: BoundedVec::default(), is_public: true, active: true };
             Graves::<T>::insert(id, &grave);
