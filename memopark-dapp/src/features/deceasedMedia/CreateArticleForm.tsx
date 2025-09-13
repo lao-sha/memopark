@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react'
 import { Alert, Button, Card, Form, Input, InputNumber, Space, Typography, message } from 'antd'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { cryptoWaitReady, blake2AsU8a } from '@polkadot/util-crypto'
+import { mapDispatchErrorMessage } from '../../lib/errors'
 
 /**
  * 函数级详细中文注释：追忆文章创建表单
@@ -56,6 +57,19 @@ const CreateArticleForm: React.FC = () => {
         contentHashHex,
       } = values
 
+      // 表单校验：albumId
+      if (albumId === null || albumId === undefined || isNaN(Number(albumId)) || Number(albumId) < 0) {
+        setLoading(false); return message.warning('相册ID需为非负数字')
+      }
+      // 表单校验：CID（宽松，仅非空且长度校验）
+      if (!uriCid || String(uriCid).length < 10) { setLoading(false); return message.warning('请输入有效的 IPFS CID') }
+      // 表单校验：content_hash 或 JSON
+      if ((!contentJson || !contentJson.trim()) && !(contentHashHex && /^0x[0-9a-fA-F]{64}$/.test(contentHashHex))) {
+        setLoading(false); return message.warning('请提供 JSON 正文以计算哈希，或手动填写 0x 开头的 32 字节 content_hash')
+      }
+      if (title && String(title).length > 200) { setLoading(false); return message.warning('标题过长（≤200）') }
+      if (summary && String(summary).length > 500) { setLoading(false); return message.warning('摘要过长（≤500）') }
+
       let hashHex: string | null = null
       if (contentJson && contentJson.trim().length > 0) {
         await computeHash(contentJson)
@@ -64,9 +78,7 @@ const CreateArticleForm: React.FC = () => {
         hashHex = contentHashHex
       }
 
-      if (!hashHex) {
-        return message.warning('请提供 JSON 正文以计算哈希，或手动填写 content_hash(0x...)')
-      }
+      if (!hashHex) { setLoading(false); return message.warning('content_hash 生成失败，请检查 JSON') }
 
       const args: any[] = [
         Number(albumId),
@@ -86,7 +98,7 @@ const CreateArticleForm: React.FC = () => {
       message.success('已提交文章创建交易')
     } catch (e: any) {
       console.error(e)
-      message.error(e?.message || '提交失败')
+      message.error(mapDispatchErrorMessage(e, '提交失败'))
     } finally {
       setLoading(false)
     }

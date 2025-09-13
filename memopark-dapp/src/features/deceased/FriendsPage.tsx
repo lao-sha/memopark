@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Card, Form, Input, InputNumber, Button, Space, Typography, Switch, message, List, Tag } from 'antd'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { mapDispatchErrorMessage } from '../../lib/errors'
 import { getApi } from '../../lib/polkadot-safe'
 
 /**
@@ -35,19 +36,7 @@ const FriendsPage: React.FC = () => {
     } catch (e: any) {
       console.error(e)
       // 错误码中文映射（尽力而为）
-      const msg = String(e?.message || '')
-      const map: Record<string,string> = {
-        NotAuthorized: '无权限操作（仅管理员/owner 可执行）',
-        DeceasedNotFound: '逝者不存在',
-        FriendAlreadyMember: '已是亲友成员',
-        FriendNotMember: '该账户不是亲友成员',
-        FriendPendingExists: '已存在待审批申请',
-        FriendNoPending: '未找到待审批申请',
-        FriendTooMany: '成员数量达到上限',
-        BadInput: '输入不合法（长度/数量越界）'
-      }
-      const hit = Object.keys(map).find(k => msg.includes(k))
-      message.error(hit ? map[hit] : (e?.message || '交易失败'))
+      message.error(mapDispatchErrorMessage(e, '交易失败'))
     } finally { setLoading(false) }
   }, [])
 
