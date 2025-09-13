@@ -1,6 +1,6 @@
-# pallet-deceased-media
+# pallet-deceased-data
 
-本模块用于在每位逝者（Deceased）名下维护多个相册（Album）与媒体项（Media：照片/视频/文章）。
+本模块用于在每位逝者（Deceased）名下维护多个相册（Album）与数据项（Media：照片/视频/文章）。
 - 低耦合：通过 `DeceasedAccess` / `DeceasedTokenAccess` Trait 与 `pallet-deceased` 交互，避免直接依赖其内部实现。
 - 隐私安全：链上仅存最小元数据与链下外链（IPFS/HTTPS/Arweave），可选内容哈希；不涉及 MEMO 资金。
 - 限制控制：使用 `BoundedVec` 对字符串长度与集合数量进行约束，防止状态膨胀与 DoS。
@@ -10,33 +10,41 @@
 ## 数据模型
 - 类型
   - `DeceasedId`：逝者 ID（来自 `pallet-deceased`，通过适配器抽象）。
-  - `AlbumId: u64`、`MediaId: u64`。
+  - `AlbumId: u64`、`VideoCollectionId: u64`、`MediaId: u64`。
   - `MediaKind`：`Photo | Video | Audio | Article`。
   - `Visibility`：`Public | Unlisted | Private`。
 - 结构
-  - `Album`：`deceased_id`、`deceased_token`、`owner`、`title`、`desc`、`visibility`、`tags[]`、`cover_media_id?`、`created/updated`
+  - `Album`：`deceased_id`、`deceased_token`、`owner`、`title`、`desc`、`visibility`、`tags[]`、`cover_media_id?`（主图）、`created/updated`
+  - `VideoCollection`：`deceased_id`、`deceased_token`、`owner`、`title`、`desc`、`tags[]`、`primary_media_id?`（主视频）、`created/updated`
   - `Media`：
-    - 通用：`album_id`、`deceased_id`、`deceased_token`、`owner`、`kind`、`uri`、`thumbnail_uri?`、`content_hash?([u8;32])`、`order_index`、`created/updated`
+    - 通用：`album_id?`、`video_set_id?`（VideoCollectionId）、`deceased_id`、`deceased_token`、`owner`、`kind`、`uri`、`thumbnail_uri?`、`content_hash?([u8;32])`、`order_index`、`created/updated`
     - 图片：`width?`、`height?`
     - 音视频：`duration_secs?`
     - 文章（Article）：`title?`、`summary?`（正文 JSON 以 IPFS CID 存于 `uri`，其 blake2-256 存于 `content_hash`）
 
 ## 存储项
 - `NextAlbumId: AlbumId`
+- `NextVideoCollectionId: VideoCollectionId`
 - `NextMediaId: MediaId`
 - `AlbumOf: AlbumId -> Album`
+- `VideoCollectionOf: VideoCollectionId -> VideoCollection`
 - `MediaOf: MediaId -> Media`
 - `AlbumsByDeceased: DeceasedId -> BoundedVec<AlbumId, MaxAlbumsPerDeceased>`
+- `VideoCollectionsByDeceased: DeceasedId -> BoundedVec<VideoCollectionId, MaxVideoCollectionsPerDeceased>`
 - `MediaByAlbum: AlbumId -> BoundedVec<MediaId, MaxMediaPerAlbum>`
+- `MediaByVideoCollection: VideoCollectionId -> BoundedVec<MediaId, MaxMediaPerAlbum>`
 
 ### 押金/治理相关新增存储
 - `AlbumDeposits: AlbumId -> (AccountId, Balance)`：相册押金
+- `VideoCollectionDeposits: VideoCollectionId -> (AccountId, Balance)`：视频集押金
 - `MediaDeposits: MediaId -> (AccountId, Balance)`：媒体押金
 - `AlbumMaturity: AlbumId -> BlockNumber`：相册押金成熟区块（创建或删除时设置为 now+ComplaintPeriod）
+- `VideoCollectionMaturity: VideoCollectionId -> BlockNumber`：视频集押金成熟区块
 - `MediaMaturity: MediaId -> BlockNumber`：媒体押金成熟区块
 - `AlbumFrozen: AlbumId -> bool`：相册冻结（被治理后 owner 不可写）
+- `VideoCollectionFrozen: VideoCollectionId -> bool`：视频集冻结
 - `MediaHidden: MediaId -> bool`：媒体隐藏（前端避免展示）
-- `AlbumComplaints: AlbumId -> u32`、`MediaComplaints: MediaId -> u32`：投诉计数（>0 将阻止退款）
+- `AlbumComplaints: AlbumId -> u32`、`VideoCollectionComplaints: VideoCollectionId -> u32`、`MediaComplaints: MediaId -> u32`：投诉计数（>0 将阻止退款）
 
 ## Extrinsics（外部可调用）
 - 相册
@@ -102,4 +110,6 @@
 ```
 ## 版本与迁移
 - 当前 StorageVersion=2：已从 v1 迁移至 v2，新增 `MediaKind::Article` 以及 `Media.title/summary` 字段；迁移逻辑将旧 `Media` 记录补齐为 `None` 默认值。
+- Pallet 更名迁移：运行时在 `Migrations` 中追加了 `RenameDeceasedMediaToData`，会在升级时将存储前缀从 `DeceasedMedia` 迁移到 `DeceasedData`，不改变存储键结构与内容。
+- 前端/客户端：原 `deceasedMedia` section 名已兼容解析，但建议尽快切换为 `deceasedData`。
 - 运行时升级会在 `on_runtime_upgrade` 调用迁移；建议上线前使用 try-runtime 进行验证与权重审计。

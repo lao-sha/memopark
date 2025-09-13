@@ -387,6 +387,8 @@ impl pallet_deceased::Config for Runtime {
 // ===== deceased-data 配置 =====
 parameter_types! {
     pub const MediaMaxAlbumsPerDeceased: u32 = 64;
+    pub const MediaMaxVideoSetsPerDeceased: u32 = 64;
+    pub const MediaMaxVideoCollectionsPerDeceased: u32 = 64;
     pub const MediaMaxMediaPerAlbum: u32 = 256;
     pub const MediaStringLimit: u32 = 512;
     pub const MediaMaxTags: u32 = 16;
@@ -435,8 +437,10 @@ impl pallet_deceased_data::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
     type AlbumId = u64;
+    type VideoCollectionId = u64;
     type MediaId = u64;
     type MaxAlbumsPerDeceased = MediaMaxAlbumsPerDeceased;
+    type MaxVideoCollectionsPerDeceased = MediaMaxVideoCollectionsPerDeceased;
     type MaxMediaPerAlbum = MediaMaxMediaPerAlbum;
     type StringLimit = MediaStringLimit;
     type MaxTags = MediaMaxTags;
@@ -453,6 +457,7 @@ impl pallet_deceased_data::Config for Runtime {
     type Currency = Balances;
     /// 函数级中文注释：相册与媒体押金、小额创建费常量。
     type AlbumDeposit = MediaAlbumDeposit;
+    type VideoCollectionDeposit = MediaAlbumDeposit;
     type MediaDeposit = MediaMediaDeposit;
     /// 函数级中文注释：申诉押金常量（示例：与 MediaDeposit 一致）。
     type ComplaintDeposit = MediaMediaDeposit;

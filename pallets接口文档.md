@@ -27,7 +27,7 @@ Storage：
 常量参数：
 - MaxDeceasedPerGrave, StringLimit, MaxLinks
 
-## pallet-deceased-media
+## pallet-deceased-data（原 pallet-deceased-media）
 
 - 模块说明：每位逝者可有多个相册，每个相册含多媒体项（照片/视频/音频）。
 - 隐私：链下资源 URI + 可选哈希；不涉及 MEMO。

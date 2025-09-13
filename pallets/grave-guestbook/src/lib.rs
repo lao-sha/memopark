@@ -26,7 +26,7 @@ pub trait GraveAccess<Origin, AccountId, GraveId> {
     fn is_public_sweep(grave_id: GraveId) -> bool { let _ = grave_id; false }
 }
 
-/// 函数级中文注释：媒体类型（与 deceased-media 对齐，便于前端统一渲染）。
+/// 函数级中文注释：媒体类型（与 deceased-data 对齐，便于前端统一渲染）。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, sp_runtime::RuntimeDebug)]
 pub enum MediaKind { Photo, Video, Audio }
 
