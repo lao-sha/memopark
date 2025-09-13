@@ -91,6 +91,30 @@ impl pallet_deceased::Config for Runtime {
 - 去重：主记录与 Pending 均做无向对称去重与冲突校验。
 - 迁移：StorageVersion=1（`on_runtime_upgrade` 写入版本），为后续状态机与押金/TTL 迁移预留。
 
+## 亲友团（Friends）
+
+- 存储：
+  - `FriendPolicyOf: DeceasedId -> { require_approval, is_private, max_members }`
+  - `FriendsOf: (DeceasedId, AccountId) -> { role: Member|Core|Admin, since, note }`
+  - `FriendCount: DeceasedId -> u32`
+  - `FriendJoinRequests: DeceasedId -> BoundedVec<(AccountId, BlockNumber), MaxPending>`
+- Extrinsics：
+  - `set_friend_policy(deceased_id, require_approval, is_private, max_members)`（Admin/owner）
+  - `request_join(deceased_id, note?)`（若无需审批则直接入团）
+  - `approve_join(deceased_id, who)` / `reject_join(deceased_id, who)`（Admin）
+  - `leave_friend_group(deceased_id)`（成员自愿退出）
+  - `kick_friend(deceased_id, who)`（Admin）
+  - `set_friend_role(deceased_id, who, role)`（Admin；owner 恒视为 Admin）
+- 说明：
+  - 亲友团以逝者为主体；墓位不再承载关注/亲友能力（见 `pallet-memo-grave` 方案B）。
+  - `is_private=true` 时，成员明细仅 Admin 可见；对外仅暴露 `FriendCount`。
+
+### 迁移
+- StorageVersion = 4：引入亲友团存储，默认空；原有数据不受影响。
+
+### 前端入口
+- 在 DApp 的 “亲友团” 标签页提供最小操作入口（策略设置、申请/审批、退出/移出、设角色）。
+
 ## 安全与隐私
 - 不在链上存储敏感个人信息；仅存少量文本与链下链接（IPFS/HTTPS 等）。
 - 不进行任何 MEMO 代币相关操作，避免资金风险。

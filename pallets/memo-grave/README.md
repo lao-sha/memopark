@@ -22,9 +22,9 @@
 - `Members: (GraveId, AccountId) -> ()`
 - `PendingApplications: (GraveId, AccountId) -> BlockNumber`
 
-### 新增（可见性与关注）
-- `VisibilityPolicyOf: GraveId -> { public_offering, public_guestbook, public_sweep, public_follow }`
-- `FollowersOf: GraveId -> BoundedVec<AccountId, MaxFollowers>`
+### 变更（方案B：去关注/亲友）
+- 自 v10 起，墓位不再承载“关注/亲友”功能；相关接口已停用（调用将返回策略违规）。
+- 新增 `LegacyFollowRefunds: AccountId -> Balance` 用于迁移时统计旧关注押金余额，用户可通过退款口一次性解除保留押金。
 
 ### 变更（Hall 拆分）
 - Hall 相关逻辑已迁移至独立 `pallet-memo-hall`；本模块不再包含 Hall 的存储与调用。
@@ -42,8 +42,8 @@
  - `add_admin(id, who)` / `remove_admin(id, who)`（仅墓主或园区管理员）
  - 新增：`set_policy(id, policy)`（0/1）
  - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
- - 新增：`set_visibility(id, public_offering, public_guestbook, public_sweep, public_follow)`
- - 新增：`follow(id)` / `unfollow(id)`
+ - （停用）`set_visibility(id, ...)` 中的 public_follow 已无效；`follow/unfollow` 已停用并返回策略违规。
+ - 新增：`claim_legacy_follow_refund()`：领取旧关注押金（若迁移统计到余额）。
 -（移除）`create_hall/attach_deceased/set_hall_params` 已迁移至 `pallet-memo-hall`
 
 ### 创建费（CreateFee，无押金）
@@ -55,7 +55,7 @@
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。当 `park_id=None` 时，仅墓主可管理（园区管理员校验不可用）。
   - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
-- 存储版本：StorageVersion=7（v3: `park_id` 改为 Option；v4: 移除 Hall；v5: 删除 kind/capacity，新增 name；v6: 删除 metadata_cid；v7: 新增 deceased_tokens），提供迁移以兼容旧数据。
+- 存储版本：StorageVersion=10（v3: `park_id`→Option；v4: 移除 Hall；v5: 删除 kind/capacity；v6: 删除 metadata_cid；v7: 新增 deceased_tokens；v10: 去关注并引入退款口），提供迁移以兼容旧数据。
 - 与 `pallet-memo-hall` 的关系：通过 `Hall::link_grave_id` 可选关联，无循环依赖，建议由查询层整合展示。
 
 ### 编译零警告策略（-D warnings）

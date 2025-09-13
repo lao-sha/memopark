@@ -16,6 +16,7 @@ import TreasuryPage from '../treasury/TreasuryPage'
 import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
 import ArticleListPage from '../deceasedMedia/ArticleListPage'
 import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
+import FriendsPage from '../deceased/FriendsPage'
 
 const AuthEntryPage: React.FC = () => {
   const [active, setActive] = useState<string>('login')
@@ -50,6 +51,7 @@ const AuthEntryPage: React.FC = () => {
           { key: 'article-new', label: '新建文章', children: <CreateArticleForm /> },
           { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
           { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
+          { key: 'friends', label: '亲友团', children: <FriendsPage /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },
           { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> }
         ]}

@@ -14,9 +14,10 @@ pub mod pallet {
     use frame_support::weights::Weight;
     use crate::weights::WeightInfo;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::SaturatedConversion;
+    use sp_runtime::{SaturatedConversion, Saturating};
     use alloc::vec::Vec;
     use frame_support::traits::tokens::ExistenceRequirement;
+    use alloc::collections::BTreeMap;
     // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
@@ -115,7 +116,7 @@ pub mod pallet {
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(9);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(10);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -196,6 +197,11 @@ pub mod pallet {
     /// 函数级中文注释：黑名单：被列入者无法关注该墓地。
     #[pallet::storage]
     pub type BannedFollowers<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+
+    /// 函数级中文注释：旧关注押金退款余额（方案B迁移专用）。
+    /// - 在 on_runtime_upgrade(v9->v10) 中，为每个账户累计 FollowDeposit×关注次数；用户可调用退款接口解除保留押金。
+    #[pallet::storage]
+    pub type LegacyFollowRefunds<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, OptionQuery>;
 
     /// 函数级中文注释：成员↔逝者亲属关系记录
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -689,70 +695,33 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::set_visibility())]
         pub fn set_visibility(_origin: OriginFor<T>, _id: u64, _public_offering: bool, _public_guestbook: bool, _public_sweep: bool, _public_follow: bool) -> DispatchResult { Err(Error::<T>::PolicyViolation.into()) }
 
-        /// 函数级详细中文注释：关注纪念馆；若策略允许公开关注，则任意签名账户可关注，否则仅成员可关注。
+        /// 函数级详细中文注释：关注墓位（已停用）。
+        /// - 方案B：亲友/关注统一回归逝者维度；墓位不再承载关注功能。
+        /// - 为兼容旧调用索引，本接口保留但始终返回策略违规错误。
         #[pallet::call_index(20)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::follow())]
         pub fn follow(origin: OriginFor<T>, id: u64) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            // 访问控制：依据 is_public 与成员/管理员
-            let g = Graves::<T>::get(id).ok_or(Error::<T>::NotFound)?;
-            if !g.is_public {
-                let is_admin = GraveAdmins::<T>::get(id).iter().any(|a| a == &who);
-                ensure!(who == g.owner || is_admin || Members::<T>::contains_key(id, &who), Error::<T>::NotMember);
-            }
-            // 黑名单
-            ensure!(!BannedFollowers::<T>::contains_key(id, &who), Error::<T>::PolicyViolation);
-            // 冷却
-            if let Some(last) = LastFollowAction::<T>::get(id, &who) {
-                let now = <frame_system::Pallet<T>>::block_number();
-                let min = last + BlockNumberFor::<T>::from(T::FollowCooldownBlocks::get());
-                ensure!(now >= min, Error::<T>::PolicyViolation);
-            }
-            // 去重
-            ensure!(!IsFollower::<T>::contains_key(id, &who), Error::<T>::AlreadyFollowing);
-            // 押金：保留
-            let deposit = T::FollowDeposit::get();
-            if !deposit.is_zero() {
-                T::Currency::reserve(&who, deposit).map_err(|_| Error::<T>::DepositFailed)?;
-            }
-            FollowersOf::<T>::try_mutate(id, |list| -> DispatchResult {
-                list.try_push(who.clone()).map_err(|_| Error::<T>::CapacityExceeded)?;
-                Ok(())
-            })?;
-            IsFollower::<T>::insert(id, &who, ());
-            LastFollowAction::<T>::insert(id, &who, <frame_system::Pallet<T>>::block_number());
-            Self::deposit_event(Event::Followed { id, who });
-            Ok(())
+            let _ = ensure_signed(origin)?; let _ = id; Err(Error::<T>::PolicyViolation.into())
         }
 
-        /// 函数级详细中文注释：取消关注
+        /// 函数级详细中文注释：取消关注（已停用）。
         #[pallet::call_index(21)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::unfollow())]
-        pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult {
+        pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult { let _ = ensure_signed(origin)?; let _ = id; Err(Error::<T>::PolicyViolation.into()) }
+
+        /// 函数级中文注释：领取旧关注押金（方案B迁移退款口）。
+        /// - 若账户在迁移时被统计到了旧关注押金余额，则可在此一次性解除保留押金；领取后记录被删除。
+        #[pallet::call_index(40)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::unfollow())]
+        pub fn claim_legacy_follow_refund(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            // 授权：关注者本人或墓主/园区管理员
-            let g = Graves::<T>::get(id).ok_or(Error::<T>::NotFound)?;
-            if who != g.owner {
-                // 若不是本人取关，则需园区管理员
-                if !IsFollower::<T>::contains_key(id, &who) {
-                    // 非关注者本人：检查园区管理员
-                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, frame_system::RawOrigin::Signed(who.clone()).into())?; }
-                }
-            }
-            FollowersOf::<T>::mutate(id, |list| { if let Some(p) = list.iter().position(|a| a == &who) { list.swap_remove(p); } });
-            IsFollower::<T>::remove(id, &who);
-            // 押金：释放
-            let deposit = T::FollowDeposit::get();
-            if !deposit.is_zero() {
-                T::Currency::unreserve(&who, deposit);
-            }
-            LastFollowAction::<T>::insert(id, &who, <frame_system::Pallet<T>>::block_number());
-            Self::deposit_event(Event::Unfollowed { id, who });
-            Ok(())
+            if let Some(amt) = LegacyFollowRefunds::<T>::take(&who) {
+                if !amt.is_zero() { T::Currency::unreserve(&who, amt); }
+                Ok(())
+            } else { Err(Error::<T>::NotApplied.into()) }
         }
 
         /// 函数级中文注释：设置亲属关系策略（0=Auto,1=Approve）。
@@ -997,6 +966,25 @@ pub mod pallet {
                 STORAGE_VERSION.put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
                 weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+            }
+            // v9 -> v10：方案B迁移——统计旧关注押金余额
+            if current < 10 {
+                let mut sum: BalanceOf<T> = Zero::zero();
+                // 估算总额：按账户统计每账户关注次数×FollowDeposit，写入 LegacyFollowRefunds
+                let dep = T::FollowDeposit::get();
+                if !dep.is_zero() {
+                    let mut acc: BTreeMap<T::AccountId, u32> = BTreeMap::new();
+                    IsFollower::<T>::iter().for_each(|(_gid, who, _)| {
+                        *acc.entry(who).or_insert(0) += 1;
+                    });
+                    for (who, n) in acc.into_iter() {
+                        let mut amt = dep;
+                        for _ in 0..n { amt = amt.saturating_add(dep); }
+                        if amt > Zero::zero() { LegacyFollowRefunds::<T>::insert(&who, amt); sum = sum.saturating_add(amt); }
+                    }
+                }
+                STORAGE_VERSION.put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(1_000, 0));
             }
             weight
         }
