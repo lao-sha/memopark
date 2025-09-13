@@ -15,6 +15,7 @@ import MyGovernancePage from '../governance/MyGovernancePage'
 import TreasuryPage from '../treasury/TreasuryPage'
 import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
 import ArticleListPage from '../deceasedMedia/ArticleListPage'
+import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
 
 const AuthEntryPage: React.FC = () => {
   const [active, setActive] = useState<string>('login')
@@ -48,6 +49,7 @@ const AuthEntryPage: React.FC = () => {
           { key: 'gov-me', label: '我的治理', children: <MyGovernancePage /> },
           { key: 'article-new', label: '新建文章', children: <CreateArticleForm /> },
           { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
+          { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },
           { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> }
         ]}
