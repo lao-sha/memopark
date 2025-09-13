@@ -28,7 +28,7 @@ The system implements a **15-level affiliate marketing model** with escrow settl
 - `pallet-memo-ipfs`: IPFS content management
 - `pallet-memo-park`: Memorial park system
 - `pallet-deceased`: Deceased person records
-- `pallet-deceased-media`: Media attachments for deceased records
+- `pallet-deceased-data`: Media/Data attachments for deceased records (renamed from pallet-deceased-media)
 
 **Affiliate & Financial Pallets:**
 - `pallet-memo-referrals`: Minimal referral relationships (SponsorOf mapping only)  
