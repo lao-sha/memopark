@@ -34,7 +34,20 @@ const FriendsPage: React.FC = () => {
       setTimeout(() => { void refresh() }, 1200)
     } catch (e: any) {
       console.error(e)
-      message.error(e?.message || '交易失败')
+      // 错误码中文映射（尽力而为）
+      const msg = String(e?.message || '')
+      const map: Record<string,string> = {
+        NotAuthorized: '无权限操作（仅管理员/owner 可执行）',
+        DeceasedNotFound: '逝者不存在',
+        FriendAlreadyMember: '已是亲友成员',
+        FriendNotMember: '该账户不是亲友成员',
+        FriendPendingExists: '已存在待审批申请',
+        FriendNoPending: '未找到待审批申请',
+        FriendTooMany: '成员数量达到上限',
+        BadInput: '输入不合法（长度/数量越界）'
+      }
+      const hit = Object.keys(map).find(k => msg.includes(k))
+      message.error(hit ? map[hit] : (e?.message || '交易失败'))
     } finally { setLoading(false) }
   }, [])
 
@@ -93,6 +106,7 @@ const FriendsPage: React.FC = () => {
               <span>上限</span><InputNumber min={1} value={maxMembers} onChange={v=>setMaxMembers((v as any) ?? 1)} />
               <Button type="primary" loading={loading} onClick={()=>{
                 if (!ensureId()) return
+                if (typeof maxMembers !== 'number' || maxMembers < 1 || maxMembers > 100000) return message.warning('上限需为 1~100000 的数字')
                 call('setFriendPolicy', [deceasedId, requireApproval, isPrivate, maxMembers])
               }}>设置策略</Button>
             </Space>
@@ -102,7 +116,7 @@ const FriendsPage: React.FC = () => {
               <Input placeholder="可选" value={note} onChange={e=>setNote(e.target.value)} />
             </Form.Item>
             <Space wrap>
-              <Button loading={loading} onClick={()=>{ if (!ensureId()) return; call('requestJoin', [deceasedId, note || null]) }}>申请加入</Button>
+              <Button loading={loading} onClick={()=>{ if (!ensureId()) return; if (note.length > 256) return message.warning('备注过长'); call('requestJoin', [deceasedId, note || null]) }}>申请加入</Button>
               <Button loading={loading} onClick={()=>{ if (!ensureId()) return; call('leaveFriendGroup', [deceasedId]) }}>退出亲友团</Button>
             </Space>
 
@@ -111,14 +125,14 @@ const FriendsPage: React.FC = () => {
               <Input value={target} onChange={e=>setTarget(e.target.value)} placeholder="要审批/移出/改角色的账户" />
             </Form.Item>
             <Space wrap>
-              <Button loading={loading} onClick={()=>{ if (!ensureId()||!target) return; call('approveJoin', [deceasedId, target]) }}>审批通过</Button>
-              <Button loading={loading} onClick={()=>{ if (!ensureId()||!target) return; call('rejectJoin', [deceasedId, target]) }}>拒绝申请</Button>
-              <Button danger loading={loading} onClick={()=>{ if (!ensureId()||!target) return; call('kickFriend', [deceasedId, target]) }}>移出成员</Button>
+              <Button loading={loading} onClick={()=>{ if (!ensureId()) return; if (!/^\w{40,64}$/i.test(target)) return message.warning('目标账户格式不正确'); call('approveJoin', [deceasedId, target]) }}>审批通过</Button>
+              <Button loading={loading} onClick={()=>{ if (!ensureId()) return; if (!/^\w{40,64}$/i.test(target)) return message.warning('目标账户格式不正确'); call('rejectJoin', [deceasedId, target]) }}>拒绝申请</Button>
+              <Button danger loading={loading} onClick={()=>{ if (!ensureId()) return; if (!/^\w{40,64}$/i.test(target)) return message.warning('目标账户格式不正确'); call('kickFriend', [deceasedId, target]) }}>移出成员</Button>
             </Space>
             <Space wrap style={{ marginTop: 8 }}>
               <span>角色</span>
               <InputNumber min={0} max={2} value={role} onChange={v=>setRole((v as any) ?? 0)} />
-              <Button loading={loading} onClick={()=>{ if (!ensureId()||!target) return; call('setFriendRole', [deceasedId, target, role]) }}>设置角色</Button>
+              <Button loading={loading} onClick={()=>{ if (!ensureId()) return; if (!/^\w{40,64}$/i.test(target)) return message.warning('目标账户格式不正确'); if (typeof role!=='number'|| role<0||role>2) return message.warning('角色需为 0~2'); call('setFriendRole', [deceasedId, target, role]) }}>设置角色</Button>
             </Space>
           </Form>
           <Space>
