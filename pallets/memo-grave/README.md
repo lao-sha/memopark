@@ -44,7 +44,13 @@
  - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
  - 新增：`set_visibility(id, public_offering, public_guestbook, public_sweep, public_follow)`
  - 新增：`follow(id)` / `unfollow(id)`
-- （移除）`create_hall/attach_deceased/set_hall_params` 已迁移至 `pallet-memo-hall`
+-（移除）`create_hall/attach_deceased/set_hall_params` 已迁移至 `pallet-memo-hall`
+
+### 创建费（CreateFee，无押金）
+- 自 v9 起，`create_grave` 在创建前会一次性收取“创建费”（协议费），转入运行时绑定的 `FeeCollector` 账户（通常为国库）。
+- 费用由运行时常量 `GraveCreateFee` 提供，默认 0，治理可升级后开启/调整。
+- 扣费使用 KeepAlive 模式：若扣费会导致账户低于存在性余额（ED）而被回收，则整个交易失败并不产生状态变更。
+- 不与押金混用：本费用为一次性消耗，删除或转让墓地不返还。
 
 ## 权限
 - 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。当 `park_id=None` 时，仅墓主可管理（园区管理员校验不可用）。

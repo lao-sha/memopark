@@ -40,6 +40,7 @@ use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
+use frame_support::traits::Contains;
 
 // 引入以区块数表示的一天常量
 use crate::{DAYS, OriginCaller};
@@ -133,6 +134,18 @@ parameter_types! {
 	pub const SS58Prefix: u8 = 42;
 }
 
+// 函数级中文注释：deceased-media 费用/押金与成熟期参数
+parameter_types! {
+    /// 相册押金（示例：0.02 UNIT）。
+    pub const MediaAlbumDeposit: Balance = 20_000_000_000_000;
+    /// 媒体押金（示例：0.005 UNIT）。
+    pub const MediaMediaDeposit: Balance = 5_000_000_000_000;
+    /// 创建相册小额手续费（示例：0.001 UNIT）。
+    pub const MediaCreateFee: Balance = 1_000_000_000_000;
+    /// 投诉观察/成熟期：365 天。直接复用 DAYS 常量，避免类型不匹配。
+    pub const MediaComplaintPeriod: BlockNumber = 365 * DAYS;
+}
+
 /// The default types are being injected by [`derive_impl`](`frame_support::derive_impl`) from
 /// [`SoloChainDefaultConfig`](`struct@frame_system::config_preludes::SolochainDefaultConfig`),
 /// but overridden as needed.
@@ -161,6 +174,8 @@ impl frame_system::Config for Runtime {
 	/// This is used as an identifier of the chain. 42 is the generic substrate prefix.
 	type SS58Prefix = SS58Prefix;
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
+	/// 函数级中文注释：基础调用过滤器，接入 origin-restriction 软策略（当前默认放行）。
+	type BaseCallFilter = crate::configs::OriginRestrictionFilter;
 }
 
 impl pallet_aura::Config for Runtime {
@@ -294,6 +309,8 @@ parameter_types! {
     pub const GraveSlugLen: u32 = 10;
     pub const GraveFollowCooldownBlocks: u32 = 30;
     pub const GraveFollowDeposit: Balance = 0;
+    /// 函数级中文注释：创建墓地的一次性协议费（默认 0，便于灰度开启）。
+    pub const GraveCreateFee: Balance = 0;
 }
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
@@ -313,6 +330,9 @@ impl pallet_memo_grave::Config for Runtime {
     type FollowCooldownBlocks = GraveFollowCooldownBlocks;
     type Currency = Balances;
     type FollowDeposit = GraveFollowDeposit;
+    /// 函数级中文注释：绑定创建费与收款账户（指向国库 PalletId 派生地址）。
+    type CreateFee = GraveCreateFee;
+    type FeeCollector = TreasuryAccount;
 }
 
 // ===== deceased 配置 =====
@@ -398,6 +418,19 @@ impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for Deceased
     }
 }
 
+/// 函数级中文注释：为 `pallet-deceased-media` 提供逝者令牌访问实现，来源同 `pallet-deceased`。
+impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+    fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
+            let bytes: Vec<u8> = d.deceased_token.to_vec();
+            let max = GraveMaxCidLen::get() as usize;
+            let mut v = bytes;
+            if v.len() > max { v.truncate(max); }
+            frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
+        } else { None }
+    }
+}
+
 impl pallet_deceased_media::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
@@ -408,7 +441,73 @@ impl pallet_deceased_media::Config for Runtime {
     type StringLimit = MediaStringLimit;
     type MaxTags = MediaMaxTags;
     type MaxReorderBatch = MediaMaxReorderBatch;
+    type MaxTokenLen = GraveMaxCidLen;
     type DeceasedProvider = DeceasedProviderAdapter;
+    type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
+    /// 函数级中文注释：治理起源绑定为 Root 或 内容治理签名账户（过渡期双通道）。
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner,
+    >;
+    /// 函数级中文注释：押金与费用使用原生余额。
+    type Currency = Balances;
+    /// 函数级中文注释：相册与媒体押金、小额创建费常量。
+    type AlbumDeposit = MediaAlbumDeposit;
+    type MediaDeposit = MediaMediaDeposit;
+    /// 函数级中文注释：申诉押金常量（示例：与 MediaDeposit 一致）。
+    type ComplaintDeposit = MediaMediaDeposit;
+    type CreateFee = MediaCreateFee;
+    /// 函数级中文注释：费用接收账户绑定为国库 PalletId 派生地址。
+    type FeeCollector = TreasuryAccount;
+    /// 函数级中文注释：仲裁费用接收账户（暂复用国库）。
+    type ArbitrationAccount = TreasuryAccount;
+    /// 函数级中文注释：投诉观察/成熟期（默认 1 年）。
+    type ComplaintPeriod = MediaComplaintPeriod;
+}
+// ========= OriginRestriction 过滤器与配置 =========
+/// 函数级中文注释：基础调用过滤器；当前读取 origin-restriction 的全局开关（allow_all=true 放行全部）。
+pub struct OriginRestrictionFilter;
+impl Contains<RuntimeCall> for OriginRestrictionFilter {
+    fn contains(_c: &RuntimeCall) -> bool {
+        // allow=true → 放行；false → 暂时仍放行（占位，后续细化），避免破坏性变更
+        let allow = pallet_origin_restriction::GlobalAllow::<Runtime>::get();
+        let _ = allow;
+        true
+    }
+}
+
+impl pallet_origin_restriction::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：治理起源采用 Root | 内容治理签名账户 双通道，便于灰度切换。
+    type AdminOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner
+    >;
+}
+
+/// 函数级中文注释：内容治理签名账户（固定 AccountId32，无私钥暴露）。
+pub struct ContentGovernorAccount;
+impl sp_core::Get<AccountId> for ContentGovernorAccount {
+    fn get() -> AccountId {
+        // 使用固定字节串 b"memo/cgov" 前 9 字节，余位补 0。
+        let mut bytes = [0u8; 32];
+        const SEED: &[u8; 9] = b"memo/cgov";
+        bytes[..SEED.len()].copy_from_slice(SEED);
+        sp_core::crypto::AccountId32::new(bytes).into()
+    }
+}
+
+/// 函数级中文注释：Ensure 策略：仅允许由内容治理账户签名的起源。
+pub type EnsureContentSigner = frame_system::EnsureSignedBy<ContentGovernorAccount, AccountId>;
+
+/// 函数级中文注释：为 EnsureSignedBy 提供成员集合（单元素：内容治理账户）。
+impl frame_support::traits::SortedMembers<AccountId> for ContentGovernorAccount {
+    fn sorted_members() -> alloc::vec::Vec<AccountId> {
+        alloc::vec![ContentGovernorAccount::get()]
+    }
+    fn contains(t: &AccountId) -> bool {
+        *t == ContentGovernorAccount::get()
+    }
 }
 
 // ===== ledger 配置（精简） =====
@@ -546,6 +645,12 @@ impl pallet_treasury::Config for Runtime {
     type BalanceConverter = UnitBalanceConverter;
     type PayoutPeriod = TreasuryPayoutPeriod;
     type BlockNumberProvider = frame_system::Pallet<Runtime>;
+}
+
+/// 函数级中文注释：国库账户解析器——由 Treasury PalletId 派生稳定账户地址。
+pub struct TreasuryAccount;
+impl sp_core::Get<AccountId> for TreasuryAccount {
+    fn get() -> AccountId { TreasuryPalletId::get().into_account_truncating() }
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -1083,11 +1188,12 @@ impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
     type RuntimeOrigin = <RuntimeOrigin as frame_support::traits::OriginTrait>::PalletsOrigin;
 
     fn tracks() -> impl Iterator<Item = Cow<'static, pallet_referenda::Track<Self::Id, Balance, BlockNumber>>> {
-        const NAME: [u8; 25] = *b"Root_____________________";
+        const ROOT_NAME: [u8; 25] = *b"Root_____________________";
+        const CONTENT_NAME: [u8; 25] = *b"Content__________________";
         let root = pallet_referenda::Track {
             id: 0u16,
             info: pallet_referenda::TrackInfo {
-                name: NAME,
+                name: ROOT_NAME,
                 max_deciding: 1,
                 decision_deposit: 0,
                 prepare_period: 0,
@@ -1098,7 +1204,22 @@ impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
                 min_support: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
             }
         };
-        core::iter::once(Cow::Owned(root))
+        let content = pallet_referenda::Track {
+            id: 20u16,
+            info: pallet_referenda::TrackInfo {
+                name: CONTENT_NAME,
+                max_deciding: 2,
+                decision_deposit: 0,
+                prepare_period: 0,
+                decision_period: 7 * DAYS,
+                confirm_period: 1 * DAYS,
+                min_enactment_period: 1 * DAYS,
+                // 采用较温和曲线（示例）
+                min_approval: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
+                min_support: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(10), ceil: sp_runtime::Perbill::from_percent(100) },
+            }
+        };
+        [root, content].into_iter().map(Cow::Owned)
     }
 
     fn track_for(_origin: &Self::RuntimeOrigin) -> Result<Self::Id, ()> { Ok(0u16) }
@@ -1127,4 +1248,15 @@ impl pallet_referenda::Config for Runtime {
     type Tracks = TracksInfo;
     type Preimages = pallet_preimage::Pallet<Runtime>;
     type BlockNumberProvider = frame_system::Pallet<Runtime>;
+}
+
+// ========= FeeGuard（仅手续费账户保护） =========
+impl pallet_fee_guard::pallet::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    /// 函数级中文注释：管理员起源采用 Root | 内容治理签名账户 双通道，便于灰度控制。
+    type AdminOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner,
+    >;
 }

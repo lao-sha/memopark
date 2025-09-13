@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import TrackSelector, { type TrackOption } from './components/TrackSelector';
 import { useTracks } from './hooks/useTracks';
-import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage } from './lib/governance';
+import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage, buildMediaGovFreezeAlbum, buildMediaGovSetMediaHidden, buildMediaGovReplaceMediaUri, buildMediaGovRemoveMedia, buildOriginRestrictionSetGlobalAllowPreimage, buildMediaComplainAlbum, buildMediaComplainMedia, buildMediaGovResolveAlbumComplaint, buildMediaGovResolveMediaComplaint } from './lib/governance';
 import PasswordModal from './components/PasswordModal';
 import { appendTx } from '../../lib/txHistory';
 import { useWallet } from '../../providers/WalletProvider';
@@ -26,6 +26,17 @@ const NewProposalPage: React.FC = () => {
   const [forceSrc, setForceSrc] = useState('')
   const [forceDest, setForceDest] = useState('')
   const [forceAmt, setForceAmt] = useState('')
+  const [albumId, setAlbumId] = useState('')
+  const [albumFrozen, setAlbumFrozen] = useState(false)
+  const [mediaId, setMediaId] = useState('')
+  const [mediaHidden, setMediaHidden] = useState(false)
+  const [newUri, setNewUri] = useState('')
+  const [complainAlbumId, setComplainAlbumId] = useState('')
+  const [complainMediaId, setComplainMediaId] = useState('')
+  const [resolveAlbumId, setResolveAlbumId] = useState('')
+  const [resolveAlbumUphold, setResolveAlbumUphold] = useState(true)
+  const [resolveMediaId, setResolveMediaId] = useState('')
+  const [resolveMediaUphold, setResolveMediaUphold] = useState(true)
 
   async function handleSubmit() {
     if (!trackId) return window.alert('请选择轨道')
@@ -34,10 +45,10 @@ const NewProposalPage: React.FC = () => {
   }
 
   const options: TrackOption[] = tracks.map(t => ({ id: t.id, name: t.name, summary: t.summary }))
-  // 自动选择“财库”相关轨道（名称包含“财库/Treasury”）
+  // 自动选择“内容治理”优先，其次“财库”，最后第一个
   useMemo(() => {
     if (!trackId && tracks.length > 0) {
-      const found = tracks.find(t => /财库|treasury/i.test(t.name)) || tracks[0]
+      const found = tracks.find(t => /内容治理|content/i.test(t.name)) || tracks.find(t => /财库|treasury/i.test(t.name)) || tracks[0]
       setTrackId(found.id)
     }
   }, [tracks])
@@ -110,6 +121,126 @@ const NewProposalPage: React.FC = () => {
                 window.alert(`已生成预映像\n哈希：${hash}\n原始金额：${planck} ${symbol}`)
               } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
             }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>生成预映像</button>
+          </div>
+        </div>
+
+        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 8, padding: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>deceased-media 治理快捷构建</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+              <input value={albumId} onChange={(e)=>setAlbumId(e.target.value)} placeholder="albumId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={albumFrozen} onChange={(e)=>setAlbumFrozen(e.target.checked)} /> 冻结
+              </label>
+            </div>
+            <button onClick={async()=>{
+              try {
+                if (!/^\d+$/.test(albumId)) return window.alert('albumId 需为数字')
+                const { hex, hash } = await buildMediaGovFreezeAlbum(parseInt(albumId,10), albumFrozen)
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>冻结/解冻相册 预映像</button>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+              <input value={mediaId} onChange={(e)=>setMediaId(e.target.value)} placeholder="mediaId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={mediaHidden} onChange={(e)=>setMediaHidden(e.target.checked)} /> 隐藏
+              </label>
+            </div>
+            <button onClick={async()=>{
+              try {
+                if (!/^\d+$/.test(mediaId)) return window.alert('mediaId 需为数字')
+                const { hex, hash } = await buildMediaGovSetMediaHidden(parseInt(mediaId,10), mediaHidden)
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>隐藏/取消隐藏媒体 预映像</button>
+
+            <input value={newUri} onChange={(e)=>setNewUri(e.target.value)} placeholder="new URI（如 ipfs://...）" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={async()=>{
+              try {
+                if (!/^\d+$/.test(mediaId)) return window.alert('mediaId 需为数字')
+                if (!newUri) return window.alert('请填写 newUri')
+                const { hex, hash } = await buildMediaGovReplaceMediaUri(parseInt(mediaId,10), newUri)
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>替换媒体 URI 预映像</button>
+
+            <button onClick={async()=>{
+              try {
+                if (!/^\d+$/.test(mediaId)) return window.alert('mediaId 需为数字')
+                const { hex, hash } = await buildMediaGovRemoveMedia(parseInt(mediaId,10))
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>删除媒体 预映像</button>
+
+            <div style={{ height: 8 }} />
+            <div style={{ fontWeight: 600 }}>申诉与裁决</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+              <input value={complainAlbumId} onChange={(e)=>setComplainAlbumId(e.target.value)} placeholder="complain albumId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <button onClick={async()=>{
+                try {
+                  if (!/^\d+$/.test(complainAlbumId)) return window.alert('albumId 需为数字')
+                  const { hex, hash } = await buildMediaComplainAlbum(parseInt(complainAlbumId,10))
+                  setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+                } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+              }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>申诉相册 预映像</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+              <input value={complainMediaId} onChange={(e)=>setComplainMediaId(e.target.value)} placeholder="complain mediaId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <button onClick={async()=>{
+                try {
+                  if (!/^\d+$/.test(complainMediaId)) return window.alert('mediaId 需为数字')
+                  const { hex, hash } = await buildMediaComplainMedia(parseInt(complainMediaId,10))
+                  setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+                } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+              }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>申诉媒体 预映像</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center' }}>
+              <input value={resolveAlbumId} onChange={(e)=>setResolveAlbumId(e.target.value)} placeholder="resolve albumId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={resolveAlbumUphold} onChange={(e)=>setResolveAlbumUphold(e.target.checked)} /> 维持投诉
+              </label>
+              <button onClick={async()=>{
+                try {
+                  if (!/^\d+$/.test(resolveAlbumId)) return window.alert('albumId 需为数字')
+                  const { hex, hash } = await buildMediaGovResolveAlbumComplaint(parseInt(resolveAlbumId,10), resolveAlbumUphold)
+                  setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+                } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+              }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>裁决相册 预映像</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center' }}>
+              <input value={resolveMediaId} onChange={(e)=>setResolveMediaId(e.target.value)} placeholder="resolve mediaId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={resolveMediaUphold} onChange={(e)=>setResolveMediaUphold(e.target.checked)} /> 维持投诉
+              </label>
+              <button onClick={async()=>{
+                try {
+                  if (!/^\d+$/.test(resolveMediaId)) return window.alert('mediaId 需为数字')
+                  const { hex, hash } = await buildMediaGovResolveMediaComplaint(parseInt(resolveMediaId,10), resolveMediaUphold)
+                  setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
+                } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+              }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>裁决媒体 预映像</button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 8, padding: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>origin-restriction 全局放行开关</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={async()=>{
+              try {
+                const { hex, hash } = await buildOriginRestrictionSetGlobalAllowPreimage(true)
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}\n操作：开启全局放行`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>开启放行</button>
+            <button onClick={async()=>{
+              try {
+                const { hex, hash } = await buildOriginRestrictionSetGlobalAllowPreimage(false)
+                setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}\n操作：关闭全局放行（准备收紧）`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>关闭放行</button>
           </div>
         </div>
         <div>

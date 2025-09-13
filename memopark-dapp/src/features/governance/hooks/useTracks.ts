@@ -19,8 +19,8 @@ export function useTracks() {
     const timer = setTimeout(() => {
       setTracks([
         { id: 0, name: 'Root 危险调用', summary: '高押金/长冷静期/长延迟' },
-        { id: 1, name: '参数调整', summary: '中押金/标准周期' },
         { id: 2, name: '财库支出', summary: '按里程碑/延迟执行' },
+        { id: 20, name: '内容治理', summary: '专用内容治理轨道（较温和曲线）' },
       ]);
       setLoading(false);
     }, 200);

@@ -5546,6 +5546,7 @@ dependencies = [
  "pallet-deceased-media",
  "pallet-escrow",
  "pallet-evidence",
+ "pallet-fee-guard",
  "pallet-forwarder",
  "pallet-grandpa",
  "pallet-grave-guestbook",
@@ -5558,6 +5559,7 @@ dependencies = [
  "pallet-memo-offerings",
  "pallet-memo-park",
  "pallet-memo-referrals",
+ "pallet-origin-restriction",
  "pallet-otc-listing",
  "pallet-otc-maker",
  "pallet-otc-order",
@@ -6409,6 +6411,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-fee-guard"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-forwarder"
 version = "0.1.0"
 dependencies = [
@@ -6634,6 +6647,23 @@ dependencies = [
  "polkadot-sdk-frame",
  "scale-info",
  "sp-mmr-primitives",
+]
+
+[[package]]
+name = "pallet-origin-restriction"
+version = "1.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
 ]
 
 [[package]]

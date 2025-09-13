@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Form, Input, InputNumber, Button, Typography, Alert, Space, Divider, message, Modal } from 'antd'
+import { Card, Form, Input, InputNumber, Button, Typography, Alert, Space, Divider, message, Modal, Skeleton } from 'antd'
 import { getApi } from '../../lib/polkadot'
 import { getCurrentAddress } from '../../lib/keystore'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
@@ -15,6 +15,9 @@ const CreateGraveForm: React.FC = () => {
   const [error, setError] = useState<string>('')
   const [hash, setHash] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
+  const [createFee, setCreateFee] = useState<bigint>(0n)
+  const [txFee, setTxFee] = useState<bigint>(0n)
+  const [feeLoading, setFeeLoading] = useState<boolean>(false)
   const [form] = Form.useForm()
 
   useEffect(()=>{ (async()=>{ try{ const api = await getApi(); setDecimals(api.registry.chainDecimals?.[0]??12); setSymbol((api.registry.chainTokens?.[0] as string)||'UNIT') }catch{}})() },[])
@@ -73,12 +76,121 @@ const CreateGraveForm: React.FC = () => {
     }finally{ setSubmitting(false) }
   }
 
+  /**
+   * 函数级详细中文注释：从链上常量读取“创建费（CreateFee）”。
+   * - 适配可能的模块命名：memoGrave / grave / memo_grave；
+   * - 常量命名采用 JS API 驼峰：createFee；若不存在则回退为 0；
+   * - 返回 bigint，便于结合 decimals 格式化显示。
+   */
+  const fetchCreateFee = async (): Promise<bigint> => {
+    try {
+      const api = await getApi()
+      const sections = Object.keys((api.consts as any) || {})
+      const candidates = ['memoGrave', 'grave', 'memo_grave', ...sections]
+      for (const s of candidates) {
+        const mod = (api.consts as any)[s]
+        if (mod && (mod as any).createFee) {
+          const v = (mod as any).createFee.toString()
+          return BigInt(v)
+        }
+      }
+    } catch {}
+    return 0n
+  }
+
+  /**
+   * 函数级详细中文注释：估算“创建墓地”交易的链上交易费（不含创建费）。
+   * - 动态探测 createGrave 的参数签名：如果是 (Option<u64>, Bytes) 则按新接口组参；
+   *   若为旧接口 (parkId, kind, visBits, slugBytes) 则按旧逻辑组参；
+   * - 使用 paymentInfo(current) 估算 partialFee；失败则返回 0。
+   */
+  const estimateCreateTxFee = async (formVals: any): Promise<bigint> => {
+    try {
+      const api = await getApi()
+      const sections = Object.keys((api.tx as any) || {})
+      const candidates = ['memoGrave','grave','memo_grave', ...sections]
+      let section: string | null = null
+      for (const s of candidates) {
+        const mod = (api.tx as any)[s]
+        if (mod && typeof mod.createGrave === 'function') { section = s; break }
+      }
+      if (!section) return 0n
+      const metaArgs = ((api.tx as any)[section].createGrave as any).meta?.args || []
+      const name: string = String(formVals?.name || '')
+      const parkIdNum = formVals?.park_id === undefined || formVals?.park_id === null || formVals?.park_id === '' ? null : Number(formVals.park_id)
+      let args: any[] = []
+      if (metaArgs.length === 2) {
+        // 新接口：(Option<u64>, Bytes)
+        args = [parkIdNum === null ? null : parkIdNum, name]
+      } else if (metaArgs.length === 4) {
+        // 旧接口：(park_id, kind, visibility_bits, slug)
+        const kind = Number(formVals?.kind || 0)
+        const vis = Number(formVals?.visibility || 0)
+        const MAX_SLUG_BYTES = 10
+        const slug = encodeUtf8BytesLimited(name, MAX_SLUG_BYTES)
+        args = [Number(parkIdNum || 0), kind, vis, slug]
+      } else {
+        return 0n
+      }
+      const who = getCurrentAddress()
+      if (!who) return 0n
+      const info = await (api.tx as any)[section].createGrave(...args).paymentInfo(who)
+      return BigInt(info?.partialFee?.toString?.() || '0')
+    } catch {
+      return 0n
+    }
+  }
+
+  /**
+   * 函数级详细中文注释：根据 decimals 格式化余额（bigint）为人类可读字符串。
+   * - 使用字符串除法避免精度丢失；
+   * - 最多保留 4 位小数，去除尾随 0。
+   */
+  const formatBalance = (v: bigint): string => {
+    const d = BigInt(decimals || 12)
+    const base = 10n ** d
+    const i = v / base
+    const r = v % base
+    if (r === 0n) return `${i.toString()} ${symbol}`
+    const fracRaw = (base + r).toString().slice(1) // 左填充
+    const frac = fracRaw.slice(0, 4).replace(/0+$/,'') || '0'
+    return `${i.toString()}.${frac} ${symbol}`
+  }
+
+  useEffect(()=>{ (async()=>{
+    setFeeLoading(true)
+    try{
+      const [cf, tf] = await Promise.all([
+        fetchCreateFee(),
+        estimateCreateTxFee(form.getFieldsValue())
+      ])
+      setCreateFee(cf)
+      setTxFee(tf)
+    } finally { setFeeLoading(false) }
+  })() },[decimals])
+
+  const onValuesChange = async (_: any, allValues: any) => {
+    setFeeLoading(true)
+    try { setTxFee(await estimateCreateTxFee(allValues)) } finally { setFeeLoading(false) }
+  }
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
       <Card title="创建墓地">
         {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={error} />}
         {hash && <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已提交：${hash}`} />}
-        <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ kind: 0, visibility: 0 }}>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={
+            feeLoading
+              ? <Skeleton active paragraph={false} title={{ width: 280 }} />
+              : <span>本次创建需支付：创建费 {formatBalance(createFee)} + 预计交易费 ≈ {formatBalance(txFee)}</span>
+          }
+        />
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="重要提示：逝者创建成功后不可删除。如需调整，请使用迁移至新墓位（transfer_deceased）或通过关系功能加入亲友团。" />
+        <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ kind: 0, visibility: 0 }} onValuesChange={onValuesChange}>
           <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="逝者姓名或墓地标题" />
           </Form.Item>

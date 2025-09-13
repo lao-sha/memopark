@@ -14,8 +14,8 @@
   - `MediaKind`：`Photo | Video | Audio`。
   - `Visibility`：`Public | Unlisted | Private`。
 - 结构
-  - `Album`：`deceased_id`、`owner`、`title`、`desc`、`visibility`、`tags[]`、`cover_media_id?`、`created/updated`
-  - `Media`：`album_id`、`deceased_id`、`owner`、`kind`、`uri`、`thumbnail_uri?`、`content_hash?([u8;32])`、`duration_secs?`、`width?`/`height?`、`order_index`、`created/updated`
+  - `Album`：`deceased_id`、`deceased_token`、`owner`、`title`、`desc`、`visibility`、`tags[]`、`cover_media_id?`、`created/updated`
+  - `Media`：`album_id`、`deceased_id`、`deceased_token`、`owner`、`kind`、`uri`、`thumbnail_uri?`、`content_hash?([u8;32])`、`duration_secs?`、`width?`/`height?`、`order_index`、`created/updated`
 
 ## 存储项
 - `NextAlbumId: AlbumId`
@@ -24,6 +24,15 @@
 - `MediaOf: MediaId -> Media`
 - `AlbumsByDeceased: DeceasedId -> BoundedVec<AlbumId, MaxAlbumsPerDeceased>`
 - `MediaByAlbum: AlbumId -> BoundedVec<MediaId, MaxMediaPerAlbum>`
+
+### 押金/治理相关新增存储
+- `AlbumDeposits: AlbumId -> (AccountId, Balance)`：相册押金
+- `MediaDeposits: MediaId -> (AccountId, Balance)`：媒体押金
+- `AlbumMaturity: AlbumId -> BlockNumber`：相册押金成熟区块（创建或删除时设置为 now+ComplaintPeriod）
+- `MediaMaturity: MediaId -> BlockNumber`：媒体押金成熟区块
+- `AlbumFrozen: AlbumId -> bool`：相册冻结（被治理后 owner 不可写）
+- `MediaHidden: MediaId -> bool`：媒体隐藏（前端避免展示）
+- `AlbumComplaints: AlbumId -> u32`、`MediaComplaints: MediaId -> u32`：投诉计数（>0 将阻止退款）
 
 ## Extrinsics（外部可调用）
 - 相册
@@ -41,6 +50,42 @@
   - `move_media(media_id, to_album)`（必须同一 `deceased_id`）→ `MediaMoved(media_id, from_album, to_album)`
   - `reorder_album(album_id, ordered_media)`（批量上限 `MaxReorderBatch`）→ `AlbumReordered(album_id)`
 
+### 投诉与押金退款
+- `complain_album(album_id)`：投诉相册（累加计数 + 保留 ComplaintDeposit）→ 事件 `AlbumComplained(album_id, count)`
+- `complain_media(media_id)`：投诉媒体（累加计数 + 保留 ComplaintDeposit）→ 事件 `MediaComplained(media_id, count)`
+- `claim_album_deposit(album_id)`：领取相册押金（需到期且无投诉）→ 事件 `AlbumDepositRefunded(album_id, who, amount)`
+- `claim_media_deposit(media_id)`：领取媒体押金（需到期且无投诉）→ 事件 `MediaDepositRefunded(media_id, who, amount)`
+
+> 申诉存证：模块为每个目标（域：1=Album，2=Media）维护一条进行中的 `ComplaintCase`（含申诉人、押金、时间、状态）。
+
+### 治理动作（不变更所有权）
+- `gov_freeze_album(album_id, frozen)`：冻结/解冻相册
+- `gov_set_album_meta(album_id, title?, desc?, visibility?, tags?, cover_media_id??)`：治理修改相册元数据
+- `gov_set_media_hidden(media_id, hidden)`：隐藏/取消隐藏媒体
+- `gov_replace_media_uri(media_id, new_uri)`：替换媒体 URI（例如打码资源）
+- `gov_remove_media(media_id)`：删除媒体（押金保留，删除后等待成熟可退）
+
+#### 治理裁决与分账
+
+- `gov_resolve_album_complaint(album_id, uphold: bool)`
+- `gov_resolve_media_complaint(media_id, uphold: bool)`
+
+分账规则（罚金治理）：
+
+- 设上传侧押金为 D。
+- uphold=true（维持投诉）：
+  - 目标：20% D → 胜诉（投诉方）；5% D → ArbitrationAccount；75% D → 败诉（上传方）退回。
+  - 当前实现：由于未记录投诉人账户，暂仅发放 5% 仲裁并将 75% 退回上传者，20% 保留（后续版本将补 ComplaintOf 以正确转至胜诉方）。
+- uphold=false（驳回投诉）：
+  - 目标：胜诉为上传者，获得 20% D；5% D → ArbitrationAccount；75% D → 败诉（投诉方）退回。
+  - 当前实现：未记录投诉方，临时将 95%（20%+75%）释放给上传者，并发放 5% 至 ArbitrationAccount。
+
+事件：
+- `ComplaintResolved(domain, id, uphold)`
+- `ComplaintPayoutWinner(AccountId, Balance)`
+- `ComplaintPayoutArbitration(AccountId, Balance)`
+- `ComplaintPayoutLoserRefund(AccountId, Balance)`
+
 ## 权限模型
 - 访问控制通过 `DeceasedAccess<AccountId, DeceasedId>` 适配器实现：
   - `deceased_exists(id) -> bool`：校验逝者是否存在。
@@ -53,6 +98,15 @@
 - `StringLimit: u32`：字符串长度上限（标题/描述/URI/标签，默认 512）。
 - `MaxTags: u32`：相册标签最大数量（默认 16）。
 - `MaxReorderBatch: u32`：单次重排最大媒体数量（默认 100）。
+  
+### 押金/费用/成熟期
+- `AlbumDeposit: Balance`：创建相册时需保留押金（示例 0.02 UNIT）。
+- `MediaDeposit: Balance`：添加媒体时需保留押金（示例 0.005 UNIT）。
+- `CreateFee: Balance`：小额创建费（示例 0.001 UNIT），转入 `FeeCollector`（国库）。
+- `ComplaintPeriod: BlockNumber`：投诉观察/成熟期（默认约 1 年）。
+ - `ComplaintDeposit: Balance`：发起申诉时保留的押金（complain_*）。
+ - `ArbitrationAccount: AccountId`：治理裁决中收取 5% 仲裁费用的账户。
+ - `MaxTokenLen: u32`：从 `pallet-deceased` 缓存 `deceased_token` 的最大长度。
 
 ## 运行时集成（Config 示例）
 ```rust
@@ -67,6 +121,13 @@ impl pallet_deceased_media::Config for Runtime {
     type MaxTags = MediaMaxTags;
     type MaxReorderBatch = MediaMaxReorderBatch;
     type DeceasedProvider = DeceasedProviderAdapter; // 由 runtime 提供
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+    type Currency = Balances;
+    type AlbumDeposit = MediaAlbumDeposit;
+    type MediaDeposit = MediaMediaDeposit;
+    type CreateFee = MediaCreateFee;
+    type FeeCollector = TreasuryAccount;
+    type ComplaintPeriod = MediaComplaintPeriod;
 }
 ```
 
@@ -96,7 +157,7 @@ impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderA
 ## 隐私与安全
 - 不上链原始多媒体；仅存 `uri` 与可选 `content_hash`（如 blake2/sha256）。
 - 私密内容可采用“加密 URI + 链下密钥分发”模式（`visibility = Private`）。
-- 不进行任何 MEMO 代币相关操作，资金风险隔离。
+- 使用可保留押金机制（reserve/unreserve），配合成熟期与投诉计数，避免刷量与不当内容；小额手续费转入国库地址。
 - 严格的长度/数量上限防止状态膨胀与 DoS。
 
 ## 与 pallet-nfts 的迁移路径（可选升级）
