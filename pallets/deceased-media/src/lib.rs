@@ -7,11 +7,8 @@ extern crate alloc;
 pub use pallet::*;
 
 use frame_support::{pallet_prelude::*, BoundedVec};
+use frame_support::traits::StorageVersion;
 use frame_system::pallet_prelude::*;
-use sp_std::vec::Vec;
-use sp_runtime::traits::AtLeast32BitUnsigned;
-use frame_support::traits::{Currency as CurrencyTrait, ReservableCurrency, ExistenceRequirement};
-use sp_runtime::traits::{Zero, SaturatedConversion};
 
 /// 函数级中文注释：访问 `pallet-deceased` 的抽象接口，保持低耦合。
 /// - `deceased_exists`：校验逝者存在。
@@ -28,8 +25,9 @@ pub trait DeceasedTokenAccess<MaxTokenLen: Get<u32>, DeceasedId> {
 }
 
 /// 函数级中文注释：媒体类型与可见性定义。
+/// - Photo：图片；Video：视频；Audio：音频；Article：追忆文章（正文 JSON 以 IPFS CID 表示）。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
-pub enum MediaKind { Photo, Video, Audio }
+pub enum MediaKind { Photo, Video, Audio, Article }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
 pub enum Visibility { Public, Unlisted, Private }
@@ -64,6 +62,10 @@ pub struct Media<T: Config> {
     pub uri: BoundedVec<u8, T::StringLimit>,
     pub thumbnail_uri: Option<BoundedVec<u8, T::StringLimit>>,
     pub content_hash: Option<[u8; 32]>,
+    /// 函数级中文注释：文章标题（仅当 kind=Article 时使用）。
+    pub title: Option<BoundedVec<u8, T::StringLimit>>,
+    /// 函数级中文注释：文章摘要（仅当 kind=Article 时使用）。
+    pub summary: Option<BoundedVec<u8, T::StringLimit>>,
     pub duration_secs: Option<u32>,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -75,6 +77,11 @@ pub struct Media<T: Config> {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use frame_support::weights::Weight;
+    use codec::{Decode, Encode};
+    use alloc::vec::Vec;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, Zero, SaturatedConversion};
+    use frame_support::traits::{ReservableCurrency, ExistenceRequirement, Currency as CurrencyTrait};
     /// 函数级中文注释：余额与押金类型别名，统一本 pallet 内 Balance 表达。
     pub type BalanceOf<T> = <<T as Config>::Currency as CurrencyTrait<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -206,7 +213,13 @@ pub mod pallet {
         NoActiveComplaint,
     }
 
+    /// 函数级中文注释：存储版本管理，用于新增字段（如 Article 标题/摘要）时的安全迁移。
+    /// - v1：初始版本（无 Article 与标题/摘要字段）。
+    /// - v2：新增 `MediaKind::Article`，并在 `Media` 结构中追加 `title`/`summary` 字段。
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// 函数级中文注释：申诉状态。
@@ -355,6 +368,9 @@ pub mod pallet {
             uri: Vec<u8>,
             thumbnail_uri: Option<Vec<u8>>,
             content_hash: Option<[u8;32]>,
+            // 文章标题/摘要（仅 kind=Article 时使用；其他类型忽略）。
+            title: Option<Vec<u8>>,
+            summary: Option<Vec<u8>>,
             duration_secs: Option<u32>,
             width: Option<u32>,
             height: Option<u32>,
@@ -369,13 +385,17 @@ pub mod pallet {
             let thumb_bv = match thumbnail_uri { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
 
             // 轻量校验：不同媒体类型的可选字段基本合理性
-            let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
+            let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, 3 => MediaKind::Article, _ => return Err(Error::<T>::BadInput.into()) };
             match kind_enum {
                 MediaKind::Photo => {
                     if let (Some(w), Some(h)) = (width, height) { ensure!(w > 0 && h > 0, Error::<T>::BadInput); }
                 }
                 MediaKind::Video | MediaKind::Audio => {
                     if let Some(d) = duration_secs { ensure!(d > 0u32, Error::<T>::BadInput); }
+                }
+                MediaKind::Article => {
+                    // Article：要求提供 content_hash 以绑定链下 JSON，URI 用于存放 IPFS CID
+                    ensure!(content_hash.is_some(), Error::<T>::BadInput);
                 }
             }
 
@@ -387,7 +407,33 @@ pub mod pallet {
             let ord = order_index.unwrap_or(list.len() as u32);
             let now = <frame_system::Pallet<T>>::block_number();
             let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
-            let media = Media::<T> { album_id, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width, height, order_index: ord, created: now, updated: now };
+            let title_bv: Option<BoundedVec<_, T::StringLimit>> = match (kind_enum.clone(), title) {
+                (MediaKind::Article, Some(v)) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
+                _ => None,
+            };
+            let summary_bv: Option<BoundedVec<_, T::StringLimit>> = match (kind_enum.clone(), summary) {
+                (MediaKind::Article, Some(v)) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
+                _ => None,
+            };
+
+            let media = Media::<T> {
+                album_id,
+                deceased_id: album.deceased_id,
+                deceased_token: token,
+                owner: who.clone(),
+                kind: kind_enum,
+                uri: uri_bv,
+                thumbnail_uri: thumb_bv,
+                content_hash,
+                title: title_bv,
+                summary: summary_bv,
+                duration_secs,
+                width,
+                height,
+                order_index: ord,
+                created: now,
+                updated: now,
+            };
 
             MediaOf::<T>::insert(id, media);
             list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
@@ -413,6 +459,9 @@ pub mod pallet {
             uri: Option<Vec<u8>>,
             thumbnail_uri: Option<Option<Vec<u8>>>,
             content_hash: Option<Option<[u8;32]>>,
+            // 文章标题/摘要更新（仅当目标媒体为 Article 时有效）。
+            title: Option<Option<Vec<u8>>>,
+            summary: Option<Option<Vec<u8>>>,
             duration_secs: Option<Option<u32>>,
             width: Option<Option<u32>>,
             height: Option<Option<u32>>,
@@ -432,6 +481,17 @@ pub mod pallet {
                         if let Some(x) = dur { ensure!(x > 0u32, Error::<T>::BadInput); }
                     }
                     m.duration_secs = dur;
+                }
+                // Article 专属字段更新
+                if let Some(t) = title {
+                    if matches!(m.kind, MediaKind::Article) {
+                        m.title = match t { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    }
+                }
+                if let Some(s) = summary {
+                    if matches!(m.kind, MediaKind::Article) {
+                        m.summary = match s { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    }
                 }
                 if let Some(w_opt) = width {
                     if matches!(m.kind, MediaKind::Photo) { if let Some(x) = w_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
@@ -797,6 +857,80 @@ pub mod pallet {
             MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
             Self::deposit_event(Event::MediaRemoved(media_id));
             Ok(())
+        }
+    }
+
+    // ===================== 存储迁移（v1 -> v2）=====================
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释：将旧版本 `Media`（无 `title`/`summary`）迁移为新版本（追加字段为 None）。
+        fn migrate_v1_to_v2() -> Weight {
+            // 旧版结构定义：与 v1 完全一致，用于从存储解码。
+            #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+            #[scale_info(skip_type_params(T))]
+            struct OldMedia<T: Config> {
+                pub album_id: T::AlbumId,
+                pub deceased_id: T::DeceasedId,
+                pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+                pub owner: T::AccountId,
+                pub kind: MediaKind,
+                pub uri: BoundedVec<u8, T::StringLimit>,
+                pub thumbnail_uri: Option<BoundedVec<u8, T::StringLimit>>,
+                pub content_hash: Option<[u8; 32]>,
+                pub duration_secs: Option<u32>,
+                pub width: Option<u32>,
+                pub height: Option<u32>,
+                pub order_index: u32,
+                pub created: BlockNumberFor<T>,
+                pub updated: BlockNumberFor<T>,
+            }
+
+            let mut reads: u64 = 0;
+            let mut writes: u64 = 0;
+
+            for (media_id, _) in MediaOf::<T>::iter() {
+                reads += 1;
+                // 取底层原始字节并按旧版解码（避免直接解码为新结构失败）
+                let storage_key = MediaOf::<T>::hashed_key_for(media_id);
+                if let Some(raw) = sp_io::storage::get(&storage_key) {
+                    if let Ok(old) = OldMedia::<T>::decode(&mut &raw[..]) {
+                        let new_media = Media::<T> {
+                            album_id: old.album_id,
+                            deceased_id: old.deceased_id,
+                            deceased_token: old.deceased_token,
+                            owner: old.owner,
+                            kind: old.kind,
+                            uri: old.uri,
+                            thumbnail_uri: old.thumbnail_uri,
+                            content_hash: old.content_hash,
+                            title: None,
+                            summary: None,
+                            duration_secs: old.duration_secs,
+                            width: old.width,
+                            height: old.height,
+                            order_index: old.order_index,
+                            created: old.created,
+                            updated: old.updated,
+                        };
+                        MediaOf::<T>::insert(media_id, new_media);
+                        writes += 1;
+                    }
+                }
+            }
+            // 写入新版本号
+            frame_support::pallet_prelude::StorageVersion::new(2).put::<Pallet<T>>();
+            T::DbWeight::get().reads_writes(reads, writes + 1)
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// 函数级中文注释：在运行时升级时执行存储迁移，将 v1 的 Media 数据迁移至 v2 结构。
+        fn on_runtime_upgrade() -> Weight {
+            let onchain = Pallet::<T>::on_chain_storage_version();
+            if onchain < 2 {
+                return Self::migrate_v1_to_v2();
+            }
+            Weight::zero()
         }
     }
 }
