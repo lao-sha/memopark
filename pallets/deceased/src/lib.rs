@@ -200,10 +200,20 @@ pub mod pallet {
         DeceasedTokenExists,
         /// 函数级中文注释：owner 为创建者且永久不可变更。
         OwnerImmutable,
+        /// 函数级中文注释：亲友相关——成员已存在
+        FriendAlreadyMember,
+        /// 亲友相关——成员不存在
+        FriendNotMember,
+        /// 亲友相关——待审批已存在
+        FriendPendingExists,
+        /// 亲友相关——不存在待审批
+        FriendNoPending,
+        /// 亲友相关——成员数量达到上限
+        FriendTooMany,
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -218,6 +228,49 @@ pub mod pallet {
         pub created_by: T::AccountId,
         pub since: BlockNumberFor<T>,
     }
+
+    // =================== 亲友团：存储与类型（最小实现，无押金） ===================
+    /// 函数级中文注释：亲友角色枚举（0=Member，1=Core，2=Admin）。Admin 固定包含逝者 owner。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    pub enum FriendRole { Member, Core, Admin }
+
+    /// 函数级中文注释：亲友策略
+    /// - require_approval：是否需要管理员审批
+    /// - is_private：是否私密（仅管理员可读成员明细，对外仅暴露 FriendCount）
+    /// - max_members：上限，受限以防膨胀
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct FriendPolicy<T: Config> {
+        pub require_approval: bool,
+        pub is_private: bool,
+        pub max_members: u32,
+        pub _phantom: core::marker::PhantomData<T>,
+    }
+
+    /// 函数级中文注释：亲友成员记录
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct FriendRecord<T: Config> {
+        pub role: FriendRole,
+        pub since: BlockNumberFor<T>,
+        pub note: BoundedVec<u8, T::StringLimit>,
+    }
+
+    /// 亲友策略：DeceasedId -> FriendPolicy
+    #[pallet::storage]
+    pub type FriendPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, FriendPolicy<T>, OptionQuery>;
+
+    /// 亲友成员： (DeceasedId, AccountId) -> FriendRecord
+    #[pallet::storage]
+    pub type FriendsOf<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::AccountId, FriendRecord<T>, OptionQuery>;
+
+    /// 亲友计数： DeceasedId -> u32
+    #[pallet::storage]
+    pub type FriendCount<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, u32, ValueQuery>;
+
+    /// 待审批： DeceasedId -> BoundedVec<(AccountId, BlockNumber), ConstU32<256>>
+    #[pallet::storage]
+    pub type FriendJoinRequests<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>>, ValueQuery>;
 
     #[pallet::storage]
     pub type Relations<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, Relation<T>, OptionQuery>;
@@ -249,6 +302,19 @@ pub mod pallet {
             let bf: u128 = to.saturated_into::<u128>();
             if af <= bf { (from, to) } else { (to, from) }
         } else { (from, to) }
+    }
+
+    // =================== Pallet 工具函数（非外部可调用） ===================
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释：判断账户是否为该逝者的管理员（owner 视为 Admin）。
+        pub(crate) fn is_admin(deceased_id: T::DeceasedId, who: &T::AccountId) -> bool {
+            if let Some(d) = DeceasedOf::<T>::get(deceased_id) {
+                if d.owner == *who { return true; }
+            }
+            if let Some(rec) = FriendsOf::<T>::get(deceased_id, who) {
+                matches!(rec.role, FriendRole::Admin)
+            } else { false }
+        }
     }
 
     #[pallet::call]
@@ -608,6 +674,129 @@ pub mod pallet {
             Self::deposit_event(Event::RelationUpdated(from, to));
             Ok(())
         }
+
+        // =================== 亲友团：接口（最小实现，无押金） ===================
+        /// 函数级中文注释：设置亲友团策略。仅 Admin（含 owner）。
+        #[pallet::call_index(32)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn set_friend_policy(origin: OriginFor<T>, deceased_id: T::DeceasedId, require_approval: bool, is_private: bool, max_members: u32) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(DeceasedOf::<T>::contains_key(deceased_id), Error::<T>::DeceasedNotFound);
+            ensure!(Self::is_admin(deceased_id, &who), Error::<T>::NotAuthorized);
+            // 不允许将上限设置为小于现有成员数
+            let current = FriendCount::<T>::get(deceased_id);
+            ensure!(max_members >= current, Error::<T>::FriendTooMany);
+            FriendPolicyOf::<T>::insert(deceased_id, FriendPolicy::<T> { require_approval, is_private, max_members, _phantom: core::marker::PhantomData });
+            Ok(())
+        }
+
+        /// 函数级中文注释：申请加入亲友团。若 require_approval=false 则直接加入。
+        #[pallet::call_index(33)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn request_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, note: Option<Vec<u8>>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(DeceasedOf::<T>::contains_key(deceased_id), Error::<T>::DeceasedNotFound);
+            ensure!(!FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendAlreadyMember);
+            let mut fc = FriendCount::<T>::get(deceased_id);
+            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy { require_approval: true, is_private: false, max_members: 1024, _phantom: core::marker::PhantomData });
+            if !policy.require_approval {
+                ensure!(fc < policy.max_members, Error::<T>::FriendTooMany);
+                let now = <frame_system::Pallet<T>>::block_number();
+                let n: BoundedVec<_, T::StringLimit> = match note { Some(v)=>BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None=>Default::default() };
+                FriendsOf::<T>::insert(deceased_id, &who, FriendRecord::<T>{ role: FriendRole::Member, since: now, note: n });
+                fc = fc.saturating_add(1); FriendCount::<T>::insert(deceased_id, fc);
+                return Ok(())
+            }
+            // 需要审批：写入待审批列表（去重）
+            let mut pend: BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>> = FriendJoinRequests::<T>::get(deceased_id);
+            ensure!(!pend.iter().any(|(a, _)| a == &who), Error::<T>::FriendPendingExists);
+            pend.try_push((who.clone(), <frame_system::Pallet<T>>::block_number())).map_err(|_| Error::<T>::BadInput)?;
+            FriendJoinRequests::<T>::insert(deceased_id, pend);
+            Ok(())
+        }
+
+        /// 函数级中文注释：审批通过加入。仅 Admin。
+        #[pallet::call_index(34)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn approve_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+            let admin = ensure_signed(origin)?;
+            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            let mut pend = FriendJoinRequests::<T>::get(deceased_id);
+            let idx = pend.iter().position(|(a, _)| a == &who).ok_or(Error::<T>::FriendNoPending)?;
+            pend.swap_remove(idx); FriendJoinRequests::<T>::insert(deceased_id, pend);
+            ensure!(!FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendAlreadyMember);
+            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy { require_approval: true, is_private: false, max_members: 1024, _phantom: core::marker::PhantomData });
+            let count = FriendCount::<T>::get(deceased_id);
+            ensure!(count < policy.max_members, Error::<T>::FriendTooMany);
+            let now = <frame_system::Pallet<T>>::block_number();
+            FriendsOf::<T>::insert(deceased_id, &who, FriendRecord::<T>{ role: FriendRole::Member, since: now, note: Default::default() });
+            FriendCount::<T>::insert(deceased_id, count.saturating_add(1));
+            Ok(())
+        }
+
+        /// 函数级中文注释：拒绝加入。仅 Admin。
+        #[pallet::call_index(35)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn reject_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+            let admin = ensure_signed(origin)?;
+            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            let mut pend = FriendJoinRequests::<T>::get(deceased_id);
+            let idx = pend.iter().position(|(a, _)| a == &who).ok_or(Error::<T>::FriendNoPending)?;
+            pend.swap_remove(idx); FriendJoinRequests::<T>::insert(deceased_id, pend);
+            Ok(())
+        }
+
+        /// 函数级中文注释：退出亲友团（自愿退出）。
+        #[pallet::call_index(36)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn leave_friend_group(origin: OriginFor<T>, deceased_id: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendNotMember);
+            // 保护：owner/Admin 不允许用此接口自降级退出，避免孤儿；需由另一 Admin 处理
+            let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
+            ensure!(!matches!(rec.role, FriendRole::Admin), Error::<T>::NotAuthorized);
+            FriendsOf::<T>::remove(deceased_id, &who);
+            let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
+            FriendCount::<T>::insert(deceased_id, cnt);
+            Ok(())
+        }
+
+        /// 函数级中文注释：移出成员（仅 Admin）。
+        #[pallet::call_index(37)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn kick_friend(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+            let admin = ensure_signed(origin)?;
+            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            ensure!(FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendNotMember);
+            let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
+            // 禁止移除 owner/Admin，自我保护
+            ensure!(!matches!(rec.role, FriendRole::Admin), Error::<T>::NotAuthorized);
+            FriendsOf::<T>::remove(deceased_id, &who);
+            let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
+            FriendCount::<T>::insert(deceased_id, cnt);
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置成员角色（仅 Admin）。不可移除所有 Admin，owner 始终视为 Admin。
+        #[pallet::call_index(38)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn set_friend_role(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId, role: u8) -> DispatchResult {
+            let admin = ensure_signed(origin)?;
+            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            FriendsOf::<T>::try_mutate(deceased_id, &who, |maybe| -> DispatchResult {
+                let r = maybe.as_mut().ok_or(Error::<T>::FriendNotMember)?;
+                r.role = match role { 2 => FriendRole::Admin, 1 => FriendRole::Core, _ => FriendRole::Member };
+                Ok(())
+            })?;
+            Ok(())
+        }
     }
 
     #[pallet::hooks]
@@ -713,6 +902,11 @@ pub mod pallet {
                 StorageVersion::new(3).put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(10_000, 0));
                 weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(30_000) as u64, 0));
+            }
+            if current < 4 {
+                // v3 -> v4：引入亲友团存储（默认空），仅写入版本号。
+                StorageVersion::new(4).put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(10_000, 0));
             }
             weight
         }
