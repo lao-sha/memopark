@@ -4,7 +4,7 @@ import { getApi } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：文章列表页（按相册 ID 查询）
- * - 通过 `deceasedMedia.mediaByAlbum(albumId)` 读取媒体 ID 列表，再批量读取 `mediaOf(mediaId)` 详情。
+ * - 通过 `deceasedData.mediaByAlbum(albumId)` 读取媒体 ID 列表，再批量读取 `mediaOf(mediaId)` 详情。
  * - 过滤 `kind=Article(3)`，展示标题/摘要/uri（IPFS CID）。
  * - 由于未生成类型定义，采用 `toHuman()/toJSON()` 方式做兼容解析。
  */
@@ -35,10 +35,10 @@ const ArticleListPage: React.FC = () => {
       const api = await getApi()
       // 优先按 albumId 查询；否则尝试 deceased_token → deceased_id → albums → media
       if (albumId !== null && albumId !== undefined && albumId !== ('' as any)) {
-        const idsAny: any = await (api.query as any).deceasedMedia.mediaByAlbum(albumId)
+        const idsAny: any = await (api.query as any).deceasedData.mediaByAlbum(albumId)
         const ids = (idsAny?.toJSON?.() as any[]) || []
         if (!ids.length) { setItems([]); setLoading(false); return }
-        const q: any[] = await (api.query as any).deceasedMedia.mediaOf.multi(ids)
+        const q: any[] = await (api.query as any).deceasedData.mediaOf.multi(ids)
         const parsed = q.map((m: any, idx: number) => parseMedia(m, ids[idx])).filter(Boolean)
         setItems(parsed)
         setLoading(false)
@@ -50,13 +50,13 @@ const ArticleListPage: React.FC = () => {
       const has = didOpt && (didOpt.isSome || didOpt.toJSON?.())
       const deceasedId = has && (didOpt.isSome ? didOpt.unwrap() : didOpt.toJSON?.())
       if (!deceasedId) { message.warning('未找到对应逝者ID'); setItems([]); setLoading(false); return }
-      const albumsAny: any = await (api.query as any).deceasedMedia.albumsByDeceased(deceasedId)
+      const albumsAny: any = await (api.query as any).deceasedData.albumsByDeceased(deceasedId)
       const albums: any[] = (albumsAny?.toJSON?.() as any[]) || []
       if (!albums.length) { setItems([]); setLoading(false); return }
-      const mediaIdLists: any[] = await (api.query as any).deceasedMedia.mediaByAlbum.multi(albums)
+      const mediaIdLists: any[] = await (api.query as any).deceasedData.mediaByAlbum.multi(albums)
       const allIds: any[] = mediaIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
       if (!allIds.length) { setItems([]); setLoading(false); return }
-      const media: any[] = await (api.query as any).deceasedMedia.mediaOf.multi(allIds)
+      const media: any[] = await (api.query as any).deceasedData.mediaOf.multi(allIds)
       const parsed = media.map((m: any, idx: number) => parseMedia(m, allIds[idx])).filter(Boolean)
       setItems(parsed)
       setLoading(false)

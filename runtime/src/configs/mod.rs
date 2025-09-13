@@ -134,7 +134,7 @@ parameter_types! {
 	pub const SS58Prefix: u8 = 42;
 }
 
-// 函数级中文注释：deceased-media 费用/押金与成熟期参数
+// 函数级中文注释：deceased-data 费用/押金与成熟期参数
 parameter_types! {
     /// 相册押金（示例：0.02 UNIT）。
     pub const MediaAlbumDeposit: Balance = 20_000_000_000_000;
@@ -384,7 +384,7 @@ impl pallet_deceased::Config for Runtime {
     type WeightInfo = ();
 }
 
-// ===== deceased-media 配置 =====
+// ===== deceased-data 配置 =====
 parameter_types! {
     pub const MediaMaxAlbumsPerDeceased: u32 = 64;
     pub const MediaMaxMediaPerAlbum: u32 = 256;
@@ -395,7 +395,7 @@ parameter_types! {
 
 /// 函数级中文注释：逝者访问适配器，实现 `DeceasedAccess`，以 `pallet-deceased` 为后端。
 pub struct DeceasedProviderAdapter;
-impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
+impl pallet_deceased_data::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
     /// 检查逝者是否存在
     fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
     /// 检查操作者是否可管理该逝者（当前：记录 owner）
@@ -418,8 +418,8 @@ impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for Deceased
     }
 }
 
-/// 函数级中文注释：为 `pallet-deceased-media` 提供逝者令牌访问实现，来源同 `pallet-deceased`。
-impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+/// 函数级中文注释：为 `pallet-deceased-data` 提供逝者令牌访问实现，来源同 `pallet-deceased`。
+impl pallet_deceased_data::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
             let bytes: Vec<u8> = d.deceased_token.to_vec();
@@ -431,7 +431,7 @@ impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64> for Decease
     }
 }
 
-impl pallet_deceased_media::Config for Runtime {
+impl pallet_deceased_data::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
     type AlbumId = u64;

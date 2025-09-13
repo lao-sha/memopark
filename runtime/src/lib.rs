@@ -16,6 +16,8 @@ use sp_runtime::{
 	traits::{BlakeTwo256, IdentifyAccount, Verify},
 	MultiAddress, MultiSignature,
 };
+use frame_support::traits::OnRuntimeUpgrade;
+use frame_support::weights::Weight;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -186,7 +188,23 @@ impl frame_system::offchain::SigningTypes for Runtime {
 ///
 /// This can be a tuple of types, each implementing `OnRuntimeUpgrade`.
 #[allow(unused_parens)]
-type Migrations = ();
+type Migrations = (RenameDeceasedMediaToData,);
+
+/// 函数级中文注释：运行时迁移——将旧 Pallet 名称 `DeceasedMedia` 的存储前缀整体迁移到新别名 `DeceasedData`。
+/// - 仅移动存储前缀，不变更内部键结构；应在升级窗口内配合前端/SDK 兼容新的 section 名。
+pub struct RenameDeceasedMediaToData;
+
+impl OnRuntimeUpgrade for RenameDeceasedMediaToData {
+    fn on_runtime_upgrade() -> Weight {
+        use frame_support::storage::migration::move_pallet;
+        // 旧/新 Pallet 名（以 construct_runtime 别名为准）
+        let old = b"DeceasedMedia";
+        let new = b"DeceasedData";
+        move_pallet(new, old);
+        // 近似权重：常数 + 读写开销（此处返回常数，实际可用 try-runtime 校验）
+        Weight::from_parts(10_000, 0)
+    }
+}
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
@@ -279,7 +297,7 @@ mod runtime {
 	pub type Deceased = pallet_deceased;
 
 	#[runtime::pallet_index(20)]
-	pub type DeceasedMedia = pallet_deceased_media;
+	pub type DeceasedData = pallet_deceased_data;
 
 	#[runtime::pallet_index(21)]
 	pub type GraveLedger = pallet_ledger;
