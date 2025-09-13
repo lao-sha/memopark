@@ -37,7 +37,7 @@ pallet-memo-grave = { path = "../pallets/memo-grave", default-features = false }
 pallet-ledger = { path = "../pallets/ledger", default-features = false }
 pallet-grave-guestbook = { path = "../pallets/grave-guestbook", default-features = false }
 pallet-deceased = { path = "../pallets/deceased", default-features = false }
-pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }
+pallet-deceased-data = { path = "../pallets/deceased-data", default-features = false }
 pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }
 pallet-memo-referrals = { path = "../pallets/memo-referrals", default-features = false }
 pallet-memo-affiliate = { path = "../pallets/memo-affiliate", default-features = false }
@@ -103,7 +103,7 @@ std = [
 	"pallet-ledger/std",
 	"pallet-grave-guestbook/std",
 	"pallet-deceased/std",
-	"pallet-deceased-media/std",
+	"pallet-deceased-data/std",
 	"pallet-memo-offerings/std",
 	"pallet-memo-referrals/std",
 	"pallet-memo-affiliate/std",

@@ -5543,7 +5543,7 @@ dependencies = [
  "pallet-balances",
  "pallet-conviction-voting",
  "pallet-deceased",
- "pallet-deceased-media",
+ "pallet-deceased-data",
  "pallet-escrow",
  "pallet-evidence",
  "pallet-fee-guard",
@@ -6376,7 +6376,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-deceased-media"
+name = "pallet-deceased-data"
 version = "0.1.0"
 dependencies = [
  "frame-support",

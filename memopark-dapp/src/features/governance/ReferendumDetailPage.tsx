@@ -31,8 +31,8 @@ const ReferendumDetailPage: React.FC = () => {
   const [timeline, setTimeline] = useState<{ ts: number; text: string }[]>([])
 
   /**
-   * 函数级详细中文注释：订阅链上 deceased-media 治理执行事件并构建时间线
-   * - 监听 system.events，过滤 deceased-media 的 ComplaintResolved/ComplaintPayout* 事件
+   * 函数级详细中文注释：订阅链上 deceased-data 治理执行事件并构建时间线（兼容旧名）
+   * - 监听 system.events，过滤 deceased-data 的 ComplaintResolved/ComplaintPayout* 事件
    * - 转换为人类可读文本，插入到页面时间线（仅保留最近 20 条）
    */
   useEffect(() => {
@@ -47,7 +47,7 @@ const ReferendumDetailPage: React.FC = () => {
             const e = rec.event
             const section = (e.section || '').toLowerCase()
             const method = (e.method || '')
-            if (!['deceasedmedia','deceased_media','deceased-media'].some(s=>section===s)) continue
+            if (!['deceaseddata','deceased_data','deceased-data','deceasedmedia','deceased_media','deceased-media'].some(s=>section===s)) continue
             try {
               if (method === 'ComplaintResolved') {
                 const domain = e.data?.[0]?.toNumber ? e.data[0].toNumber() : Number(e.data?.[0])
@@ -122,7 +122,7 @@ const ReferendumDetailPage: React.FC = () => {
           <PreimageViewer hash={data.preimageHash} />
           {timeline.length > 0 && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>最近治理执行（deceased-media）</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>最近治理执行（deceased-data）</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {timeline.map((it, idx) => (
                   <div key={idx} style={{ fontSize: 12, color: '#444' }}>

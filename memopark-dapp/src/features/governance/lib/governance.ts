@@ -191,20 +191,20 @@ export async function buildBalancesForceTransferPreimage(
 }
 
 /**
- * 函数级详细中文注释：尝试解析不同 section 命名的 deceased-media pallet
+ * 函数级详细中文注释：尝试解析不同 section 命名的 deceased-data pallet
  * - 不同 runtime 里 pallet 名可能为 deceasedMedia / deceased_media 等
  * - 返回可用的 section 名称，若均不可用则抛错
  */
 async function resolveDeceasedMediaSection(api: any): Promise<string> {
-  const candidates = ['deceasedMedia', 'deceased_media', 'deceasedmedia']
+  const candidates = ['deceasedData', 'deceased_data', 'deceaseddata', 'deceasedMedia', 'deceased_media', 'deceasedmedia']
   for (const name of candidates) {
     if ((api.tx as any)[name]) return name
   }
-  throw new Error('运行时未启用 deceased-media 模块（或名称不匹配）')
+  throw new Error('运行时未启用 deceased-data 模块（或名称不匹配）')
 }
 
 /**
- * 函数级详细中文注释：构建 deceased-media 治理动作的通用预映像（按 method 透传）
+ * 函数级详细中文注释：构建 deceased-data 治理动作的通用预映像（按 method 透传）
  * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveMedia | govSetAlbumMeta
  * - args: 对应上述方法的参数数组
  */
@@ -215,7 +215,7 @@ export async function buildDeceasedMediaGovPreimage(method: string, args: any[])
 }
 
 /**
- * 函数级详细中文注释：快捷构建 deceased-media.governance 预映像（若 method 名与运行时一致）
+ * 函数级详细中文注释：快捷构建 deceased-data.governance 预映像（若 method 名与运行时一致）
  */
 export async function buildMediaGovFreezeAlbum(albumId: number, frozen: boolean) {
   return buildDeceasedMediaGovPreimage('govFreezeAlbum', [albumId, frozen])
@@ -232,7 +232,7 @@ export async function buildMediaGovRemoveMedia(mediaId: number) {
 }
 
 /**
- * 函数级详细中文注释：deceased-media 申诉与裁决预映像构建辅助
+ * 函数级详细中文注释：deceased-data 申诉与裁决预映像构建辅助
  * - complain_album(albumId) / complain_media(mediaId)
  * - gov_resolve_album_complaint(albumId, uphold) / gov_resolve_media_complaint(mediaId, uphold)
  */
@@ -657,31 +657,31 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
     const section = call.section
     const method = call.method
     const args = (call.args || []).map((x: any) => (x?.toString ? x.toString() : String(x)))
-    // deceased-media 系摘要
-    if (/^deceased[_-]?media$/i.test(section) || /^deceasedmedia$/i.test(section)) {
+    // deceased-data 系摘要（兼容旧名）
+    if (/^deceased[_-]?data$/i.test(section) || /^deceaseddata$/i.test(section) || /^deceased[_-]?media$/i.test(section) || /^deceasedmedia$/i.test(section)) {
       if (method === 'govFreezeAlbum') {
-        return `deceased-media.govFreezeAlbum → 相册 ${args[0]} ${args[1]==='true'?'冻结':'解冻'}`
+        return `deceased-data.govFreezeAlbum → 相册 ${args[0]} ${args[1]==='true'?'冻结':'解冻'}`
       }
       if (method === 'govSetMediaHidden') {
-        return `deceased-media.govSetMediaHidden → 媒体 ${args[0]} ${args[1]==='true'?'隐藏':'取消隐藏'}`
+        return `deceased-data.govSetMediaHidden → 媒体 ${args[0]} ${args[1]==='true'?'隐藏':'取消隐藏'}`
       }
       if (method === 'govReplaceMediaUri') {
-        return `deceased-media.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
+        return `deceased-data.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
       }
       if (method === 'govRemoveMedia') {
-        return `deceased-media.govRemoveMedia → 移除媒体 ${args[0]}`
+        return `deceased-data.govRemoveMedia → 移除媒体 ${args[0]}`
       }
       if (method === 'complainAlbum') {
-        return `deceased-media.complainAlbum → 申诉相册 ${args[0]}`
+        return `deceased-data.complainAlbum → 申诉相册 ${args[0]}`
       }
       if (method === 'complainMedia') {
-        return `deceased-media.complainMedia → 申诉媒体 ${args[0]}`
+        return `deceased-data.complainMedia → 申诉媒体 ${args[0]}`
       }
       if (method === 'govResolveAlbumComplaint') {
-        return `deceased-media.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+        return `deceased-data.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
       if (method === 'govResolveMediaComplaint') {
-        return `deceased-media.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+        return `deceased-data.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
     }
     if (section === 'treasury' && (method === 'spend' || method === 'proposeSpend')) {
