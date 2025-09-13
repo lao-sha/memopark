@@ -71,7 +71,12 @@ const ArticleListPage: React.FC = () => {
             dataSource={items}
             locale={{ emptyText: '暂无文章' }}
             renderItem={(it: any) => (
-              <List.Item>
+              <List.Item actions={[
+                <Button key="open" type="link" onClick={() => {
+                  try { localStorage.setItem('mp.lastArticleCid', String(it.uri || '')) } catch {}
+                  window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'article-detail' } }))
+                }}>查看</Button>
+              ]}>
                 <List.Item.Meta
                   title={
                     <Space>
