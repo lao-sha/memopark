@@ -37,6 +37,13 @@ const NewProposalPage: React.FC = () => {
   const [resolveAlbumUphold, setResolveAlbumUphold] = useState(true)
   const [resolveMediaId, setResolveMediaId] = useState('')
   const [resolveMediaUphold, setResolveMediaUphold] = useState(true)
+  // 从列表跳转预填 mediaId
+  React.useEffect(() => {
+    try {
+      const mid = localStorage.getItem('mp.gov.mediaId')
+      if (mid && /^\\d+$/.test(mid)) setMediaId(mid)
+    } catch {}
+  }, [])
 
   async function handleSubmit() {
     if (!trackId) return window.alert('请选择轨道')

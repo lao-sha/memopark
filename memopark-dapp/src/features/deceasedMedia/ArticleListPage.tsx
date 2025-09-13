@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Form, InputNumber, Button, List, Tag, Typography, Space, message } from 'antd'
+import { Card, Form, Input, InputNumber, Button, List, Tag, Typography, Space, message } from 'antd'
 import { getApi } from '../../lib/polkadot-safe'
 
 /**
@@ -12,6 +12,7 @@ const ArticleListPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [albumId, setAlbumId] = useState<number | null>(null)
   const [items, setItems] = useState<any[]>([])
+  const [deceasedToken, setDeceasedToken] = useState<string>('')
 
   const parseMedia = useCallback((raw: any, id: any) => {
     try {
@@ -29,21 +30,34 @@ const ArticleListPage: React.FC = () => {
   }, [])
 
   const onQuery = useCallback(async () => {
-    if (albumId === null || albumId === undefined) return message.warning('请输入相册ID')
     try {
       setLoading(true)
       const api = await getApi()
-      const idsAny: any = await (api.query as any).deceasedMedia.mediaByAlbum(albumId)
-      const ids = (idsAny?.toJSON?.() as any[]) || []
-      if (!ids.length) {
-        setItems([])
+      // 优先按 albumId 查询；否则尝试 deceased_token → deceased_id → albums → media
+      if (albumId !== null && albumId !== undefined && albumId !== ('' as any)) {
+        const idsAny: any = await (api.query as any).deceasedMedia.mediaByAlbum(albumId)
+        const ids = (idsAny?.toJSON?.() as any[]) || []
+        if (!ids.length) { setItems([]); setLoading(false); return }
+        const q: any[] = await (api.query as any).deceasedMedia.mediaOf.multi(ids)
+        const parsed = q.map((m: any, idx: number) => parseMedia(m, ids[idx])).filter(Boolean)
+        setItems(parsed)
         setLoading(false)
         return
       }
-      const q: any[] = await (api.query as any).deceasedMedia.mediaOf.multi(ids)
-      const parsed = q
-        .map((m: any, idx: number) => parseMedia(m, ids[idx]))
-        .filter(Boolean)
+      if (!deceasedToken) { message.warning('请输入相册ID或逝者token'); setLoading(false); return }
+      const enc = new TextEncoder().encode(deceasedToken)
+      const didOpt: any = await (api.query as any).deceased.deceasedIdByToken(enc)
+      const has = didOpt && (didOpt.isSome || didOpt.toJSON?.())
+      const deceasedId = has && (didOpt.isSome ? didOpt.unwrap() : didOpt.toJSON?.())
+      if (!deceasedId) { message.warning('未找到对应逝者ID'); setItems([]); setLoading(false); return }
+      const albumsAny: any = await (api.query as any).deceasedMedia.albumsByDeceased(deceasedId)
+      const albums: any[] = (albumsAny?.toJSON?.() as any[]) || []
+      if (!albums.length) { setItems([]); setLoading(false); return }
+      const mediaIdLists: any[] = await (api.query as any).deceasedMedia.mediaByAlbum.multi(albums)
+      const allIds: any[] = mediaIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
+      if (!allIds.length) { setItems([]); setLoading(false); return }
+      const media: any[] = await (api.query as any).deceasedMedia.mediaOf.multi(allIds)
+      const parsed = media.map((m: any, idx: number) => parseMedia(m, allIds[idx])).filter(Boolean)
       setItems(parsed)
       setLoading(false)
     } catch (e: any) {
@@ -51,7 +65,7 @@ const ArticleListPage: React.FC = () => {
       message.error(e?.message || '查询失败')
       setLoading(false)
     }
-  }, [albumId, parseMedia])
+  }, [albumId, deceasedToken, parseMedia])
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -60,6 +74,9 @@ const ArticleListPage: React.FC = () => {
           <Form layout="inline" onFinish={onQuery}>
             <Form.Item label="相册ID">
               <InputNumber min={0} value={albumId as any} onChange={v => setAlbumId((v as any) ?? null)} />
+            </Form.Item>
+            <Form.Item label="逝者token">
+              <Input value={deceasedToken} onChange={e=>setDeceasedToken(e.target.value)} placeholder="优先使用相册ID；否则按 token 查询" style={{ width: 260 }} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" loading={loading}>查询</Button>
@@ -75,7 +92,11 @@ const ArticleListPage: React.FC = () => {
                 <Button key="open" type="link" onClick={() => {
                   try { localStorage.setItem('mp.lastArticleCid', String(it.uri || '')) } catch {}
                   window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'article-detail' } }))
-                }}>查看</Button>
+                }}>查看</Button>,
+                <Button key="gov" type="link" onClick={() => {
+                  try { localStorage.setItem('mp.gov.mediaId', String(it.id || '')) } catch {}
+                  window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'gov-new' } }))
+                }}>治理</Button>
               ]}>
                 <List.Item.Meta
                   title={
