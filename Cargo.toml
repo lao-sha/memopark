@@ -22,7 +22,6 @@ members = [
     "pallets/memo-grave",
     "pallets/memo-hall",
     "pallets/ledger",
-    "pallets/grave-guestbook",
     "pallets/deceased",
     "pallets/deceased-data",
     "pallets/memo-offerings",

@@ -303,9 +303,6 @@ mod runtime {
 	pub type GraveLedger = pallet_ledger;
 
 	#[runtime::pallet_index(22)]
-	pub type GraveGuestbook = pallet_grave_guestbook;
-
-	#[runtime::pallet_index(23)]
 	pub type Referrals = pallet_memo_referrals;
 
 	#[runtime::pallet_index(24)]

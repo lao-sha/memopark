@@ -8,7 +8,7 @@ import { mapDispatchErrorMessage } from '../../lib/errors'
  * 函数级详细中文注释：追忆文章创建表单
  * - 仅支持将“文章 JSON”作为 IPFS CID 写入 `uri`，同时在链上保存 `content_hash`（blake2-256）。
  * - 允许用户直接粘贴 CID 与 JSON 正文（前端计算哈希）；也可手工粘贴 `content_hash`。
- * - extrinsic：`deceasedData.addMedia(album_id, kind=3(Article), uri, None, content_hash, title?, summary?, None, None, None, order_index?)`。
+ * - extrinsic：`deceasedData.addData(container_kind=0(Album), container_id=album_id, kind=3(Article), uri, None, content_hash, title?, summary?, None, None, None, order_index?)`。
  * - 费用提示：创建费 + 交易费 + 可退押金（由运行时参数决定）。
  */
 const CreateArticleForm: React.FC = () => {
@@ -42,7 +42,7 @@ const CreateArticleForm: React.FC = () => {
   }, [u8aToHex])
 
   /**
-   * 函数级中文注释：提交交易，调用 deceasedData.addMedia 生成文章媒体
+   * 函数级中文注释：提交交易，调用 deceasedData.addData 生成文章媒体
    */
   const onFinish = useCallback(async (values: any) => {
     try {
@@ -81,7 +81,8 @@ const CreateArticleForm: React.FC = () => {
       if (!hashHex) { setLoading(false); return message.warning('content_hash 生成失败，请检查 JSON') }
 
       const args: any[] = [
-        Number(albumId),
+        0, // container_kind = Album
+        Number(albumId), // container_id
         3, // kind = Article
         String(uriCid),
         null, // thumbnail_uri
@@ -94,7 +95,7 @@ const CreateArticleForm: React.FC = () => {
         typeof orderIndex === 'number' ? Number(orderIndex) : null,
       ]
 
-      await signAndSendLocalFromKeystore('deceasedData','addMedia', args)
+      await signAndSendLocalFromKeystore('deceasedData','addData', args)
       message.success('已提交文章创建交易')
     } catch (e: any) {
       console.error(e)

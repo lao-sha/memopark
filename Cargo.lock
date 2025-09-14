@@ -5549,7 +5549,6 @@ dependencies = [
  "pallet-fee-guard",
  "pallet-forwarder",
  "pallet-grandpa",
- "pallet-grave-guestbook",
  "pallet-identity",
  "pallet-ledger",
  "pallet-memo-affiliate",
@@ -6369,6 +6368,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-deceased-data",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
@@ -6454,18 +6454,6 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-staking",
-]
-
-[[package]]
-name = "pallet-grave-guestbook"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]

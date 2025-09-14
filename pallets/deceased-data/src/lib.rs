@@ -9,6 +9,7 @@ pub use pallet::*;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_support::traits::StorageVersion;
 use frame_system::pallet_prelude::*;
+use sp_runtime::traits::UniqueSaturatedInto;
 
 /// 函数级中文注释：访问 `pallet-deceased` 的抽象接口，保持低耦合。
 /// - `deceased_exists`：校验逝者存在。
@@ -25,9 +26,9 @@ pub trait DeceasedTokenAccess<MaxTokenLen: Get<u32>, DeceasedId> {
 }
 
 /// 函数级中文注释：媒体类型与可见性定义。
-/// - Photo：图片；Video：视频；Audio：音频；Article：追忆文章（正文 JSON 以 IPFS CID 表示）。
+/// - Photo：图片；Video：视频；Audio：音频；Article：追忆文章（正文 JSON 以 IPFS CID 表示）；Message：未分类留言。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
-pub enum MediaKind { Photo, Video, Audio, Article }
+pub enum DataKind { Photo, Video, Audio, Article, Message }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
 pub enum Visibility { Public, Unlisted, Private }
@@ -44,12 +45,12 @@ pub struct Album<T: Config> {
     pub desc: BoundedVec<u8, T::StringLimit>,
     pub visibility: Visibility,
     pub tags: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags>,
-    pub cover_media_id: Option<T::MediaId>,
+    pub primary_photo_id: Option<T::DataId>,
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
 }
 
-/// 函数级中文注释：视频集结构体，承载视频/音频的聚合容器，并支持设置“主视频”。
+/// 函数级中文注释：视频集结构体，承载视频/音频的聚合容器，并支持设置"主视频"。
 /// - 仅视频/音频可加入视频集；文章与图片不加入视频集。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
@@ -62,24 +63,26 @@ pub struct VideoCollection<T: Config> {
     pub desc: BoundedVec<u8, T::StringLimit>,
     pub tags: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags>,
     /// 函数级中文注释：主视频（可选），需指向本视频集内且为 Video/Audio 的媒体。
-    pub primary_media_id: Option<T::MediaId>,
+    pub primary_video_id: Option<T::DataId>,
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
 }
 
-/// 函数级中文注释：媒体项结构体，仅保存外链/哈希等最小信息。
+/// 函数级中文注释：数据项结构体（原 Media），仅保存外链/哈希等最小信息。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
-pub struct Media<T: Config> {
+pub struct Data<T: Config> {
+    /// 函数级中文注释：数据自身的唯一标识，冗余存储，便于跨容器移动与事件溯源。
+    pub data_id: T::DataId,
     /// 函数级中文注释：相册归属（仅图片必须），视频/音频为 None。
     pub album_id: Option<T::AlbumId>,
     /// 函数级中文注释：视频集归属（仅视频/音频必须），图片为 None。
-    pub video_set_id: Option<T::VideoCollectionId>,
+    pub video_collection_id: Option<T::VideoCollectionId>,
     pub deceased_id: T::DeceasedId,
     /// 函数级中文注释：逝者令牌（来自 `pallet-deceased`），用于前端快速渲染与联动。
     pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
     pub owner: T::AccountId,
-    pub kind: MediaKind,
+    pub kind: DataKind,
     pub uri: BoundedVec<u8, T::StringLimit>,
     pub thumbnail_uri: Option<BoundedVec<u8, T::StringLimit>>,
     pub content_hash: Option<[u8; 32]>,
@@ -91,6 +94,48 @@ pub struct Media<T: Config> {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub order_index: u32,
+    pub created: BlockNumberFor<T>,
+    pub updated: BlockNumberFor<T>,
+}
+
+/// 函数级中文注释：逝者“生平”结构体（明文存储，不可删除）。
+/// - 仅创建者可免押金修改；非创建者修改需押金与成熟期并允许投诉/治理回滚。
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct Life<T: Config> {
+    /// 函数级中文注释：所有者（首个写入者），用于免押金修改判定与收益归属。
+    pub owner: T::AccountId,
+    /// 函数级中文注释：所属逝者 ID（与 `pallet-deceased` 对齐）。
+    pub deceased_id: T::DeceasedId,
+    /// 函数级中文注释：逝者令牌快照（受 `MaxTokenLen` 限制），便于前端渲染与检索。
+    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+    /// 函数级中文注释：生平正文 IPFS CID（受 StringLimit 限制）。
+    pub cid: BoundedVec<u8, T::StringLimit>,
+    /// 函数级中文注释：最后更新时间区块号。
+    pub updated: BlockNumberFor<T>,
+    /// 函数级中文注释：版本号（每次成功更新递增）。
+    pub version: u32,
+    /// 函数级中文注释：最近一次非创建者修改者（创建者修改为 None）。
+    pub last_editor: Option<T::AccountId>,
+}
+
+/// 函数级中文注释：悼词结构体（明文 IPFS CID，不可批量化复杂字段）。
+/// - 任何账户均可为某逝者提交悼词（可配置：若需收紧可接入成员/亲友校验）；
+/// - 创建时保留押金，成熟期后可退；支持投诉/治理删除。
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct Eulogy<T: Config> {
+    /// 悼词 ID（与 DataId 共用类型空间）。
+    pub id: T::DataId,
+    /// 目标逝者。
+    pub deceased_id: T::DeceasedId,
+    /// 逝者令牌快照（前端渲染）。
+    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+    /// 提交者（押金所有者）。
+    pub author: T::AccountId,
+    /// 内容 IPFS CID（受 StringLimit 限制）。
+    pub cid: BoundedVec<u8, T::StringLimit>,
+    /// 创建/更新区块号。
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
 }
@@ -110,14 +155,16 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        type DeceasedId: Parameter + Member + Copy + MaxEncodedLen;
+        type DeceasedId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen + UniqueSaturatedInto<u64> + From<u64>;
         type AlbumId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
-        /// 函数级中文注释：视频集 ID 类型（推荐与 AlbumId/MediaId 一致的 u64）。
+        /// 函数级中文注释：视频集 ID 类型（推荐与 AlbumId/DataId 一致的 u64）。
         type VideoCollectionId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
-        type MediaId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        /// 函数级中文注释：数据项 ID 类型（原名 DataId），用于标识 Data 记录。
+        type DataId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
         #[pallet::constant] type MaxAlbumsPerDeceased: Get<u32>;
-        #[pallet::constant] type MaxMediaPerAlbum: Get<u32>;
+        /// 函数级中文注释：每个相册允许的最大图片数上限。
+        #[pallet::constant] type MaxPhotoPerAlbum: Get<u32>;
         /// 函数级中文注释：每位逝者最多视频集数量。
         #[pallet::constant] type MaxVideoCollectionsPerDeceased: Get<u32>;
         #[pallet::constant] type StringLimit: Get<u32>;
@@ -125,6 +172,10 @@ pub mod pallet {
         #[pallet::constant] type MaxReorderBatch: Get<u32>;
         /// 函数级中文注释：本模块内部缓存的 `deceased_token` 最大长度；建议与 `pallet-deceased::TokenLimit`/`GraveMaxCidLen` 对齐。
         #[pallet::constant] type MaxTokenLen: Get<u32>;
+        /// 函数级中文注释：每位逝者最多留言条数（Message 未分类，按逝者维度索引）。
+        #[pallet::constant] type MaxMessagesPerDeceased: Get<u32>;
+        /// 函数级中文注释：每位逝者最多悼词条数（Eulogy 未分类，按逝者维度索引）。
+        #[pallet::constant] type MaxEulogiesPerDeceased: Get<u32>;
 
         type DeceasedProvider: DeceasedAccess<Self::AccountId, Self::DeceasedId>;
         /// 函数级中文注释：逝者令牌提供者（低耦合读取 `deceased_token`）。
@@ -142,7 +193,7 @@ pub mod pallet {
         type VideoCollectionDeposit: Get<BalanceOf<Self>>;
         /// 函数级中文注释：添加媒体需保留的押金金额。
         #[pallet::constant]
-        type MediaDeposit: Get<BalanceOf<Self>>;
+        type DataDeposit: Get<BalanceOf<Self>>;
         /// 函数级中文注释：申诉押金金额（由申诉方在 complain_* 时保留）。
         #[pallet::constant]
         type ComplaintDeposit: Get<BalanceOf<Self>>;
@@ -160,20 +211,35 @@ pub mod pallet {
 
     #[pallet::storage] pub type NextAlbumId<T: Config> = StorageValue<_, T::AlbumId, ValueQuery>;
     #[pallet::storage] pub type NextVideoCollectionId<T: Config> = StorageValue<_, T::VideoCollectionId, ValueQuery>;
-    #[pallet::storage] pub type NextMediaId<T: Config> = StorageValue<_, T::MediaId, ValueQuery>;
+    #[pallet::storage] pub type NextDataId<T: Config> = StorageValue<_, T::DataId, ValueQuery>;
     #[pallet::storage] pub type AlbumOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, Album<T>, OptionQuery>;
     #[pallet::storage] pub type VideoCollectionOf<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, VideoCollection<T>, OptionQuery>;
-    #[pallet::storage] pub type MediaOf<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, Media<T>, OptionQuery>;
+    #[pallet::storage] pub type DataOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, Data<T>, OptionQuery>;
     #[pallet::storage] pub type AlbumsByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<T::AlbumId, T::MaxAlbumsPerDeceased>, ValueQuery>;
     #[pallet::storage] pub type VideoCollectionsByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<T::VideoCollectionId, T::MaxVideoCollectionsPerDeceased>, ValueQuery>;
-    #[pallet::storage] pub type MediaByAlbum<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, BoundedVec<T::MediaId, T::MaxMediaPerAlbum>, ValueQuery>;
-    #[pallet::storage] pub type MediaByVideoCollection<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, BoundedVec<T::MediaId, T::MaxMediaPerAlbum>, ValueQuery>;
+    #[pallet::storage] pub type DataByAlbum<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, BoundedVec<T::DataId, T::MaxPhotoPerAlbum>, ValueQuery>;
+    #[pallet::storage] pub type DataByVideoCollection<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, BoundedVec<T::DataId, T::MaxPhotoPerAlbum>, ValueQuery>;
+    /// 函数级中文注释：按逝者维度的留言索引（Message 未归类，按 deceased_id 分组）。
+    #[pallet::storage] pub type MessagesByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<T::DataId, T::MaxMessagesPerDeceased>, ValueQuery>;
+    /// 函数级中文注释：悼词列表（按逝者维度聚合）。
+    #[pallet::storage] pub type EulogiesByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<T::DataId, T::MaxEulogiesPerDeceased>, ValueQuery>;
+    /// 函数级中文注释：下一个悼词 ID（使用 DataId 类型）。
+    #[pallet::storage] pub type NextEulogyId<T: Config> = StorageValue<_, T::DataId, ValueQuery>;
+    /// 函数级中文注释：悼词详情。
+    #[pallet::storage] pub type EulogyOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, Eulogy<T>, OptionQuery>;
+    /// 函数级中文注释：悼词先前版本（回滚预留；当前仅治理删除使用，不自动回滚）。
+    #[pallet::storage] pub type EulogyPrev<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, BoundedVec<u8, T::StringLimit>, OptionQuery>;
+    /// 函数级中文注释：悼词押金与成熟期（创建时保留押金，成熟到期可退；被投诉维持时按 20/5/75 分账）。
+    #[pallet::storage] pub type EulogyDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, (T::AccountId, BalanceOf<T>), OptionQuery>;
+    #[pallet::storage] pub type EulogyMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, BlockNumberFor<T>, OptionQuery>;
+    /// 函数级中文注释：悼词投诉计数。
+    #[pallet::storage] pub type EulogyComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, u32, ValueQuery>;
     /// 函数级中文注释：相册押金记录（who, amount）。
     #[pallet::storage] pub type AlbumDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, (T::AccountId, BalanceOf<T>), OptionQuery>;
     /// 函数级中文注释：视频集押金记录（who, amount）。
     #[pallet::storage] pub type VideoCollectionDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, (T::AccountId, BalanceOf<T>), OptionQuery>;
     /// 函数级中文注释：媒体押金记录（who, amount）。
-    #[pallet::storage] pub type MediaDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, (T::AccountId, BalanceOf<T>), OptionQuery>;
+    #[pallet::storage] pub type DataDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, (T::AccountId, BalanceOf<T>), OptionQuery>;
     /// 函数级中文注释：申诉存证（域+目标ID → 案件）。域：1=Album, 2=Media。
     #[pallet::storage] pub type ComplaintOf<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), ComplaintCase<T>, OptionQuery>;
     /// 函数级中文注释：相册冻结标志（治理设定）。
@@ -181,19 +247,29 @@ pub mod pallet {
     /// 函数级中文注释：视频集冻结标志（治理设定）。
     #[pallet::storage] pub type VideoCollectionFrozen<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, bool, ValueQuery>;
     /// 函数级中文注释：媒体隐藏标志（治理设定）。
-    #[pallet::storage] pub type MediaHidden<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, bool, ValueQuery>;
+    #[pallet::storage] pub type DataHidden<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, bool, ValueQuery>;
     /// 函数级中文注释：相册投诉计数。
     #[pallet::storage] pub type AlbumComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, u32, ValueQuery>;
     /// 函数级中文注释：视频集投诉计数（预留，当前未使用）。
     #[pallet::storage] pub type VideoCollectionComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, u32, ValueQuery>;
     /// 函数级中文注释：媒体投诉计数。
-    #[pallet::storage] pub type MediaComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, u32, ValueQuery>;
+    #[pallet::storage] pub type DataComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, u32, ValueQuery>;
+    /// 函数级中文注释：逝者生平（明文，不可删除）。
+    #[pallet::storage] pub type LifeOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, Life<T>, OptionQuery>;
+    /// 函数级中文注释：修改前的旧文本（仅非创建者修改时保存，用于治理回滚）。
+    #[pallet::storage] pub type LifePrev<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<u8, T::StringLimit>, OptionQuery>;
+    /// 函数级中文注释：非创建者修改押金与所有者。
+    #[pallet::storage] pub type LifeDeposits<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, (T::AccountId, BalanceOf<T>), OptionQuery>;
+    /// 函数级中文注释：非创建者修改成熟区块。
+    #[pallet::storage] pub type LifeMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BlockNumberFor<T>, OptionQuery>;
+    /// 函数级中文注释：生平投诉计数（>0 阻止押金领取）。
+    #[pallet::storage] pub type LifeComplaints<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, u32, ValueQuery>;
     /// 函数级中文注释：相册押金成熟区块（创建或删除时设置为 now + ComplaintPeriod）。
     #[pallet::storage] pub type AlbumMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::AlbumId, BlockNumberFor<T>, OptionQuery>;
     /// 函数级中文注释：视频集押金成熟区块。
     #[pallet::storage] pub type VideoCollectionMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::VideoCollectionId, BlockNumberFor<T>, OptionQuery>;
     /// 函数级中文注释：媒体押金成熟区块（创建或删除时设置为 now + ComplaintPeriod）。
-    #[pallet::storage] pub type MediaMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::MediaId, BlockNumberFor<T>, OptionQuery>;
+    #[pallet::storage] pub type DataMaturity<T: Config> = StorageMap<_, Blake2_128Concat, T::DataId, BlockNumberFor<T>, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -205,24 +281,26 @@ pub mod pallet {
         VideoCollectionCreated(T::VideoCollectionId, T::DeceasedId, T::AccountId),
         VideoCollectionUpdated(T::VideoCollectionId),
         VideoCollectionDeleted(T::VideoCollectionId),
-        VideoCollectionPrimaryChanged(T::VideoCollectionId, Option<T::MediaId>),
-        MediaAdded(T::MediaId, T::AlbumId),
+        VideoCollectionPrimaryChanged(T::VideoCollectionId, Option<T::DataId>),
+        DataAdded(T::DataId, T::AlbumId),
         /// 函数级中文注释：媒体添加至视频集事件（与相册并行）。
-        MediaAddedToVideoCollection(T::MediaId, T::VideoCollectionId),
-        MediaUpdated(T::MediaId),
-        MediaRemoved(T::MediaId),
-        MediaMoved(T::MediaId, T::AlbumId, T::AlbumId),
+        DataAddedToVideoCollection(T::DataId, T::VideoCollectionId),
+        DataUpdated(T::DataId),
+        DataRemoved(T::DataId),
+        DataMoved(T::DataId, T::AlbumId, T::AlbumId),
         AlbumReordered(T::AlbumId),
         VideoCollectionReordered(T::VideoCollectionId),
+        /// 函数级中文注释：留言创建事件（Message 未分类，按逝者索引）。
+        DataMessageAdded(T::DataId, T::DeceasedId),
         /// 函数级中文注释：治理事件：相册冻结/解冻。
         GovAlbumFrozen(T::AlbumId, bool),
         /// 函数级中文注释：治理事件：媒体隐藏/取消隐藏。
-        GovMediaHidden(T::MediaId, bool),
-        /// 函数级中文注释：治理事件：替换媒体 URI。
-        GovMediaReplaced(T::MediaId),
+        GovDataHidden(T::DataId, bool),
+        /// 函数级中文注释：治理事件：替换数据项 URI。
+        GovDataReplaced(T::DataId),
         /// 函数级中文注释：投诉事件（相册/媒体）。
         AlbumComplained(T::AlbumId, u32),
-        MediaComplained(T::MediaId, u32),
+        DataComplained(T::DataId, u32),
         /// 函数级中文注释：治理裁决完成（Upheld=维持投诉/隐藏，Dismiss=驳回），并包含胜诉方与金额明细。
         ComplaintResolved(u8, u64, bool),
         /// 函数级中文注释：申诉押金分账：胜诉方收到奖励。
@@ -234,7 +312,19 @@ pub mod pallet {
         /// 函数级中文注释：相册押金退款成功。
         AlbumDepositRefunded(T::AlbumId, T::AccountId, BalanceOf<T>),
         /// 函数级中文注释：媒体押金退款成功。
-        MediaDepositRefunded(T::MediaId, T::AccountId, BalanceOf<T>),
+        DataDepositRefunded(T::DataId, T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：悼词创建/更新/删除/投诉/退款事件。
+        EulogyCreated(T::DataId, T::DeceasedId, T::AccountId),
+        EulogyUpdated(T::DataId),
+        EulogyRemoved(T::DataId),
+        EulogyComplained(T::DataId, u32),
+        EulogyDepositRefunded(T::DataId, T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：生平创建/更新/投诉/退款事件。
+        LifeCreated(T::DeceasedId, T::AccountId),
+        LifeUpdated(T::DeceasedId),
+        LifeUpdatedByOthers(T::DeceasedId, T::AccountId),
+        LifeComplained(T::DeceasedId, u32),
+        LifeDepositRefunded(T::DeceasedId, T::AccountId, BalanceOf<T>),
     }
 
     #[pallet::error]
@@ -242,7 +332,7 @@ pub mod pallet {
         DeceasedNotFound,
         NotAuthorized,
         AlbumNotFound,
-        MediaNotFound,
+        DataNotFound,
         TooMany,
         BadInput,
         MismatchDeceased,
@@ -263,7 +353,7 @@ pub mod pallet {
 
     /// 函数级中文注释：存储版本管理，用于新增字段（如 Article 标题/摘要）时的安全迁移。
     /// - v1：初始版本（无 Article 与标题/摘要字段）。
-    /// - v2：新增 `MediaKind::Article`，并在 `Media` 结构中追加 `title`/`summary` 字段。
+    /// - v2：新增 `DataKind::Article`，并在 `Media` 结构中追加 `title`/`summary` 字段。
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
     #[pallet::pallet]
@@ -327,7 +417,7 @@ pub mod pallet {
             let vis = match visibility { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) };
             let now = <frame_system::Pallet<T>>::block_number();
             let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
-            let album = Album::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, cover_media_id: None, created: now, updated: now };
+            let album = Album::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, primary_photo_id: None, created: now, updated: now };
 
             AlbumOf::<T>::insert(id, album);
             AlbumsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
@@ -344,11 +434,11 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：创建视频集；校验逝者存在与权限；限制标题/描述/标签长度数量。
-        /// - 收取小额创建费（CreateFee）与可退押金（VideoSetDeposit）。
+        /// - 收取小额创建费（CreateFee）与可退押金（VideoCollectionDeposit）。
         #[pallet::call_index(19)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn create_video_set(
+        pub fn create_video_collection(
             origin: OriginFor<T>,
             deceased_id: T::DeceasedId,
             title: Vec<u8>,
@@ -387,20 +477,20 @@ pub mod pallet {
                 title: title_bv,
                 desc: desc_bv,
                 tags: tags_bv,
-                primary_media_id: None,
+                primary_video_id: None,
                 created: now,
                 updated: now,
             };
-            VideoSetOf::<T>::insert(id, vs);
-            VideoSetsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            VideoCollectionOf::<T>::insert(id, vs);
+            VideoCollectionsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
 
             let dep = T::VideoCollectionDeposit::get();
             if !dep.is_zero() {
                 T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
-                VideoSetDeposits::<T>::insert(id, (who.clone(), dep));
-                VideoSetMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
+                VideoCollectionDeposits::<T>::insert(id, (who.clone(), dep));
+                VideoCollectionMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
             }
-            Self::deposit_event(Event::VideoSetCreated(id, deceased_id, who));
+            Self::deposit_event(Event::VideoCollectionCreated(id, deceased_id, who));
             Ok(())
         }
 
@@ -408,18 +498,23 @@ pub mod pallet {
         #[pallet::call_index(20)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn update_video_set(
+        pub fn update_video_collection(
             origin: OriginFor<T>,
-            video_set_id: T::VideoSetId,
+            video_collection_id: T::VideoCollectionId,
             title: Option<Vec<u8>>,
             desc: Option<Vec<u8>>,
             tags: Option<Vec<Vec<u8>>>,
         ) -> DispatchResult {
+            // 函数级中文注释：更新视频集元数据（标题/描述/标签）。
+            // - 仅视频集拥有者可调用；
+            // - 当视频集被冻结（治理）时拒绝更新；
+            // - 字段为可选，未提供的字段保持不变；
+            // - 成功后更新 `updated` 区块号并发出 `VideoCollectionUpdated` 事件。
             let who = ensure_signed(origin)?;
-            VideoSetOf::<T>::try_mutate(video_set_id, |maybe_v| -> DispatchResult {
+            VideoCollectionOf::<T>::try_mutate(video_collection_id, |maybe_v| -> DispatchResult {
                 let v = maybe_v.as_mut().ok_or(Error::<T>::BadInput)?;
                 ensure!(v.owner == who, Error::<T>::NotAuthorized);
-                ensure!(!VideoSetFrozen::<T>::get(video_set_id), Error::<T>::Frozen);
+                ensure!(!VideoCollectionFrozen::<T>::get(video_collection_id), Error::<T>::Frozen);
                 if let Some(t) = title { v.title = BoundedVec::try_from(t).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(d) = desc { v.desc = BoundedVec::try_from(d).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(ts) = tags {
@@ -433,7 +528,7 @@ pub mod pallet {
                 v.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
-            Self::deposit_event(Event::VideoSetUpdated(video_set_id));
+            Self::deposit_event(Event::VideoCollectionUpdated(video_collection_id));
             Ok(())
         }
 
@@ -441,20 +536,24 @@ pub mod pallet {
         #[pallet::call_index(21)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn delete_video_set(origin: OriginFor<T>, video_set_id: T::VideoSetId) -> DispatchResult {
+        pub fn delete_video_collection(origin: OriginFor<T>, video_collection_id: T::VideoCollectionId) -> DispatchResult {
+            // 函数级中文注释：删除视频集；
+            // - 仅视频集拥有者可删除；
+            // - 视频集需为空（无关联媒体）；
+            // - 若存在押金，删除后设置成熟等待期，期满可退款。
             let who = ensure_signed(origin)?;
-            let vs = VideoSetOf::<T>::get(video_set_id).ok_or(Error::<T>::BadInput)?;
+            let vs = VideoCollectionOf::<T>::get(video_collection_id).ok_or(Error::<T>::BadInput)?;
             ensure!(vs.owner == who, Error::<T>::NotAuthorized);
-            ensure!(!VideoSetFrozen::<T>::get(video_set_id), Error::<T>::Frozen);
-            let medias = MediaByVideoSet::<T>::get(video_set_id);
+            ensure!(!VideoCollectionFrozen::<T>::get(video_collection_id), Error::<T>::Frozen);
+            let medias = DataByVideoCollection::<T>::get(video_collection_id);
             ensure!(medias.is_empty(), Error::<T>::BadInput);
-            VideoSetOf::<T>::remove(video_set_id);
-            VideoSetsByDeceased::<T>::mutate(vs.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &video_set_id) { list.swap_remove(pos); } });
-            if VideoSetDeposits::<T>::contains_key(video_set_id) {
+            VideoCollectionOf::<T>::remove(video_collection_id);
+            VideoCollectionsByDeceased::<T>::mutate(vs.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &video_collection_id) { list.swap_remove(pos); } });
+            if VideoCollectionDeposits::<T>::contains_key(video_collection_id) {
                 let now = <frame_system::Pallet<T>>::block_number();
-                VideoSetMaturity::<T>::insert(video_set_id, now + T::ComplaintPeriod::get());
+                VideoCollectionMaturity::<T>::insert(video_collection_id, now + T::ComplaintPeriod::get());
             }
-            Self::deposit_event(Event::VideoSetDeleted(video_set_id));
+            Self::deposit_event(Event::VideoCollectionDeleted(video_collection_id));
             Ok(())
         }
 
@@ -462,24 +561,27 @@ pub mod pallet {
         #[pallet::call_index(22)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn set_video_set_primary(origin: OriginFor<T>, video_set_id: T::VideoSetId, media_id: Option<T::MediaId>) -> DispatchResult {
+        pub fn set_video_collection_primary(origin: OriginFor<T>, video_collection_id: T::VideoCollectionId, primary_data_id: Option<T::DataId>) -> DispatchResult {
+            // 函数级中文注释：设置/取消视频集主视频；
+            // - 主视频必须属于该视频集且类型为 Video/Audio；
+            // - 仅拥有者可设置；冻结状态下不可设置。
             let who = ensure_signed(origin)?;
-            VideoSetOf::<T>::try_mutate(video_set_id, |maybe_v| -> DispatchResult {
+            VideoCollectionOf::<T>::try_mutate(video_collection_id, |maybe_v| -> DispatchResult {
                 let v = maybe_v.as_mut().ok_or(Error::<T>::BadInput)?;
                 ensure!(v.owner == who, Error::<T>::NotAuthorized);
-                ensure!(!VideoSetFrozen::<T>::get(video_set_id), Error::<T>::Frozen);
-                if let Some(mid) = media_id {
-                    let m = MediaOf::<T>::get(mid).ok_or(Error::<T>::MediaNotFound)?;
-                    ensure!(m.video_set_id == Some(video_set_id), Error::<T>::BadInput);
-                    ensure!(matches!(m.kind, MediaKind::Video | MediaKind::Audio), Error::<T>::BadInput);
-                    v.primary_media_id = Some(mid);
+                ensure!(!VideoCollectionFrozen::<T>::get(video_collection_id), Error::<T>::Frozen);
+                if let Some(mid) = primary_data_id {
+                    let m = DataOf::<T>::get(mid).ok_or(Error::<T>::DataNotFound)?;
+                    ensure!(m.video_collection_id == Some(video_collection_id), Error::<T>::BadInput);
+                    ensure!(matches!(m.kind, DataKind::Video | DataKind::Audio), Error::<T>::BadInput);
+                    v.primary_video_id = Some(mid);
                 } else {
-                    v.primary_media_id = None;
+                    v.primary_video_id = None;
                 }
                 v.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
-            Self::deposit_event(Event::VideoSetPrimaryChanged(video_set_id, media_id));
+            Self::deposit_event(Event::VideoCollectionPrimaryChanged(video_collection_id, primary_data_id));
             Ok(())
         }
 
@@ -487,34 +589,38 @@ pub mod pallet {
         #[pallet::call_index(23)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn reorder_video_set(origin: OriginFor<T>, video_set_id: T::VideoSetId, ordered_media: Vec<T::MediaId>) -> DispatchResult {
+        pub fn reorder_video_collection(origin: OriginFor<T>, video_collection_id: T::VideoCollectionId, ordered_media: Vec<T::DataId>) -> DispatchResult {
+            // 函数级中文注释：批量重排视频集内媒体顺序；
+            // - 仅拥有者可操作；冻结状态下拒绝；
+            // - 批量大小受 `MaxReorderBatch` 限制；
+            // - 对每个媒体校验归属后写入新顺序。
             let who = ensure_signed(origin)?;
-            let vs = VideoSetOf::<T>::get(video_set_id).ok_or(Error::<T>::BadInput)?;
+            let vs = VideoCollectionOf::<T>::get(video_collection_id).ok_or(Error::<T>::BadInput)?;
             ensure!(vs.owner == who, Error::<T>::NotAuthorized);
-            ensure!(!VideoSetFrozen::<T>::get(video_set_id), Error::<T>::Frozen);
+            ensure!(!VideoCollectionFrozen::<T>::get(video_collection_id), Error::<T>::Frozen);
             ensure!((ordered_media.len() as u32) <= T::MaxReorderBatch::get(), Error::<T>::BadInput);
             for (idx, mid) in ordered_media.iter().enumerate() {
-                MediaOf::<T>::try_mutate(*mid, |maybe_m| -> DispatchResult {
-                    let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
-                    ensure!(m.video_set_id == Some(video_set_id), Error::<T>::BadInput);
+                DataOf::<T>::try_mutate(*mid, |maybe_m| -> DispatchResult {
+                    let m = maybe_m.as_mut().ok_or(Error::<T>::DataNotFound)?;
+                    ensure!(m.video_collection_id == Some(video_collection_id), Error::<T>::BadInput);
                     m.order_index = idx as u32;
                     m.updated = <frame_system::Pallet<T>>::block_number();
                     Ok(())
                 })?;
             }
-            MediaByVideoSet::<T>::insert(video_set_id, BoundedVec::try_from(ordered_media).map_err(|_| Error::<T>::BadInput)?);
-            Self::deposit_event(Event::VideoSetReordered(video_set_id));
+            DataByVideoCollection::<T>::insert(video_collection_id, BoundedVec::try_from(ordered_media).map_err(|_| Error::<T>::BadInput)?);
+            Self::deposit_event(Event::VideoCollectionReordered(video_collection_id));
             Ok(())
         }
 
-        /// 函数级中文注释：统一添加媒体（新接口），强制容器-类型一致：
-        /// - Photo→相册(album_id)，Video/Audio→视频集(video_set_id)，Article→Uncategorized。
+        /// 函数级中文注释：统一添加数据（原 add_media2 更名为 add_data），强制容器-类型一致：
+        /// - Photo→相册(album_id)，Video/Audio→视频集(video_collection_id)，Article→相册（与旧 add_media 行为保持一致）。
         #[pallet::call_index(24)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn add_media2(
+        pub fn add_data(
             origin: OriginFor<T>,
-            container_kind: u8, // 0=Album, 1=VideoSet, 2=Uncategorized
+            container_kind: u8, // 0=Album, 1=VideoCollection, 2=Uncategorized
             container_id: Option<u64>,
             kind: u8,
             uri: Vec<u8>,
@@ -528,12 +634,12 @@ pub mod pallet {
             order_index: Option<u32>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, 3 => MediaKind::Article, _ => return Err(Error::<T>::BadInput.into()) };
+            let kind_enum = match kind { 0 => DataKind::Photo, 1 => DataKind::Video, 2 => DataKind::Audio, 3 => DataKind::Article, 4 => DataKind::Message, _ => return Err(Error::<T>::BadInput.into()) };
             let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
             let thumb_bv = match thumbnail_uri { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
 
             match kind_enum {
-                MediaKind::Photo => {
+                DataKind::Photo => {
                     ensure!(container_kind == 0, Error::<T>::BadInput);
                     let aid_u64 = container_id.ok_or(Error::<T>::BadInput)?;
                     let aid: T::AlbumId = aid_u64.saturated_into::<u64>().saturated_into();
@@ -541,91 +647,156 @@ pub mod pallet {
                     ensure!(album.owner == who, Error::<T>::NotAuthorized);
                     ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
                     if let (Some(w), Some(h)) = (width, height) { ensure!(w > 0 && h > 0, Error::<T>::BadInput); }
-                    let id = NextMediaId::<T>::get();
-                    let next = id.checked_add(&T::MediaId::from(1u32)).ok_or(Error::<T>::Overflow)?;
-                    NextMediaId::<T>::put(next);
-                    let mut list = MediaByAlbum::<T>::get(aid);
+                    let id = NextDataId::<T>::get();
+                    let next = id.checked_add(&T::DataId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+                    NextDataId::<T>::put(next);
+                    let mut list = DataByAlbum::<T>::get(aid);
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { album_id: Some(aid), video_set_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: MediaKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, title: None, summary: None, duration_secs: None, width, height, order_index: ord, created: now, updated: now };
-                    MediaOf::<T>::insert(id, media);
+                    let media = Data::<T> { data_id: id, album_id: Some(aid), video_collection_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: DataKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, title: None, summary: None, duration_secs: None, width, height, order_index: ord, created: now, updated: now };
+                    DataOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
-                    MediaByAlbum::<T>::insert(aid, list);
-                    let dep = T::MediaDeposit::get();
-                    if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; MediaDeposits::<T>::insert(id, (who.clone(), dep)); MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
-                    Self::deposit_event(Event::MediaAdded(id, aid));
+                    DataByAlbum::<T>::insert(aid, list);
+                    let dep = T::DataDeposit::get();
+                    if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; DataDeposits::<T>::insert(id, (who.clone(), dep)); DataMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
+                    Self::deposit_event(Event::DataAdded(id, aid));
                     return Ok(())
                 }
-                MediaKind::Video | MediaKind::Audio => {
+                DataKind::Video | DataKind::Audio => {
                     ensure!(container_kind == 1, Error::<T>::BadInput);
                     let vsid_u64 = container_id.ok_or(Error::<T>::BadInput)?;
-                    let vsid: T::VideoSetId = vsid_u64.saturated_into::<u64>().saturated_into();
-                    let vs = VideoSetOf::<T>::get(vsid).ok_or(Error::<T>::BadInput)?;
+                    let vsid: T::VideoCollectionId = vsid_u64.saturated_into::<u64>().saturated_into();
+                    let vs = VideoCollectionOf::<T>::get(vsid).ok_or(Error::<T>::BadInput)?;
                     ensure!(vs.owner == who, Error::<T>::NotAuthorized);
-                    ensure!(!VideoSetFrozen::<T>::get(vsid), Error::<T>::Frozen);
+                    ensure!(!VideoCollectionFrozen::<T>::get(vsid), Error::<T>::Frozen);
                     if let Some(d) = duration_secs { ensure!(d > 0u32, Error::<T>::BadInput); }
-                    let id = NextMediaId::<T>::get();
-                    let next = id.checked_add(&T::MediaId::from(1u32)).ok_or(Error::<T>::Overflow)?;
-                    NextMediaId::<T>::put(next);
-                    let mut list = MediaByVideoSet::<T>::get(vsid);
+                    let id = NextDataId::<T>::get();
+                    let next = id.checked_add(&T::DataId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+                    NextDataId::<T>::put(next);
+                    let mut list = DataByVideoCollection::<T>::get(vsid);
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(vs.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { album_id: None, video_set_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, title: None, summary: None, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now };
-                    MediaOf::<T>::insert(id, media);
+                    let media = Data::<T> { data_id: id, album_id: None, video_collection_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, title: None, summary: None, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now };
+                    DataOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
-                    MediaByVideoSet::<T>::insert(vsid, list);
-                    let dep = T::MediaDeposit::get();
-                    if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; MediaDeposits::<T>::insert(id, (who.clone(), dep)); MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
-                    Self::deposit_event(Event::MediaAddedToVideoSet(id, vsid));
+                    DataByVideoCollection::<T>::insert(vsid, list);
+                    let dep = T::DataDeposit::get();
+                    if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; DataDeposits::<T>::insert(id, (who.clone(), dep)); DataMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
+                    Self::deposit_event(Event::DataAddedToVideoCollection(id, vsid));
                     return Ok(())
                 }
-                MediaKind::Article => {
-                    ensure!(container_kind == 2, Error::<T>::BadInput);
+                DataKind::Article => {
+                    // 与旧 add_media 行为保持一致：文章归入相册，支持 title/summary/content_hash
+                    ensure!(container_kind == 0, Error::<T>::BadInput);
                     ensure!(content_hash.is_some(), Error::<T>::BadInput);
-                    let id = NextMediaId::<T>::get();
-                    let next = id.checked_add(&T::MediaId::from(1u32)).ok_or(Error::<T>::Overflow)?;
-                    NextMediaId::<T>::put(next);
-                    // 文章不归类：需要传入 deceased_id？此处复用空容器，前端以 deceasedId 维度读取文章列表可通过 albumsByDeceased/VideoSetsByDeceased 推导；简化为要求 container_id=None
+                    let aid_u64 = container_id.ok_or(Error::<T>::BadInput)?;
+                    let aid: T::AlbumId = aid_u64.saturated_into::<u64>().saturated_into();
+                    let album = AlbumOf::<T>::get(aid).ok_or(Error::<T>::AlbumNotFound)?;
+                    ensure!(album.owner == who, Error::<T>::NotAuthorized);
+                    ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
+
+                    let id = NextDataId::<T>::get();
+                    let next = id.checked_add(&T::DataId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+                    NextDataId::<T>::put(next);
+
+                    let mut list = DataByAlbum::<T>::get(aid);
+                    let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
-                    // 文章缺少逝者上下文，此处约定前端不需要通过容器读取；保留 deceased_id 为 0（需链侧后续补充从上下文解析）。临时复用 BadInput 防止误用。
-                    return Err(Error::<T>::BadInput.into())
+                    let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
+                    let title_bv: Option<BoundedVec<_, T::StringLimit>> = match title { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    let summary_bv: Option<BoundedVec<_, T::StringLimit>> = match summary { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+
+                    let media = Data::<T> {
+                        data_id: id,
+                        album_id: Some(aid),
+                        video_collection_id: None,
+                        deceased_id: album.deceased_id,
+                        deceased_token: token,
+                        owner: who.clone(),
+                        kind: DataKind::Article,
+                        uri: uri_bv,
+                        thumbnail_uri: thumb_bv,
+                        content_hash,
+                        title: title_bv,
+                        summary: summary_bv,
+                        duration_secs: None,
+                        width: None,
+                        height: None,
+                        order_index: ord,
+                        created: now,
+                        updated: now,
+                    };
+                    DataOf::<T>::insert(id, media);
+                    list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
+                    DataByAlbum::<T>::insert(aid, list);
+                    let dep = T::DataDeposit::get();
+                    if !dep.is_zero() {
+                        T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+                        DataDeposits::<T>::insert(id, (who.clone(), dep));
+                        DataMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
+                    }
+                    Self::deposit_event(Event::DataAdded(id, aid));
+                    return Ok(())
+                }
+                DataKind::Message => {
+                    // Message 未分类：按逝者维度索引；要求 container_kind=2 且 container_id=Some(deceased_id)
+                    ensure!(container_kind == 2, Error::<T>::BadInput);
+                    let did_u64 = container_id.ok_or(Error::<T>::BadInput)?;
+                    let deceased_id: T::DeceasedId = did_u64.saturated_into();
+                    ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
+                    // 可选：允许任意账户留言；若需收紧，可引入 can_manage 或成员校验
+                    let id = NextDataId::<T>::get();
+                    let next = id.checked_add(&T::DataId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+                    NextDataId::<T>::put(next);
+                    let now = <frame_system::Pallet<T>>::block_number();
+                    let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
+                    let title_bv = match title { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    let summary_bv = match summary { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    let media = Data::<T> { data_id: id, album_id: None, video_collection_id: None, deceased_id, deceased_token: token, owner: who.clone(), kind: DataKind::Message, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, title: title_bv, summary: summary_bv, duration_secs: None, width: None, height: None, order_index: 0, created: now, updated: now };
+                    DataOf::<T>::insert(id, media);
+                    MessagesByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+                    let dep = T::DataDeposit::get();
+                    if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; DataDeposits::<T>::insert(id, (who.clone(), dep)); DataMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
+                    Self::deposit_event(Event::DataMessageAdded(id, deceased_id));
+                    return Ok(())
                 }
             }
         }
 
-        /// 函数级中文注释：移动媒体到新容器（新接口）：Photo→相册；Video/Audio→视频集；Article→不可移动（未分类）。
-        #[pallet::call_index(25)]
+        /// 函数级中文注释：移动数据到新容器（统一接口）：Photo→相册；Video/Audio→视频集；Article→不可移动（未分类）。
+        #[pallet::call_index(6)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn move_media2(origin: OriginFor<T>, media_id: T::MediaId, to_kind: u8, to_id: Option<u64>) -> DispatchResult {
+        pub fn move_data(origin: OriginFor<T>, data_id: T::DataId, to_kind: u8, to_id: Option<u64>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            MediaOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
-                let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
+            DataOf::<T>::try_mutate(data_id, |maybe_m| -> DispatchResult {
+                let m = maybe_m.as_mut().ok_or(Error::<T>::DataNotFound)?;
                 ensure!(m.owner == who, Error::<T>::NotAuthorized);
                 match m.kind {
-                    MediaKind::Photo => {
+                    DataKind::Photo => {
                         ensure!(to_kind == 0, Error::<T>::BadInput);
                         let aid_u64 = to_id.ok_or(Error::<T>::BadInput)?;
                         let aid: T::AlbumId = aid_u64.saturated_into::<u64>().saturated_into();
                         let dst = AlbumOf::<T>::get(aid).ok_or(Error::<T>::AlbumNotFound)?;
                         ensure!(dst.deceased_id == m.deceased_id, Error::<T>::MismatchDeceased);
-                        if let Some(from) = m.album_id { MediaByAlbum::<T>::mutate(from, |src| { if let Some(pos) = src.iter().position(|x| x == &media_id) { src.swap_remove(pos); } }); }
-                        MediaByAlbum::<T>::try_mutate(aid, |dst_list| dst_list.try_push(media_id).map_err(|_| Error::<T>::TooMany))?;
-                        m.album_id = Some(aid); m.video_set_id = None;
+                        if let Some(from) = m.album_id { DataByAlbum::<T>::mutate(from, |src| { if let Some(pos) = src.iter().position(|x| x == &data_id) { src.swap_remove(pos); } }); }
+                        DataByAlbum::<T>::try_mutate(aid, |dst_list| dst_list.try_push(data_id).map_err(|_| Error::<T>::TooMany))?;
+                        m.album_id = Some(aid); m.video_collection_id = None;
                     }
-                    MediaKind::Video | MediaKind::Audio => {
+                    DataKind::Video | DataKind::Audio => {
                         ensure!(to_kind == 1, Error::<T>::BadInput);
                         let vsid_u64 = to_id.ok_or(Error::<T>::BadInput)?;
-                        let vsid: T::VideoSetId = vsid_u64.saturated_into::<u64>().saturated_into();
-                        let dst = VideoSetOf::<T>::get(vsid).ok_or(Error::<T>::BadInput)?;
+                        let vsid: T::VideoCollectionId = vsid_u64.saturated_into::<u64>().saturated_into();
+                        let dst = VideoCollectionOf::<T>::get(vsid).ok_or(Error::<T>::BadInput)?;
                         ensure!(dst.deceased_id == m.deceased_id, Error::<T>::MismatchDeceased);
-                        if let Some(from) = m.video_set_id { MediaByVideoSet::<T>::mutate(from, |src| { if let Some(pos) = src.iter().position(|x| x == &media_id) { src.swap_remove(pos); } }); }
-                        MediaByVideoSet::<T>::try_mutate(vsid, |dst_list| dst_list.try_push(media_id).map_err(|_| Error::<T>::TooMany))?;
-                        m.video_set_id = Some(vsid); m.album_id = None;
+                        if let Some(from) = m.video_collection_id { DataByVideoCollection::<T>::mutate(from, |src| { if let Some(pos) = src.iter().position(|x| x == &data_id) { src.swap_remove(pos); } }); }
+                        DataByVideoCollection::<T>::try_mutate(vsid, |dst_list| dst_list.try_push(data_id).map_err(|_| Error::<T>::TooMany))?;
+                        m.video_collection_id = Some(vsid); m.album_id = None;
                     }
-                    MediaKind::Article => { return Err(Error::<T>::BadInput.into()); }
+                    DataKind::Article => { return Err(Error::<T>::BadInput.into()); }
+                    DataKind::Message => { return Err(Error::<T>::BadInput.into()); }
                 }
                 m.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
@@ -643,7 +814,7 @@ pub mod pallet {
             desc: Option<Vec<u8>>,
             visibility: Option<u8>,
             tags: Option<Vec<Vec<u8>>>,
-            cover_media_id: Option<Option<T::MediaId>>,
+            primary_photo_id: Option<Option<T::DataId>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             AlbumOf::<T>::try_mutate(album_id, |maybe_a| -> DispatchResult {
@@ -661,9 +832,13 @@ pub mod pallet {
                     }
                     a.tags = tags_bv;
                 }
-                if let Some(cov) = cover_media_id {
-                    if let Some(mid) = cov { let m = MediaOf::<T>::get(mid).ok_or(Error::<T>::MediaNotFound)?; ensure!(m.album_id == Some(album_id), Error::<T>::BadInput); }
-                    a.cover_media_id = cov;
+                if let Some(cov) = primary_photo_id {
+                    if let Some(mid) = cov {
+                        let m = DataOf::<T>::get(mid).ok_or(Error::<T>::DataNotFound)?;
+                        ensure!(m.album_id == Some(album_id), Error::<T>::BadInput);
+                        ensure!(matches!(m.kind, DataKind::Photo), Error::<T>::BadInput);
+                    }
+                    a.primary_photo_id = cov;
                 }
                 a.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
@@ -681,7 +856,7 @@ pub mod pallet {
             let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(album.owner == who, Error::<T>::NotAuthorized);
             ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
-            let medias = MediaByAlbum::<T>::get(album_id);
+            let medias = DataByAlbum::<T>::get(album_id);
             ensure!(medias.is_empty(), Error::<T>::BadInput);
             AlbumOf::<T>::remove(album_id);
             AlbumsByDeceased::<T>::mutate(album.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &album_id) { list.swap_remove(pos); } });
@@ -694,106 +869,15 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：添加媒体项；仅相册 owner；限制 URI 长度；可设置排序号。
-        #[pallet::call_index(3)]
-        #[allow(deprecated)]
-        #[pallet::weight(10_000)]
-        pub fn add_media(
-            origin: OriginFor<T>,
-            album_id: T::AlbumId,
-            kind: u8,
-            uri: Vec<u8>,
-            thumbnail_uri: Option<Vec<u8>>,
-            content_hash: Option<[u8;32]>,
-            // 文章标题/摘要（仅 kind=Article 时使用；其他类型忽略）。
-            title: Option<Vec<u8>>,
-            summary: Option<Vec<u8>>,
-            duration_secs: Option<u32>,
-            width: Option<u32>,
-            height: Option<u32>,
-            order_index: Option<u32>,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
-            ensure!(album.owner == who, Error::<T>::NotAuthorized);
-            ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
-
-            let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
-            let thumb_bv = match thumbnail_uri { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
-
-            // 轻量校验：不同媒体类型的可选字段基本合理性
-            let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, 3 => MediaKind::Article, _ => return Err(Error::<T>::BadInput.into()) };
-            match kind_enum {
-                MediaKind::Photo => {
-                    if let (Some(w), Some(h)) = (width, height) { ensure!(w > 0 && h > 0, Error::<T>::BadInput); }
-                }
-                MediaKind::Video | MediaKind::Audio => {
-                    if let Some(d) = duration_secs { ensure!(d > 0u32, Error::<T>::BadInput); }
-                }
-                MediaKind::Article => {
-                    // Article：要求提供 content_hash 以绑定链下 JSON，URI 用于存放 IPFS CID
-                    ensure!(content_hash.is_some(), Error::<T>::BadInput);
-                }
-            }
-
-            let id = NextMediaId::<T>::get();
-            let next = id.checked_add(&T::MediaId::from(1u32)).ok_or(Error::<T>::Overflow)?;
-            NextMediaId::<T>::put(next);
-
-            let mut list = MediaByAlbum::<T>::get(album_id);
-            let ord = order_index.unwrap_or(list.len() as u32);
-            let now = <frame_system::Pallet<T>>::block_number();
-            let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
-            let title_bv: Option<BoundedVec<_, T::StringLimit>> = match (kind_enum.clone(), title) {
-                (MediaKind::Article, Some(v)) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
-                _ => None,
-            };
-            let summary_bv: Option<BoundedVec<_, T::StringLimit>> = match (kind_enum.clone(), summary) {
-                (MediaKind::Article, Some(v)) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
-                _ => None,
-            };
-
-            let media = Media::<T> {
-                album_id: Some(album_id),
-                video_set_id: None,
-                deceased_id: album.deceased_id,
-                deceased_token: token,
-                owner: who.clone(),
-                kind: kind_enum,
-                uri: uri_bv,
-                thumbnail_uri: thumb_bv,
-                content_hash,
-                title: title_bv,
-                summary: summary_bv,
-                duration_secs,
-                width,
-                height,
-                order_index: ord,
-                created: now,
-                updated: now,
-            };
-
-            MediaOf::<T>::insert(id, media);
-            list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
-            MediaByAlbum::<T>::insert(album_id, list);
-            // 媒体押金 reserve 与成熟设置
-            let dep = T::MediaDeposit::get();
-            if !dep.is_zero() {
-                T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
-                MediaDeposits::<T>::insert(id, (who.clone(), dep));
-                MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
-            }
-            Self::deposit_event(Event::MediaAdded(id, album_id));
-            Ok(())
-        }
+        // 已删除：add_media（旧接口）。统一使用 add_data(container_kind, container_id, kind, ...) 入口。
 
         /// 函数级中文注释：更新媒体项；仅 owner；可改外链/哈希/尺寸/排序等。
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn update_media(
+        pub fn update_data(
             origin: OriginFor<T>,
-            media_id: T::MediaId,
+            data_id: T::DataId,
             uri: Option<Vec<u8>>,
             thumbnail_uri: Option<Option<Vec<u8>>>,
             content_hash: Option<Option<[u8;32]>>,
@@ -806,45 +890,53 @@ pub mod pallet {
             order_index: Option<u32>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            MediaOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
-                let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
+            DataOf::<T>::try_mutate(data_id, |maybe_m| -> DispatchResult {
+                let m = maybe_m.as_mut().ok_or(Error::<T>::DataNotFound)?;
                 ensure!(m.owner == who, Error::<T>::NotAuthorized);
-                let aid = m.album_id.ok_or(Error::<T>::BadInput)?;
-                ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
+                // 函数级中文注释：仅对相册内的数据（Photo/Article）检查相册冻结；
+                // 对视频/音频检查视频集冻结；Message 不依赖容器，跳过校验，避免误报。
+                if matches!(m.kind, DataKind::Photo | DataKind::Article) {
+                    let aid = m.album_id.ok_or(Error::<T>::BadInput)?;
+                    ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
+                } else if matches!(m.kind, DataKind::Video | DataKind::Audio) {
+                    if let Some(vsid) = m.video_collection_id {
+                        ensure!(!VideoCollectionFrozen::<T>::get(vsid), Error::<T>::Frozen);
+                    }
+                }
                 if let Some(u) = uri { m.uri = BoundedVec::try_from(u).map_err(|_| Error::<T>::BadInput)?; }
                 if let Some(t) = thumbnail_uri { m.thumbnail_uri = match t { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None }; }
                 if let Some(h) = content_hash { m.content_hash = h; }
                 if let Some(dur) = duration_secs {
                     // 对视频/音频：若提供时长则要求 > 0
-                    if matches!(m.kind, MediaKind::Video | MediaKind::Audio) {
+                    if matches!(m.kind, DataKind::Video | DataKind::Audio) {
                         if let Some(x) = dur { ensure!(x > 0u32, Error::<T>::BadInput); }
                     }
                     m.duration_secs = dur;
                 }
                 // Article 专属字段更新
                 if let Some(t) = title {
-                    if matches!(m.kind, MediaKind::Article) {
+                    if matches!(m.kind, DataKind::Article) {
                         m.title = match t { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
                     }
                 }
                 if let Some(s) = summary {
-                    if matches!(m.kind, MediaKind::Article) {
+                    if matches!(m.kind, DataKind::Article) {
                         m.summary = match s { Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
                     }
                 }
                 if let Some(w_opt) = width {
-                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = w_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
+                    if matches!(m.kind, DataKind::Photo) { if let Some(x) = w_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
                     m.width = w_opt;
                 }
                 if let Some(h_opt) = height {
-                    if matches!(m.kind, MediaKind::Photo) { if let Some(x) = h_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
+                    if matches!(m.kind, DataKind::Photo) { if let Some(x) = h_opt { ensure!(x > 0u32, Error::<T>::BadInput); } }
                     m.height = h_opt;
                 }
                 if let Some(ord) = order_index { m.order_index = ord; }
                 m.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
-            Self::deposit_event(Event::MediaUpdated(media_id));
+            Self::deposit_event(Event::DataUpdated(data_id));
             Ok(())
         }
 
@@ -852,64 +944,52 @@ pub mod pallet {
         #[pallet::call_index(5)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn remove_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+        pub fn remove_data(origin: OriginFor<T>, data_id: T::DataId) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let m = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
+            let m = DataOf::<T>::get(data_id).ok_or(Error::<T>::DataNotFound)?;
             ensure!(m.owner == who, Error::<T>::NotAuthorized);
-            let aid = m.album_id.ok_or(Error::<T>::BadInput)?;
-            ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
-            MediaOf::<T>::remove(media_id);
-            MediaByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| x == &media_id) { list.swap_remove(pos); } });
-            // 删除后，若存在押金，重置成熟期等待投诉期结束再可退款
-            if MediaDeposits::<T>::contains_key(media_id) {
-                let now = <frame_system::Pallet<T>>::block_number();
-                MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
+            // Photo：相册内删除；Message：按逝者索引删除；其他类型当前不支持用户删除
+            if let Some(aid) = m.album_id {
+                ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
+                DataOf::<T>::remove(data_id);
+                DataByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| x == &data_id) { list.swap_remove(pos); } });
+            } else if matches!(m.kind, DataKind::Message) {
+                DataOf::<T>::remove(data_id);
+                MessagesByDeceased::<T>::mutate(m.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &data_id) { list.swap_remove(pos); } });
+            } else {
+                return Err(Error::<T>::BadInput.into());
             }
-            Self::deposit_event(Event::MediaRemoved(media_id));
+            // 删除后，若存在押金，重置成熟期等待投诉期结束再可退款
+            if DataDeposits::<T>::contains_key(data_id) {
+                let now = <frame_system::Pallet<T>>::block_number();
+                DataMaturity::<T>::insert(data_id, now + T::ComplaintPeriod::get());
+            }
+            Self::deposit_event(Event::DataRemoved(data_id));
             Ok(())
         }
 
-        /// 函数级中文注释：移动媒体到其它相册；要求同一逝者；仅 owner。
-        #[pallet::call_index(6)]
-        #[allow(deprecated)]
-        #[pallet::weight(10_000)]
-        pub fn move_media(origin: OriginFor<T>, media_id: T::MediaId, to_album: T::AlbumId) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            let mut media = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
-            ensure!(media.owner == who, Error::<T>::NotAuthorized);
-            let from = media.album_id.ok_or(Error::<T>::BadInput)?;
-            ensure!(!AlbumFrozen::<T>::get(from), Error::<T>::Frozen);
-            let dst = AlbumOf::<T>::get(to_album).ok_or(Error::<T>::AlbumNotFound)?;
-            ensure!(dst.deceased_id == media.deceased_id, Error::<T>::MismatchDeceased);
-            MediaByAlbum::<T>::try_mutate(to_album, |dst_list| dst_list.try_push(media_id).map_err(|_| Error::<T>::TooMany))?;
-            MediaByAlbum::<T>::mutate(from, |src_list| { if let Some(pos) = src_list.iter().position(|x| x == &media_id) { src_list.swap_remove(pos); } });
-            media.album_id = Some(to_album);
-            media.updated = <frame_system::Pallet<T>>::block_number();
-            MediaOf::<T>::insert(media_id, media);
-            Self::deposit_event(Event::MediaMoved(media_id, from, to_album));
-            Ok(())
-        }
+        
 
         /// 函数级中文注释：重排相册媒体顺序；仅 owner；限制批量大小。
         #[pallet::call_index(7)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn reorder_album(origin: OriginFor<T>, album_id: T::AlbumId, ordered_media: Vec<T::MediaId>) -> DispatchResult {
+        pub fn reorder_album(origin: OriginFor<T>, album_id: T::AlbumId, ordered_media: Vec<T::DataId>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let album = AlbumOf::<T>::get(album_id).ok_or(Error::<T>::AlbumNotFound)?;
             ensure!(album.owner == who, Error::<T>::NotAuthorized);
             ensure!(!AlbumFrozen::<T>::get(album_id), Error::<T>::Frozen);
             ensure!((ordered_media.len() as u32) <= T::MaxReorderBatch::get(), Error::<T>::BadInput);
             for (idx, mid) in ordered_media.iter().enumerate() {
-                MediaOf::<T>::try_mutate(*mid, |maybe_m| -> DispatchResult {
-                    let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
+                DataOf::<T>::try_mutate(*mid, |maybe_m| -> DispatchResult {
+                    let m = maybe_m.as_mut().ok_or(Error::<T>::DataNotFound)?;
                     ensure!(m.album_id == Some(album_id), Error::<T>::BadInput);
                     m.order_index = idx as u32;
                     m.updated = <frame_system::Pallet<T>>::block_number();
                     Ok(())
                 })?;
             }
-            MediaByAlbum::<T>::insert(album_id, BoundedVec::try_from(ordered_media).map_err(|_| Error::<T>::BadInput)?);
+            DataByAlbum::<T>::insert(album_id, BoundedVec::try_from(ordered_media).map_err(|_| Error::<T>::BadInput)?);
             Self::deposit_event(Event::AlbumReordered(album_id));
             Ok(())
         }
@@ -942,10 +1022,10 @@ pub mod pallet {
         #[pallet::call_index(9)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn complain_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+        pub fn complain_data(origin: OriginFor<T>, data_id: T::DataId) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
-            let key = (2u8, media_id.saturated_into::<u64>());
+            ensure!(DataOf::<T>::contains_key(data_id) || DataDeposits::<T>::contains_key(data_id), Error::<T>::DataNotFound);
+            let key = (2u8, data_id.saturated_into::<u64>());
             ensure!(ComplaintOf::<T>::get(key).is_none(), Error::<T>::NoActiveComplaint);
             let dep = T::ComplaintDeposit::get();
             if !dep.is_zero() {
@@ -953,9 +1033,9 @@ pub mod pallet {
             }
             let now = <frame_system::Pallet<T>>::block_number();
             ComplaintOf::<T>::insert(key, ComplaintCase { complainant: who.clone(), deposit: dep, created: now, status: ComplaintStatus::Pending });
-            let cnt = MediaComplaints::<T>::get(media_id).saturating_add(1);
-            MediaComplaints::<T>::insert(media_id, cnt);
-            Self::deposit_event(Event::MediaComplained(media_id, cnt));
+            let cnt = DataComplaints::<T>::get(data_id).saturating_add(1);
+            DataComplaints::<T>::insert(data_id, cnt);
+            Self::deposit_event(Event::DataComplained(data_id, cnt));
             Ok(())
         }
 
@@ -982,18 +1062,18 @@ pub mod pallet {
         #[pallet::call_index(11)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn claim_media_deposit(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+        pub fn claim_data_deposit(origin: OriginFor<T>, data_id: T::DataId) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let (owner, amt) = MediaDeposits::<T>::get(media_id).ok_or(Error::<T>::NoDepositToClaim)?;
+            let (owner, amt) = DataDeposits::<T>::get(data_id).ok_or(Error::<T>::NoDepositToClaim)?;
             ensure!(who == owner, Error::<T>::NotAuthorized);
-            ensure!(MediaComplaints::<T>::get(media_id) == 0, Error::<T>::NotMatured);
-            let mature_at = MediaMaturity::<T>::get(media_id).ok_or(Error::<T>::NotMatured)?;
+            ensure!(DataComplaints::<T>::get(data_id) == 0, Error::<T>::NotMatured);
+            let mature_at = DataMaturity::<T>::get(data_id).ok_or(Error::<T>::NotMatured)?;
             let now = <frame_system::Pallet<T>>::block_number();
             ensure!(now >= mature_at, Error::<T>::NotMatured);
             T::Currency::unreserve(&who, amt);
-            MediaDeposits::<T>::remove(media_id);
-            MediaMaturity::<T>::remove(media_id);
-            Self::deposit_event(Event::MediaDepositRefunded(media_id, who, amt));
+            DataDeposits::<T>::remove(data_id);
+            DataMaturity::<T>::remove(data_id);
+            Self::deposit_event(Event::DataDepositRefunded(data_id, who, amt));
             Ok(())
         }
 
@@ -1059,12 +1139,12 @@ pub mod pallet {
         #[pallet::call_index(18)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_resolve_media_complaint(origin: OriginFor<T>, media_id: T::MediaId, uphold: bool) -> DispatchResult {
+        pub fn gov_resolve_data_complaint(origin: OriginFor<T>, data_id: T::DataId, uphold: bool) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
-            let key = (2u8, media_id.saturated_into::<u64>());
+            ensure!(DataOf::<T>::contains_key(data_id) || DataDeposits::<T>::contains_key(data_id), Error::<T>::DataNotFound);
+            let key = (2u8, data_id.saturated_into::<u64>());
             let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::NoActiveComplaint)?;
-            let (uploader, upload_dep) = MediaDeposits::<T>::get(media_id).unwrap_or_else(|| (T::FeeCollector::get(), Zero::zero()));
+            let (uploader, upload_dep) = DataDeposits::<T>::get(data_id).unwrap_or_else(|| (T::FeeCollector::get(), Zero::zero()));
             let arb = T::ArbitrationAccount::get();
             if uphold {
                 // 败诉：上传者；胜诉：投诉者
@@ -1076,8 +1156,8 @@ pub mod pallet {
                     T::Currency::repatriate_reserved(&uploader, &case.complainant, win, frame_support::traits::BalanceStatus::Free).ok();
                     T::Currency::repatriate_reserved(&uploader, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
                     T::Currency::unreserve(&uploader, back);
-                    MediaDeposits::<T>::remove(media_id);
-                    MediaMaturity::<T>::remove(media_id);
+                    DataDeposits::<T>::remove(data_id);
+                    DataMaturity::<T>::remove(data_id);
                     Self::deposit_event(Event::ComplaintPayoutWinner(case.complainant.clone(), win));
                     Self::deposit_event(Event::ComplaintPayoutArbitration(arb.clone(), fee));
                     Self::deposit_event(Event::ComplaintPayoutLoserRefund(uploader.clone(), back));
@@ -1100,8 +1180,8 @@ pub mod pallet {
             }
             case.status = ComplaintStatus::Resolved;
             ComplaintOf::<T>::remove(key);
-            MediaComplaints::<T>::insert(media_id, 0);
-            let id_u64: u64 = media_id.saturated_into::<u64>();
+            DataComplaints::<T>::insert(data_id, 0);
+            let id_u64: u64 = data_id.saturated_into::<u64>();
             Self::deposit_event(Event::ComplaintResolved(2u8, id_u64, uphold));
             Ok(())
         }
@@ -1128,7 +1208,7 @@ pub mod pallet {
             desc: Option<Vec<u8>>,
             visibility: Option<u8>,
             tags: Option<Vec<Vec<u8>>>,
-            cover_media_id: Option<Option<T::MediaId>>,
+            primary_photo_id: Option<Option<T::DataId>>,
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             AlbumOf::<T>::try_mutate(album_id, |maybe_a| -> DispatchResult {
@@ -1144,9 +1224,9 @@ pub mod pallet {
                     }
                     a.tags = tags_bv;
                 }
-                if let Some(cov) = cover_media_id {
-                    if let Some(mid) = cov { let m = MediaOf::<T>::get(mid).ok_or(Error::<T>::MediaNotFound)?; ensure!(m.album_id == Some(album_id), Error::<T>::BadInput); }
-                    a.cover_media_id = cov;
+                if let Some(cov) = primary_photo_id {
+                    if let Some(mid) = cov { let m = DataOf::<T>::get(mid).ok_or(Error::<T>::DataNotFound)?; ensure!(m.album_id == Some(album_id), Error::<T>::BadInput); ensure!(matches!(m.kind, DataKind::Photo), Error::<T>::BadInput); }
+                    a.primary_photo_id = cov;
                 }
                 a.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
@@ -1159,11 +1239,11 @@ pub mod pallet {
         #[pallet::call_index(14)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_media_hidden(origin: OriginFor<T>, media_id: T::MediaId, hidden: bool) -> DispatchResult {
+        pub fn gov_set_media_hidden(origin: OriginFor<T>, data_id: T::DataId, hidden: bool) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
-            MediaHidden::<T>::insert(media_id, hidden);
-            Self::deposit_event(Event::GovMediaHidden(media_id, hidden));
+            ensure!(DataOf::<T>::contains_key(data_id) || DataDeposits::<T>::contains_key(data_id), Error::<T>::DataNotFound);
+            DataHidden::<T>::insert(data_id, hidden);
+            Self::deposit_event(Event::GovDataHidden(data_id, hidden));
             Ok(())
         }
 
@@ -1171,15 +1251,15 @@ pub mod pallet {
         #[pallet::call_index(15)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::MediaId, new_uri: Vec<u8>) -> DispatchResult {
+        pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::DataId, new_uri: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            MediaOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
-                let m = maybe_m.as_mut().ok_or(Error::<T>::MediaNotFound)?;
+            DataOf::<T>::try_mutate(media_id, |maybe_m| -> DispatchResult {
+                let m = maybe_m.as_mut().ok_or(Error::<T>::DataNotFound)?;
                 m.uri = BoundedVec::try_from(new_uri).map_err(|_| Error::<T>::BadInput)?;
                 m.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
-            Self::deposit_event(Event::GovMediaReplaced(media_id));
+            Self::deposit_event(Event::GovDataReplaced(media_id));
             Ok(())
         }
 
@@ -1187,17 +1267,287 @@ pub mod pallet {
         #[pallet::call_index(16)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_remove_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+        pub fn gov_remove_data(origin: OriginFor<T>, data_id: T::DataId) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            let m = MediaOf::<T>::get(media_id).ok_or(Error::<T>::MediaNotFound)?;
-            MediaOf::<T>::remove(media_id);
+            let m = DataOf::<T>::get(data_id).ok_or(Error::<T>::DataNotFound)?;
+            DataOf::<T>::remove(data_id);
             if let Some(aid) = m.album_id {
-                MediaByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| x == &media_id) { list.swap_remove(pos); } });
+                DataByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| x == &data_id) { list.swap_remove(pos); } });
+            } else if matches!(m.kind, DataKind::Message) {
+                MessagesByDeceased::<T>::mutate(m.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &data_id) { list.swap_remove(pos); } });
             }
             // 重置成熟时间，待期后可退押金
             let now = <frame_system::Pallet<T>>::block_number();
-            MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
-            Self::deposit_event(Event::MediaRemoved(media_id));
+            DataMaturity::<T>::insert(data_id, now + T::ComplaintPeriod::get());
+            Self::deposit_event(Event::DataRemoved(data_id));
+            Ok(())
+        }
+
+        // ===================== 生平（Life） =====================
+        /// 函数级中文注释：创建生平（不可删除）。仅允许 can_manage 的账户创建，避免被抢注。
+        #[pallet::call_index(26)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn create_life(origin: OriginFor<T>, deceased_id: T::DeceasedId, text: Vec<u8>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
+            ensure!(T::DeceasedProvider::can_manage(&who, deceased_id), Error::<T>::NotAuthorized);
+            ensure!(LifeOf::<T>::get(deceased_id).is_none(), Error::<T>::BadInput);
+            let bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(text).map_err(|_| Error::<T>::BadInput)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
+            let life = Life { owner: who.clone(), deceased_id, deceased_token: token, cid: bv, updated: now, version: 1, last_editor: None };
+            LifeOf::<T>::insert(deceased_id, life);
+            Self::deposit_event(Event::LifeCreated(deceased_id, who));
+            Ok(())
+        }
+
+        /// 函数级中文注释：更新生平；创建者免押金，非创建者需押金 + 成熟期并允许投诉。
+        #[pallet::call_index(27)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn update_life(origin: OriginFor<T>, deceased_id: T::DeceasedId, text: Vec<u8>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            LifeOf::<T>::try_mutate(deceased_id, |maybe_life| -> DispatchResult {
+                let life = maybe_life.as_mut().ok_or(Error::<T>::BadInput)?;
+                let bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(text).map_err(|_| Error::<T>::BadInput)?;
+                let now = <frame_system::Pallet<T>>::block_number();
+                if who == life.owner {
+                    life.cid = bv; life.updated = now; life.version = life.version.saturating_add(1); life.last_editor = None;
+                    Self::deposit_event(Event::LifeUpdated(deceased_id));
+                } else {
+                    // 非创建者：押金 + 进入成熟期；保存旧文本用于治理回滚
+                    let dep = T::DataDeposit::get();
+                    if !dep.is_zero() {
+                        T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?;
+                        LifeDeposits::<T>::insert(deceased_id, (who.clone(), dep));
+                        LifeMaturity::<T>::insert(deceased_id, now + T::ComplaintPeriod::get());
+                    }
+                    LifePrev::<T>::insert(deceased_id, life.cid.clone());
+                    life.cid = bv; life.updated = now; life.version = life.version.saturating_add(1); life.last_editor = Some(who.clone());
+                    Self::deposit_event(Event::LifeUpdatedByOthers(deceased_id, who));
+                }
+                Ok(())
+            })?;
+            Ok(())
+        }
+
+        /// 函数级中文注释：投诉生平（域=3）。
+        #[pallet::call_index(28)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn complain_life(origin: OriginFor<T>, deceased_id: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(LifeOf::<T>::contains_key(deceased_id), Error::<T>::BadInput);
+            let key: (u8, u64) = (3u8, deceased_id.saturated_into());
+            ensure!(ComplaintOf::<T>::get(key).is_none(), Error::<T>::NoActiveComplaint);
+            let dep = T::ComplaintDeposit::get();
+            if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; }
+            let now = <frame_system::Pallet<T>>::block_number();
+            ComplaintOf::<T>::insert(key, ComplaintCase { complainant: who.clone(), deposit: dep, created: now, status: ComplaintStatus::Pending });
+            let cnt = LifeComplaints::<T>::get(deceased_id).saturating_add(1);
+            LifeComplaints::<T>::insert(deceased_id, cnt);
+            Self::deposit_event(Event::LifeComplained(deceased_id, cnt));
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理裁决生平投诉（维持：回滚并分账非创建者押金；驳回：分账投诉押金）。
+        #[pallet::call_index(29)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_resolve_life_complaint(origin: OriginFor<T>, deceased_id: T::DeceasedId, uphold: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(LifeOf::<T>::contains_key(deceased_id), Error::<T>::BadInput);
+            let key: (u8, u64) = (3u8, deceased_id.saturated_into());
+            let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::NoActiveComplaint)?;
+            let arb = T::ArbitrationAccount::get();
+            if uphold {
+                // 维持投诉：回滚文本（若有旧文本），并按非创建者押金分账
+                if let Some(prev) = LifePrev::<T>::take(deceased_id) {
+                    LifeOf::<T>::mutate(deceased_id, |life| { if let Some(l) = life { l.cid = prev; l.last_editor = None; } });
+                }
+                if let Some((editor, d)) = LifeDeposits::<T>::take(deceased_id) {
+                    if !d.is_zero() {
+                        let win = (d * 20u32.into()) / 100u32.into();
+                        let fee = (d * 5u32.into()) / 100u32.into();
+                        let back = d - win - fee;
+                        T::Currency::repatriate_reserved(&editor, &case.complainant, win, frame_support::traits::BalanceStatus::Free).ok();
+                        T::Currency::repatriate_reserved(&editor, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                        T::Currency::unreserve(&editor, back);
+                    }
+                }
+                // 投诉押金全退
+                if !case.deposit.is_zero() { T::Currency::unreserve(&case.complainant, case.deposit); }
+            } else {
+                // 驳回：投诉押金 20/5/75 分账
+                let d = case.deposit;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    // 受益人用创建者代替“上传者”定位
+                    if let Some(l) = LifeOf::<T>::get(deceased_id) {
+                        T::Currency::repatriate_reserved(&case.complainant, &l.owner, win, frame_support::traits::BalanceStatus::Free).ok();
+                    }
+                    T::Currency::repatriate_reserved(&case.complainant, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&case.complainant, back);
+                }
+            }
+            LifeMaturity::<T>::remove(deceased_id);
+            LifeComplaints::<T>::insert(deceased_id, 0);
+            ComplaintOf::<T>::remove(key);
+            Self::deposit_event(Event::ComplaintResolved(3u8, deceased_id.saturated_into(), uphold));
+            Ok(())
+        }
+
+        /// 函数级中文注释：非创建者修改押金领取（需到期且无投诉）。
+        #[pallet::call_index(30)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn claim_life_deposit(origin: OriginFor<T>, deceased_id: T::DeceasedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let (owner, amt) = LifeDeposits::<T>::get(deceased_id).ok_or(Error::<T>::NoDepositToClaim)?;
+            ensure!(who == owner, Error::<T>::NotAuthorized);
+            ensure!(LifeComplaints::<T>::get(deceased_id) == 0, Error::<T>::NotMatured);
+            let mature_at = LifeMaturity::<T>::get(deceased_id).ok_or(Error::<T>::NotMatured)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            ensure!(now >= mature_at, Error::<T>::NotMatured);
+            T::Currency::unreserve(&who, amt);
+            LifeDeposits::<T>::remove(deceased_id);
+            LifeMaturity::<T>::remove(deceased_id);
+            Self::deposit_event(Event::LifeDepositRefunded(deceased_id, who, amt));
+            Ok(())
+        }
+
+        // ===================== 悼词（Eulogy） =====================
+        /// 创建悼词（任何签名账户；押金+成熟；支持投诉/治理删除）。
+        #[pallet::call_index(31)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn create_eulogy(origin: OriginFor<T>, deceased_id: T::DeceasedId, cid: Vec<u8>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
+            let cid_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            let id = NextEulogyId::<T>::get();
+            let next = id.checked_add(&T::DataId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+            NextEulogyId::<T>::put(next);
+            let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
+            let now = <frame_system::Pallet<T>>::block_number();
+            let e = Eulogy { id, deceased_id, deceased_token: token, author: who.clone(), cid: cid_bv, created: now, updated: now };
+            EulogyOf::<T>::insert(id, e);
+            EulogiesByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            let dep = T::DataDeposit::get();
+            if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; EulogyDeposits::<T>::insert(id, (who.clone(), dep)); EulogyMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
+            Self::deposit_event(Event::EulogyCreated(id, deceased_id, who));
+            Ok(())
+        }
+
+        /// 更新悼词（仅作者）。
+        #[pallet::call_index(32)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn update_eulogy(origin: OriginFor<T>, id: T::DataId, cid: Vec<u8>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let cid_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            EulogyOf::<T>::try_mutate(id, |maybe_e| -> DispatchResult {
+                let e = maybe_e.as_mut().ok_or(Error::<T>::DataNotFound)?;
+                ensure!(e.author == who, Error::<T>::NotAuthorized);
+                e.cid = cid_bv; e.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::EulogyUpdated(id));
+            Ok(())
+        }
+
+        /// 删除悼词（治理）。
+        #[pallet::call_index(33)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_remove_eulogy(origin: OriginFor<T>, id: T::DataId) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let e = EulogyOf::<T>::take(id).ok_or(Error::<T>::DataNotFound)?;
+            EulogiesByDeceased::<T>::mutate(e.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| x == &id) { list.swap_remove(pos); } });
+            // 重置成熟时间，待期可退押金
+            let now = <frame_system::Pallet<T>>::block_number();
+            EulogyMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
+            Self::deposit_event(Event::EulogyRemoved(id));
+            Ok(())
+        }
+
+        /// 投诉悼词（任何人）。
+        #[pallet::call_index(34)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn complain_eulogy(origin: OriginFor<T>, id: T::DataId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(EulogyOf::<T>::contains_key(id) || EulogyDeposits::<T>::contains_key(id), Error::<T>::DataNotFound);
+            let key = (4u8, id.saturated_into::<u64>());
+            ensure!(ComplaintOf::<T>::get(key).is_none(), Error::<T>::NoActiveComplaint);
+            let dep = T::ComplaintDeposit::get();
+            if !dep.is_zero() { T::Currency::reserve(&who, dep).map_err(|_| Error::<T>::DepositFailed)?; }
+            let now = <frame_system::Pallet<T>>::block_number();
+            ComplaintOf::<T>::insert(key, ComplaintCase { complainant: who.clone(), deposit: dep, created: now, status: ComplaintStatus::Pending });
+            let cnt = EulogyComplaints::<T>::get(id).saturating_add(1);
+            EulogyComplaints::<T>::insert(id, cnt);
+            Self::deposit_event(Event::EulogyComplained(id, cnt));
+            Ok(())
+        }
+
+        /// 裁决悼词投诉（治理）。
+        #[pallet::call_index(35)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_resolve_eulogy_complaint(origin: OriginFor<T>, id: T::DataId, uphold: bool) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(EulogyOf::<T>::contains_key(id) || EulogyDeposits::<T>::contains_key(id), Error::<T>::DataNotFound);
+            let key = (4u8, id.saturated_into::<u64>());
+            let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::NoActiveComplaint)?;
+            let arb = T::ArbitrationAccount::get();
+            if uphold {
+                if let Some((author, d)) = EulogyDeposits::<T>::take(id) {
+                    if !d.is_zero() {
+                        let win = (d * 20u32.into()) / 100u32.into();
+                        let fee = (d * 5u32.into()) / 100u32.into();
+                        let back = d - win - fee;
+                        T::Currency::repatriate_reserved(&author, &case.complainant, win, frame_support::traits::BalanceStatus::Free).ok();
+                        T::Currency::repatriate_reserved(&author, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                        T::Currency::unreserve(&author, back);
+                    }
+                }
+                if !case.deposit.is_zero() { T::Currency::unreserve(&case.complainant, case.deposit); }
+            } else {
+                let d = case.deposit;
+                if !d.is_zero() {
+                    let win = (d * 20u32.into()) / 100u32.into();
+                    let fee = (d * 5u32.into()) / 100u32.into();
+                    let back = d - win - fee;
+                    if let Some((author, _)) = EulogyDeposits::<T>::get(id) { T::Currency::repatriate_reserved(&case.complainant, &author, win, frame_support::traits::BalanceStatus::Free).ok(); }
+                    T::Currency::repatriate_reserved(&case.complainant, &arb, fee, frame_support::traits::BalanceStatus::Free).ok();
+                    T::Currency::unreserve(&case.complainant, back);
+                }
+            }
+            ComplaintOf::<T>::remove(key);
+            EulogyComplaints::<T>::insert(id, 0);
+            Self::deposit_event(Event::ComplaintResolved(4u8, id.saturated_into::<u64>(), uphold));
+            Ok(())
+        }
+
+        /// 领取悼词押金（到期且无投诉）。
+        #[pallet::call_index(36)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn claim_eulogy_deposit(origin: OriginFor<T>, id: T::DataId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let (owner, amt) = EulogyDeposits::<T>::get(id).ok_or(Error::<T>::NoDepositToClaim)?;
+            ensure!(who == owner, Error::<T>::NotAuthorized);
+            ensure!(EulogyComplaints::<T>::get(id) == 0, Error::<T>::NotMatured);
+            let mature_at = EulogyMaturity::<T>::get(id).ok_or(Error::<T>::NotMatured)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            ensure!(now >= mature_at, Error::<T>::NotMatured);
+            T::Currency::unreserve(&who, amt);
+            EulogyDeposits::<T>::remove(id);
+            EulogyMaturity::<T>::remove(id);
+            Self::deposit_event(Event::EulogyDepositRefunded(id, who, amt));
             Ok(())
         }
     }
@@ -1214,7 +1564,7 @@ pub mod pallet {
                 pub deceased_id: T::DeceasedId,
                 pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
                 pub owner: T::AccountId,
-                pub kind: MediaKind,
+                pub kind: DataKind,
                 pub uri: BoundedVec<u8, T::StringLimit>,
                 pub thumbnail_uri: Option<BoundedVec<u8, T::StringLimit>>,
                 pub content_hash: Option<[u8; 32]>,
@@ -1229,15 +1579,16 @@ pub mod pallet {
             let mut reads: u64 = 0;
             let mut writes: u64 = 0;
 
-            for (media_id, _) in MediaOf::<T>::iter() {
+            for (media_id, _) in DataOf::<T>::iter() {
                 reads += 1;
                 // 取底层原始字节并按旧版解码（避免直接解码为新结构失败）
-                let storage_key = MediaOf::<T>::hashed_key_for(media_id);
+                let storage_key = DataOf::<T>::hashed_key_for(media_id);
                 if let Some(raw) = sp_io::storage::get(&storage_key) {
                     if let Ok(old) = OldMedia::<T>::decode(&mut &raw[..]) {
-                        let new_media = Media::<T> {
+                        let new_media = Data::<T> {
+                            data_id: media_id,
                             album_id: Some(old.album_id),
-                            video_set_id: None,
+                            video_collection_id: None,
                             deceased_id: old.deceased_id,
                             deceased_token: old.deceased_token,
                             owner: old.owner,
@@ -1254,7 +1605,7 @@ pub mod pallet {
                             created: old.created,
                             updated: old.updated,
                         };
-                        MediaOf::<T>::insert(media_id, new_media);
+                        DataOf::<T>::insert(media_id, new_media);
                         writes += 1;
                     }
                 }
@@ -1267,7 +1618,7 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// 函数级中文注释：在运行时升级时执行存储迁移，将 v1 的 Media 数据迁移至 v2 结构。
+        /// 函数级中文注释：在运行时升级时执行存储迁移，将 v1 的 Data 数据迁移至 v2 结构。
         fn on_runtime_upgrade() -> Weight {
             let onchain = Pallet::<T>::on_chain_storage_version();
             if onchain < 2 {
@@ -1277,5 +1628,3 @@ pub mod pallet {
         }
     }
 }
-
-

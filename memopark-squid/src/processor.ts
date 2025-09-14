@@ -94,13 +94,8 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         continue
       }
 
-      // ===== Guestbook mapping（留言）
-      if (name?.endsWith('grave_guestbook.MessagePosted')) {
-        const ev: any = i.event
-        const {arg0, arg1, arg2} = ev.args // GraveId, MessageId, AccountId（命名取决于元数据）
-        const createdAt = b.header.height
-        await ctx.store.save(new GuestbookMessage({ id: arg1.toString(), hallId: BigInt(arg0), who: arg2.toString(), text: '', block: createdAt }))
-        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'grave_guestbook', kind: 'MessagePosted', refId: arg1.toString(), actor: arg2.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ graveId: arg0.toString() }) }))
+      // 已移除模块：grave_guestbook 相关事件不再处理
+      if (name?.includes('grave_guestbook')) {
         continue
       }
 

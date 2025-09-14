@@ -36,24 +36,33 @@ Extrinsics：
 - create_album(deceased_id: u64, title: Bytes, desc: Bytes, visibility: Visibility, tags: Vec<Bytes>)
   - 权限：逝者 owner/授权者
   - 事件：AlbumCreated(album_id, deceased_id, owner)
-- update_album(album_id: u64, title?: Bytes, desc?: Bytes, visibility?: Visibility, tags?: Vec<Bytes>, cover_media_id??: Option<u64>)
+- update_album(album_id: u64, title?: Bytes, desc?: Bytes, visibility?: Visibility, tags?: Vec<Bytes>, primary_photo_id??: Option<u64>)
   - 权限：album owner
   - 事件：AlbumUpdated(album_id)
 - delete_album(album_id: u64)
   - 权限：album owner；相册需为空
   - 事件：AlbumDeleted(album_id)
-- add_media(album_id: u64, kind: MediaKind(=Photo|Video|Audio), uri: Bytes, thumbnail_uri?: Bytes, content_hash?: [u8;32], duration_secs?: u32, width?: u32, height?: u32, order_index?: u32)
-  - 权限：album owner
-  - 事件：MediaAdded(media_id, album_id)
-  - 轻量校验：Photo 提供尺寸则需 >0；Video/Audio 提供时长则需 >0
-- update_media(media_id: u64, uri?: Bytes, thumbnail_uri??: Option<Bytes>, content_hash??: Option<[u8;32]>, duration_secs??: Option<u32>, width??: Option<u32>, height??: Option<u32>, order_index?: u32)
+- add_data(container_kind: u8(0=Album,1=VideoCollection,2=Uncategorized), container_id?: u64, kind: DataKind(=Photo|Video|Audio|Article|Message), uri: Bytes, thumbnail_uri?: Bytes, content_hash?: [u8;32], title?: Bytes, summary?: Bytes, duration_secs?: u32, width?: u32, height?: u32, order_index?: u32)
+  - 权限：
+    - container_kind=0 时：album owner
+    - container_kind=1 时：video_collection owner
+  - 事件：
+    - Photo/Article：DataAdded(data_id, album_id)
+    - Video/Audio：DataAddedToVideoCollection(data_id, video_collection_id)
+    - Message：DataMessageAdded(data_id, deceased_id)
+  - 轻量校验：
+    - Photo 提供尺寸则需 >0；Video/Audio 提供时长则需 >0；Article 需提供 content_hash
+    - Message：需提供 deceased_id（作为 container_id 且 container_kind=2）
+- update_data(data_id: u64, uri?: Bytes, thumbnail_uri??: Option<Bytes>, content_hash??: Option<[u8;32]>, title??: Option<Bytes>, summary??: Option<Bytes>, duration_secs??: Option<u32>, width??: Option<u32>, height??: Option<u32>, order_index?: u32)
   - 权限：media owner
+  - 冻结校验：Photo/Article → 校验相册未冻结；Video/Audio → 校验视频集未冻结；Message → 不做容器冻结校验
   - 事件：MediaUpdated(media_id)
-  - 轻量校验：同 add_media
-- remove_media(media_id: u64)
+  - 轻量校验：同 add_data
+- remove_data(data_id: u64)
   - 权限：media owner
   - 事件：MediaRemoved(media_id)
-- move_media(media_id: u64, to_album: u64)
+  - 限制：仅 Photo 与 Message 可删除；Video/Audio/Article 用户删除暂不支持
+- move_data(data_id: u64, to_album: u64)
   - 权限：media owner；同一 deceased_id
   - 事件：MediaMoved(media_id, from_album, to_album)
 - reorder_album(album_id: u64, ordered_media: Vec<u64>)
@@ -86,9 +95,9 @@ Storage：
 - TotalMemoByGrave: u64 -> Balance
 - WeeklyActive: (u64, AccountId, u64) -> ()
 
-## pallet-grave-guestbook
+## （已移除）pallet-grave-guestbook
 
-- 模块说明：每个 grave 的留言板；可关闭公共留言（仅墓主/管理员/亲人可发言）；支持图片/视频/音频附件（链下 URI）。
+- 已移除：统一改由 `pallet-deceased-data` 的 Message/Eulogy/Life 体系承载留言/悼词/生平。
 
 Extrinsics：
 - set_public(grave_id: u64, enabled: bool)

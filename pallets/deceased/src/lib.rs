@@ -58,8 +58,6 @@ pub struct Deceased<T: Config> {
     pub name_badge: BoundedVec<u8, T::StringLimit>,
     /// 性别枚举：M/F/B。
     pub gender: Gender,
-    /// 简介/悼词（限长，敏感详情放链下）
-    pub bio: BoundedVec<u8, T::StringLimit>,
     /// 函数级中文注释：全名的链下指针 CID（IPFS/HTTPS 等），建议前端使用该字段展示完整姓名；
     /// - 隐私：不在链上直接存储超长姓名明文；
     /// - 约束：可选字段；长度受 `TokenLimit` 约束，建议与外部引用者的 MaxCidLen 对齐；
@@ -156,8 +154,6 @@ pub mod pallet {
         DeceasedCreated(T::DeceasedId, T::GraveId, T::AccountId),
         /// 更新逝者 (id)
         DeceasedUpdated(T::DeceasedId),
-        /// 删除逝者 (id)
-        DeceasedRemoved(T::DeceasedId),
         /// 迁移逝者到新墓位 (id, from_grave, to_grave)
         DeceasedTransferred(T::DeceasedId, T::GraveId, T::GraveId),
         /// 逝者关系：已提交绑定请求(from -> to)
@@ -332,7 +328,7 @@ pub mod pallet {
             name: Vec<u8>,
             name_badge: Vec<u8>,
             gender_code: u8, // 0=M,1=F,2=B
-            bio: Vec<u8>,
+            // bio 移除：简介/悼词请使用 deceased-data::Life（IPFS CID）
             name_full_cid: Option<Vec<u8>>, // 可选：完整姓名的链下 CID
             birth_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
             death_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
@@ -350,8 +346,7 @@ pub mod pallet {
             ensure!(existing_in_grave < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
 
             // 校验与规范化字段
-            let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
-            let bio_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(bio).map_err(|_| Error::<T>::BadInput)?;
+            let name_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
             // name_badge：仅保留 [A-Z]，并转为大写
             fn to_badge(input: Vec<u8>) -> Vec<u8> {
                 input.into_iter().filter_map(|b| {
@@ -360,28 +355,28 @@ pub mod pallet {
                 }).collect::<Vec<u8>>()
             }
             let badge_vec = to_badge(name_badge);
-            let name_badge_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(badge_vec).map_err(|_| Error::<T>::BadInput)?;
+            let name_badge_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(badge_vec).map_err(|_| Error::<T>::BadInput)?;
             let gender: Gender = match gender_code { 0 => Gender::M, 1 => Gender::F, _ => Gender::B };
             // 校验日期：若提供则必须为 8 位数字
             fn is_yyyymmdd(v: &Vec<u8>) -> bool { v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b)) }
             ensure!(is_yyyymmdd(&birth_ts), Error::<T>::BadInput);
             ensure!(is_yyyymmdd(&death_ts), Error::<T>::BadInput);
-            let birth_bv: Option<BoundedVec<_, T::StringLimit>> = Some(BoundedVec::try_from(birth_ts).map_err(|_| Error::<T>::BadInput)?);
-            let death_bv: Option<BoundedVec<_, T::StringLimit>> = Some(BoundedVec::try_from(death_ts).map_err(|_| Error::<T>::BadInput)?);
+            let birth_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> = Some(BoundedVec::try_from(birth_ts).map_err(|_| Error::<T>::BadInput)?);
+            let death_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> = Some(BoundedVec::try_from(death_ts).map_err(|_| Error::<T>::BadInput)?);
             // 可选 CID 校验（仅限长度）
             let name_full_cid_bv: Option<BoundedVec<u8, T::TokenLimit>> = match name_full_cid {
                 Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
                 None => None,
             };
 
-            let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
+            let mut links_bv: BoundedVec<BoundedVec<u8, <T as pallet::Config>::StringLimit>, T::MaxLinks> = Default::default();
             for l in links.into_iter() {
-                let lb: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
+                let lb: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
                 links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
             }
 
             let id = NextDeceasedId::<T>::get();
-            let next = id.checked_add(&T::DeceasedId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+            let next = id.checked_add(&<T as pallet::Config>::DeceasedId::from(1u32)).ok_or(Error::<T>::Overflow)?;
             NextDeceasedId::<T>::put(next);
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
@@ -408,7 +403,7 @@ pub mod pallet {
                 name: name_bv,
                 name_badge: name_badge_bv,
                 gender,
-                bio: bio_bv,
+                // bio 已移除：请使用 deceased-data::Life（CID）
                 name_full_cid: name_full_cid_bv,
                 birth_ts: birth_bv,
                 death_ts: death_bv,
@@ -422,6 +417,8 @@ pub mod pallet {
             DeceasedByGrave::<T>::try_mutate(grave_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
             // 建立 token -> id 索引
             if let Some(d) = DeceasedOf::<T>::get(id) { DeceasedIdByToken::<T>::insert(d.deceased_token, id); }
+
+            // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
 
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
             Ok(())
@@ -440,7 +437,7 @@ pub mod pallet {
             name: Option<Vec<u8>>,
             name_badge: Option<Vec<u8>>,
             gender_code: Option<u8>,
-            bio: Option<Vec<u8>>,
+            // bio 已移除
             name_full_cid: Option<Option<Vec<u8>>>,
             birth_ts: Option<Option<Vec<u8>>>,
             death_ts: Option<Option<Vec<u8>>>,
@@ -461,7 +458,7 @@ pub mod pallet {
                     d.name_badge = BoundedVec::try_from(vec).map_err(|_| Error::<T>::BadInput)?;
                 }
                 if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
-                if let Some(b) = bio { d.bio = BoundedVec::try_from(b).map_err(|_| Error::<T>::BadInput)?; }
+                // bio 已移除：改由 deceased-data::Life 维护
                 if let Some(cid_opt) = name_full_cid {
                     d.name_full_cid = match cid_opt {
                         Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?),
@@ -519,15 +516,7 @@ pub mod pallet {
         ///   1) 使用 `transfer_deceased` 迁移至新的墓位（GRAVE）；
         ///   2) 通过逝者关系（亲友团）将成员关系维护到其他逝者名下；
         /// - 行为：本函数保持签名以兼容旧调用索引，但始终返回 `DeletionForbidden` 错误。
-        #[pallet::call_index(2)]
-        #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::remove())]
-        pub fn remove_deceased(origin: OriginFor<T>, id: T::DeceasedId) -> DispatchResult {
-            let _ = ensure_signed(origin)?;
-            let _ = id;
-            // 始终拒绝删除
-            Err(Error::<T>::DeletionForbidden.into())
-        }
+        // 已禁用：remove_deceased（为合规与审计保全，逝者创建后不可删除）
 
         /// 函数级中文注释：迁移逝者到新的墓位。
         /// - 权限：仅 `owner` 且新墓位需通过 `GraveProvider::can_attach`；
@@ -817,7 +806,7 @@ pub mod pallet {
                     grave_id: TC::GraveId,
                     owner: TC::AccountId,
                     name: BoundedVec<u8, TC::StringLimit>,
-                    bio: BoundedVec<u8, TC::StringLimit>,
+                    // bio 已移除
                     birth_ts: Option<u64>,
                     death_ts: Option<u64>,
                     links: BoundedVec<BoundedVec<u8, TC::StringLimit>, TC::MaxLinks>,
@@ -848,7 +837,7 @@ pub mod pallet {
                         name: old.name,
                         name_badge,
                         gender,
-                        bio: old.bio,
+                        // bio 已移除
                         name_full_cid: None,
                         birth_ts: birth_str,
                         death_ts: death_str,
@@ -872,7 +861,7 @@ pub mod pallet {
                     name: BoundedVec<u8, TC::StringLimit>,
                     name_badge: BoundedVec<u8, TC::StringLimit>,
                     gender: super::Gender,
-                    bio: BoundedVec<u8, TC::StringLimit>,
+                    // bio 已移除
                     birth_ts: Option<BoundedVec<u8, TC::StringLimit>>,
                     death_ts: Option<BoundedVec<u8, TC::StringLimit>>,
                     deceased_token: BoundedVec<u8, TC::TokenLimit>,
@@ -889,7 +878,7 @@ pub mod pallet {
                         name: old.name,
                         name_badge: old.name_badge,
                         gender: old.gender,
-                        bio: old.bio,
+                        // bio 已移除
                         name_full_cid: None,
                         birth_ts: old.birth_ts,
                         death_ts: old.death_ts,
