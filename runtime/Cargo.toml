@@ -35,7 +35,6 @@ pallet-arbitration = { path = "../pallets/arbitration", default-features = false
 pallet-memo-park = { path = "../pallets/memo-park", default-features = false }
 pallet-memo-grave = { path = "../pallets/memo-grave", default-features = false }
 pallet-ledger = { path = "../pallets/ledger", default-features = false }
-pallet-grave-guestbook = { path = "../pallets/grave-guestbook", default-features = false }
 pallet-deceased = { path = "../pallets/deceased", default-features = false }
 pallet-deceased-data = { path = "../pallets/deceased-data", default-features = false }
 pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }
@@ -101,7 +100,6 @@ std = [
 	"pallet-memo-park/std",
 	"pallet-memo-grave/std",
 	"pallet-ledger/std",
-	"pallet-grave-guestbook/std",
 	"pallet-deceased/std",
 	"pallet-deceased-data/std",
 	"pallet-memo-offerings/std",

@@ -205,7 +205,7 @@ async function resolveDeceasedMediaSection(api: any): Promise<string> {
 
 /**
  * 函数级详细中文注释：构建 deceased-data 治理动作的通用预映像（按 method 透传）
- * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveMedia | govSetAlbumMeta
+ * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveData | govSetAlbumMeta
  * - args: 对应上述方法的参数数组
  */
 export async function buildDeceasedMediaGovPreimage(method: string, args: any[]): Promise<{ hex: string; hash: string }>{
@@ -228,13 +228,13 @@ export async function buildMediaGovReplaceMediaUri(mediaId: number, newUri: stri
   return buildDeceasedMediaGovPreimage('govReplaceMediaUri', [mediaId, newUri])
 }
 export async function buildMediaGovRemoveMedia(mediaId: number) {
-  return buildDeceasedMediaGovPreimage('govRemoveMedia', [mediaId])
+  return buildDeceasedMediaGovPreimage('govRemoveData', [mediaId])
 }
 
 /**
  * 函数级详细中文注释：deceased-data 申诉与裁决预映像构建辅助
- * - complain_album(albumId) / complain_media(mediaId)
- * - gov_resolve_album_complaint(albumId, uphold) / gov_resolve_media_complaint(mediaId, uphold)
+ * - complain_album(albumId) / complain_data(mediaId)
+ * - gov_resolve_album_complaint(albumId, uphold) / gov_resolve_data_complaint(mediaId, uphold)
  */
 export async function buildMediaComplainAlbum(albumId: number) {
   const api = await getApi()
@@ -244,13 +244,13 @@ export async function buildMediaComplainAlbum(albumId: number) {
 export async function buildMediaComplainMedia(mediaId: number) {
   const api = await getApi()
   const section = await resolveDeceasedMediaSection(api)
-  return buildCallPreimageHex(section, 'complainMedia', [mediaId])
+  return buildCallPreimageHex(section, 'complainData', [mediaId])
 }
 export async function buildMediaGovResolveAlbumComplaint(albumId: number, uphold: boolean) {
   return buildDeceasedMediaGovPreimage('govResolveAlbumComplaint', [albumId, uphold])
 }
 export async function buildMediaGovResolveMediaComplaint(mediaId: number, uphold: boolean) {
-  return buildDeceasedMediaGovPreimage('govResolveMediaComplaint', [mediaId, uphold])
+  return buildDeceasedMediaGovPreimage('govResolveDataComplaint', [mediaId, uphold])
 }
 
 /**
@@ -668,20 +668,20 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
       if (method === 'govReplaceMediaUri') {
         return `deceased-data.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
       }
-      if (method === 'govRemoveMedia') {
-        return `deceased-data.govRemoveMedia → 移除媒体 ${args[0]}`
+      if (method === 'govRemoveData') {
+        return `deceased-data.govRemoveData → 移除媒体 ${args[0]}`
       }
       if (method === 'complainAlbum') {
         return `deceased-data.complainAlbum → 申诉相册 ${args[0]}`
       }
-      if (method === 'complainMedia') {
-        return `deceased-data.complainMedia → 申诉媒体 ${args[0]}`
+      if (method === 'complainData') {
+        return `deceased-data.complainData → 申诉媒体 ${args[0]}`
       }
       if (method === 'govResolveAlbumComplaint') {
         return `deceased-data.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
-      if (method === 'govResolveMediaComplaint') {
-        return `deceased-data.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+      if (method === 'govResolveDataComplaint') {
+        return `deceased-data.govResolveDataComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
     }
     if (section === 'treasury' && (method === 'spend' || method === 'proposeSpend')) {

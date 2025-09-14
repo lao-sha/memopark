@@ -140,6 +140,7 @@ parameter_types! {
     pub const MediaAlbumDeposit: Balance = 20_000_000_000_000;
     /// 媒体押金（示例：0.005 UNIT）。
     pub const MediaMediaDeposit: Balance = 5_000_000_000_000;
+    pub const DataMediaDeposit: Balance = 5_000_000_000_000;
     /// 创建相册小额手续费（示例：0.001 UNIT）。
     pub const MediaCreateFee: Balance = 1_000_000_000_000;
     /// 投诉观察/成熟期：365 天。直接复用 DAYS 常量，避免类型不匹配。
@@ -386,13 +387,16 @@ impl pallet_deceased::Config for Runtime {
 
 // ===== deceased-data 配置 =====
 parameter_types! {
-    pub const MediaMaxAlbumsPerDeceased: u32 = 64;
-    pub const MediaMaxVideoSetsPerDeceased: u32 = 64;
-    pub const MediaMaxVideoCollectionsPerDeceased: u32 = 64;
-    pub const MediaMaxMediaPerAlbum: u32 = 256;
-    pub const MediaStringLimit: u32 = 512;
-    pub const MediaMaxTags: u32 = 16;
-    pub const MediaMaxReorderBatch: u32 = 100;
+    pub const DataMaxAlbumsPerDeceased: u32 = 64;
+    pub const DataMaxVideoCollectionsPerDeceased: u32 = 64;
+    pub const DataMaxPhotosPerAlbum: u32 = 256;
+    pub const DataStringLimit: u32 = 512;
+    pub const DataMaxTags: u32 = 16;
+    pub const DataMaxReorderBatch: u32 = 100;
+    /// 函数级中文注释：每位逝者最多留言条数（Message 未分类，按逝者维度索引）
+    pub const DataMaxMessagesPerDeceased: u32 = 10_000;
+    /// 函数级中文注释：每位逝者最多悼词条数（Eulogy 未分类，按逝者维度索引）
+    pub const DataMaxEulogiesPerDeceased: u32 = 10_000;
 }
 
 /// 函数级中文注释：逝者访问适配器，实现 `DeceasedAccess`，以 `pallet-deceased` 为后端。
@@ -438,14 +442,16 @@ impl pallet_deceased_data::Config for Runtime {
     type DeceasedId = u64;
     type AlbumId = u64;
     type VideoCollectionId = u64;
-    type MediaId = u64;
-    type MaxAlbumsPerDeceased = MediaMaxAlbumsPerDeceased;
-    type MaxVideoCollectionsPerDeceased = MediaMaxVideoCollectionsPerDeceased;
-    type MaxMediaPerAlbum = MediaMaxMediaPerAlbum;
-    type StringLimit = MediaStringLimit;
-    type MaxTags = MediaMaxTags;
-    type MaxReorderBatch = MediaMaxReorderBatch;
+    type DataId = u64;
+    type MaxAlbumsPerDeceased = DataMaxAlbumsPerDeceased;
+    type MaxVideoCollectionsPerDeceased = DataMaxVideoCollectionsPerDeceased;
+    type MaxPhotoPerAlbum = DataMaxPhotosPerAlbum;
+    type StringLimit = DataStringLimit;
+    type MaxTags = DataMaxTags;
+    type MaxReorderBatch = DataMaxReorderBatch;
     type MaxTokenLen = GraveMaxCidLen;
+    type MaxMessagesPerDeceased = DataMaxMessagesPerDeceased;
+    type MaxEulogiesPerDeceased = DataMaxEulogiesPerDeceased;
     type DeceasedProvider = DeceasedProviderAdapter;
     type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
     /// 函数级中文注释：治理起源绑定为 Root 或 内容治理签名账户（过渡期双通道）。
@@ -458,9 +464,9 @@ impl pallet_deceased_data::Config for Runtime {
     /// 函数级中文注释：相册与媒体押金、小额创建费常量。
     type AlbumDeposit = MediaAlbumDeposit;
     type VideoCollectionDeposit = MediaAlbumDeposit;
-    type MediaDeposit = MediaMediaDeposit;
-    /// 函数级中文注释：申诉押金常量（示例：与 MediaDeposit 一致）。
-    type ComplaintDeposit = MediaMediaDeposit;
+    type DataDeposit = DataMediaDeposit;
+    /// 函数级中文注释：申诉押金常量（示例：与 DataDeposit 一致）。
+    type ComplaintDeposit = DataMediaDeposit;
     type CreateFee = MediaCreateFee;
     /// 函数级中文注释：费用接收账户绑定为国库 PalletId 派生地址。
     type FeeCollector = TreasuryAccount;
@@ -524,54 +530,6 @@ impl pallet_ledger::Config for Runtime {
     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
 }
 
-// ===== grave-guestbook 配置 =====
-parameter_types! {
-    pub const GuestbookStringLimit: u32 = 512;
-    pub const GuestbookMaxMessageLen: u32 = 512;
-    pub const GuestbookMaxAttachmentsPerMessage: u32 = 4;
-    pub const GuestbookMaxRecentPerGrave: u32 = 200;
-    pub const GuestbookMaxRelatives: u32 = 64;
-    pub const GuestbookMaxModerators: u32 = 16;
-    pub const GuestbookMinPostBlocksPerAccount: u32 = 30;
-}
-
-pub struct GraveAccessAdapter;
-impl pallet_grave_guestbook::GraveAccess<RuntimeOrigin, AccountId, u64> for GraveAccessAdapter {
-    /// 检查墓主或园区管理员：若非墓主，则要求园区管理员权限（沿用你们 RootOnlyParkAdmin 并可扩展）
-    fn ensure_owner_or_admin(grave_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
-        if let Some(g) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
-            if let Ok(who) = frame_system::ensure_signed(origin.clone()) {
-                if who == g.owner { return Ok(()); }
-            }
-            if let Some(pid) = g.park_id {
-                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin)
-            } else { Err(sp_runtime::DispatchError::Other("NoPark")) }
-        } else {
-            Err(sp_runtime::DispatchError::Other("GraveNotFound"))
-        }
-    }
-    fn grave_exists(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id) }
-    /// 成员判定
-    fn is_member(grave_id: u64, who: &AccountId) -> bool { pallet_memo_grave::pallet::Members::<Runtime>::contains_key(grave_id, who) }
-    /// 公共留言：取 is_public
-    fn is_public_guestbook(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.is_public).unwrap_or(false) }
-    /// 公共扫墓：取 is_public
-    fn is_public_sweep(grave_id: u64) -> bool { pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.is_public).unwrap_or(false) }
-}
-
-impl pallet_grave_guestbook::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type GraveId = u64;
-    type MessageId = u64;
-    type StringLimit = GuestbookStringLimit;
-    type MaxMessageLen = GuestbookMaxMessageLen;
-    type MaxAttachmentsPerMessage = GuestbookMaxAttachmentsPerMessage;
-    type MaxRecentPerGrave = GuestbookMaxRecentPerGrave;
-    type MaxRelatives = GuestbookMaxRelatives;
-    type MaxModerators = GuestbookMaxModerators;
-    type MinPostBlocksPerAccount = GuestbookMinPostBlocksPerAccount;
-    type GraveProvider = GraveAccessAdapter;
-}
 
 parameter_types! {
     pub const OfferMaxCidLen: u32 = 64;
