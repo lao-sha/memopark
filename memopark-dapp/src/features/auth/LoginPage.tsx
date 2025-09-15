@@ -4,10 +4,11 @@ import { decryptWithPassword, loadLocalKeystore } from '../../lib/keystore'
 import { deriveAddressFromMnemonic } from '../../lib/keystore'
 import { sessionManager } from '../../lib/sessionManager'
 import { useWallet } from '../../providers/WalletProvider'
-import { exportKeystoreJson, importKeystoreJson, loadAllKeystores, setCurrentAddress, getCurrentAddress, exportKeystoreJsonForAddress } from '../../lib/keystore'
+import { exportKeystoreJson, importKeystoreJson, loadAllKeystores, setCurrentAddress, getCurrentAddress, exportKeystoreJsonForAddress, removeKeystore, getAlias, setAlias } from '../../lib/keystore'
 import { encryptWithPassword, upsertKeystore } from '../../lib/keystore'
 import { mnemonicValidate } from '@polkadot/util-crypto'
 import { queryFreeBalance } from '../../lib/polkadot-safe'
+// 已在上方导入 sessionManager，避免重复导入
 
 /**
  * 函数级详细中文注释：登录页
@@ -157,11 +158,40 @@ const LoginPage: React.FC<{ onSuccess?: (address: string) => void; onNavigateCre
                 {balance && <Typography.Text style={{ marginLeft: 8 }}>余额：{balance}</Typography.Text>}
               </div>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                {keystores.map((it)=> (
-                  <Button key={it.address} size="small" type={currentAddr===it.address?'primary':'default'} onClick={()=>{ setCurrentAddress(it.address); setCurrentAddr(it.address); }}>
-                    {it.address.slice(0,6)}…{it.address.slice(-4)}
-                  </Button>
-                ))}
+                {keystores.map((it)=> {
+                  const alias = getAlias(it.address)
+                  return (
+                    <div key={it.address} style={{ display:'inline-flex', alignItems:'center', gap:6, border:'1px solid #eee', padding:'2px 6px', borderRadius:6 }}>
+                      <Button size="small" type={currentAddr===it.address?'primary':'default'} onClick={()=>{ setCurrentAddress(it.address); setCurrentAddr(it.address); }}>
+                        {alias ? `${alias} · ${it.address.slice(0,6)}…` : `${it.address.slice(0,6)}…`}
+                      </Button>
+                      <Button size="small" onClick={() => {
+                        const v = prompt('设置别名（留空清除）：', alias || '')
+                        if (v !== null) { setAlias(it.address, (v || '').trim()); }
+                      }}>重命名</Button>
+                      <Button size="small" onClick={()=>{ exportKeystoreJsonForAddress(it.address) }}>
+                        备份
+                      </Button>
+                      <Button size="small" danger onClick={()=>{
+                        if (confirm('确定要删除该钱包吗？将仅删除本地 keystore，操作不可撤销。建议先点“备份”。')) {
+                          removeKeystore(it.address)
+                          // 若删除的是当前账户，先清空会话
+                          try {
+                            const cur = getCurrentAddress()
+                            if (!cur || cur === it.address) {
+                              sessionManager.clearSession()
+                            }
+                          } catch {}
+                          const list = loadAllKeystores().map(x=>({ address: x.address, createdAt: x.createdAt }))
+                          setKeystores(list)
+                          const cur = getCurrentAddress()
+                          setCurrentAddr(cur)
+                          try { window.dispatchEvent(new Event('mp.accountsUpdate')) } catch {}
+                        }
+                      }}>删除</Button>
+                    </div>
+                  )
+                })}
               </div>
             </Space>
           </Card>

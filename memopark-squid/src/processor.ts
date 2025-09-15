@@ -1,7 +1,7 @@
 // @ts-nocheck
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {SubstrateBatchProcessor} from '@subsquid/substrate-processor'
-import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot} from './model'
+import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot, OfferingPauseEvent, OfferingBySacrifice} from './model'
 
 const processor = new SubstrateBatchProcessor()
   .setDataSource({
@@ -82,6 +82,25 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         continue
       }
 
+      // 目录下单事件
+      if (name?.endsWith('memo_offerings.OfferingCommittedBySacrifice')) {
+        const ev: any = i.event
+        const {id, target, sacrifice_id, who, amount, duration_weeks, block} = ev.args
+        const createdAt = b.header.height
+        await ctx.store.save(new OfferingBySacrifice({
+          id: id.toString(),
+          targetDomain: Number(target[0]),
+          targetId: BigInt(target[1]),
+          sacrificeId: BigInt(sacrifice_id),
+          who: who.toString(),
+          amount: BigInt(amount||0),
+          durationWeeks: duration_weeks == null ? null : Number(duration_weeks),
+          block: Number(block),
+        }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingCommittedBySacrifice', refId: id.toString(), actor: who.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ sacrificeId: sacrifice_id.toString() }) }))
+        continue
+      }
+
       // ===== Offering price snapshots（价格时间轴）
       if (name?.endsWith('memo_offerings.OfferingPriceUpdated')) {
         const ev: any = i.event
@@ -91,6 +110,22 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const up = (unit_price_per_week === null || unit_price_per_week === undefined) ? null : BigInt(unit_price_per_week)
         await ctx.store.save(new OfferingPriceSnapshot({ id: `${kind_code}-${createdAt}`, kindCode: Number(kind_code), fixedPrice: fp, unitPricePerWeek: up, block: createdAt }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingPriceUpdated', refId: String(kind_code), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ fixed: fixed_price ?? null, unit: unit_price_per_week ?? null }) }))
+        continue
+      }
+
+      // 暂停事件
+      if (name?.endsWith('memo_offerings.PausedGlobalSet')) {
+        const ev: any = i.event
+        const {paused} = ev.args
+        await ctx.store.save(new OfferingPauseEvent({ id: `G-${b.header.height}-${i.idx}`, scope: 'Global', domain: null, paused: Boolean(paused), block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'PausedGlobalSet', refId: null, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ paused: Boolean(paused) }) }))
+        continue
+      }
+      if (name?.endsWith('memo_offerings.PausedDomainSet')) {
+        const ev: any = i.event
+        const {domain, paused} = ev.args
+        await ctx.store.save(new OfferingPauseEvent({ id: `D-${domain}-${b.header.height}-${i.idx}`, scope: 'Domain', domain: Number(domain), paused: Boolean(paused), block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'PausedDomainSet', refId: String(domain), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ domain: Number(domain), paused: Boolean(paused) }) }))
         continue
       }
 

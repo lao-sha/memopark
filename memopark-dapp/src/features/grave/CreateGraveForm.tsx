@@ -1,232 +1,230 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Form, Input, InputNumber, Button, Typography, Alert, Space, Divider, message, Modal, Skeleton } from 'antd'
+import React from 'react'
+import { Alert, Button, Form, Input, InputNumber, Space, Typography, message, Divider, Modal } from 'antd'
+import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
-import { getCurrentAddress } from '../../lib/keystore'
-import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
+import { signAndSendLocalFromKeystore, signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
+import { mapDispatchErrorMessage } from '../../lib/errors'
 
 /**
- * 函数级详细中文注释：创建墓地（Grave）表单
- * - 依赖 memoGrave.createGrave(park_id: u32, kind: u8, visibility_bits: u32, slug: Vec<u8>)
- * - 仅演示：slug 从 name 简单生成（小写+连字符），visibility 由复选框合并位
+ * 函数级详细中文注释：创建墓地表单（支持可选园区，名称使用明文字节上链）
+ * - 与后端 `pallet-memo-grave::create_grave(park_id?: Option<u64>, name: BoundedVec<u8>)` 对齐
+ * - 名称使用明文（UTF-8 编码）直接作为字节写入链上 `name`
+ * - 费用：展示 `CreateFee`（一次性协议费）与交易费提示
+ * - 提醒：名称为公开数据，请勿填写敏感隐私
  */
 const CreateGraveForm: React.FC = () => {
-  const [decimals, setDecimals] = useState<number>(12)
-  const [symbol, setSymbol] = useState<string>('UNIT')
-  const [error, setError] = useState<string>('')
-  const [hash, setHash] = useState<string>('')
-  const [submitting, setSubmitting] = useState(false)
-  const [createFee, setCreateFee] = useState<bigint>(0n)
-  const [txFee, setTxFee] = useState<bigint>(0n)
-  const [feeLoading, setFeeLoading] = useState<boolean>(false)
   const [form] = Form.useForm()
-
-  useEffect(()=>{ (async()=>{ try{ const api = await getApi(); setDecimals(api.registry.chainDecimals?.[0]??12); setSymbol((api.registry.chainTokens?.[0] as string)||'UNIT') }catch{}})() },[])
-
-  const pwdOpenRef = useRef<{ resolve?: (v: string)=>void; reject?: (e: any)=>void }>({})
-  const [pwdOpen, setPwdOpen] = useState(false)
-  const [pwdVal, setPwdVal] = useState('')
-  const waitPassword = () => new Promise<string>((resolve, reject) => { pwdOpenRef.current.resolve=resolve; pwdOpenRef.current.reject=reject; setPwdVal(''); setPwdOpen(true) })
-
-  // 允许中文：按照 UTF-8 字节长度限制截断，不做 ASCII 转换
-  const MAX_SLUG_BYTES = 10
-  const encodeUtf8BytesLimited = (text: string, limit: number): number[] => {
-    const enc = new TextEncoder()
-    const out: number[] = []
-    let used = 0
-    for (const ch of text.trim()) {
-      const bytes = Array.from(enc.encode(ch))
-      if (used + bytes.length > limit) break
-      out.push(...bytes)
-      used += bytes.length
-    }
-    return out
-  }
-
-  const onSubmit = async (v: any) => {
-    setError(''); setHash(''); setSubmitting(true)
-    try{
-      const parkId = Number(v.park_id || 0)
-      const kind = Number(v.kind || 0)
-      const vis = Number(v.visibility || 0)
-      const name = String(v.name || '')
-      const slug = encodeUtf8BytesLimited(name, MAX_SLUG_BYTES)
-      if (slug.length === 0) throw new Error('请填写名称')
-      // 动态解析 section：兼容 runtime 重命名（例如 MemoGrave -> Grave）
-      const api = await getApi()
-      const sections = Object.keys((api.tx as any) || {})
-      const candidates = ['memoGrave','grave','memo_grave']
-      let section: string | null = null
-      for (const s of [...candidates, ...sections]) {
-        const mod = (api.tx as any)[s]
-        if (mod && typeof mod.createGrave === 'function') { section = s; break }
-      }
-      if (!section) {
-        console.error('未找到包含 createGrave 的模块。可用模块：', sections)
-        throw new Error('链上未找到 memoGrave.createGrave（或 Grave.createGrave）。请确认 runtime 导出的模块名。')
-      }
-      const pwd = await waitPassword()
-      const txHash = await signAndSendLocalWithPassword(section,'createGrave',[parkId, kind, vis, slug], pwd)
-      setHash(txHash)
-      message.success('已提交创建墓地')
-      form.resetFields()
-      window.dispatchEvent(new Event('mp.refreshBalances'))
-    }catch(e:any){
-      if (e?.message === 'USER_CANCELLED') message.info('已取消签名')
-      else setError(e?.message || '提交失败')
-    }finally{ setSubmitting(false) }
-  }
+  const [loading, setLoading] = React.useState(false)
+  const [maxCidLen, setMaxCidLen] = React.useState<number>(0)
+  const [createFee, setCreateFee] = React.useState<string>('0')
+  const [tokenSymbol, setTokenSymbol] = React.useState<string>('MEMO')
+  const [decimals, setDecimals] = React.useState<number>(12)
+  const [pwdOpen, setPwdOpen] = React.useState(false)
+  const [pwdVal, setPwdVal] = React.useState('')
+  const [confirmLoading, setConfirmLoading] = React.useState(false)
+  const txCtxRef = React.useRef<{ section: string; args: any[] } | null>(null)
 
   /**
-   * 函数级详细中文注释：从链上常量读取“创建费（CreateFee）”。
-   * - 适配可能的模块命名：memoGrave / grave / memo_grave；
-   * - 常量命名采用 JS API 驼峰：createFee；若不存在则回退为 0；
-   * - 返回 bigint，便于结合 decimals 格式化显示。
+   * 函数级中文注释：组件挂载时读取链上常量（MaxCidLen、CreateFee）与代币精度信息
    */
-  const fetchCreateFee = async (): Promise<bigint> => {
-    try {
-      const api = await getApi()
-      const sections = Object.keys((api.consts as any) || {})
-      const candidates = ['memoGrave', 'grave', 'memo_grave', ...sections]
-      for (const s of candidates) {
-        const mod = (api.consts as any)[s]
-        if (mod && (mod as any).createFee) {
-          const v = (mod as any).createFee.toString()
-          return BigInt(v)
-        }
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const api = await getApi()
+        const sym = (api.registry.chainTokens?.[0] as string) || 'MEMO'
+        const dec = api.registry.chainDecimals?.[0] ?? 12
+        const feeConst: any = (api.consts as any)?.memoGrave?.createFee
+        const maxLenConst: any = (api.consts as any)?.memoGrave?.maxCidLen
+        const feeStr = feeConst ? feeConst.toString() : '0'
+        const maxLen = maxLenConst ? Number(maxLenConst.toString()) : 0
+        if (!mounted) return
+        setTokenSymbol(sym)
+        setDecimals(dec)
+        setCreateFee(feeStr)
+        setMaxCidLen(maxLen)
+      } catch (e) {
+        // 忽略：链未连上时仍可渲染表单
       }
-    } catch {}
-    return 0n
-  }
+    })()
+    return () => { mounted = false }
+  }, [])
 
   /**
-   * 函数级详细中文注释：估算“创建墓地”交易的链上交易费（不含创建费）。
-   * - 动态探测 createGrave 的参数签名：如果是 (Option<u64>, Bytes) 则按新接口组参；
-   *   若为旧接口 (parkId, kind, visBits, slugBytes) 则按旧逻辑组参；
-   * - 使用 paymentInfo(current) 估算 partialFee；失败则返回 0。
+   * 函数级中文注释：格式化链上最小单位余额为人类可读字符串
    */
-  const estimateCreateTxFee = async (formVals: any): Promise<bigint> => {
+  const formatAmount = React.useCallback((amount: string, dec: number) => {
     try {
-      const api = await getApi()
-      const sections = Object.keys((api.tx as any) || {})
-      const candidates = ['memoGrave','grave','memo_grave', ...sections]
-      let section: string | null = null
-      for (const s of candidates) {
-        const mod = (api.tx as any)[s]
-        if (mod && typeof mod.createGrave === 'function') { section = s; break }
-      }
-      if (!section) return 0n
-      const metaArgs = ((api.tx as any)[section].createGrave as any).meta?.args || []
-      const name: string = String(formVals?.name || '')
-      const parkIdNum = formVals?.park_id === undefined || formVals?.park_id === null || formVals?.park_id === '' ? null : Number(formVals.park_id)
-      let args: any[] = []
-      if (metaArgs.length === 2) {
-        // 新接口：(Option<u64>, Bytes)
-        args = [parkIdNum === null ? null : parkIdNum, name]
-      } else if (metaArgs.length === 4) {
-        // 旧接口：(park_id, kind, visibility_bits, slug)
-        const kind = Number(formVals?.kind || 0)
-        const vis = Number(formVals?.visibility || 0)
-        const MAX_SLUG_BYTES = 10
-        const slug = encodeUtf8BytesLimited(name, MAX_SLUG_BYTES)
-        args = [Number(parkIdNum || 0), kind, vis, slug]
-      } else {
-        return 0n
-      }
-      const who = getCurrentAddress()
-      if (!who) return 0n
-      const info = await (api.tx as any)[section].createGrave(...args).paymentInfo(who)
-      return BigInt(info?.partialFee?.toString?.() || '0')
+      const num = BigInt(amount)
+      const base = BigInt(10) ** BigInt(dec)
+      const whole = num / base
+      const frac = num % base
+      if (frac === 0n) return whole.toString()
+      const fracStr = frac.toString().padStart(dec, '0').replace(/0+$/, '')
+      return fracStr ? `${whole}.${fracStr}` : whole.toString()
     } catch {
-      return 0n
+      return '0'
     }
-  }
+  }, [])
 
   /**
-   * 函数级详细中文注释：根据 decimals 格式化余额（bigint）为人类可读字符串。
-   * - 使用字符串除法避免精度丢失；
-   * - 最多保留 4 位小数，去除尾随 0。
+   * 函数级详细中文注释：提交创建交易（名称明文）
+   * - 校验 park_id (可选) 与 name_plain（必填，按 UTF-8 字节长度 ≤ MaxCidLen）
+   * - 使用本地 keystore 进行 sr25519 签名并提交 `memoGrave.createGrave`
+   * - 交互优化：采用本地弹窗采集密码，避免浏览器拦截；签名成功后引导跳转“我的墓地”。
    */
-  const formatBalance = (v: bigint): string => {
-    const d = BigInt(decimals || 12)
-    const base = 10n ** d
-    const i = v / base
-    const r = v % base
-    if (r === 0n) return `${i.toString()} ${symbol}`
-    const fracRaw = (base + r).toString().slice(1) // 左填充
-    const frac = fracRaw.slice(0, 4).replace(/0+$/,'') || '0'
-    return `${i.toString()}.${frac} ${symbol}`
-  }
+  const onFinish = React.useCallback(async (values: any) => {
+    try {
+      setLoading(true)
+      const parkIdInput = values.park_id
+      const namePlain: string = (values.name_plain || '').trim()
+      if (!namePlain) { setLoading(false); return message.warning('请填写名称（明文）') }
+      const nameBytes = Array.from(new TextEncoder().encode(namePlain))
+      if (maxCidLen && nameBytes.length > maxCidLen) {
+        setLoading(false)
+        return message.warning(`名称字节长度超限（${nameBytes.length}/${maxCidLen}）`)
+      }
+      const parkIdOpt = (parkIdInput === null || parkIdInput === undefined || parkIdInput === '') ? null : Number(parkIdInput)
+      // 动态解析 section 名称，兼容 memoGrave/memo_grave/grave
+      let section = 'memoGrave'
+      try {
+        const api = await getApi()
+        const txRoot: any = api.tx as any
+        const candidates = ['memoGrave', 'memo_grave', 'grave', ...Object.keys(txRoot)]
+        for (const s of candidates) {
+          const m = txRoot[s]
+          if (m && typeof m.createGrave === 'function') { section = s; break }
+        }
+      } catch {}
+      const args: any[] = [ parkIdOpt, nameBytes ]
+      // 打开密码弹窗，避免浏览器拦截 prompt 导致“无反馈”
+      txCtxRef.current = { section, args }
+      setPwdVal('')
+      setPwdOpen(true)
+    } catch (e: any) {
+      // 边界提示优化：
+      // - 无本地钱包：提示跳转创建钱包页
+      // - 网络/节点断开：提示检查节点或重试
+      const msg = mapDispatchErrorMessage(e, '提交失败')
+      if (/未找到本地钱包/.test(msg)) {
+        Modal.confirm({
+          title: '未发现本地钱包',
+          content: '请先创建或导入钱包后再试。',
+          okText: '去创建/导入',
+          cancelText: '取消',
+          onOk: () => { try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })) } catch {} }
+        })
+      } else {
+        message.error(msg)
+      }
+    } finally {
+      // 关闭 loading 在密码确认流程结束后处理
+    }
+  }, [form, maxCidLen])
 
-  useEffect(()=>{ (async()=>{
-    setFeeLoading(true)
-    try{
-      const [cf, tf] = await Promise.all([
-        fetchCreateFee(),
-        estimateCreateTxFee(form.getFieldsValue())
-      ])
-      setCreateFee(cf)
-      setTxFee(tf)
-    } finally { setFeeLoading(false) }
-  })() },[decimals])
-
-  const onValuesChange = async (_: any, allValues: any) => {
-    setFeeLoading(true)
-    try { setTxFee(await estimateCreateTxFee(allValues)) } finally { setFeeLoading(false) }
-  }
+  const onConfirmPassword = React.useCallback(async () => {
+    if (!txCtxRef.current) { setPwdOpen(false); setLoading(false); return }
+    if (!pwdVal || pwdVal.length < 8) { return message.warning('请输入至少 8 位签名密码') }
+    const { section, args } = txCtxRef.current
+    const key = 'tx-create-grave'
+    try {
+      setConfirmLoading(true)
+      message.loading({ key, content: '正在提交交易…' })
+      const timeoutId = setTimeout(() => {
+        message.loading({ key, content: '连接节点较慢，仍在等待…' })
+      }, 8000)
+      const txHash = await signAndSendLocalWithPassword(section, 'createGrave', args, pwdVal)
+      clearTimeout(timeoutId)
+      message.success({ key, content: `已提交创建墓地：${txHash}` })
+      setPwdOpen(false)
+      form.resetFields()
+      try { window.dispatchEvent(new Event('mp.txUpdate')) } catch {}
+      // 成功后自动跳转“我的墓地”，便于继续下一步操作
+      try { setTimeout(() => { window.location.hash = '#/grave/my' }, 500) } catch {}
+    } catch (e: any) {
+      const msg = mapDispatchErrorMessage(e, '提交失败')
+      if (/密码|password/i.test(String(e?.message||''))) {
+        message.error({ key, content: '密码错误或解密失败，请重试' })
+      } else if (/未找到本地钱包/.test(msg)) {
+        message.destroy(key)
+        Modal.confirm({
+          title: '未发现本地钱包',
+          content: '请先创建或导入钱包后再试。',
+          okText: '去创建/导入',
+          cancelText: '取消',
+          onOk: () => { try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })) } catch {} }
+        })
+      } else {
+        message.error({ key, content: msg })
+      }
+    } finally {
+      setConfirmLoading(false)
+      setLoading(false)
+    }
+  }, [pwdVal, form])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
-      <Card title="创建墓地">
-        {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={error} />}
-        {hash && <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已提交：${hash}`} />}
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message={
-            feeLoading
-              ? <Skeleton active paragraph={false} title={{ width: 280 }} />
-              : <span>本次创建需支付：创建费 {formatBalance(createFee)} + 预计交易费 ≈ {formatBalance(txFee)}</span>
-          }
-        />
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="重要提示：逝者创建成功后不可删除。如需调整，请使用迁移至新墓位（transfer_deceased）或通过关系功能加入亲友团。" />
-        <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ kind: 0, visibility: 0 }} onValuesChange={onValuesChange}>
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="逝者姓名或墓地标题" />
+    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
+      {/* 顶部标题栏 */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: '#fff', padding: '8px 8px 0 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button onClick={()=> window.history.back()} style={{ border: '1px solid #eee', padding: '4px 10px', borderRadius: 8 }}>返回</button>
+          <Typography.Title level={4} style={{ margin: 0 }}>创建墓地</Typography.Title>
+          <EllipsisOutlined style={{ fontSize: 20, color: '#333' }} />
+        </div>
+      </div>
+
+      <div style={{ padding: 12 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Alert
+            type="info"
+            showIcon
+            message="提示"
+            description="名称为公开数据，前端将以 UTF-8 明文字节直接上链，请勿填写敏感隐私。"
+          />
+          <Alert
+            type="warning"
+            showIcon
+            message="费用提示"
+            description={`将收取一次性创建费 ${formatAmount(createFee, decimals)} ${tokenSymbol}（以及链上交易费）`}
+          />
+        </Space>
+
+        <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 12 }}>
+          <Form.Item name="park_id" label="园区ID（可选）">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="留空表示暂不隶属园区" />
           </Form.Item>
-          <Form.Item label="园区ID(可选)" name="park_id">
-            <InputNumber min={0} style={{ width: '100%' }} />
+          <Form.Item name="name_plain" label={`名称（明文，UTF-8 ≤ ${maxCidLen || '未知'} 字节）`} rules={[{ required: true, message: '请填写名称（明文）' }]}>
+            <Input placeholder="请输入墓地名称（明文）" size="large" />
           </Form.Item>
-          <Form.Item label="类型(kind)" name="kind">
-            <InputNumber min={0} max={255} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="可见性(位掩码)" name="visibility" tooltip="按位组合，如 1=访客可留言, 2=访客可供奉...">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Button type="primary" htmlType="submit" block size="large" loading={submitting}>创建墓地</Button>
-          </Space>
+          <Button type="primary" htmlType="submit" loading={loading} block size="large">创建墓地</Button>
         </Form>
+
         <Modal
           open={pwdOpen}
-          onCancel={()=>{ setPwdOpen(false); pwdOpenRef.current.reject?.(new Error('USER_CANCELLED')) }}
-          onOk={()=>{ if (!pwdVal || pwdVal.length<8){ message.error('密码不足 8 位'); return } setPwdOpen(false); pwdOpenRef.current.resolve?.(pwdVal) }}
-          okText="签名"
-          cancelText="取消"
           title="输入签名密码"
+          onCancel={()=> { setPwdOpen(false); setLoading(false) }}
+          onOk={onConfirmPassword}
+          okText="签名并提交"
+          cancelText="取消"
+          confirmLoading={confirmLoading}
           centered
         >
           <Input.Password placeholder="至少 8 位" value={pwdVal} onChange={e=> setPwdVal(e.target.value)} />
         </Modal>
+
         <Divider />
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          提示：名称支持中文。slug 将由名称按 UTF-8 编码并在 {MAX_SLUG_BYTES} 字节处安全截断；可见性位用于前端/索引层策略展示，链上按位存储。
+        <Typography.Title level={5} style={{ marginTop: 0 }}>使用说明</Typography.Title>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+          1) 名称使用明文，前端按 UTF-8 编码直接上链；2) 可选填写园区 ID；
+          3) 提交后将扣除一次性创建费与交易费；4) 创建成功会自动分配 10 位数字 Slug，供分享与查询使用。
         </Typography.Paragraph>
-      </Card>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          小贴士：若提示“创建费扣款失败”，请检查余额是否足够且账户不低于存在性余额（ED）。
+        </Typography.Paragraph>
+      </div>
     </div>
   )
 }
 
 export default CreateGraveForm
-
-

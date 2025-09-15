@@ -45,11 +45,37 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：祭祀品目录只读接口（由 runtime 提供实现，指向 memo-sacrifice）。
-    /// - spec_of：读取 (fixed_price, unit_price_per_week, enabled, is_vip_exclusive)
+    /// - spec_of：读取 (fixed_price, unit_price_per_week, enabled, is_vip_exclusive, exclusive_subjects)
     /// - can_purchase：校验可购（结合会员态）
+    /// - effect_of：读取可选“消费效果”定义（例如宠物道具效果），由消费侧解释与应用
     pub trait SacrificeCatalog<AccountId, SacrificeId, Balance, BlockNumber> {
         fn spec_of(id: SacrificeId) -> Option<(Option<Balance>, Option<Balance>, bool, bool, alloc::vec::Vec<(u8,u64)>)>;
         fn can_purchase(who: &AccountId, id: SacrificeId, is_vip: bool) -> bool;
+        fn effect_of(id: SacrificeId) -> Option<EffectSpec> { let _ = id; None }
+    }
+
+    /// 函数级中文注释：消费效果定义（跨 Pallet 的低耦合数据契约）。
+    /// - 目录层仅声明效果元数据；具体业务由消费侧解释与应用。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    pub struct EffectSpec {
+        /// 是否为一次性消耗品（true 则消费后不入库，立即生效；false 可由消费侧选择入库）
+        pub consumable: bool,
+        /// 目标域（例如：1=Grave，3=Pet）
+        pub target_domain: u8,
+        /// 效果种类（由消费侧自定义枚举协议）
+        pub effect_kind: u8,
+        /// 效果数值（正负均可）
+        pub effect_value: i32,
+        /// 建议冷却（以“秒/块”为单位，按域约定解释）
+        pub cooldown_secs: u32,
+        /// 是否偏好铸入库存（true 则建议入库，由消费侧决定具体策略）
+        pub inventory_mint: bool,
+    }
+
+    /// 函数级中文注释：消费回调（由 Runtime 注入具体实现，如 memo-pet）。
+    /// - 供奉成交后若存在 EffectSpec 且目标域匹配，则回调应用效果；失败不回滚交易。
+    pub trait EffectConsumer<AccountId> {
+        fn apply(target: (u8, u64), who: &AccountId, effect: &EffectSpec) -> DispatchResult;
     }
 
     // 函数级中文注释：删除证据提供者接口，改为在本 Pallet 内置媒体元数据存储（仅存 CID 与可选承诺）。
@@ -82,6 +108,8 @@ pub mod pallet {
         type DonationResolver: DonationAccountResolver<Self::AccountId>;
         /// 函数级中文注释：目录只读接口（低耦合）。
         type Catalog: SacrificeCatalog<Self::AccountId, u64, u128, BlockNumberFor<Self>>;
+        /// 函数级中文注释：消费回调，由消费侧 Pallet 实现（如 memo-pet）。
+        type Consumer: EffectConsumer<Self::AccountId>;
     }
 
     /// 函数级中文注释：通用余额类型别名，便于在本 Pallet 内部进行从 u128 到链上 Balance 的安全饱和转换。
@@ -150,6 +178,12 @@ pub mod pallet {
     #[pallet::storage] pub type MinOfferAmountParam<T: Config> = StorageValue<_, u128, ValueQuery, DefaultMinOfferAmount<T>>;
     /// 限频计数（账户 -> (窗口起点, 计数)）
     #[pallet::storage] pub type OfferRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+    /// 目标级限频计数（目标 -> (窗口起点, 计数)）
+    #[pallet::storage] pub type OfferRateByTarget<T: Config> = StorageMap<_, Blake2_128Concat, (u8,u64), (BlockNumberFor<T>, u32), ValueQuery>;
+    /// 暂停总开关
+    #[pallet::storage] pub type PausedGlobal<T: Config> = StorageValue<_, bool, ValueQuery>;
+    /// 按域暂停
+    #[pallet::storage] pub type PausedByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, bool, ValueQuery>;
 
     #[pallet::storage]
     pub type Specs<T: Config> = StorageMap<_, Blake2_128Concat, u8, OfferingSpec<T>, OptionQuery>;
@@ -229,6 +263,10 @@ pub mod pallet {
             duration_weeks: Option<u32>,
             block: BlockNumberFor<T>,
         },
+        /// 函数级中文注释：全局暂停状态已更新
+        PausedGlobalSet { paused: bool },
+        /// 函数级中文注释：域暂停状态已更新
+        PausedDomainSet { domain: u8, paused: bool },
     }
 
     #[pallet::error]
@@ -351,6 +389,9 @@ pub mod pallet {
             duration: Option<u32>,
         ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
+            // 暂停检查（全局/按域）
+            ensure!(!PausedGlobal::<T>::get(), Error::<T>::NotAllowed);
+            if PausedByDomain::<T>::get(target.0) { return Err(Error::<T>::NotAllowed.into()); }
             ensure!(Specs::<T>::contains_key(kind_code), Error::<T>::BadKind);
             let spec = Specs::<T>::get(kind_code).ok_or(Error::<T>::BadKind)?;
             ensure!(spec.enabled, Error::<T>::OfferingDisabled);
@@ -358,13 +399,17 @@ pub mod pallet {
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
             // 校验时长策略
             ensure_duration_allowed::<T>(&spec, &duration)?;
-            // 限频：以账户为粒度的滑动窗口
+            // 限频：账户 + 目标 双滑动窗口
             let now = <frame_system::Pallet<T>>::block_number();
             let (win_start, cnt) = OfferRate::<T>::get(&who);
             let window = OfferWindowParam::<T>::get();
             let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
             ensure!(cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
             OfferRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
+            let (t_start, t_cnt) = OfferRateByTarget::<T>::get(target);
+            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window { (now, 0u32) } else { (t_start, t_cnt) };
+            ensure!(t_cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
             // 供奉为付费动作：要求 amount ≥ MinOfferAmount，并完成实际转账
             let amt = amount.ok_or(Error::<T>::AmountRequired)?;
             ensure!(amt >= MinOfferAmountParam::<T>::get(), Error::<T>::AmountTooLow);
@@ -456,6 +501,30 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级中文注释：设置全局暂停（Admin）。
+        /// - paused=true 时，所有 offer/offer_by_sacrifice 调用将被拒绝。
+        #[pallet::call_index(8)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn set_pause_global(origin: OriginFor<T>, paused: bool) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            PausedGlobal::<T>::put(paused);
+            Self::deposit_event(Event::PausedGlobalSet { paused });
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置按域暂停（Admin）。
+        /// - 对应 domain 的供奉调用将被拒绝；不影响其他域。
+        #[pallet::call_index(9)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn set_pause_domain(origin: OriginFor<T>, domain: u8, paused: bool) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            PausedByDomain::<T>::insert(domain, paused);
+            Self::deposit_event(Event::PausedDomainSet { domain, paused });
+            Ok(())
+        }
+
         /// 函数级中文注释：基于祭祀品目录的下单入口（自动读取定价与可购校验）。
         /// - 输入：target 域对象、sacrifice_id、媒体列表（CID+承诺，可空）、可选 duration（周）、是否会员 is_vip；
         /// - 逻辑：读取目录 spec，校验启用与会员限制，计算应付金额（fixed 或 unit×duration），完成转账并落记录。
@@ -471,12 +540,26 @@ pub mod pallet {
             is_vip: bool,
         ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
+            // 暂停检查（全局/按域）
+            ensure!(!PausedGlobal::<T>::get(), Error::<T>::NotAllowed);
+            if PausedByDomain::<T>::get(target.0) { return Err(Error::<T>::NotAllowed.into()); }
             ensure!(T::TargetCtl::exists(target), Error::<T>::TargetNotFound);
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
             let (fixed, unit, enabled, vip_only, exclusive) = T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
             ensure!(enabled, Error::<T>::NotFound);
             ensure!(T::Catalog::can_purchase(&who, sacrifice_id, is_vip), Error::<T>::NotAllowed);
             if !exclusive.is_empty() { ensure!(exclusive.iter().any(|pair| pair.0 == target.0 && pair.1 == target.1), Error::<T>::NotAllowed); }
+            // 限频：账户 + 目标 双滑动窗口
+            let now = <frame_system::Pallet<T>>::block_number();
+            let (win_start, cnt) = OfferRate::<T>::get(&who);
+            let window = OfferWindowParam::<T>::get();
+            let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
+            ensure!(cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            OfferRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
+            let (t_start, t_cnt) = OfferRateByTarget::<T>::get(target);
+            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window { (now, 0u32) } else { (t_start, t_cnt) };
+            ensure!(t_cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
             // 计算应付金额
             let amount: u128 = if let Some(p) = fixed {
                 p
@@ -500,6 +583,12 @@ pub mod pallet {
             OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
             T::OnOffering::on_offering(target, 0, &who, Some(amount), duration_weeks);
             Self::deposit_event(Event::OfferingCommittedBySacrifice { id, target, sacrifice_id, who, amount, duration_weeks, block: now });
+            // 尝试读取消费效果并调用消费侧回调（失败不回滚交易，确保资金路径安全）
+            if let Some(effect) = T::Catalog::effect_of(sacrifice_id) {
+                if effect.target_domain == target.0 {
+                    let _ = T::Consumer::apply(target, &OfferingRecords::<T>::get(id).unwrap().who, &effect);
+                }
+            }
             Ok(())
         }
     }

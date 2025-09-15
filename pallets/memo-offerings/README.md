@@ -22,17 +22,27 @@
   - 读取目录定价与“专属主体”限制；若 `exclusive_subjects` 非空，则仅当 `target` 属于该集合 `(domain,u64)` 之一才允许下单
 - `batch_offer([...])`：批量下单
 - `set_offer_params(offer_window?, offer_max_in_window?, min_offer_amount?)`：治理更新风控
+- `set_pause_global(paused)`：全局暂停供奉
+- `set_pause_domain(domain, paused)`：按域暂停供奉
 
 ## 事件
 - `OfferingCreated/Updated/Enabled`
 - `OfferingPriceUpdated { kind_code, fixed_price, unit_price_per_week }`
 - `OfferingCommitted { id, target, kind_code, who, amount, duration_weeks, block }`
+- `OfferingCommittedBySacrifice { id, target, sacrifice_id, who, amount, duration_weeks, block }`
+- `PausedGlobalSet { paused }` / `PausedDomainSet { domain, paused }`
 
 ## 校验逻辑（要点）
 - Instant：若 `FixedPriceOf` 设置则 `amount==fixed`
 - Timed：若 `UnitPricePerWeekOf` 设置则 `amount==unit×duration` 且 `duration` 在 `[min,max]`
 - 叠加：`amount ≥ MinOfferAmount` 与 `OfferWindow/OfferMaxInWindow` 滑动窗口
+- 目标级限频：`OfferRateByTarget[(domain,id)]` 与账户级并行控制
 - 专属主体校验：当目录项 `exclusive_subjects: Vec<(domain,u64)>` 非空时，要求 `target==(domain,u64)` 命中其一；支持人类逝者域与宠物域
+
+## 与 memo-sacrifice 的集成
+- 通过 `Config::Catalog` 读取目录定价与专属主体集合；
+- 读取 `effect_of(sacrifice_id) -> Option<EffectSpec>`，若存在且 `target_domain` 命中则回调 `Config::Consumer::apply` 应用效果（例如喂宠物道具）；失败不回滚转账；
+- 目录/交易分层与低耦合：目录不执行效果，仅声明元数据；交易完成后由消费侧 Pallet 执行具体效果。
 
 ## 迁移兼容
 - 定价采用独立存储（非内嵌于 Spec），避免对老数据迁移；未设置定价则保持“自由金额（≥MinOfferAmount）”。

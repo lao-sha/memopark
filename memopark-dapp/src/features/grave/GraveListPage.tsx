@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Card, List, Typography, Tag, Space, Input, Button, Pagination, Alert } from 'antd'
+import { Card, List, Typography, Tag, Space, Input, Button, Pagination, Alert, Modal, Select } from 'antd'
 import { getApi } from '../../lib/polkadot-safe'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：墓地列表页面（链上直读）
@@ -13,14 +14,23 @@ const GraveListPage: React.FC = () => {
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(20)
   const [owner, setOwner] = useState<string>('')
+  const [nameKeyword, setNameKeyword] = useState<string>('')
+  const [sortKey, setSortKey] = useState<'id'|'park'|'active'|'public'>('id')
+  const [sortAsc, setSortAsc] = useState<boolean>(true)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
+  const [maxNameLen, setMaxNameLen] = useState<number>(0)
+  const [renameOpen, setRenameOpen] = useState<boolean>(false)
+  const [renameId, setRenameId] = useState<number | null>(null)
+  const [renameVal, setRenameVal] = useState<string>('')
 
   const load = async (p: number, ps: number, ownerFilter: string) => {
     setLoading(true); setError('')
     try {
       const api = await getApi()
       const queryRoot: any = (api.query as any)
+      // 读取常量：MaxCidLen 作为名称最大字节数
+      try { const c: any = (api.consts as any)?.memoGrave?.maxCidLen; if (c) setMaxNameLen(Number(c.toString())) } catch {}
       // 兼容多种命名：memo_grave / memoGrave / grave；若均未命中则尝试模糊匹配
       let q: any = queryRoot.memo_grave || queryRoot.memoGrave || queryRoot.grave
       if (!q) {
@@ -50,6 +60,12 @@ const GraveListPage: React.FC = () => {
               slug = new TextDecoder().decode(u8)
             }
           } catch {}
+          // 读取名称（明文，直接解码 UTF-8）
+          let name: string | undefined = undefined
+          try {
+            const nmU8 = (g.name?.toU8a ? g.name.toU8a() : (g.name?.toJSON ? new Uint8Array(g.name.toJSON()) : undefined)) as Uint8Array | undefined
+            if (nmU8) name = new TextDecoder().decode(nmU8)
+          } catch {}
           // 读取姓名（可选）：从 deceasedByGrave -> deceasedOf[*] 提取 name，最多展示前两位
           let names: string[] = []
           try {
@@ -76,14 +92,23 @@ const GraveListPage: React.FC = () => {
             parkId: g.parkId?.isSome ? g.parkId.unwrap().toNumber() : null,
             kind: g.kindCode?.toNumber ? g.kindCode.toNumber() : Number(g.kind_code ?? g.kindCode ?? 0),
             slug,
+            name,
             names,
           }
         } catch { return null }
       }))
       let list = all.filter(Boolean) as any[]
-      if (ownerFilter) {
-        list = list.filter(it => String(it.owner) === ownerFilter)
-      }
+      if (ownerFilter) list = list.filter(it => String(it.owner) === ownerFilter)
+      if (nameKeyword) list = list.filter(it => (it.name || '').includes(nameKeyword))
+      // 排序
+      list.sort((a,b)=>{
+        const sgn = sortAsc ? 1 : -1
+        if (sortKey === 'id') return sgn*(a.id - b.id)
+        if (sortKey === 'park') return sgn*(((a.parkId??-1) - (b.parkId??-1)))
+        if (sortKey === 'active') return sgn*(((a.active?1:0) - (b.active?1:0)))
+        if (sortKey === 'public') return sgn*(((a.isPublic?1:0) - (b.isPublic?1:0)))
+        return 0
+      })
       // 客户端分页
       const offset = (p - 1) * ps
       setTotal(list.length)
@@ -102,9 +127,13 @@ const GraveListPage: React.FC = () => {
   return (
     <div style={{ maxWidth: 920, margin: '0 auto', padding: 12 }}>
       <Card title="墓地列表（链上直读）" extra={
-        <Space>
+        <Space wrap>
           <Input placeholder="按 owner 过滤 (可选)" value={owner} onChange={e=> setOwner(e.target.value)} allowClear />
-          <Button onClick={onSearch} loading={loading}>查询</Button>
+          <Input placeholder="按名称关键词过滤" value={nameKeyword} onChange={e=> setNameKeyword(e.target.value)} allowClear />
+          <Select size="middle" value={sortKey} onChange={(v)=> setSortKey(v)} style={{ width: 140 }}
+            options={[{value:'id',label:'按ID'},{value:'park',label:'按ParkId'},{value:'active',label:'按Active'},{value:'public',label:'按Public'}]} />
+          <Button onClick={()=> setSortAsc(v=>!v)}>{sortAsc? '升序':'降序'}</Button>
+          <Button type="primary" onClick={onSearch} loading={loading}>查询</Button>
         </Space>
       }>
         {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={error} />}
@@ -116,6 +145,7 @@ const GraveListPage: React.FC = () => {
               <Space direction="vertical" style={{ width:'100%' }}>
                 <Space>
                   <Typography.Text strong>#{it.id}</Typography.Text>
+                  {it.name && <Tag color="green">{it.name}</Tag>}
                   {it.slug && <Tag>{Array.isArray(it.slug)? new TextDecoder().decode(new Uint8Array(it.slug)) : String(it.slug)}</Tag>}
                   {it.kind!=null && <Tag color="geekblue">kind {String(it.kind)}</Tag>}
                   {it.parkId!=null && <Tag color="purple">park {String(it.parkId)}</Tag>}
@@ -126,11 +156,34 @@ const GraveListPage: React.FC = () => {
                     姓名：{it.names.join('、')}{it.names.length >= 2 ? ' 等' : ''}
                   </Typography.Text>
                 )}
-                {it.createdAt && <Typography.Text type="secondary">createdAt: {String(it.createdAt)}</Typography.Text>}
+                <Space>
+                  <Button size="small" type="primary" onClick={()=>{ try { localStorage.setItem('mp.grave.detailId', String(it.id)) } catch {}; window.location.hash = '#/grave/detail' }}>查看详情</Button>
+                  <Button size="small" onClick={()=>{ setRenameId(it.id); setRenameVal(it.name || ''); setRenameOpen(true) }}>编辑名称</Button>
+                </Space>
               </Space>
             </List.Item>
           )}
         />
+        <Modal
+          open={renameOpen}
+          onCancel={()=> setRenameOpen(false)}
+          onOk={async ()=>{
+            try{
+              if (renameId==null) return
+              const val = (renameVal || '').trim()
+              const u8 = new TextEncoder().encode(val)
+              if (maxNameLen && u8.length > maxNameLen) { Modal.error({ title:'名称过长', content:`UTF-8 字节 ${u8.length}/${maxNameLen}` }); return }
+              const hash = await signAndSendLocalFromKeystore('memoGrave','updateGrave',[renameId, u8, null, null])
+              Modal.success({ title:'已提交', content: hash })
+              setRenameOpen(false)
+              // 自动刷新当前页
+              load(page, pageSize, owner)
+            }catch(e:any){ Modal.error({ title:'提交失败', content: String(e?.message||e) }) }
+          }}
+          title={`编辑名称（#${renameId ?? ''}）`}
+        >
+          <Input value={renameVal} onChange={e=> setRenameVal(e.target.value)} placeholder={`UTF-8 ≤ ${maxNameLen || '未知'} 字节`} />
+        </Modal>
         <div style={{ marginTop: 12, textAlign: 'right' }}>
           <Pagination current={page} pageSize={pageSize} total={total} onChange={(p, ps)=>{ setPage(p); setPageSize(ps); load(p, ps, owner) }} showSizeChanger showTotal={t=>`共 ${t} 条`} />
         </div>

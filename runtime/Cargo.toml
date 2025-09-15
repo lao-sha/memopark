@@ -45,6 +45,7 @@ pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
 pallet-memo-endowment = { path = "../pallets/memo-endowment", default-features = false }
 pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
+pallet-collective = { path = "../pallets/collective", default-features = false }
 pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
 pallet-preimage.workspace = true
 pallet-scheduler.workspace = true
@@ -112,6 +113,7 @@ std = [
 	"pallet-identity/std",
 	"pallet-memo-endowment/std",
 	"pallet-memo-ipfs/std",
+	"pallet-collective/std",
 	"pallet-memo-pet/std",
 	"pallet-preimage/std",
 	"pallet-scheduler/std",

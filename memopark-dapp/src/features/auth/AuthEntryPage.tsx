@@ -3,6 +3,7 @@ import { Tabs } from 'antd'
 import LoginPage from './LoginPage'
 import CreateWalletPage from './CreateWalletPage'
 import HomePage from '../home/HomePage'
+import ProfilePage from '../profile/ProfilePage'
 import { sessionManager } from '../../lib/sessionManager'
 import TransferPage from '../ledger/TransferPage'
 import CreateGraveForm from '../grave/CreateGraveForm'
@@ -17,6 +18,7 @@ import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
 import ArticleListPage from '../deceasedMedia/ArticleListPage'
 import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
 import FriendsPage from '../deceased/FriendsPage'
+import CreateDeceasedForm from '../deceased/CreateDeceasedForm'
 
 const AuthEntryPage: React.FC = () => {
   const [active, setActive] = useState<string>('login')
@@ -52,8 +54,10 @@ const AuthEntryPage: React.FC = () => {
           { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
           { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
           { key: 'friends', label: '亲友团', children: <FriendsPage /> },
+          { key: 'deceased-create', label: '创建逝者', children: <CreateDeceasedForm /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },
-          { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> }
+          { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> },
+          { key: 'profile', label: '个人中心', children: <ProfilePage /> }
         ]}
       />
     </div>

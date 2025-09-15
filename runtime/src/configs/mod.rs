@@ -334,6 +334,11 @@ impl pallet_memo_grave::Config for Runtime {
     /// 函数级中文注释：绑定创建费与收款账户（指向国库 PalletId 派生地址）。
     type CreateFee = GraveCreateFee;
     type FeeCollector = TreasuryAccount;
+    /// 函数级中文注释：治理起源绑定（Root | 内容治理签名账户）。
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner
+    >;
 }
 
 // ===== deceased 配置 =====
@@ -369,6 +374,24 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     /// 冗余校验：读取 memo-grave 的已安葬令牌缓存长度（最多 6）。
     fn cached_deceased_tokens_len(grave_id: u64) -> Option<u32> {
         pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.deceased_tokens.len() as u32)
+    }
+}
+
+// 为 memo-pet 复用同一墓位适配逻辑
+impl pallet_memo_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAdapter {
+    fn grave_exists(grave_id: u64) -> bool {
+        pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
+    }
+    fn can_attach(who: &AccountId, grave_id: u64) -> bool {
+        if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
+            if grave.owner == *who { return true; }
+            let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
+            if admins.iter().any(|a| a == who) { return true; }
+            let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
+            if let Some(pid) = grave.park_id {
+                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
+            } else { false }
+        } else { false }
     }
 }
 
@@ -560,6 +583,14 @@ impl pallet_memo_offerings::Config for Runtime {
     type DonationResolver = GraveDonationResolver;
     /// 目录只读接口由 memo-sacrifice 提供
     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
+    /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 memo-pet 接管。
+    type Consumer = NoopConsumer;
+}
+
+/// 函数级中文注释：消费回调占位实现（不做任何状态变更），保障编译期绑定。
+pub struct NoopConsumer;
+impl pallet_memo_offerings::pallet::EffectConsumer<AccountId> for NoopConsumer {
+    fn apply(_target: (u8, u64), _who: &AccountId, _effect: &pallet_memo_offerings::pallet::EffectSpec) -> frame_support::dispatch::DispatchResult { Ok(()) }
 }
 
 // ===== memo-sacrifice（目录）配置 =====
@@ -576,7 +607,11 @@ impl pallet_memo_sacrifice::Config for Runtime {
     type StringLimit = SacStringLimit;
     type UriLimit = SacUriLimit;
     type DescriptionLimit = SacDescLimit;
-    type AdminOrigin = frame_system::EnsureRoot<AccountId>;
+    // 暂以 Root | 内容治理签名账户 双通道，委员会接入后再切换
+    type AdminOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner
+    >;
     type Currency = Balances;
     type ListingDeposit = SacListingDeposit;
     type ComplaintPeriod = SacComplaintPeriod;
@@ -664,7 +699,17 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 /// 函数级中文注释：供奉目标控制器（允许所有目标，Grave 域做成员校验）
 impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for AllowAllTargetControl {
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
-    fn exists(_target: (u8, u64)) -> bool { true }
+    fn exists(target: (u8, u64)) -> bool {
+        const DOMAIN_GRAVE: u8 = 1;
+        const DOMAIN_PET: u8 = 3;
+        if target.0 == DOMAIN_GRAVE {
+            return pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(target.1);
+        }
+        if target.0 == DOMAIN_PET {
+            return pallet_memo_pet::pallet::PetOf::<Runtime>::contains_key(target.1);
+        }
+        true
+    }
     /// 函数级中文注释：权限检查：若目标域为 Grave(=1)，则要求发起者为该墓位成员；否则放行。
     fn ensure_allowed(origin: RuntimeOrigin, target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
         let who = frame_system::ensure_signed(origin)?;
@@ -676,6 +721,7 @@ impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for 
                 ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
             }
         }
+        // DOMAIN_PET：当前不限制成员，放行（如需限制可在此增加校验）
         Ok(())
     }
 }
@@ -702,6 +748,19 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
                 // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
                 if let Some(pay) = amt {
                     pallet_memo_affiliate::Pallet::<Runtime>::report(who, pay, Some(target), now, duration_weeks);
+                }
+            }
+            // 3) 累计到逝者总额：若墓位绑定了 primary_deceased_id 则累加（不含押金，amount 已为实付）
+            if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1) {
+                if let Some(primary) = grave.deceased_tokens.first() {
+                    // 说明：这里假设第一个 token 对应 primary deceased；若有更严格的 primary 字段，可改为读取专用字段。
+                    if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::iter()
+                        .find_map(|(id, rec)| {
+                            let tok = rec.deceased_token.to_vec();
+                            if tok == primary.to_vec() { Some(id) } else { None }
+                        }) {
+                        if let Some(v) = amount { pallet_ledger::Pallet::<Runtime>::add_to_deceased_total(d, v as Balance); }
+                    }
                 }
             }
         }
@@ -876,6 +935,8 @@ parameter_types! { pub const PetStringLimit: u32 = 64; }
 impl pallet_memo_pet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type StringLimit = PetStringLimit;
+    // 复用墓位适配器，沿用人类主体相同的权限判断
+    type GraveProvider = GraveProviderAdapter;
 }
 parameter_types! {
     pub const OtcListingFee: u128 = 0;

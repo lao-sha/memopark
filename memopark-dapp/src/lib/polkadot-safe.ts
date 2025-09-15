@@ -14,33 +14,31 @@ import { cryptoWaitReady } from '@polkadot/util-crypto'
 let api: ApiPromise | null = null
 let isConnecting = false
 
+/**
+ * 函数级详细中文注释：获取全局 API 实例（带连接超时与重入保护）
+ * - 避免在提交交易时因节点不可达而无限等待
+ * - 使用 WsProvider 正确参数签名：(endpoint, autoConnect, headers, timeoutMs)
+ * - 超时抛错由上层 UI 捕获并提示用户
+ */
 export async function getApi(): Promise<ApiPromise> {
   if (api && api.isConnected) return api
-  
   if (isConnecting) {
-    // 等待现有连接完成
-    while (isConnecting) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
+    while (isConnecting) { await new Promise(r => setTimeout(r, 100)) }
     if (api && api.isConnected) return api
   }
-  
   try {
     isConnecting = true
-    console.log('尝试连接到区块链节点:', AppConfig.wsEndpoint)
-    
-    const provider = new WsProvider(AppConfig.wsEndpoint, 3000) // 3秒超时
-    api = await ApiPromise.create({ 
-      provider,
-      throwOnConnect: true
-    })
-    
-    console.log('区块链连接成功')
-    return api
+    const endpoint = AppConfig.wsEndpoint
+    console.log('[polkadot-safe] 正在连接节点:', endpoint)
+    const provider = new WsProvider(endpoint, true, {}, 10_000)
+    const connect = ApiPromise.create({ provider, throwOnConnect: true })
+    const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('区块链连接超时')), 6_000))
+    api = await Promise.race([connect, timeout])
+    console.log('[polkadot-safe] 节点连接成功')
+    return api!
   } catch (error) {
-    console.warn('区块链连接失败，使用离线模式:', error)
-    // 在开发环境中创建一个模拟的API对象
-    throw new Error('区块链连接失败')
+    console.warn('[polkadot-safe] 节点连接失败:', error)
+    throw error instanceof Error ? error : new Error('区块链连接失败')
   } finally {
     isConnecting = false
   }

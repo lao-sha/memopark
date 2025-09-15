@@ -67,6 +67,10 @@ pub mod pallet {
         pub fixed_price: Option<u128>,
         pub unit_price_per_week: Option<u128>,
         pub category_id: Option<u32>,
+        /// 一级类目（新）
+        pub primary_category_id: Option<u32>,
+        /// 二级类目（新）
+        pub secondary_category_id: Option<u32>,
         pub scene_id: Option<u32>,
         /// 函数级中文注释：专属逝者列表（非空表示仅限这些逝者可用；目录对其公开，其他隐藏）。
         pub exclusive_subjects: BoundedVec<(u8,u64), T::MaxExclusivePerItem>,
@@ -92,6 +96,18 @@ pub mod pallet {
     #[pallet::storage] pub type SacrificeDeposits<T: Config> = StorageMap<_, Blake2_128Concat, u64, (T::AccountId, BalanceOf<T>), OptionQuery>;
     #[pallet::storage] pub type SacrificeMaturity<T: Config> = StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>, OptionQuery>;
     #[pallet::storage] pub type SacrificeComplaints<T: Config> = StorageMap<_, Blake2_128Concat, u64, u32, ValueQuery>;
+    /// 函数级中文注释：效果元数据存储（供消费侧回调解释）。
+    /// - key: sacrifice_id；value: (consumable, target_domain, effect_kind, effect_value, cooldown_secs, inventory_mint)
+    #[pallet::storage] pub type EffectOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, (bool, u8, u8, i32, u32, bool), OptionQuery>;
+    /// 类目：id => {id, name, parent, level}
+    #[pallet::storage] pub type CategoryOf<T: Config> = StorageMap<_, Blake2_128Concat, u32, (u32, BoundedVec<u8, T::StringLimit>, Option<u32>, u8), OptionQuery>;
+    #[pallet::storage] pub type NextCategoryId<T: Config> = StorageValue<_, u32, ValueQuery>;
+    /// 父子关系索引 parent_id => [child_id]
+    #[pallet::storage] pub type ChildrenByCategory<T: Config> = StorageMap<_, Blake2_128Concat, u32, BoundedVec<u32, ConstU32<100>>, ValueQuery>;
+    /// 反向索引：一级类目
+    #[pallet::storage] pub type SacrificesByPrimary<T: Config> = StorageMap<_, Blake2_128Concat, u32, BoundedVec<u64, ConstU32<10000>>, ValueQuery>;
+    /// 反向索引：二级类目
+    #[pallet::storage] pub type SacrificesBySecondary<T: Config> = StorageMap<_, Blake2_128Concat, u32, BoundedVec<u64, ConstU32<10000>>, ValueQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -159,6 +175,8 @@ pub mod pallet {
                 fixed_price,
                 unit_price_per_week,
                 category_id,
+                primary_category_id: None,
+                secondary_category_id: None,
                 scene_id,
                 exclusive_subjects: Default::default(),
                 creator_id: creator_id.clone(),
@@ -213,6 +231,8 @@ pub mod pallet {
                 fixed_price,
                 unit_price_per_week,
                 category_id,
+                primary_category_id: None,
+                secondary_category_id: None,
                 scene_id,
                 exclusive_subjects: exclusive_bv,
                 creator_id: who.clone(),
@@ -272,6 +292,91 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::SacrificeRejected(id, forfeited));
+            Ok(())
+        }
+
+        /// 创建类目：parent=None→一级；Some→二级（要求 parent.level=1）。
+        #[pallet::call_index(7)]
+        #[pallet::weight(10_000)]
+        pub fn create_category(origin: OriginFor<T>, name: Vec<u8>, parent: Option<u32>) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
+            if let Some(pid) = parent {
+                let (_id, _n, pparent, plevel) = CategoryOf::<T>::get(pid).ok_or(Error::<T>::BadInput)?;
+                ensure!(pparent.is_none() && plevel == 1, Error::<T>::BadInput);
+            }
+            let id = NextCategoryId::<T>::mutate(|n| { let x=*n; *n = x.saturating_add(1); x });
+            let level: u8 = if parent.is_some() { 2 } else { 1 };
+            CategoryOf::<T>::insert(id, (id, name_bv, parent, level));
+            if let Some(pid) = parent {
+                ChildrenByCategory::<T>::try_mutate(pid, |v| v.try_push(id).map_err(|_| Error::<T>::BadInput))?;
+            }
+            Ok(())
+        }
+
+        /// 变更类目父子（仅同层迁移），或改名。
+        #[pallet::call_index(8)]
+        #[pallet::weight(10_000)]
+        pub fn update_category(origin: OriginFor<T>, id: u32, name: Option<Vec<u8>>, parent: Option<Option<u32>>) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            CategoryOf::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let (cid, cname, cparent, clevel) = maybe.as_mut().ok_or(Error::<T>::BadInput)?;
+                if let Some(n) = name { *cname = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(pp) = parent {
+                    match (clevel, pp) {
+                        (1, None) => { *cparent = None; },
+                        (2, Some(newp)) => {
+                            let (_pid, _pn, pparent, plevel) = CategoryOf::<T>::get(newp).ok_or(Error::<T>::BadInput)?;
+                            ensure!(pparent.is_none() && plevel == 1, Error::<T>::BadInput);
+                            if let Some(oldp) = *cparent { ChildrenByCategory::<T>::mutate(oldp, |v| { if let Some(pos)=v.iter().position(|x| x==cid){ v.swap_remove(pos);} }); }
+                            ChildrenByCategory::<T>::try_mutate(newp, |v| v.try_push(*cid).map_err(|_| Error::<T>::BadInput))?;
+                            *cparent = Some(newp);
+                        },
+                        _ => return Err(Error::<T>::BadInput.into()),
+                    }
+                }
+                Ok(())
+            })?;
+            Ok(())
+        }
+
+        /// 设定祭品类目（同时维护反向索引）。
+        #[pallet::call_index(9)]
+        #[pallet::weight(10_000)]
+        pub fn assign_category(origin: OriginFor<T>, id: u64, primary: Option<u32>, secondary: Option<u32>) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            SacrificeOf::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let s = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                // 校验父子合法
+                if let Some(p) = primary { let (_pid,_n,pparent,plevel) = CategoryOf::<T>::get(p).ok_or(Error::<T>::BadInput)?; ensure!(pparent.is_none() && plevel==1, Error::<T>::BadInput); }
+                if let Some(sec) = secondary { let (_sid,_sn,sparent,slevel) = CategoryOf::<T>::get(sec).ok_or(Error::<T>::BadInput)?; if let Some(p)=primary { ensure!(sparent==Some(p) && slevel==2, Error::<T>::BadInput);} else { return Err(Error::<T>::BadInput.into()); } }
+                // 旧索引移除
+                if let Some(op)=s.primary_category_id { SacrificesByPrimary::<T>::mutate(op, |v| { if let Some(pos)=v.iter().position(|x| x==&id){ v.swap_remove(pos);} }); }
+                if let Some(os)=s.secondary_category_id { SacrificesBySecondary::<T>::mutate(os, |v| { if let Some(pos)=v.iter().position(|x| x==&id){ v.swap_remove(pos);} }); }
+                // 新索引写入
+                if let Some(p)=primary { SacrificesByPrimary::<T>::try_mutate(p, |v| v.try_push(id).map_err(|_| Error::<T>::BadInput))?; }
+                if let Some(sec)=secondary { SacrificesBySecondary::<T>::try_mutate(sec, |v| v.try_push(id).map_err(|_| Error::<T>::BadInput))?; }
+                s.primary_category_id = primary; s.secondary_category_id = secondary; s.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置/清除祭品效果元数据（Admin）。
+        /// - 传入参数将作为目录效果声明，消费侧按需解释；传 None 将清除效果。
+        #[pallet::call_index(10)]
+        #[pallet::weight(10_000)]
+        pub fn set_effect(
+            origin: OriginFor<T>,
+            id: u64,
+            effect: Option<(bool /*consumable*/, u8 /*target_domain*/, u8 /*effect_kind*/, i32 /*effect_value*/, u32 /*cooldown_secs*/, bool /*inventory_mint*/)> ,
+        ) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            ensure!(SacrificeOf::<T>::contains_key(id), Error::<T>::NotFound);
+            match effect {
+                Some(v) => { EffectOf::<T>::insert(id, v); },
+                None => { EffectOf::<T>::remove(id); },
+            }
             Ok(())
         }
 
@@ -361,6 +466,12 @@ pub mod pallet {
             SacrificeOf::<T>::get(id).map(|s| {
                 let enabled = matches!(s.status, SacrificeStatus::Enabled);
                 (s.fixed_price, s.unit_price_per_week, enabled, s.is_vip_exclusive, s.exclusive_subjects.into())
+            })
+        }
+        /// 函数级中文注释：读取可选消费效果定义（从 EffectOf 存储映射转换为 EffectSpec）。
+        fn effect_of(id: u64) -> Option<pallet_memo_offerings::pallet::EffectSpec> {
+            EffectOf::<T>::get(id).map(|(consumable, target_domain, effect_kind, effect_value, cooldown_secs, inventory_mint)| {
+                pallet_memo_offerings::pallet::EffectSpec { consumable, target_domain, effect_kind, effect_value, cooldown_secs, inventory_mint }
             })
         }
         /// 函数级中文注释：判断账户是否可购买（会员校验由调用方传入 is_vip）。

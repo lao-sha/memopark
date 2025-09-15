@@ -5541,6 +5541,7 @@ dependencies = [
  "pallet-arbitration",
  "pallet-aura",
  "pallet-balances",
+ "pallet-collective",
  "pallet-conviction-voting",
  "pallet-deceased",
  "pallet-deceased-data",
@@ -6345,6 +6346,23 @@ dependencies = [
  "sp-api",
  "sp-arithmetic",
  "sp-core",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-collective"
+version = "28.0.0"
+dependencies = [
+ "docify",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
  "sp-runtime",
 ]
 

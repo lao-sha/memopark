@@ -341,4 +341,6 @@ mod runtime {
 
 	#[runtime::pallet_index(35)]
 	pub type MemoPet = pallet_memo_pet;
+
+// 预留：委员会 Pallet 接入后启用
 }
