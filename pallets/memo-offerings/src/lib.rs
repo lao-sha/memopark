@@ -44,6 +44,14 @@ pub mod pallet {
         fn account_for(target: (u8, u64)) -> AccountId;
     }
 
+    /// 函数级中文注释：祭祀品目录只读接口（由 runtime 提供实现，指向 memo-sacrifice）。
+    /// - spec_of：读取 (fixed_price, unit_price_per_week, enabled, is_vip_exclusive)
+    /// - can_purchase：校验可购（结合会员态）
+    pub trait SacrificeCatalog<AccountId, SacrificeId, Balance, BlockNumber> {
+        fn spec_of(id: SacrificeId) -> Option<(Option<Balance>, Option<Balance>, bool, bool, alloc::vec::Vec<(u8,u64)>)>;
+        fn can_purchase(who: &AccountId, id: SacrificeId, is_vip: bool) -> bool;
+    }
+
     // 函数级中文注释：删除证据提供者接口，改为在本 Pallet 内置媒体元数据存储（仅存 CID 与可选承诺）。
 
     #[pallet::config]
@@ -72,6 +80,8 @@ pub mod pallet {
         type Currency: Currency<Self::AccountId>;
         /// 函数级中文注释：捐赠账户解析器，根据目标解析接收账户。
         type DonationResolver: DonationAccountResolver<Self::AccountId>;
+        /// 函数级中文注释：目录只读接口（低耦合）。
+        type Catalog: SacrificeCatalog<Self::AccountId, u64, u128, BlockNumberFor<Self>>;
     }
 
     /// 函数级中文注释：通用余额类型别名，便于在本 Pallet 内部进行从 u128 到链上 Balance 的安全饱和转换。
@@ -209,6 +219,16 @@ pub mod pallet {
         },
         /// 函数级中文注释：供奉风控参数已更新（Root）。
         OfferParamsUpdated,
+        /// 函数级中文注释：通过祭祀品目录下单完成（便于 Subsquid 索引）。
+        OfferingCommittedBySacrifice {
+            id: u64,
+            target: (u8, u64),
+            sacrifice_id: u64,
+            who: T::AccountId,
+            amount: u128,
+            duration_weeks: Option<u32>,
+            block: BlockNumberFor<T>,
+        },
     }
 
     #[pallet::error]
@@ -433,6 +453,53 @@ pub mod pallet {
             let cur_fp = FixedPriceOf::<T>::get(kind_code);
             let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
             Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
+            Ok(())
+        }
+
+        /// 函数级中文注释：基于祭祀品目录的下单入口（自动读取定价与可购校验）。
+        /// - 输入：target 域对象、sacrifice_id、媒体列表（CID+承诺，可空）、可选 duration（周）、是否会员 is_vip；
+        /// - 逻辑：读取目录 spec，校验启用与会员限制，计算应付金额（fixed 或 unit×duration），完成转账并落记录。
+        #[pallet::call_index(7)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn offer_by_sacrifice(
+            origin: OriginFor<T>,
+            target: (u8, u64),
+            sacrifice_id: u64,
+            media: Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>,
+            duration_weeks: Option<u32>,
+            is_vip: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            ensure!(T::TargetCtl::exists(target), Error::<T>::TargetNotFound);
+            T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
+            let (fixed, unit, enabled, vip_only, exclusive) = T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
+            ensure!(enabled, Error::<T>::NotFound);
+            ensure!(T::Catalog::can_purchase(&who, sacrifice_id, is_vip), Error::<T>::NotAllowed);
+            if !exclusive.is_empty() { ensure!(exclusive.iter().any(|pair| pair.0 == target.0 && pair.1 == target.1), Error::<T>::NotAllowed); }
+            // 计算应付金额
+            let amount: u128 = if let Some(p) = fixed {
+                p
+            } else {
+                let u = unit.ok_or(Error::<T>::AmountRequired)?;
+                let d = duration_weeks.ok_or(Error::<T>::DurationRequired)? as u128;
+                u.saturating_mul(d)
+            };
+            if amount > 0 { ensure!(amount >= MinOfferAmountParam::<T>::get(), Error::<T>::AmountTooLow); }
+            let dest = T::DonationResolver::account_for(target);
+            if amount > 0 {
+                let amt_balance: BalanceOf<T> = amount.saturated_into();
+                T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
+            }
+            let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
+            for (cid, commit) in media.into_iter() { items.try_push(MediaItem::<T> { cid, commit }).map_err(|_| Error::<T>::TooMany)?; }
+            let id = NextOfferingId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
+            let now = <frame_system::Pallet<T>>::block_number();
+            let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code: 0, amount: Some(amount), media: items, duration: duration_weeks, time: now };
+            OfferingRecords::<T>::insert(id, &rec);
+            OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            T::OnOffering::on_offering(target, 0, &who, Some(amount), duration_weeks);
+            Self::deposit_event(Event::OfferingCommittedBySacrifice { id, target, sacrifice_id, who, amount, duration_weeks, block: now });
             Ok(())
         }
     }

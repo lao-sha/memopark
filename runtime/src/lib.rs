@@ -335,4 +335,10 @@ mod runtime {
 
 	#[runtime::pallet_index(33)]
 	pub type FeeGuard = pallet_fee_guard;
+
+	#[runtime::pallet_index(34)]
+	pub type MemoSacrifice = pallet_memo_sacrifice;
+
+	#[runtime::pallet_index(35)]
+	pub type MemoPet = pallet_memo_pet;
 }
