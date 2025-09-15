@@ -5557,7 +5557,9 @@ dependencies = [
  "pallet-memo-ipfs",
  "pallet-memo-offerings",
  "pallet-memo-park",
+ "pallet-memo-pet",
  "pallet-memo-referrals",
+ "pallet-memo-sacrifice",
  "pallet-origin-restriction",
  "pallet-otc-listing",
  "pallet-otc-maker",
@@ -6597,11 +6599,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-memo-pet"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-memo-referrals"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memo-sacrifice"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-memo-offerings",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",

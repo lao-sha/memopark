@@ -558,6 +558,30 @@ impl pallet_memo_offerings::Config for Runtime {
     type Currency = Balances;
     /// 函数级中文注释：捐赠账户解析
     type DonationResolver = GraveDonationResolver;
+    /// 目录只读接口由 memo-sacrifice 提供
+    type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
+}
+
+// ===== memo-sacrifice（目录）配置 =====
+parameter_types! {
+    pub const SacStringLimit: u32 = 64;
+    pub const SacUriLimit: u32 = 128;
+    pub const SacDescLimit: u32 = 256;
+    pub const SacListingDeposit: Balance = 10_000_000_000_000; // 0.01 UNIT 示例
+    pub const SacComplaintPeriod: BlockNumber = 30 * DAYS;     // 30 天 示例
+    pub const SacMaxExclusivePerItem: u32 = 8;
+}
+impl pallet_memo_sacrifice::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type StringLimit = SacStringLimit;
+    type UriLimit = SacUriLimit;
+    type DescriptionLimit = SacDescLimit;
+    type AdminOrigin = frame_system::EnsureRoot<AccountId>;
+    type Currency = Balances;
+    type ListingDeposit = SacListingDeposit;
+    type ComplaintPeriod = SacComplaintPeriod;
+    type Treasury = TreasuryAccount;
+    type MaxExclusivePerItem = SacMaxExclusivePerItem;
 }
 
 // ===== Treasury 配置 =====
@@ -845,6 +869,13 @@ impl pallet_identity::Config for Runtime {
     /// 基准工具（仅基准编译时需要）
     #[cfg(feature = "runtime-benchmarks")]
     type BenchmarkHelper = ();
+}
+
+// ===== memo-pet 配置（最小实现） =====
+parameter_types! { pub const PetStringLimit: u32 = 64; }
+impl pallet_memo_pet::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type StringLimit = PetStringLimit;
 }
 parameter_types! {
     pub const OtcListingFee: u128 = 0;
