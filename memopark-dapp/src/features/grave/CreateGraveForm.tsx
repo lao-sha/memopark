@@ -198,6 +198,10 @@ const CreateGraveForm: React.FC = () => {
             <Input placeholder="请输入墓地名称（明文）" size="large" />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={loading} block size="large">创建墓地</Button>
+          {/* 入口：创建逝者（放在“创建墓地”按钮下方） */}
+          <div style={{ marginTop: 12 }}>
+            <Button block onClick={() => { try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'deceased-create' } })) } catch {}; try { window.location.hash = '#/deceased/create' } catch {} }}>创建逝者</Button>
+          </div>
         </Form>
 
         <Modal
