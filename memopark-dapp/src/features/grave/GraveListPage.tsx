@@ -66,6 +66,15 @@ const GraveListPage: React.FC = () => {
             const nmU8 = (g.name?.toU8a ? g.name.toU8a() : (g.name?.toJSON ? new Uint8Array(g.name.toJSON()) : undefined)) as Uint8Array | undefined
             if (nmU8) name = new TextDecoder().decode(nmU8)
           } catch {}
+          // 读取封面 CID（可选）
+          let coverCid: string | undefined = undefined
+          try {
+            const cOpt = await (q.coverCidOf ? q.coverCidOf(id) : null)
+            if (cOpt && cOpt.isSome) {
+              const u8 = (cOpt.unwrap() as any).toU8a ? (cOpt.unwrap() as any).toU8a() : new Uint8Array([])
+              coverCid = new TextDecoder().decode(u8)
+            }
+          } catch {}
           // 读取姓名（可选）：从 deceasedByGrave -> deceasedOf[*] 提取 name，最多展示前两位
           let names: string[] = []
           try {
@@ -94,6 +103,7 @@ const GraveListPage: React.FC = () => {
             slug,
             name,
             names,
+            coverCid,
           }
         } catch { return null }
       }))
@@ -143,12 +153,20 @@ const GraveListPage: React.FC = () => {
           renderItem={(it:any)=> (
             <List.Item>
               <Space direction="vertical" style={{ width:'100%' }}>
-                <Space>
+                <Space align="start">
+                  {/* 函数级中文注释：封面缩略图展示 */}
+                  {it.coverCid ? (
+                    <img alt="cover" src={`https://ipfs.io/ipfs/${it.coverCid}`} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }} />
+                  ) : (
+                    <div style={{ width: 56, height: 56, borderRadius: 8, border: '1px solid #eee', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 12 }}>封面</div>
+                  )}
+                  <Space direction="vertical" style={{ minWidth: 0 }}>
                   <Typography.Text strong>#{it.id}</Typography.Text>
                   {it.name && <Tag color="green">{it.name}</Tag>}
                   {it.slug && <Tag>{Array.isArray(it.slug)? new TextDecoder().decode(new Uint8Array(it.slug)) : String(it.slug)}</Tag>}
                   {it.kind!=null && <Tag color="geekblue">kind {String(it.kind)}</Tag>}
                   {it.parkId!=null && <Tag color="purple">park {String(it.parkId)}</Tag>}
+                  </Space>
                 </Space>
                 <Typography.Text type="secondary">owner: {it.owner}</Typography.Text>
                 {Array.isArray(it.names) && it.names.length > 0 && (

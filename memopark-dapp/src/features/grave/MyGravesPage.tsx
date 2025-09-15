@@ -4,7 +4,8 @@ import { UploadOutlined } from '@ant-design/icons'
 import { uploadToIpfs } from '../../lib/ipfs'
 import { useWallet } from '../../providers/WalletProvider'
 import { getApi } from '../../lib/polkadot-safe'
-import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { signAndSendLocalFromKeystore, signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
+import { mapDispatchErrorMessage } from '../../lib/errors'
 
 /**
  * 函数级详细中文注释：我的墓地页面（按当前钱包地址过滤）
@@ -30,6 +31,8 @@ const MyGravesPage: React.FC = () => {
   const [coverCid, setCoverCid] = useState<string>('')
   // 函数级中文注释：封面提交时的加载状态，避免重复点击与给出进度反馈
   const [coverSubmitting, setCoverSubmitting] = useState<boolean>(false)
+  // 函数级中文注释：封面设置时的签名密码输入值（至少 8 位）
+  const [coverPwd, setCoverPwd] = useState<string>('')
 
   // 函数级中文注释：动态解析 grave 的 tx section 名称（兼容 memoGrave/memo_grave/grave）
   const resolveGraveSection = React.useCallback(async (): Promise<string> => {
@@ -65,17 +68,45 @@ const MyGravesPage: React.FC = () => {
           const g = gOpt.unwrap()
           const ownerStr = g.owner?.toString?.() || String(g.owner)
           if (ownerStr !== owner) return null
+          const sanitizeCid = (s: string | undefined): string | undefined => {
+            try {
+              if (!s) return undefined
+              let v = String(s).trim()
+              // 去掉常见前缀与引号
+              v = v.replace(/^ipfs:\/\//i, '')
+              v = v.replace(/^\/ipfs\//i, '')
+              v = v.replace(/^"|"$/g, '').replace(/^'|'$/g, '')
+              // 去除控制字符、零宽字符、BOM
+              v = v.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
+              // 去除非可见 ASCII（避免出现 � 等）
+              v = v.replace(/[^\x21-\x7E]/g, '')
+              // 去掉开头的非字母数字
+              v = v.replace(/^[^A-Za-z0-9]+/, '')
+              // 截断到首段（去掉空格、斜杠、查询串）
+              v = v.split(/[\s/#?]/)[0]
+              return v
+            } catch { return s }
+          }
           let name: string | undefined = undefined
           try { const nmU8 = g.name?.toU8a ? g.name.toU8a() : (g.name?.toJSON ? new Uint8Array(g.name.toJSON()) : undefined); if (nmU8) name = new TextDecoder().decode(nmU8) } catch {}
           let slug: string | undefined = undefined
           try { const sOpt = await q.slugOf(id); if (sOpt && sOpt.isSome) { const u8 = (sOpt.unwrap() as any).toU8a ? (sOpt.unwrap() as any).toU8a() : new Uint8Array([]); slug = new TextDecoder().decode(u8) } } catch {}
+          // 函数级中文注释：读取封面 CID（可选）；解码为字符串供前端展示缩略图
+          let coverCid: string | undefined = undefined
+          try {
+            const cOpt = await (q.coverCidOf ? q.coverCidOf(id) : null)
+            if (cOpt && cOpt.isSome) {
+              const u8 = (cOpt.unwrap() as any).toU8a ? (cOpt.unwrap() as any).toU8a() : new Uint8Array([])
+              coverCid = sanitizeCid(new TextDecoder().decode(u8))
+            }
+          } catch {}
           const parkId = g.parkId?.isSome ? g.parkId.unwrap().toNumber() : null
           // 直接读取 active / is_public
           let active: boolean | undefined = undefined
           let isPublic: boolean | undefined = undefined
           try { active = Boolean((g as any).active?.isTrue ? (g as any).active.isTrue : (g as any).active) } catch {}
           try { isPublic = Boolean((g as any).isPublic?.isTrue ? (g as any).isPublic.isTrue : (g as any).isPublic ?? (g as any).is_public) } catch {}
-          return { id, name, slug, parkId, active, isPublic }
+          return { id, name, slug, parkId, active, isPublic, coverCid }
         } catch { return null }
       }))
       setItems((all.filter(Boolean) as any[]))
@@ -116,13 +147,45 @@ const MyGravesPage: React.FC = () => {
           renderItem={(it:any)=> (
           <List.Item>
             <Space direction="vertical" style={{ width:'100%' }}>
-              <Space>
+              <Space align="start">
+                {/* 函数级中文注释：封面缩略图（优先 IPFS 网关，未设置则渲染占位） */}
+                {it.coverCid ? (
+                  (() => {
+                    const gwPrimary = (()=>{ try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' } })()
+                    const gateways = [gwPrimary, 'http://127.0.0.1:8080', 'https://dweb.link']
+                    const src0 = `${gateways[0]}/ipfs/${it.coverCid}`
+                    return (
+                      <img
+                        alt="cover"
+                        src={src0}
+                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }}
+                        onError={(e)=>{
+                          try{
+                            const img = e.currentTarget as any
+                            const idx = Number(img.dataset.idx || 0)
+                            const next = idx + 1
+                            if (next < gateways.length) {
+                              img.dataset.idx = String(next)
+                              img.src = `${gateways[next]}/ipfs/${it.coverCid}`
+                            }
+                          }catch{}
+                        }}
+                        data-idx={0}
+                      />
+                    )
+                  })()
+                ) : (
+                  <div style={{ width: 56, height: 56, borderRadius: 8, border: '1px solid #eee', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 12 }}>封面</div>
+                )}
+                {/* 右侧信息区 */}
+                <Space direction="vertical" style={{ minWidth: 0 }}>
                 <Typography.Text strong>#{it.id}</Typography.Text>
                 {it.name && <Tag color="green">{it.name}</Tag>}
                 {it.slug && <Tag>{it.slug}</Tag>}
                 {it.parkId!=null && <Tag color="purple">park {String(it.parkId)}</Tag>}
                 {typeof it.active === 'boolean' && <Tag color={it.active? 'blue':'default'}>{it.active? 'active':'inactive'}</Tag>}
                 {typeof it.isPublic === 'boolean' && <Tag color={it.isPublic? 'gold':'default'}>{it.isPublic? 'public':'private'}</Tag>}
+                </Space>
               </Space>
               <Space>
                 <Button size="small" onClick={()=>{ window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'grave-list' } })); window.location.hash = '#/grave/list' }}>去列表编辑名称</Button>
@@ -178,27 +241,52 @@ const MyGravesPage: React.FC = () => {
           open={!!coverOpen}
           onCancel={()=> setCoverOpen(null)}
           title={`上传封面 (#${coverOpen?.id ?? ''})`}
+          okText="确定"
+          cancelText="取消"
+          destroyOnClose
           confirmLoading={coverSubmitting}
           onOk={async ()=>{
             try{
+              console.log('[setCover] onOk clicked', coverOpen, coverCid)
               setCoverSubmitting(true)
-              if (!coverOpen?.id) return
+              // 函数级中文注释：允许 id=0 的墓位；仅在值为 null/undefined 时才中断
+              if (coverOpen?.id == null) return
               const cid = coverCid.trim()
-              if (!cid) { message.warning('请输入封面CID'); return }
+              if (!cid) { message.warning('请输入封面CID'); setCoverSubmitting(false); return }
+              if (!coverPwd || coverPwd.length < 8) { message.warning('请输入至少 8 位签名密码'); setCoverSubmitting(false); return }
+              const key = 'tx-set-cover'
+              try { message.loading({ key, content: '正在提交封面设置…' }) } catch (e) { console.warn('[setCover] message.loading failed', e); try { alert('正在提交封面设置…') } catch {} }
               const section = await resolveGraveSection()
+              console.log('[setCover] resolved section =', section)
               // 函数级中文注释：将 CID 文本编码为字节数组，并转换为 number[] 以兼容 BoundedVec<u8>
               const u8 = new TextEncoder().encode(cid)
               const bytes = Array.from(u8)
-              const hash = await signAndSendLocalFromKeystore(section, 'setCover', [coverOpen.id, bytes])
-              message.success('已提交封面设置：'+hash)
+              console.log('[setCover] bytes length =', bytes.length)
+              // 函数级中文注释：使用带密码的本地签名，避免浏览器 prompt 被拦截
+              console.log('[setCover] signing…')
+              const hash = await signAndSendLocalWithPassword(section, 'setCover', [coverOpen.id, bytes], coverPwd)
+              console.log('[setCover] sent tx hash =', hash)
+              message.success({ key, content: '已提交封面设置：'+hash })
+              // 函数级中文注释：提交成功后关闭弹窗并进入“墓地详情”查看效果（使用查询参数 gid 直达）
               setCoverOpen(null)
+              setCoverPwd('')
+              try { localStorage.setItem('mp.grave.detailId', String(coverOpen.id)) } catch {}
+              try {
+                window.location.hash = `#/grave/detail?gid=${coverOpen.id}`
+                window.dispatchEvent(new HashChangeEvent('hashchange'))
+              } catch {}
               if (current) load(current)
-            } catch (e:any) { message.error(String(e?.message||e)) }
+            } catch (e:any) {
+              const msg = mapDispatchErrorMessage(e, '提交失败')
+              console.error('[setCover] failed:', e)
+              message.error({ key: 'tx-set-cover', content: msg })
+            }
             finally { setCoverSubmitting(false) }
           }}
         >
           <Space direction="vertical" style={{ width: '100%' }}>
             <Input placeholder="输入 IPFS CID（不含协议头）" value={coverCid} onChange={e=> setCoverCid(e.target.value)} />
+            <Input.Password placeholder="签名密码（至少 8 位）" value={coverPwd} onChange={e=> setCoverPwd(e.target.value)} />
             <Upload
               maxCount={1}
               accept="image/*"

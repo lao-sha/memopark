@@ -42,17 +42,40 @@ const GraveDetailPage: React.FC = () => {
   const [coverSubmitting, setCoverSubmitting] = React.useState(false)
 
   /**
-   * 函数级中文注释：初始化 GraveId
-   * - 优先读取 localStorage('mp.grave.detailId')；若存在则设置并触发加载
+   * 函数级中文注释：初始化与监听 GraveId 来源
+   * - 1) 解析 hash 查询参数 ?gid= 或 ?id=
+   * - 2) 兜底读取 localStorage('mp.grave.detailId')
+   * - 3) 监听 hashchange，实时响应外部跳转
    */
   React.useEffect(() => {
-    try {
-      const v = localStorage.getItem('mp.grave.detailId')
-      if (v != null && v !== '') {
-        const n = Number(v)
-        if (!Number.isNaN(n)) setGraveId(n)
-      }
-    } catch {}
+    const parseFromHash = () => {
+      try {
+        const h = window.location.hash || ''
+        const qIdx = h.indexOf('?')
+        if (qIdx >= 0) {
+          const qs = new URLSearchParams(h.slice(qIdx + 1))
+          const v = qs.get('gid') || qs.get('id')
+          if (v != null && v !== '') {
+            const n = Number(v)
+            if (!Number.isNaN(n)) { setGraveId(n); return true }
+          }
+        }
+      } catch {}
+      return false
+    }
+    const ok = parseFromHash()
+    if (!ok) {
+      try {
+        const v = localStorage.getItem('mp.grave.detailId')
+        if (v != null && v !== '') {
+          const n = Number(v)
+          if (!Number.isNaN(n)) setGraveId(n)
+        }
+      } catch {}
+    }
+    const onHash = () => { parseFromHash() }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   /**
