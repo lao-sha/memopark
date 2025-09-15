@@ -129,6 +129,18 @@ type Offering @entity {
   block: Int!
 }
 
+# 新增：目录下单事件（携带 sacrifice_id 与 duration）
+type OfferingBySacrifice @entity {
+  id: ID!
+  targetDomain: Int!
+  targetId: BigInt!
+  sacrificeId: BigInt!
+  who: String!
+  amount: BigInt!
+  durationWeeks: Int
+  block: Int!
+}
+
 type GuestbookMessage @entity {
   id: ID!
   hallId: BigInt!
@@ -159,6 +171,15 @@ type OfferingPriceSnapshot @entity {
   kindCode: Int!
   fixedPrice: BigInt
   unitPricePerWeek: BigInt
+  block: Int!
+}
+
+# 暂停事件快照（便于审计）
+type OfferingPauseEvent @entity {
+  id: ID!
+  scope: String!   # Global | Domain
+  domain: Int
+  paused: Boolean!
   block: Int!
 }
 

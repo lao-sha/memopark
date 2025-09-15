@@ -18,6 +18,14 @@ pub mod pallet {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         #[pallet::constant] type StringLimit: Get<u32>;
+        /// 函数级中文注释：墓位检查与权限接口（低耦合）。
+        type GraveProvider: GraveInspector<Self::AccountId, u64>;
+    }
+
+    /// 函数级中文注释：墓位访问接口，供运行时适配实现。
+    pub trait GraveInspector<AccountId, GraveId> {
+        fn grave_exists(grave_id: GraveId) -> bool;
+        fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -40,15 +48,21 @@ pub mod pallet {
 
     #[pallet::storage] pub type NextPetId<T: Config> = StorageValue<_, u64, ValueQuery>;
     #[pallet::storage] pub type PetOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, Pet<T>, OptionQuery>;
+    /// 函数级中文注释：宠物附着到的墓位（可选）。
+    #[pallet::storage] pub type PetInGrave<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         PetCreated(u64, T::AccountId),
+        /// 宠物附着到墓位
+        PetAttached(u64, u64),
+        /// 宠物从墓位解绑
+        PetDetached(u64),
     }
 
     #[pallet::error]
-    pub enum Error<T> { BadInput, NotFound }
+    pub enum Error<T> { BadInput, NotFound, NotOwner, GraveNotFound, NotAllowed }
 
     // 说明：仅保留创建，便于测试；后续可扩展为与 deceased 同结构的访问 Trait。
     #[allow(warnings)]
@@ -68,6 +82,32 @@ pub mod pallet {
             let p = Pet { name: name_bv, owner: who.clone(), species: sp_bv, token: tk_bv, created: now };
             PetOf::<T>::insert(id, p);
             Self::deposit_event(Event::PetCreated(id, who));
+            Ok(())
+        }
+
+        /// 函数级中文注释：将宠物附着到墓位（仅宠物 owner，且需具备墓位管理权限）。
+        #[pallet::call_index(1)]
+        #[pallet::weight(10_000)]
+        pub fn attach_to_grave(origin: OriginFor<T>, pet_id: u64, grave_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let pet = PetOf::<T>::get(pet_id).ok_or(Error::<T>::NotFound)?;
+            ensure!(pet.owner == who, Error::<T>::NotOwner);
+            ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
+            ensure!(T::GraveProvider::can_attach(&who, grave_id), Error::<T>::NotAllowed);
+            PetInGrave::<T>::insert(pet_id, grave_id);
+            Self::deposit_event(Event::PetAttached(pet_id, grave_id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：解绑宠物与墓位（仅宠物 owner）。
+        #[pallet::call_index(2)]
+        #[pallet::weight(10_000)]
+        pub fn detach_from_grave(origin: OriginFor<T>, pet_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let pet = PetOf::<T>::get(pet_id).ok_or(Error::<T>::NotFound)?;
+            ensure!(pet.owner == who, Error::<T>::NotOwner);
+            PetInGrave::<T>::remove(pet_id);
+            Self::deposit_event(Event::PetDetached(pet_id));
             Ok(())
         }
     }

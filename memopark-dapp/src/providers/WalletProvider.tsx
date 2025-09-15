@@ -8,7 +8,7 @@ import { signAndSend as polkadotSignAndSend, sendViaForwarder as polkadotSendVia
 import { Spin } from 'antd';
 import { signAndSendLocalFromKeystore } from '../lib/polkadot-safe'
 import { sessionManager } from '../lib/sessionManager'
-import { getCurrentAddress, loadAllKeystores } from '../lib/keystore'
+import { getCurrentAddress, loadAllKeystores, getAlias, migrateSingleToMulti, setCurrentAddress } from '../lib/keystore'
 
 /**
  * 函数级详细中文注释：钱包上下文接口定义
@@ -72,10 +72,18 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       initializeApi();
       // 自动恢复当前地址与账户列表
       try {
+        // 迁移旧版单账户存储
+        migrateSingleToMulti()
         const cur = getCurrentAddress()
-        const list = loadAllKeystores().map(k=>({ address: k.address, meta: { name: k.address.slice(0,6)+'…'+k.address.slice(-4) } }))
+        const list = loadAllKeystores().map(k=>({ address: k.address, meta: { name: (getAlias(k.address) || (k.address.slice(0,6)+'…'+k.address.slice(-4))) } }))
         setAccounts(list)
-        if (cur) setSelectedAccount({ address: cur, meta: { name: '当前账户' } })
+        if (cur) {
+          setSelectedAccount({ address: cur, meta: { name: '当前账户' } })
+        } else if (list.length > 0 && list[0].address) {
+          // 若尚未选择当前账户且存在本地钱包，默认选第一个并写入 current
+          setSelectedAccount({ address: list[0].address, meta: { name: '当前账户' } })
+          try { setCurrentAddress(list[0].address) } catch {}
+        }
         // 若 session 为空且有地址，自动创建开发会话，便于“我的治理”能读取地址
         const s = sessionManager.getCurrentSession() || sessionManager.init()
         if (!s && cur) {
@@ -86,6 +94,24 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // 监听本地账户变更事件（删除/切换/导入）并更新上下文
+  useEffect(() => {
+    const onAccounts = () => {
+      try {
+        const cur = getCurrentAddress()
+        const list = loadAllKeystores().map(k=>({ address: k.address, meta: { name: (getAlias(k.address) || (k.address.slice(0,6)+'…'+k.address.slice(-4))) } }))
+        setAccounts(list)
+        setSelectedAccount(cur ? { address: cur, meta: { name: '当前账户' } } : null)
+      } catch {}
+    }
+    window.addEventListener('mp.accountsUpdate', onAccounts)
+    window.addEventListener('storage', onAccounts)
+    return () => {
+      window.removeEventListener('mp.accountsUpdate', onAccounts)
+      window.removeEventListener('storage', onAccounts)
+    }
+  }, [])
 
   /**
    * 函数级详细中文注释：初始化API连接
@@ -135,7 +161,12 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
   // 兼容旧版工具函数封装
   const signAndSend = async (section: string, method: string, args: any[]): Promise<string> => {
-    return signAndSendLocalFromKeystore(section, method, args)
+    try {
+      return await signAndSendLocalFromKeystore(section, method, args)
+    } catch (e: any) {
+      // 统一错误封装，便于上层 UI 友好提示
+      throw new Error(e?.message || '签名发送失败')
+    }
   };
 
   const sendViaForwarder = async (namespace: any, section: string, method: string, args: any[]): Promise<string> => {
@@ -149,7 +180,11 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
    * - 仅用于开发环境或无扩展的场景；主网建议使用扩展
    */
   const signAndSendLocal = async (section: string, method: string, args: any[]): Promise<string> => {
-    return signAndSendLocalFromKeystore(section, method, args)
+    try {
+      return await signAndSendLocalFromKeystore(section, method, args)
+    } catch (e: any) {
+      throw new Error(e?.message || '签名发送失败')
+    }
   }
 
   const value: WalletContextType = {

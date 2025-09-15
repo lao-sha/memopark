@@ -18,6 +18,15 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
     setSession(s)
   }, [])
 
+  /**
+   * 函数级详细中文注释：跳转到“创建墓地”哈希路由入口
+   * - 与 Tab 导航共存：Tab 方式走 `AuthEntryPage` 内部标签切换；哈希路由方式直达 `#/grave/create`
+   * - 便于从外部分享或深链至创建页
+   */
+  const goCreateGraveRoute = () => {
+    try { window.location.hash = '#/grave/create' } catch { /* 忽略 */ }
+  }
+
   const handleLogout = () => {
     sessionManager.clearSession()
     setSession(null)
@@ -88,6 +97,7 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
             <Space>
               <Button type="primary" onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'transfer' } }))}>转账</Button>
               <Button onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create-grave' } }))}>创建墓地</Button>
+              <Button onClick={goCreateGraveRoute}>创建墓地（路由）</Button>
               <Button onClick={()=> window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'gov-home' } }))}>治理</Button>
               <Button onClick={()=> window.scrollTo({ top: 0, behavior: 'smooth' })}>返回顶部</Button>
               <Button danger onClick={handleLogout}>退出登录</Button>

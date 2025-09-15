@@ -43,6 +43,14 @@ pub mod pallet {
 		StorageMap<_, Blake2_128Concat, T::GraveId, T::Balance, ValueQuery>;
 
 	#[pallet::storage]
+	#[pallet::getter(fn total_memo_by_deceased)]
+	/// 函数级中文注释：每逝者累计 MEMO 金额（不含押金，仅统计供奉实际转账金额）
+	/// - 键为 DeceasedId（使用 u64，以与 pallet-deceased 对齐）
+	/// - 值为累计 Balance（与 Runtime::Balance 对齐）
+	pub type TotalMemoByDeceased<T: Config> =
+		StorageMap<_, Blake2_128Concat, u64, T::Balance, ValueQuery>;
+
+	#[pallet::storage]
 	#[pallet::getter(fn weekly_active)]
 	/// 函数级中文注释：按周维度的“有效供奉”标记。
 	/// - 维度：(grave_id, who, week_index) → ()
@@ -56,6 +64,8 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		/// 已标记某账户在某墓位的连续周有效供奉（从 start_week 起连续 weeks 周）
 		WeeklyActiveMarked(T::GraveId, T::AccountId, u64, u32),
+		/// 函数级中文注释：某逝者累计供奉金额已更新（delta 与新累计值）
+		DeceasedOfferingAccumulated(u64, T::Balance, T::Balance),
 	}
 
 	#[pallet::error]
@@ -87,6 +97,15 @@ pub mod pallet {
 			memo: Option<alloc::vec::Vec<u8>>,
 		) {
 			Self::record_from_hook_with_amount(grave_id, who, kind_code, None, memo)
+		}
+
+		/// 函数级中文注释：为指定逝者累计供奉金额（仅累加正向 delta，不含押金）。
+		/// - 供奉 Hook 应在确认实际转账后调用本方法；
+		/// - 该方法不做存在性校验，由调用方负责传入合法的 DeceasedId；
+		/// - 使用 saturating_add 防溢出；并发下按区块序串行更新。
+		pub fn add_to_deceased_total(deceased_id: u64, delta: T::Balance) {
+			let new_total = TotalMemoByDeceased::<T>::mutate(deceased_id, |b| { *b = b.saturating_add(delta); *b });
+			Self::deposit_event(Event::DeceasedOfferingAccumulated(deceased_id, delta, new_total));
 		}
 
 		/// 函数级中文注释：按“周”为粒度，标记有效供奉周期。

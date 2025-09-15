@@ -59,6 +59,10 @@ pub mod pallet {
         /// 函数级中文注释：关注者上限
         #[pallet::constant] type MaxFollowers: Get<u32>;
 
+        /// 函数级中文注释：治理起源（允许非所有者通过治理修改部分只读元数据，如封面CID）。
+        /// - 运行时可绑定 Root 或内容治理签名账户等多通道。
+        type GovernanceOrigin: frame_support::traits::EnsureOrigin<Self::RuntimeOrigin>;
+
         /// 函数级中文注释：逝者令牌提供者适配器，由 runtime 连接 `pallet-deceased`。
         type DeceasedTokenProvider: DeceasedTokenAccess<Self::MaxCidLen>;
 
@@ -198,6 +202,11 @@ pub mod pallet {
     #[pallet::storage]
     pub type BannedFollowers<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
+    /// 函数级中文注释：墓地封面图片 CID（仅存储 CID 字节，不落图片）。
+    /// - 默认不存在；创建后可由所有者直接设置；非所有者需通过治理接口设置。
+    #[pallet::storage]
+    pub type CoverCidOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
+
     /// 函数级中文注释：旧关注押金退款余额（方案B迁移专用）。
     /// - 在 on_runtime_upgrade(v9->v10) 中，为每个账户累计 FollowDeposit×关注次数；用户可调用退款接口解除保留押金。
     #[pallet::storage]
@@ -273,6 +282,9 @@ pub mod pallet {
         Unfollowed { id: u64, who: T::AccountId },
         /// 设置墓位所属园区
         GraveSetPark { id: u64, park_id: Option<u64> },
+        /// 函数级中文注释：封面图片 CID 已设置/清除
+        CoverSet { id: u64 },
+        CoverCleared { id: u64 },
     }
 
     #[pallet::error]
@@ -377,6 +389,67 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::GraveSetPark { id, park_id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：设置墓地封面（仅所有者可直接调用）。
+        /// - 输入：`cid` 为链下图片的 CID 字节（IPFS/HTTPS 等），长度受 `MaxCidLen` 约束。
+        /// - 权限：仅墓主；非所有者需通过 `set_cover_via_governance`。
+        /// - 事件：`CoverSet { id }`。
+        #[pallet::call_index(41)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_cover(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            CoverCidOf::<T>::insert(id, cid);
+            Self::deposit_event(Event::CoverSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：清除墓地封面（仅所有者）。
+        /// - 事件：`CoverCleared { id }`。
+        #[pallet::call_index(42)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn clear_cover(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            CoverCidOf::<T>::remove(id);
+            Self::deposit_event(Event::CoverCleared { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：通过治理设置封面（允许非所有者但需满足治理起源）。
+        /// - 由 Referenda/Root 等治理流程触发。
+        #[pallet::call_index(43)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_cover_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            CoverCidOf::<T>::insert(id, cid);
+            Self::deposit_event(Event::CoverSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：通过治理清除封面。
+        #[pallet::call_index(44)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn clear_cover_via_governance(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            CoverCidOf::<T>::remove(id);
+            Self::deposit_event(Event::CoverCleared { id });
             Ok(())
         }
 

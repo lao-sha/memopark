@@ -140,6 +140,12 @@ pub mod pallet {
     /// 墓位下的逝者列表：GraveId -> BoundedVec<DeceasedId>
     pub type DeceasedByGrave<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, BoundedVec<T::DeceasedId, T::MaxDeceasedPerGrave>, ValueQuery>;
 
+    /// 函数级中文注释：逝者可见性标记（默认公开）。
+    /// - 设计：创建时写入 true；后续可由管理员/owner 通过 set_visibility 修改。
+    /// - 读取：若不存在记录（None）应视作 true（默认公开）。
+    #[pallet::storage]
+    pub type VisibilityOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, bool, OptionQuery>;
+
     /// 函数级中文注释：按 `deceased_token` 建立的唯一索引，用于防止重复创建。
     /// - Key：`deceased_token`（BoundedVec<u8, TokenLimit>）。
     /// - Val：`DeceasedId`。
@@ -154,6 +160,8 @@ pub mod pallet {
         DeceasedCreated(T::DeceasedId, T::GraveId, T::AccountId),
         /// 更新逝者 (id)
         DeceasedUpdated(T::DeceasedId),
+        /// 函数级中文注释：可见性已变更 (id, public)
+        VisibilityChanged(T::DeceasedId, bool),
         /// 迁移逝者到新墓位 (id, from_grave, to_grave)
         DeceasedTransferred(T::DeceasedId, T::GraveId, T::GraveId),
         /// 逝者关系：已提交绑定请求(from -> to)
@@ -415,6 +423,8 @@ pub mod pallet {
 
             DeceasedOf::<T>::insert(id, deceased);
             DeceasedByGrave::<T>::try_mutate(grave_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
+            // 默认公开
+            VisibilityOf::<T>::insert(id, true);
             // 建立 token -> id 索引
             if let Some(d) = DeceasedOf::<T>::get(id) { DeceasedIdByToken::<T>::insert(d.deceased_token, id); }
 
@@ -552,6 +562,21 @@ pub mod pallet {
                 Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
                 Ok(())
             })
+        }
+
+        /// 函数级中文注释：设置逝者可见性（public=true 公开；false 私有）。仅 Admin（含 owner）。
+        /// - 默认：创建时已设为公开；本接口用于按需关闭/开启展示。
+        /// - 事件：VisibilityChanged(id, public)
+        #[pallet::call_index(39)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn set_visibility(origin: OriginFor<T>, id: T::DeceasedId, public: bool) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(DeceasedOf::<T>::contains_key(id), Error::<T>::DeceasedNotFound);
+            ensure!(Self::is_admin(id, &who), Error::<T>::NotAuthorized);
+            VisibilityOf::<T>::insert(id, public);
+            Self::deposit_event(Event::VisibilityChanged(id, public));
+            Ok(())
         }
 
         /// 函数级中文注释：从 A(发起方) → B(对方) 发起关系绑定请求。

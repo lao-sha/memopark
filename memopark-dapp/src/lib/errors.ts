@@ -21,6 +21,17 @@ export function mapDispatchErrorMessage(err: unknown, fallback = '提交失败')
       NotFound: '目标不存在',
       PolicyViolation: '策略不允许或功能已停用',
       DepositFailed: '押金相关操作失败',
+      // memo-grave 创建/权限/容量
+      FeePaymentFailed: '创建费扣款失败（余额不足或存在性余额保护）',
+      SlugExists: '人类可读ID冲突，请稍后重试',
+      InvalidSlug: '人类可读ID非法',
+      NotAdmin: '无权限（仅墓主或园区管理员可操作）',
+      NotOwner: '无权限（仅墓主可操作）',
+      CapacityExceeded: '容量已达上限',
+      // deceased 相关
+      GraveNotFound: '墓位不存在',
+      TooManyDeceasedInGrave: '该墓位逝者已达上限',
+      DeceasedTokenExists: '同信息已存在，请调整徽标或日期',
     }
     for (const k of Object.keys(m)) {
       if (raw.includes(k)) return m[k]

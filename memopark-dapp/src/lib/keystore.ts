@@ -141,6 +141,31 @@ export function loadAllKeystores(): LocalKeystore[] {
   } catch { return [] }
 }
 
+/**
+ * 函数级详细中文注释：读取/保存地址别名映射
+ * - 使用 key: 'mp.aliases' 存储 { [address]: alias }
+ * - 别名仅本地生效，便于用户识别
+ */
+export function loadAliases(): Record<string, string> {
+  try {
+    const txt = localStorage.getItem('mp.aliases')
+    const obj = txt ? JSON.parse(txt) : {}
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch { return {} }
+}
+
+export function setAlias(address: string, alias: string): void {
+  const m = loadAliases()
+  if (alias) m[address] = alias
+  else delete m[address]
+  localStorage.setItem('mp.aliases', JSON.stringify(m))
+}
+
+export function getAlias(address: string): string {
+  const m = loadAliases()
+  return m[address] || ''
+}
+
 export function upsertKeystore(entry: LocalKeystore): void {
   const list = loadAllKeystores()
   const i = list.findIndex(x => x.address === entry.address)
@@ -149,13 +174,28 @@ export function upsertKeystore(entry: LocalKeystore): void {
   localStorage.setItem('mp.keystores', JSON.stringify(list))
   // 同步单账户存储（兼容旧逻辑）
   saveLocalKeystore(entry)
+  try { window.dispatchEvent(new Event('mp.accountsUpdate')) } catch {}
 }
 
 export function removeKeystore(address: string): void {
   const list = loadAllKeystores().filter(x => x.address !== address)
   localStorage.setItem('mp.keystores', JSON.stringify(list))
+  // 删除别名
+  const aliases = loadAliases()
+  if (aliases[address]) {
+    delete aliases[address]
+    localStorage.setItem('mp.aliases', JSON.stringify(aliases))
+  }
+  // 若旧版单账户存储与该地址匹配，一并清除，避免被迁移逻辑重新写回
+  try {
+    const legacy = loadLocalKeystore()
+    if (legacy && legacy.address === address) {
+      localStorage.removeItem('mp.keystore')
+    }
+  } catch {}
   const cur = getCurrentAddress()
   if (cur === address) setCurrentAddress(list[0]?.address || '')
+  try { window.dispatchEvent(new Event('mp.accountsUpdate')) } catch {}
 }
 
 export function getCurrentAddress(): string | null {
@@ -165,6 +205,7 @@ export function getCurrentAddress(): string | null {
 export function setCurrentAddress(address: string): void {
   if (address) localStorage.setItem('mp.current', address)
   else localStorage.removeItem('mp.current')
+  try { window.dispatchEvent(new Event('mp.accountsUpdate')) } catch {}
 }
 
 /**

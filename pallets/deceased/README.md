@@ -27,6 +27,7 @@ impl pallet_deceased::Config for Runtime {
     - gender_code：0=M，1=F，2=B；
     - birth_ts/death_ts：字符串，格式 YYYYMMDD（如 19811224），必填；
     - deceased_token：链上自动生成，不需作为参数传入，格式为 性别字母 + 出生 + 去世 + name_badge，例如 M1981122420250901LIUXIAODONG。
+    - 可见性：创建时默认将 `VisibilityOf(id)` 设为 `true`（公开）。
     - 去重规则：创建前将按 `deceased_token` 做唯一性校验，若已存在相同 token，则拒绝创建并返回错误 `DeceasedTokenExists`。
 - update_deceased(id, name?, name_badge?, gender_code?, bio?, birth_ts??, death_ts??, links?)
   - 新增：name_full_cid??（外层 Option 表示是否修改，内层 Option 表示设置/清空）
@@ -41,6 +42,10 @@ impl pallet_deceased::Config for Runtime {
     2) 通过逝者关系功能，加入亲友团（族谱）以表示关联。
 - transfer_deceased(id, new_grave)
 
+- set_visibility(id, public)
+  - 仅 Admin（含 owner）
+  - 修改该逝者的公开可见性；默认公开（创建时已设为 true）
+
 权限：
 - 创建/迁移：`GraveProvider::can_attach(who, grave_id)`。
   - 判定规则（单一权威源：`pallet-memo-grave`）：
@@ -53,6 +58,7 @@ impl pallet_deceased::Config for Runtime {
 - NextDeceasedId: DeceasedId
 - DeceasedOf: DeceasedId -> Deceased
 - DeceasedByGrave: GraveId -> BoundedVec<DeceasedId>
+- VisibilityOf: DeceasedId -> bool（OptionQuery；None 视作 true）
 
 ### Deceased 结构体
 - 增加字段：
