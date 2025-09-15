@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Card, List, Typography, Tag, Space, Button, Alert, Modal, Input, message } from 'antd'
+import { Card, List, Typography, Tag, Space, Button, Alert, Modal, Input, message, Upload } from 'antd'
+import { UploadOutlined } from '@ant-design/icons'
+import { uploadToIpfs } from '../../lib/ipfs'
 import { useWallet } from '../../providers/WalletProvider'
 import { getApi } from '../../lib/polkadot-safe'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
@@ -23,6 +25,11 @@ const MyGravesPage: React.FC = () => {
   const [parkIdInput, setParkIdInput] = useState<string>('')
   const [adminOpen, setAdminOpen] = useState<null | { id: number; mode: 'add' | 'remove' }>(null)
   const [adminAddr, setAdminAddr] = useState<string>('')
+  // 封面设置弹窗
+  const [coverOpen, setCoverOpen] = useState<null | { id: number }>(null)
+  const [coverCid, setCoverCid] = useState<string>('')
+  // 函数级中文注释：封面提交时的加载状态，避免重复点击与给出进度反馈
+  const [coverSubmitting, setCoverSubmitting] = useState<boolean>(false)
 
   // 函数级中文注释：动态解析 grave 的 tx section 名称（兼容 memoGrave/memo_grave/grave）
   const resolveGraveSection = React.useCallback(async (): Promise<string> => {
@@ -121,6 +128,7 @@ const MyGravesPage: React.FC = () => {
                 <Button size="small" onClick={()=>{ window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'grave-list' } })); window.location.hash = '#/grave/list' }}>去列表编辑名称</Button>
                 <Button size="small" onClick={()=>{ setParkOpen(true); setParkIdInput(it.parkId==null? '': String(it.parkId)); (MyGravesPage as any)._editingId = it.id }}>设置园区</Button>
                 <Button size="small" type="primary" onClick={()=>{ try { localStorage.setItem('mp.deceased.graveId', String(it.id)) } catch {}; window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'deceased-create' } })) }}>创建逝者</Button>
+                <Button size="small" onClick={()=> { setCoverOpen({ id: it.id }); setCoverCid('') }}>上传封面</Button>
                 <Button size="small" onClick={async ()=>{
                   try{ const section = await resolveGraveSection(); const hash = await signAndSendLocalFromKeystore(section,'updateGrave',[it.id, null, true, null]); message.success('已提交启用：'+hash); if (current) load(current) }catch(e:any){ message.error(String(e?.message||e)) }
                 }}>启用</Button>
@@ -164,6 +172,55 @@ const MyGravesPage: React.FC = () => {
           }}
         >
           <Input placeholder="输入园区ID（留空清除）" value={parkIdInput} onChange={e=> setParkIdInput(e.target.value)} />
+        </Modal>
+        {/* 上传封面 */}
+        <Modal
+          open={!!coverOpen}
+          onCancel={()=> setCoverOpen(null)}
+          title={`上传封面 (#${coverOpen?.id ?? ''})`}
+          confirmLoading={coverSubmitting}
+          onOk={async ()=>{
+            try{
+              setCoverSubmitting(true)
+              if (!coverOpen?.id) return
+              const cid = coverCid.trim()
+              if (!cid) { message.warning('请输入封面CID'); return }
+              const section = await resolveGraveSection()
+              // 函数级中文注释：将 CID 文本编码为字节数组，并转换为 number[] 以兼容 BoundedVec<u8>
+              const u8 = new TextEncoder().encode(cid)
+              const bytes = Array.from(u8)
+              const hash = await signAndSendLocalFromKeystore(section, 'setCover', [coverOpen.id, bytes])
+              message.success('已提交封面设置：'+hash)
+              setCoverOpen(null)
+              if (current) load(current)
+            } catch (e:any) { message.error(String(e?.message||e)) }
+            finally { setCoverSubmitting(false) }
+          }}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Input placeholder="输入 IPFS CID（不含协议头）" value={coverCid} onChange={e=> setCoverCid(e.target.value)} />
+            <Upload
+              maxCount={1}
+              accept="image/*"
+              beforeUpload={async (file) => {
+                try {
+                  const cid = await uploadToIpfs(file)
+                  setCoverCid(cid)
+                  message.success('已上传到 IPFS：'+cid)
+                } catch (e:any) {
+                  message.error(e?.message || '上传失败')
+                }
+                return false // 阻止 antd 默认上传
+              }}
+            >
+              <Button icon={<UploadOutlined />}>选择本地图片并上传到IPFS</Button>
+            </Upload>
+          </Space>
+          {coverCid && (
+            <div style={{ marginTop: 8, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+              <img alt="cover" src={`https://ipfs.io/ipfs/${coverCid}`} style={{ width: '100%', display: 'block' }} />
+            </div>
+          )}
         </Modal>
         {/* 管理员添加/移除 */}
         <Modal

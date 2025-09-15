@@ -19,6 +19,7 @@ import MyGravesPage from './features/grave/MyGravesPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import CreateGraveForm from './features/grave/CreateGraveForm';
 import GraveDetailPage from './features/grave/GraveDetailPage';
+import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';
 import './App.css';
 
 /**
@@ -51,6 +52,7 @@ const App: React.FC = () => {
               : hash === '#/timeline' ? <OfferingsTimeline />
               : hash === '#/offerings/by-who' ? <OfferingsByWho />
               : hash === '#/grave/create' ? <CreateGraveForm />
+              : hash === '#/deceased/create' ? <CreateDeceasedForm />
               : hash === '#/grave/detail' ? <GraveDetailPage />
               : hash === '#/grave/list' ? <GraveListPage />
               : hash === '#/grave/my' ? <MyGravesPage />
