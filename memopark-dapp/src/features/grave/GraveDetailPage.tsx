@@ -202,7 +202,13 @@ const GraveDetailPage: React.FC = () => {
       setDeceased(parsed)
 
       // ===== 3) 聚合媒体（按每位逝者 → 相册 → 媒体）
-      const ddq: any = (api.query as any).deceasedData
+      const qr2: any = (api.query as any)
+      let ddq: any = qr2.deceasedData || qr2.deceased_data
+      if (!ddq) {
+        const key = Object.keys(qr2).find(k => /deceased[_-]?data/i.test(k))
+        if (key) ddq = qr2[key]
+      }
+      if (!ddq) throw new Error('未找到 deceased-data 查询接口')
       const albumIdLists: any[] = await ddq.albumsByDeceased.multi(ids)
       const allAlbumIds: number[] = albumIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
       // 修正存储名称：deceased-data 中为 DataByAlbum → dataByAlbum
@@ -361,7 +367,13 @@ const GraveDetailPage: React.FC = () => {
     setAlbumLoading2(true)
     try {
       const api = await getApi()
-      const dq: any = (api.query as any).deceasedData
+      const qr3: any = (api.query as any)
+      let dq: any = qr3.deceasedData || qr3.deceased_data
+      if (!dq) {
+        const key = Object.keys(qr3).find(k => /deceased[_-]?data/i.test(k))
+        if (key) dq = qr3[key]
+      }
+      if (!dq) throw new Error('未找到 deceased-data 查询接口')
       const listAny: any = await dq.albumsByDeceased(did)
       const ids: number[] = (listAny?.toJSON?.() as any[])?.map((x:any)=> Number(x)) || []
       if (!ids.length) { setAlbumOptions([]); return }
