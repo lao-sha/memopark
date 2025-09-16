@@ -36,7 +36,9 @@ const GraveDetailPage: React.FC = () => {
   const [videos, setVideos] = React.useState<Array<{ id: string; title?: string; uri?: string }>>([])
   const [articles, setArticles] = React.useState<Array<{ id: string; title?: string; summary?: string; uri?: string }>>([])
   // 留言（Message）聚合
-  const [messages, setMessages] = React.useState<Array<{ id: number; deceasedId: number; text: string; thumb?: string }>>([])
+  const [messages, setMessages] = React.useState<Array<{ id: number; deceasedId: number; cid: string; thumb?: string }>>([])
+  // 留言明文缓存（id -> text）
+  const [messageTexts, setMessageTexts] = React.useState<Record<number, string>>({})
   // 封面CID与设置弹窗
   const [coverCid, setCoverCid] = React.useState<string>('')
   const [coverErr, setCoverErr] = React.useState('')
@@ -248,12 +250,12 @@ const GraveDetailPage: React.FC = () => {
               }
               const uriBytes = j?.uri || j?.Uri
               const thumbBytes = j?.thumbnail_uri || j?.ThumbnailUri
-              const text = decodeBytes(uriBytes)
+              const cid = decodeBytes(uriBytes)
               const thumbStr = decodeBytes(thumbBytes)
-              return { id: Number(allMsgIds[idx]), deceasedId: 0, text, thumb: thumbStr }
+              return { id: Number(allMsgIds[idx]), deceasedId: 0, cid, thumb: thumbStr }
             } catch { return null }
           }).filter(Boolean) as Array<{ id:number; deceasedId:number; text:string; thumb?:string }>
-          setMessages(parsedMsg)
+          setMessages(parsedMsg as any)
         } else { setMessages([]) }
       } catch { setMessages([]) }
     } catch (e: any) {
@@ -421,7 +423,7 @@ const GraveDetailPage: React.FC = () => {
                           <img alt="thumb" src={`https://ipfs.io/ipfs/${String(it.thumb).replace(/^ipfs:\/\//i,'')}`} style={{ width: 48, height: 48, objectFit:'cover', borderRadius: 6, border:'1px solid #eee' }} />
                         )}
                       </div>
-                      <Typography.Paragraph style={{ marginBottom: 0 }}>{it.text}</Typography.Paragraph>
+                      <MessageText cid={it.cid} cache={messageTexts} setCache={setMessageTexts} />
                     </Space>
                   </List.Item>
                 )}
@@ -912,8 +914,12 @@ const CreateMessageInline: React.FC<{
           if (!pwd || pwd.length<8) return message.warning('请输入至少 8 位签名密码')
           if (!text || !text.trim()) return message.warning('请填写留言内容')
           setLoading(true)
+          // 先上传明文到 IPFS，获取 CID
+          const blob = new Blob([text], { type: 'text/plain; charset=utf-8' })
+          const file = new File([blob], 'message.txt', { type: 'text/plain' })
+          const cid = await uploadToIpfs(file)
           const section = 'deceasedData'
-          const args = [2, Number(did), 4, strToBytes(text), thumbCid? strToBytes(thumbCid): null, null, null, null, null, null, null, null]
+          const args = [2, Number(did), 4, strToBytes(cid), thumbCid? strToBytes(thumbCid): null, null, null, null, null, null, null, null]
           const h = await _s(section, 'addData', args as any, pwd)
           message.success('已提交留言：'+h)
           setText(''); setThumbCid('')
@@ -922,5 +928,31 @@ const CreateMessageInline: React.FC<{
       }}>提交留言</Button>
     </Space>
   )
+}
+
+/**
+ * 函数级详细中文注释：根据 CID 拉取明文显示留言内容（带缓存）。
+ */
+const MessageText: React.FC<{ cid: string; cache: Record<number, string>; setCache: React.Dispatch<React.SetStateAction<Record<number, string>>> }> = ({ cid }) => {
+  const [text, setText] = React.useState<string>('')
+  const [loading, setLoading] = React.useState<boolean>(false)
+  React.useEffect(() => {
+    let mounted = true
+    const run = async () => {
+      try {
+        if (!cid) return
+        setLoading(true)
+        const clean = String(cid).replace(/^ipfs:\/\//i,'')
+        const gw = (()=>{ try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' } })()
+        const resp = await fetch(`${gw}/ipfs/${clean}`)
+        const txt = await resp.text()
+        if (mounted) setText(txt)
+      } catch { if (mounted) setText('') } finally { if (mounted) setLoading(false) }
+    }
+    run()
+    return () => { mounted = false }
+  }, [cid])
+  if (loading && !text) return <Typography.Text type="secondary">加载中…</Typography.Text>
+  return <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{text || '(空)'}</Typography.Paragraph>
 }
 
