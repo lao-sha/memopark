@@ -35,6 +35,8 @@ const GraveDetailPage: React.FC = () => {
   const [albums, setAlbums] = React.useState<Array<{ albumId: number; mediaIds: number[] }>>([])
   const [videos, setVideos] = React.useState<Array<{ id: string; title?: string; uri?: string }>>([])
   const [articles, setArticles] = React.useState<Array<{ id: string; title?: string; summary?: string; uri?: string }>>([])
+  // 留言（Message）聚合
+  const [messages, setMessages] = React.useState<Array<{ id: number; deceasedId: number; text: string; thumb?: string }>>([])
   // 封面CID与设置弹窗
   const [coverCid, setCoverCid] = React.useState<string>('')
   const [coverErr, setCoverErr] = React.useState('')
@@ -42,6 +44,8 @@ const GraveDetailPage: React.FC = () => {
   const [cidInput, setCidInput] = React.useState('')
   const [pwdInput, setPwdInput] = React.useState('')
   const [coverSubmitting, setCoverSubmitting] = React.useState(false)
+  // 创建留言弹窗
+  const [msgOpen, setMsgOpen] = React.useState(false)
 
   // 编辑器弹窗（生平/相册/视频/文章/删除/上传）
   const [editorOpen, setEditorOpen] = React.useState(false)
@@ -218,6 +222,30 @@ const GraveDetailPage: React.FC = () => {
       })
       setVideos(videoList)
       setArticles(articleList)
+
+      // ===== 4) 留言（Message，按整个墓位下所有逝者聚合）
+      try {
+        const msgIdLists: any[] = await ddq.messagesByDeceased.multi(ids)
+        const allMsgIds: number[] = msgIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || []).map((x:any)=> Number(x))
+        if (allMsgIds.length) {
+          const dataQuery: any = ddq.mediaOf || ddq.dataOf
+          const msgItems: any[] = dataQuery ? await dataQuery.multi(allMsgIds) : []
+          const parsedMsg = msgItems.map((m: any, idx: number) => {
+            try {
+              const human: any = m?.toHuman?.() || m?.toJSON?.() || m
+              const kindStr: string = String(human?.kind ?? human?.Kind ?? human?.kind?.__kind ?? '')
+              const isMsg = /Message/i.test(kindStr) || String(human?.kind?.__kind || '').toLowerCase() === 'message'
+              if (!isMsg) return null
+              const uri = human?.uri || human?.Uri || ''
+              const thumb = human?.thumbnail_uri || human?.ThumbnailUri || ''
+              // 反查 deceasedId：human 中可能有字段，若无则回退无法直接取到；这里简化为空
+              // 由于存储里没有直接映射，前端聚合时无法 100% 还原，后续可在数据结构中补充。
+              return { id: Number(allMsgIds[idx]), deceasedId: 0, text: String(uri || ''), thumb: String(thumb || '') }
+            } catch { return null }
+          }).filter(Boolean) as Array<{ id:number; deceasedId:number; text:string; thumb?:string }>
+          setMessages(parsedMsg)
+        } else { setMessages([]) }
+      } catch { setMessages([]) }
     } catch (e: any) {
       setErr(e?.message || '加载失败')
       setGraveInfo(null); setDeceased([]); setAlbums([]); setVideos([]); setArticles([])
@@ -362,21 +390,41 @@ const GraveDetailPage: React.FC = () => {
                 </List.Item>
               )}
             />
-            {/* 创建留言（Message） */}
-            <Card size="small" title="创建留言" style={{ marginTop: 12 }}>
+            {/* 留言列表 + 右侧创建按钮 */}
+            <Card size="small" style={{ marginTop: 12 }} title={
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <span>留言列表</span>
+                <Button size="small" type="primary" onClick={()=> setMsgOpen(true)}>创建留言</Button>
+              </div>
+            }>
+              <List
+                bordered
+                dataSource={messages}
+                pagination={{ pageSize: 10 }}
+                locale={{ emptyText: '暂无留言' }}
+                renderItem={(it)=> (
+                  <List.Item>
+                    <Space direction="vertical" style={{ width:'100%' }} size={4}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                        <Typography.Text type="secondary">#{it.id}</Typography.Text>
+                        {it.thumb && String(it.thumb).length>8 && (
+                          <img alt="thumb" src={`https://ipfs.io/ipfs/${String(it.thumb).replace(/^ipfs:\/\//i,'')}`} style={{ width: 48, height: 48, objectFit:'cover', borderRadius: 6, border:'1px solid #eee' }} />
+                        )}
+                      </div>
+                      <Typography.Paragraph style={{ marginBottom: 0 }}>{it.text}</Typography.Paragraph>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+              <Alert type="info" showIcon style={{ marginTop: 8 }} message="说明" description="留言作为 Message 类型写入链上（可退押金/可投诉），支持可选缩略图 CID。" />
+            </Card>
+            <Modal open={msgOpen} title="创建留言" onCancel={()=> setMsgOpen(false)} footer={null} centered>
               <CreateMessageInline
                 deceasedList={deceased}
                 graveId={graveId}
-                onSubmitted={async ()=> { try { if (graveId!=null) await loadAll(graveId) } catch {} }}
+                onSubmitted={async ()=> { try { setMsgOpen(false); if (graveId!=null) await loadAll(graveId) } catch {} }}
               />
-              <Alert
-                type="info"
-                showIcon
-                style={{ marginTop: 8 }}
-                message="说明"
-                description="留言作为 Message 类型写入链上（可退押金/可投诉），支持可选缩略图 CID。"
-              />
-            </Card>
+            </Modal>
           </>
         )}
 
