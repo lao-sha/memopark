@@ -228,19 +228,29 @@ const GraveDetailPage: React.FC = () => {
         const msgIdLists: any[] = await ddq.messagesByDeceased.multi(ids)
         const allMsgIds: number[] = msgIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || []).map((x:any)=> Number(x))
         if (allMsgIds.length) {
-          const dataQuery: any = ddq.mediaOf || ddq.dataOf
+          const dataQuery: any = ddq.dataOf || ddq.mediaOf
           const msgItems: any[] = dataQuery ? await dataQuery.multi(allMsgIds) : []
           const parsedMsg = msgItems.map((m: any, idx: number) => {
             try {
-              const human: any = m?.toHuman?.() || m?.toJSON?.() || m
-              const kindStr: string = String(human?.kind ?? human?.Kind ?? human?.kind?.__kind ?? '')
-              const isMsg = /Message/i.test(kindStr) || String(human?.kind?.__kind || '').toLowerCase() === 'message'
+              // 优先以 toJSON 获取原始字节再解码，避免 toHuman 字段名不一致
+              const j: any = m?.toJSON?.() || m
+              // kind 可能以字符串或对象形式存在，尽力识别
+              const kindVal: any = j?.kind ?? j?.Kind
+              const kindStr = typeof kindVal === 'string' ? kindVal : String(kindVal?.__kind || '')
+              const isMsg = /message/i.test(kindStr)
               if (!isMsg) return null
-              const uri = human?.uri || human?.Uri || ''
-              const thumb = human?.thumbnail_uri || human?.ThumbnailUri || ''
-              // 反查 deceasedId：human 中可能有字段，若无则回退无法直接取到；这里简化为空
-              // 由于存储里没有直接映射，前端聚合时无法 100% 还原，后续可在数据结构中补充。
-              return { id: Number(allMsgIds[idx]), deceasedId: 0, text: String(uri || ''), thumb: String(thumb || '') }
+              const decodeBytes = (val: any): string => {
+                try {
+                  if (!val) return ''
+                  const u8 = new Uint8Array(val)
+                  return new TextDecoder().decode(u8)
+                } catch { return '' }
+              }
+              const uriBytes = j?.uri || j?.Uri
+              const thumbBytes = j?.thumbnail_uri || j?.ThumbnailUri
+              const text = decodeBytes(uriBytes)
+              const thumbStr = decodeBytes(thumbBytes)
+              return { id: Number(allMsgIds[idx]), deceasedId: 0, text, thumb: thumbStr }
             } catch { return null }
           }).filter(Boolean) as Array<{ id:number; deceasedId:number; text:string; thumb?:string }>
           setMessages(parsedMsg)
