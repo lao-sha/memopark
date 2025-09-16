@@ -5,6 +5,7 @@ import { useWallet } from '../../providers/WalletProvider'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { buildCallPreimageHex, submitPreimage, submitProposal } from '../governance/lib/governance'
 import { uploadToIpfs } from '../../lib/ipfs'
+import { signAndSendLocalWithPassword as _s } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：墓地详情页（移动端）
@@ -329,37 +330,54 @@ const GraveDetailPage: React.FC = () => {
         </div>
 
         {activeTab === 'deceased' && (
-          <List
-            bordered
-            loading={loading}
-            dataSource={deceased}
-            locale={{ emptyText: '暂无逝者' }}
-            renderItem={(it)=> (
-              <List.Item onClick={()=> { setDetailItem(it as any); setDetailOpen(true) }} style={{ cursor: 'pointer' }}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Space>
-                    <Typography.Text strong>#{it.id}</Typography.Text>
-                    {it.name && <Tag color="green">{it.name}</Tag>}
-                    {it.nameBadge && <Tag>{it.nameBadge}</Tag>}
-                    {it.gender && <Tag color="blue">{it.gender}</Tag>}
-                  </Space>
-                  <div style={{ fontSize: 12, color: '#666' }}>
-                    {it.birth && <span style={{ marginRight: 12 }}>出生：{it.birth}</span>}
-                    {it.death && <span>离世：{it.death}</span>}
-                  </div>
-                  {it.token && <div><Typography.Text type="secondary">Token：</Typography.Text><Typography.Text code>{it.token}</Typography.Text></div>}
-                  {it.links && it.links.length>0 && (
-                    <div>
-                      <Typography.Text type="secondary">链接：</Typography.Text>
-                      <Space wrap>
-                        {it.links.map((u,idx)=> <Typography.Text key={idx} code>{u}</Typography.Text>)}
-                      </Space>
+          <>
+            <List
+              bordered
+              loading={loading}
+              dataSource={deceased}
+              locale={{ emptyText: '暂无逝者' }}
+              renderItem={(it)=> (
+                <List.Item onClick={()=> { setDetailItem(it as any); setDetailOpen(true) }} style={{ cursor: 'pointer' }}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Space>
+                      <Typography.Text strong>#{it.id}</Typography.Text>
+                      {it.name && <Tag color="green">{it.name}</Tag>}
+                      {it.nameBadge && <Tag>{it.nameBadge}</Tag>}
+                      {it.gender && <Tag color="blue">{it.gender}</Tag>}
+                    </Space>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {it.birth && <span style={{ marginRight: 12 }}>出生：{it.birth}</span>}
+                      {it.death && <span>离世：{it.death}</span>}
                     </div>
-                  )}
-                </Space>
-              </List.Item>
-            )}
-          />
+                    {it.token && <div><Typography.Text type="secondary">Token：</Typography.Text><Typography.Text code>{it.token}</Typography.Text></div>}
+                    {it.links && it.links.length>0 && (
+                      <div>
+                        <Typography.Text type="secondary">链接：</Typography.Text>
+                        <Space wrap>
+                          {it.links.map((u,idx)=> <Typography.Text key={idx} code>{u}</Typography.Text>)}
+                        </Space>
+                      </div>
+                    )}
+                  </Space>
+                </List.Item>
+              )}
+            />
+            {/* 创建留言（Message） */}
+            <Card size="small" title="创建留言" style={{ marginTop: 12 }}>
+              <CreateMessageInline
+                deceasedList={deceased}
+                graveId={graveId}
+                onSubmitted={async ()=> { try { if (graveId!=null) await loadAll(graveId) } catch {} }}
+              />
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+                message="说明"
+                description="留言作为 Message 类型写入链上（可退押金/可投诉），支持可选缩略图 CID。"
+              />
+            </Card>
+          </>
         )}
 
         {activeTab === 'album' && (
@@ -785,4 +803,66 @@ const GraveDetailPage: React.FC = () => {
 
 export default GraveDetailPage
 
+
+/**
+ * 函数级详细中文注释：内联“创建留言”组件（Message 类型）
+ * - container_kind=2（未分类，按 deceased_id 聚合）；container_id=Some(deceased_id)
+ * - kind=4（Message）；uri 为 UTF-8 字节；thumbnail_uri 可选；其他均为 None
+ * - 所有交易均使用本地密码签名 `signAndSendLocalWithPassword`
+ */
+const CreateMessageInline: React.FC<{
+  deceasedList: Array<{ id: number; name?: string }>
+  graveId: number | null
+  onSubmitted?: ()=> void
+}> = ({ deceasedList, onSubmitted }) => {
+  const [did, setDid] = React.useState<number | null>(deceasedList?.[0]?.id ?? null)
+  const [text, setText] = React.useState('')
+  const [thumbCid, setThumbCid] = React.useState('')
+  const [pwd, setPwd] = React.useState('')
+  const [loading, setLoading] = React.useState(false)
+
+  const strToBytes = React.useCallback((s: string): number[] => Array.from(new TextEncoder().encode(String(s || ''))), [])
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      <Space style={{ width: '100%' }}>
+        <Select
+          style={{ flex: 1 }}
+          placeholder="选择逝者"
+          value={did as any}
+          onChange={(v)=> setDid(Number(v))}
+          options={(deceasedList||[]).map(d=> ({ value: d.id, label: `#${d.id}${d.name? ' · '+d.name: ''}` }))}
+        />
+        <Input.Password placeholder="签名密码（≥8位）" value={pwd} onChange={e=> setPwd(e.target.value)} style={{ width: 200 }} />
+      </Space>
+      <Input.TextArea rows={3} maxLength={500} placeholder="留言内容（必填）" value={text} onChange={e=> setText(e.target.value)} />
+      <Space>
+        <Input placeholder="缩略图 CID（可选）" value={thumbCid} onChange={e=> setThumbCid(e.target.value)} style={{ flex: 1 }} />
+        <Upload
+          accept="image/*"
+          showUploadList={false}
+          beforeUpload={async (file)=>{
+            try { message.loading({ key:'up-msg-thumb', content:'正在上传缩略图…' }); const cid = await uploadToIpfs(file as any); setThumbCid(cid); message.success({ key:'up-msg-thumb', content: '已上传：'+cid }) } catch(e:any) { message.error({ key:'up-msg-thumb', content: e?.message || '上传失败' }) } return false
+          }}
+        >
+          <Button>上传缩略图</Button>
+        </Upload>
+      </Space>
+      <Button type="primary" loading={loading} onClick={async ()=>{
+        try {
+          if (did==null) return message.warning('请选择逝者')
+          if (!pwd || pwd.length<8) return message.warning('请输入至少 8 位签名密码')
+          if (!text || !text.trim()) return message.warning('请填写留言内容')
+          setLoading(true)
+          const section = 'deceasedData'
+          const args = [2, Number(did), 4, strToBytes(text), thumbCid? strToBytes(thumbCid): null, null, null, null, null, null, null, null]
+          const h = await _s(section, 'addData', args as any, pwd)
+          message.success('已提交留言：'+h)
+          setText(''); setThumbCid('')
+          onSubmitted && onSubmitted()
+        } catch(e:any) { message.error(e?.message || '提交失败') } finally { setLoading(false) }
+      }}>提交留言</Button>
+    </Space>
+  )
+}
 
