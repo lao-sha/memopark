@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { Alert, Button, Card, Form, Input, InputNumber, Space, Typography, message } from 'antd'
-import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { cryptoWaitReady, blake2AsU8a } from '@polkadot/util-crypto'
 import { mapDispatchErrorMessage } from '../../lib/errors'
 
@@ -13,6 +13,7 @@ import { mapDispatchErrorMessage } from '../../lib/errors'
  */
 const CreateArticleForm: React.FC = () => {
   const [loading, setLoading] = useState(false)
+  const [pwd, setPwd] = useState('')
   const [computedHash, setComputedHash] = useState<string>('')
 
   /**
@@ -42,6 +43,29 @@ const CreateArticleForm: React.FC = () => {
   }, [u8aToHex])
 
   /**
+   * 函数级中文注释：将字符串编码为 UTF-8 字节数组（Array<number>）。
+   * - 与链上 BoundedVec<u8> 参数对齐，避免 Uint8Array 在 JSON 序列化时的兼容性问题。
+   */
+  const strToBytes = useCallback((s: string): number[] => Array.from(new TextEncoder().encode(String(s || ''))), [])
+
+  /**
+   * 函数级中文注释：将 0x 开头 32 字节十六进制转为 Array<number>（长度 32）。
+   * - 若输入非法则返回 null，以便上层校验并提示。
+   */
+  const hex32ToBytes = useCallback((hex: string): number[] | null => {
+    try {
+      const v = String(hex || '')
+      if (!/^0x[0-9a-fA-F]{64}$/.test(v)) return null
+      const out: number[] = []
+      for (let i = 2; i < v.length; i += 2) {
+        out.push(parseInt(v.slice(i, i + 2), 16))
+      }
+      if (out.length !== 32) return null
+      return out
+    } catch { return null }
+  }, [])
+
+  /**
    * 函数级中文注释：提交交易，调用 deceasedData.addData 生成文章媒体
    */
   const onFinish = useCallback(async (values: any) => {
@@ -57,6 +81,7 @@ const CreateArticleForm: React.FC = () => {
         contentHashHex,
       } = values
 
+      if (!pwd || pwd.length < 8) { setLoading(false); return message.warning('请输入至少 8 位签名密码') }
       // 表单校验：albumId
       if (albumId === null || albumId === undefined || isNaN(Number(albumId)) || Number(albumId) < 0) {
         setLoading(false); return message.warning('相册ID需为非负数字')
@@ -80,22 +105,25 @@ const CreateArticleForm: React.FC = () => {
 
       if (!hashHex) { setLoading(false); return message.warning('content_hash 生成失败，请检查 JSON') }
 
+      // 统一参数字节化：uri/title/summary 走 UTF-8 字节数组；content_hash 转 32 字节数组
+      const hashBytes = hex32ToBytes(hashHex)
+      if (!hashBytes) { setLoading(false); return message.error('content_hash 非法（需 0x 开头 32 字节）') }
       const args: any[] = [
         0, // container_kind = Album
         Number(albumId), // container_id
         3, // kind = Article
-        String(uriCid),
+        strToBytes(String(uriCid)),
         null, // thumbnail_uri
-        hashHex, // content_hash: Option<H256>
-        title ? String(title) : null,
-        summary ? String(summary) : null,
+        hashBytes, // content_hash: Option<[u8;32]>
+        title ? strToBytes(String(title)) : null,
+        summary ? strToBytes(String(summary)) : null,
         null, // duration_secs
         null, // width
         null, // height
         typeof orderIndex === 'number' ? Number(orderIndex) : null,
       ]
 
-      await signAndSendLocalFromKeystore('deceasedData','addData', args)
+      await signAndSendLocalWithPassword('deceasedData','addData', args, pwd)
       message.success('已提交文章创建交易')
     } catch (e: any) {
       console.error(e)
@@ -103,7 +131,7 @@ const CreateArticleForm: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [computeHash, computedHash])
+  }, [computeHash, computedHash, pwd, hex32ToBytes, strToBytes])
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto' }}>
@@ -117,6 +145,9 @@ const CreateArticleForm: React.FC = () => {
           />
 
           <Form layout="vertical" onFinish={onFinish}>
+            <Form.Item label="签名密码" required>
+              <Input.Password placeholder="至少 8 位" value={pwd} onChange={e=> setPwd(e.target.value)} />
+            </Form.Item>
             <Form.Item name="albumId" label="相册ID" rules={[{ required: true, message: '请输入相册ID（仅相册 owner 可添加）' }]}>
               <InputNumber min={0} style={{ width: '100%' }} placeholder="例如 0" />
             </Form.Item>
