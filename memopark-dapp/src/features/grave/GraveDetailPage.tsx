@@ -294,6 +294,20 @@ const GraveDetailPage: React.FC = () => {
   }, [])
 
   /**
+   * 函数级中文注释：按具体方法名解析 deceasedData section，确保该方法存在再返回。
+   * - 解决因不同命名风格导致方法不存在而“点击无反应”的问题；若找不到将抛错供 UI 提示。
+   */
+  const resolveDeceasedDataSectionFor = React.useCallback(async (method: string): Promise<string> => {
+    const api = await getApi()
+    const txRoot: any = (api.tx as any)
+    const candidates = ['deceasedData','deceased_data', ...Object.keys(txRoot)]
+    for (const s of candidates) {
+      if (txRoot[s] && typeof txRoot[s][method] === 'function') return s
+    }
+    throw new Error(`运行时未找到方法：${method}`)
+  }, [])
+
+  /**
    * 函数级中文注释：工具 - 将字符串按 UTF-8 编码为 Array<number>，用于链上 BoundedVec<u8> 参数。
    */
   const strToBytes = React.useCallback((s: string): number[] => Array.from(new TextEncoder().encode(s || '')), [])
@@ -621,7 +635,7 @@ const GraveDetailPage: React.FC = () => {
                         if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                         if (!lifeCid) return message.warning('请填写生平 CID')
                         setEditorSubmitting(true)
-                        const section = await resolveDeceasedDataSection()
+                        const section = await resolveDeceasedDataSectionFor('updateLife').catch(async ()=> resolveDeceasedDataSectionFor('createLife'))
                         const did = Number(selectedDid)
                         // 优先尝试 update_life，若失败再回退 create_life
                         const bytes = strToBytes(lifeCid)
@@ -654,7 +668,7 @@ const GraveDetailPage: React.FC = () => {
                       if (selectedDid==null) return message.warning('请选择逝者')
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (!albumTitle) return message.warning('请填写标题')
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('createAlbum')
                       setEditorSubmitting(true)
                       const did = Number(selectedDid)
                       const h = await signAndSendLocalWithPassword(section, 'createAlbum', [did, strToBytes(albumTitle), strToBytes(albumDesc||''), 0, []], txPwd)
@@ -695,7 +709,7 @@ const GraveDetailPage: React.FC = () => {
                       if (albumId==null) return message.warning('请输入相册ID')
                       if (!photoCid) return message.warning('请填写或上传图片 CID')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('addData')
                       const bytes = strToBytes(photoCid)
                       const w = photoWidth==null? null : Number(photoWidth)
                       const h = photoHeight==null? null : Number(photoHeight)
@@ -722,7 +736,7 @@ const GraveDetailPage: React.FC = () => {
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (!vcTitle) return message.warning('请填写标题')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('createVideoCollection')
                       const did = Number(selectedDid)
                       const h = await signAndSendLocalWithPassword(section, 'createVideoCollection', [did, strToBytes(vcTitle), strToBytes(vcDesc||''), []], txPwd)
                       message.success('已提交创建视频集：'+h)
@@ -743,7 +757,7 @@ const GraveDetailPage: React.FC = () => {
                       if (vcId==null) return message.warning('请输入视频集ID')
                       if (!videoUri) return message.warning('请填写视频URI')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('addData')
                       const txh = await signAndSendLocalWithPassword(section, 'addData', [1, Number(vcId), 1, strToBytes(videoUri), null, null, null, null, videoDuration==null? null:Number(videoDuration), null, null, null], txPwd)
                       message.success('已提交添加视频：'+txh)
                       if (graveId!=null) await loadAll(graveId)
@@ -774,7 +788,7 @@ const GraveDetailPage: React.FC = () => {
                     if (articleAlbumId==null) return message.warning('请输入相册ID')
                     if (!articleCid) return message.warning('请填写文章正文 CID')
                     setEditorSubmitting(true)
-                    const section = await resolveDeceasedDataSection()
+                    const section = await resolveDeceasedDataSectionFor('addData')
                     const bytes = strToBytes(articleCid)
                     // 文章需要 content_hash 为 Some，这里占位 32 字节零值（后续可替换为 blake2_256(cid)）
                     const zero32 = new Array(32).fill(0)
@@ -797,7 +811,7 @@ const GraveDetailPage: React.FC = () => {
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (removeDataId==null) return message.warning('请输入媒体ID')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('removeData')
                       const h = await signAndSendLocalWithPassword(section, 'removeData', [Number(removeDataId)], txPwd)
                       message.success('已提交删除媒体：'+h)
                       if (graveId!=null) await loadAll(graveId)
@@ -811,7 +825,7 @@ const GraveDetailPage: React.FC = () => {
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (deleteAlbumId==null) return message.warning('请输入相册ID')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSection()
+                      const section = await resolveDeceasedDataSectionFor('deleteAlbum')
                       const h = await signAndSendLocalWithPassword(section, 'deleteAlbum', [Number(deleteAlbumId)], txPwd)
                       message.success('已提交删除相册：'+h)
                       if (graveId!=null) await loadAll(graveId)
