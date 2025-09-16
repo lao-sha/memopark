@@ -79,6 +79,9 @@ const GraveDetailPage: React.FC = () => {
   const [removeDataId, setRemoveDataId] = React.useState<number | null>(null)
   const [deleteAlbumId, setDeleteAlbumId] = React.useState<number | null>(null)
   const [editorSubmitting, setEditorSubmitting] = React.useState(false)
+  // 相册下拉选项（仅当前选中逝者）
+  const [albumOptions, setAlbumOptions] = React.useState<Array<{ value: number; label: string }>>([])
+  const [albumLoading2, setAlbumLoading2] = React.useState(false)
 
   /**
    * 函数级中文注释：初始化与监听 GraveId 来源
@@ -250,7 +253,9 @@ const GraveDetailPage: React.FC = () => {
       // ===== 4) 留言（Message，按整个墓位下所有逝者聚合）
       try {
         const msgIdLists: any[] = await ddq.messagesByDeceased.multi(ids)
-        const allMsgIds: number[] = msgIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || []).map((x:any)=> Number(x))
+        let allMsgIds: number[] = msgIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || []).map((x:any)=> Number(x))
+        // 留言按倒序展示：按 ID 倒序请求与渲染
+        allMsgIds = allMsgIds.sort((a,b)=> b-a)
         if (allMsgIds.length) {
           const dataQuery: any = ddq.dataOf || ddq.mediaOf
           const msgItems: any[] = dataQuery ? await dataQuery.multi(allMsgIds) : []
@@ -346,6 +351,40 @@ const GraveDetailPage: React.FC = () => {
       }
     } catch {}
   }, [deceased, selectedDid])
+
+  /**
+   * 函数级中文注释：加载“当前选中逝者”的相册下拉选项
+   * - 查询 deceasedData.albumsByDeceased(did) 获取相册ID列表
+   * - 批量读取 albumOf 解析标题，生成下拉 label
+   */
+  const loadAlbumOptions = React.useCallback(async (did: number) => {
+    setAlbumLoading2(true)
+    try {
+      const api = await getApi()
+      const dq: any = (api.query as any).deceasedData
+      const listAny: any = await dq.albumsByDeceased(did)
+      const ids: number[] = (listAny?.toJSON?.() as any[])?.map((x:any)=> Number(x)) || []
+      if (!ids.length) { setAlbumOptions([]); return }
+      const details: any[] = await dq.albumOf.multi(ids)
+      const opts = details.map((a: any, idx: number) => {
+        try {
+          const id = ids[idx]
+          const j: any = a?.toJSON?.() || a
+          // 标题为字节数组，转 UTF-8
+          const titleU8: any = j?.title
+          let title = ''
+          try { if (titleU8) title = new TextDecoder().decode(new Uint8Array(titleU8)) } catch {}
+          return { value: id, label: `#${id}${title? ' · '+title: ''}` }
+        } catch { return null }
+      }).filter(Boolean)
+      setAlbumOptions(opts as any)
+    } catch { setAlbumOptions([]) }
+    finally { setAlbumLoading2(false) }
+  }, [])
+
+  React.useEffect(() => {
+    try { if (editorOpen && editorTab === 'album' && selectedDid != null) loadAlbumOptions(Number(selectedDid)) } catch {}
+  }, [editorOpen, editorTab, selectedDid, loadAlbumOptions])
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
@@ -722,7 +761,21 @@ const GraveDetailPage: React.FC = () => {
               </Card>
               <Card size="small" title="添加图片到相册">
                 <Space direction="vertical" style={{ width: '100%' }}>
-                  <InputNumber placeholder="相册ID" value={albumId as any} onChange={(v)=> setAlbumId((v as any) ?? null)} style={{ width: '100%' }} />
+                  <Space style={{ width:'100%', justifyContent:'space-between' }}>
+                    <div style={{ flex: 1, marginRight: 8 }}>
+                      <Select
+                        showSearch
+                        placeholder={selectedDid==null? '请先选择逝者' : '选择相册'}
+                        options={albumOptions}
+                        loading={albumLoading2}
+                        value={albumId as any}
+                        onChange={(v)=> setAlbumId(Number(v))}
+                        style={{ width:'100%' }}
+                        optionFilterProp="label"
+                      />
+                    </div>
+                    <Button size="small" onClick={()=> selectedDid!=null && loadAlbumOptions(Number(selectedDid))} loading={albumLoading2}>刷新</Button>
+                  </Space>
                   <Input placeholder="图片 CID（ipfs）" value={photoCid} onChange={e=> setPhotoCid(e.target.value)} />
                   <Space>
                     <InputNumber placeholder="宽" value={photoWidth as any} onChange={(v)=> setPhotoWidth((v as any) ?? null)} />
