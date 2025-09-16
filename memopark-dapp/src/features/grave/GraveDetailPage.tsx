@@ -201,12 +201,14 @@ const GraveDetailPage: React.FC = () => {
       const ddq: any = (api.query as any).deceasedData
       const albumIdLists: any[] = await ddq.albumsByDeceased.multi(ids)
       const allAlbumIds: number[] = albumIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
-      const mediaIdLists: any[] = allAlbumIds.length ? await ddq.mediaByAlbum.multi(allAlbumIds) : []
+      // 修正存储名称：deceased-data 中为 DataByAlbum → dataByAlbum
+      const mediaIdLists: any[] = allAlbumIds.length ? await ddq.dataByAlbum.multi(allAlbumIds) : []
       const grouped = allAlbumIds.map((aid: any, idx: number) => ({ albumId: Number(aid), mediaIds: ((mediaIdLists[idx]?.toJSON?.() as any[]) || []).map((x:any)=> Number(x)) }))
       setAlbums(grouped)
       const allMediaIds: number[] = grouped.flatMap(g => g.mediaIds)
       if (!allMediaIds.length) { setVideos([]); setArticles([]); setLoading(false); return }
-      const media: any[] = await ddq.mediaOf.multi(allMediaIds)
+      // 修正存储名称：deceased-data 中为 DataOf → dataOf
+      const media: any[] = await ddq.dataOf.multi(allMediaIds)
       // 解析 kind/title/summary/uri（兼容 toHuman）
       const videoList: Array<{ id: string; title?: string; uri?: string }> = []
       const articleList: Array<{ id: string; title?: string; summary?: string; uri?: string }> = []
