@@ -1,9 +1,10 @@
 import React from 'react'
-import { Alert, Button, Card, Divider, Input, InputNumber, List, Space, Tabs, Tag, Typography, message, Modal } from 'antd'
+import { Alert, Button, Card, Divider, Input, InputNumber, List, Space, Tabs, Tag, Typography, message, Modal, Upload, Select } from 'antd'
 import { getApi } from '../../lib/polkadot-safe'
 import { useWallet } from '../../providers/WalletProvider'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { buildCallPreimageHex, submitPreimage, submitProposal } from '../governance/lib/governance'
+import { uploadToIpfs } from '../../lib/ipfs'
 
 /**
  * 函数级详细中文注释：墓地详情页（移动端）
@@ -40,6 +41,36 @@ const GraveDetailPage: React.FC = () => {
   const [cidInput, setCidInput] = React.useState('')
   const [pwdInput, setPwdInput] = React.useState('')
   const [coverSubmitting, setCoverSubmitting] = React.useState(false)
+
+  // 编辑器弹窗（生平/相册/视频/文章/删除/上传）
+  const [editorOpen, setEditorOpen] = React.useState(false)
+  const [editorTab, setEditorTab] = React.useState<'life'|'album'|'video'|'article'|'remove'>('life')
+  const [selectedDid, setSelectedDid] = React.useState<number | null>(null)
+  const [txPwd, setTxPwd] = React.useState('')
+  // 生平
+  const [lifeCid, setLifeCid] = React.useState('')
+  // 相册与图片
+  const [albumTitle, setAlbumTitle] = React.useState('')
+  const [albumDesc, setAlbumDesc] = React.useState('')
+  const [albumId, setAlbumId] = React.useState<number | null>(null)
+  const [photoCid, setPhotoCid] = React.useState('')
+  const [photoWidth, setPhotoWidth] = React.useState<number | null>(null)
+  const [photoHeight, setPhotoHeight] = React.useState<number | null>(null)
+  // 视频集与视频
+  const [vcTitle, setVcTitle] = React.useState('')
+  const [vcDesc, setVcDesc] = React.useState('')
+  const [vcId, setVcId] = React.useState<number | null>(null)
+  const [videoUri, setVideoUri] = React.useState('')
+  const [videoDuration, setVideoDuration] = React.useState<number | null>(null)
+  // 文章
+  const [articleAlbumId, setArticleAlbumId] = React.useState<number | null>(null)
+  const [articleCid, setArticleCid] = React.useState('')
+  const [articleTitle, setArticleTitle] = React.useState('')
+  const [articleSummary, setArticleSummary] = React.useState('')
+  // 删除
+  const [removeDataId, setRemoveDataId] = React.useState<number | null>(null)
+  const [deleteAlbumId, setDeleteAlbumId] = React.useState<number | null>(null)
+  const [editorSubmitting, setEditorSubmitting] = React.useState(false)
 
   /**
    * 函数级中文注释：初始化与监听 GraveId 来源
@@ -205,6 +236,40 @@ const GraveDetailPage: React.FC = () => {
     return 'grave'
   }, [])
 
+  /**
+   * 函数级中文注释：解析 deceasedData Pallet 的 tx section 名称（兼容不同命名风格）。
+   * - 优先尝试 deceasedData，其次 deceased_data，再次遍历匹配 /deceased[_-]?data/i。
+   */
+  const resolveDeceasedDataSection = React.useCallback(async (): Promise<string> => {
+    try {
+      const api = await getApi()
+      const txRoot: any = (api.tx as any)
+      const candidates = ['deceasedData','deceased_data', ...Object.keys(txRoot)]
+      for (const s of candidates) {
+        if (txRoot[s]?.addData || txRoot[s]?.createAlbum) return s
+      }
+    } catch {}
+    return 'deceasedData'
+  }, [])
+
+  /**
+   * 函数级中文注释：工具 - 将字符串按 UTF-8 编码为 Array<number>，用于链上 BoundedVec<u8> 参数。
+   */
+  const strToBytes = React.useCallback((s: string): number[] => Array.from(new TextEncoder().encode(s || '')), [])
+
+  /**
+   * 函数级中文注释：当逝者列表变化时，自动选择第一个作为默认编辑目标，便于快速编辑。
+   */
+  React.useEffect(() => {
+    try {
+      if (deceased.length > 0) {
+        if (selectedDid == null) setSelectedDid(Number(deceased[0].id))
+      } else {
+        setSelectedDid(null)
+      }
+    } catch {}
+  }, [deceased, selectedDid])
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
       {/* 顶部栏 */}
@@ -252,13 +317,16 @@ const GraveDetailPage: React.FC = () => {
 
         <Divider style={{ margin: '12px 0' }} />
 
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
-          { key:'deceased', label:'逝者信息' },
-          { key:'album', label:'相册' },
-          { key:'video', label:'视频' },
-          { key:'life', label:'生平' },
-          { key:'article', label:'追忆文章' },
-        ]} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+            { key:'deceased', label:'逝者信息' },
+            { key:'album', label:'相册' },
+            { key:'video', label:'视频' },
+            { key:'life', label:'生平' },
+            { key:'article', label:'追忆文章' },
+          ]} />
+          <Button size="small" type="primary" onClick={()=> setEditorOpen(true)}>编辑</Button>
+        </div>
 
         {activeTab === 'deceased' && (
           <List
@@ -425,6 +493,255 @@ const GraveDetailPage: React.FC = () => {
             <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
               <img src={`https://ipfs.io/ipfs/${cidInput}`} alt="preview" style={{ width: '100%', display: 'block' }} />
             </div>
+          )}
+        </Space>
+      </Modal>
+      {/* 编辑器弹窗：生平/相册/视频/文章/删除/上传 */}
+      <Modal
+        open={editorOpen}
+        title="编辑内容（生平/相册/视频/文章）"
+        onCancel={()=> { setEditorOpen(false); setEditorSubmitting(false) }}
+        footer={null}
+        centered
+      >
+        {/* 全局控制区：选择逝者与签名密码 */}
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ flex: 1, marginRight: 8 }}>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="选择逝者"
+                value={selectedDid as any}
+                onChange={(v)=> setSelectedDid(Number(v))}
+                options={deceased.map(d=> ({ label: `#${d.id} ${d.name || ''}`, value: d.id }))}
+              />
+            </div>
+            <div style={{ width: 180 }}>
+              <Input.Password placeholder="签名密码（≥8位）" value={txPwd} onChange={e=> setTxPwd(e.target.value)} />
+            </div>
+          </Space>
+
+          <Tabs activeKey={editorTab} onChange={(k)=> setEditorTab(k as any)} items={[
+            { key: 'life', label: '生平' },
+            { key: 'album', label: '相册/图片' },
+            { key: 'video', label: '视频/音频' },
+            { key: 'article', label: '追忆文章' },
+            { key: 'remove', label: '删除' },
+          ]} />
+
+          {editorTab === 'life' && (
+            <Card size="small" title="生平（IPFS CID）">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Input placeholder="生平 CID（如 Qm... 或 bafy...）" value={lifeCid} onChange={e=> setLifeCid(e.target.value)} />
+                <Space>
+                  <Button
+                    type="primary"
+                    loading={editorSubmitting}
+                    onClick={async ()=>{
+                      try {
+                        if (selectedDid==null) return message.warning('请选择逝者')
+                        if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                        if (!lifeCid) return message.warning('请填写生平 CID')
+                        setEditorSubmitting(true)
+                        const section = await resolveDeceasedDataSection()
+                        const did = Number(selectedDid)
+                        // 优先尝试 update_life，若失败再回退 create_life
+                        const bytes = strToBytes(lifeCid)
+                        try {
+                          const h = await signAndSendLocalWithPassword(section, 'updateLife', [did, bytes], txPwd)
+                          message.success('已提交更新生平：'+h)
+                        } catch (e:any) {
+                          const h2 = await signAndSendLocalWithPassword(section, 'createLife', [did, bytes], txPwd)
+                          message.success('已提交创建生平：'+h2)
+                        }
+                        if (graveId!=null) await loadAll(graveId)
+                      } catch (e:any) {
+                        message.error(e?.message || '提交失败')
+                      } finally { setEditorSubmitting(false) }
+                    }}
+                  >创建/更新</Button>
+                </Space>
+              </Space>
+            </Card>
+          )}
+
+          {editorTab === 'album' && (
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <Card size="small" title="创建相册">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Input placeholder="标题" value={albumTitle} onChange={e=> setAlbumTitle(e.target.value)} />
+                  <Input.TextArea placeholder="描述" rows={2} value={albumDesc} onChange={e=> setAlbumDesc(e.target.value)} />
+                  <Button type="primary" loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (selectedDid==null) return message.warning('请选择逝者')
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (!albumTitle) return message.warning('请填写标题')
+                      const section = await resolveDeceasedDataSection()
+                      setEditorSubmitting(true)
+                      const did = Number(selectedDid)
+                      const h = await signAndSendLocalWithPassword(section, 'createAlbum', [did, strToBytes(albumTitle), strToBytes(albumDesc||''), 0, []], txPwd)
+                      message.success('已提交创建相册：'+h)
+                      setAlbumTitle(''); setAlbumDesc('')
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>创建相册</Button>
+                </Space>
+              </Card>
+              <Card size="small" title="添加图片到相册">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <InputNumber placeholder="相册ID" value={albumId as any} onChange={(v)=> setAlbumId((v as any) ?? null)} style={{ width: '100%' }} />
+                  <Input placeholder="图片 CID（ipfs）" value={photoCid} onChange={e=> setPhotoCid(e.target.value)} />
+                  <Space>
+                    <InputNumber placeholder="宽" value={photoWidth as any} onChange={(v)=> setPhotoWidth((v as any) ?? null)} />
+                    <InputNumber placeholder="高" value={photoHeight as any} onChange={(v)=> setPhotoHeight((v as any) ?? null)} />
+                    <Upload
+                      accept="image/*"
+                      showUploadList={false}
+                      beforeUpload={async (file)=>{
+                        try {
+                          message.loading({ key: 'up-photo', content: '正在上传到 IPFS…' })
+                          const cid = await uploadToIpfs(file as any)
+                          setPhotoCid(cid)
+                          message.success({ key: 'up-photo', content: '已上传：'+cid })
+                        } catch(e:any) { message.error({ key: 'up-photo', content: e?.message || '上传失败' }) }
+                        return false
+                      }}
+                    >
+                      <Button>选择文件上传</Button>
+                    </Upload>
+                  </Space>
+                  <Button type="primary" loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (selectedDid==null) return message.warning('请选择逝者')
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (albumId==null) return message.warning('请输入相册ID')
+                      if (!photoCid) return message.warning('请填写或上传图片 CID')
+                      setEditorSubmitting(true)
+                      const section = await resolveDeceasedDataSection()
+                      const bytes = strToBytes(photoCid)
+                      const w = photoWidth==null? null : Number(photoWidth)
+                      const h = photoHeight==null? null : Number(photoHeight)
+                      const hsh = null
+                      const txh = await signAndSendLocalWithPassword(section, 'addData', [0, Number(albumId), 0, bytes, null, hsh, null, null, null, w, h, null], txPwd)
+                      message.success('已提交添加图片：'+txh)
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>添加图片</Button>
+                </Space>
+              </Card>
+            </Space>
+          )}
+
+          {editorTab === 'video' && (
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <Card size="small" title="创建视频集">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Input placeholder="标题" value={vcTitle} onChange={e=> setVcTitle(e.target.value)} />
+                  <Input.TextArea placeholder="描述" rows={2} value={vcDesc} onChange={e=> setVcDesc(e.target.value)} />
+                  <Button type="primary" loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (selectedDid==null) return message.warning('请选择逝者')
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (!vcTitle) return message.warning('请填写标题')
+                      setEditorSubmitting(true)
+                      const section = await resolveDeceasedDataSection()
+                      const did = Number(selectedDid)
+                      const h = await signAndSendLocalWithPassword(section, 'createVideoCollection', [did, strToBytes(vcTitle), strToBytes(vcDesc||''), []], txPwd)
+                      message.success('已提交创建视频集：'+h)
+                      setVcTitle(''); setVcDesc('')
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>创建视频集</Button>
+                </Space>
+              </Card>
+              <Card size="small" title="添加视频到视频集">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <InputNumber placeholder="视频集ID" value={vcId as any} onChange={(v)=> setVcId((v as any) ?? null)} style={{ width: '100%' }} />
+                  <Input placeholder="视频 URI（如 ipfs://CID 或 https://...）" value={videoUri} onChange={e=> setVideoUri(e.target.value)} />
+                  <InputNumber placeholder="时长（秒，可选）" value={videoDuration as any} onChange={(v)=> setVideoDuration((v as any) ?? null)} style={{ width: '100%' }} />
+                  <Button type="primary" loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (vcId==null) return message.warning('请输入视频集ID')
+                      if (!videoUri) return message.warning('请填写视频URI')
+                      setEditorSubmitting(true)
+                      const section = await resolveDeceasedDataSection()
+                      const txh = await signAndSendLocalWithPassword(section, 'addData', [1, Number(vcId), 1, strToBytes(videoUri), null, null, null, null, videoDuration==null? null:Number(videoDuration), null, null, null], txPwd)
+                      message.success('已提交添加视频：'+txh)
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>添加视频</Button>
+                </Space>
+              </Card>
+            </Space>
+          )}
+
+          {editorTab === 'article' && (
+            <Card size="small" title="添加追忆文章（需提供正文CID与可选标题/摘要）">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <InputNumber placeholder="相册ID（文章归属相册）" value={articleAlbumId as any} onChange={(v)=> setArticleAlbumId((v as any) ?? null)} style={{ width: '100%' }} />
+                <Input placeholder="文章正文 CID（ipfs）" value={articleCid} onChange={e=> setArticleCid(e.target.value)} />
+                <Input placeholder="标题（可选）" value={articleTitle} onChange={e=> setArticleTitle(e.target.value)} />
+                <Input.TextArea placeholder="摘要（可选）" rows={2} value={articleSummary} onChange={e=> setArticleSummary(e.target.value)} />
+                <Space>
+                  <Upload accept="text/*,application/json" showUploadList={false} beforeUpload={async (file)=>{
+                    try { message.loading({ key:'up-article', content:'正在上传到 IPFS…' }); const cid = await uploadToIpfs(file as any); setArticleCid(cid); message.success({ key:'up-article', content:'已上传：'+cid }) } catch(e:any) { message.error({ key:'up-article', content: e?.message || '上传失败' }) } return false
+                  }}>
+                    <Button>选择文件上传</Button>
+                  </Upload>
+                </Space>
+                <Button type="primary" loading={editorSubmitting} onClick={async ()=>{
+                  try {
+                    if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                    if (articleAlbumId==null) return message.warning('请输入相册ID')
+                    if (!articleCid) return message.warning('请填写文章正文 CID')
+                    setEditorSubmitting(true)
+                    const section = await resolveDeceasedDataSection()
+                    const bytes = strToBytes(articleCid)
+                    // 文章需要 content_hash 为 Some，这里占位 32 字节零值（后续可替换为 blake2_256(cid)）
+                    const zero32 = new Array(32).fill(0)
+                    const txh = await signAndSendLocalWithPassword(section, 'addData', [0, Number(articleAlbumId), 3, bytes, null, zero32, articleTitle? strToBytes(articleTitle): null, articleSummary? strToBytes(articleSummary): null, null, null, null, null], txPwd)
+                    message.success('已提交添加文章：'+txh)
+                    if (graveId!=null) await loadAll(graveId)
+                  } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                }}>添加文章</Button>
+              </Space>
+            </Card>
+          )}
+
+          {editorTab === 'remove' && (
+            <Card size="small" title="删除（媒体或相册）">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Space>
+                  <InputNumber placeholder="媒体ID（DataId）" value={removeDataId as any} onChange={(v)=> setRemoveDataId((v as any) ?? null)} />
+                  <Button danger loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (removeDataId==null) return message.warning('请输入媒体ID')
+                      setEditorSubmitting(true)
+                      const section = await resolveDeceasedDataSection()
+                      const h = await signAndSendLocalWithPassword(section, 'removeData', [Number(removeDataId)], txPwd)
+                      message.success('已提交删除媒体：'+h)
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>删除媒体</Button>
+                </Space>
+                <Space>
+                  <InputNumber placeholder="相册ID" value={deleteAlbumId as any} onChange={(v)=> setDeleteAlbumId((v as any) ?? null)} />
+                  <Button danger loading={editorSubmitting} onClick={async ()=>{
+                    try {
+                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
+                      if (deleteAlbumId==null) return message.warning('请输入相册ID')
+                      setEditorSubmitting(true)
+                      const section = await resolveDeceasedDataSection()
+                      const h = await signAndSendLocalWithPassword(section, 'deleteAlbum', [Number(deleteAlbumId)], txPwd)
+                      message.success('已提交删除相册：'+h)
+                      if (graveId!=null) await loadAll(graveId)
+                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
+                  }}>删除相册</Button>
+                </Space>
+              </Space>
+            </Card>
           )}
         </Space>
       </Modal>
