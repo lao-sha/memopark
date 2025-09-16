@@ -56,6 +56,7 @@ const GraveDetailPage: React.FC = () => {
   const [txPwd, setTxPwd] = React.useState('')
   // 生平
   const [lifeCid, setLifeCid] = React.useState('')
+  const [lifeText, setLifeText] = React.useState('')
   // 相册与图片
   const [albumTitle, setAlbumTitle] = React.useState('')
   const [albumDesc, setAlbumDesc] = React.useState('')
@@ -226,6 +227,25 @@ const GraveDetailPage: React.FC = () => {
       })
       setVideos(videoList)
       setArticles(articleList)
+
+      // ===== 3.1) 生平（Life）：为每位逝者读取 CID，渲染时再按 CID 拉取明文
+      try {
+        const lifeOpts: any[] = await ddq.lifeOf.multi(ids)
+        // 在 UI 渲染时用 LifeText 组件通过 CID 拉取明文，不做此处并发拉取
+        // 仅将 CID 临时附加到 deceased 列表用于展示
+        const cidMap: Record<number, string> = {}
+        lifeOpts.forEach((opt: any, idx: number) => {
+          try {
+            if (opt && opt.isSome) {
+              const life = opt.unwrap()
+              const u8 = life.cid?.toU8a ? life.cid.toU8a() : (life.cid?.toJSON ? new Uint8Array(life.cid.toJSON()) : undefined)
+              if (u8) cidMap[Number(ids[idx])] = new TextDecoder().decode(u8)
+            }
+          } catch {}
+        })
+        // 将 CID 合并进 state（不改变原字段结构，渲染时按需读取）
+        setDeceased(prev => prev.map(d => ({ ...d, lifeCid: cidMap[d.id] })) as any)
+      } catch {}
 
       // ===== 4) 留言（Message，按整个墓位下所有逝者聚合）
       try {
@@ -627,6 +647,17 @@ const GraveDetailPage: React.FC = () => {
             <Card size="small" title="生平（IPFS CID）">
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Input placeholder="生平 CID（如 Qm... 或 bafy...）" value={lifeCid} onChange={e=> setLifeCid(e.target.value)} />
+                <Input.TextArea rows={4} placeholder="生平明文（可直接粘贴；不填则使用上方 CID）" value={lifeText} onChange={e=> setLifeText(e.target.value)} />
+                <Button onClick={async ()=>{
+                  try {
+                    if (!lifeText || !lifeText.trim()) return message.warning('请填写生平明文')
+                    const blob = new Blob([lifeText], { type: 'text/plain; charset=utf-8' })
+                    const file = new File([blob], 'life.txt', { type: 'text/plain' })
+                    const cid = await uploadToIpfs(file)
+                    setLifeCid(cid)
+                    message.success('已上传到 IPFS：'+cid)
+                  } catch(e:any) { message.error(e?.message || '上传失败') }
+                }}>将明文上传到 IPFS 并回填 CID</Button>
                 <Space>
                   <Button
                     type="primary"
@@ -635,12 +666,20 @@ const GraveDetailPage: React.FC = () => {
                       try {
                         if (selectedDid==null) return message.warning('请选择逝者')
                         if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
-                        if (!lifeCid) return message.warning('请填写生平 CID')
+                        let cidToUse = (lifeCid||'').trim()
+                        if (!cidToUse) {
+                          if (!lifeText || !lifeText.trim()) return message.warning('请填写生平明文或 CID')
+                          // 若未填写 CID，则自动上传明文到 IPFS 生成 CID
+                          const blob = new Blob([lifeText], { type: 'text/plain; charset=utf-8' })
+                          const file = new File([blob], 'life.txt', { type: 'text/plain' })
+                          cidToUse = await uploadToIpfs(file)
+                          setLifeCid(cidToUse)
+                        }
                         setEditorSubmitting(true)
                         const section = await resolveDeceasedDataSectionFor('updateLife').catch(async ()=> resolveDeceasedDataSectionFor('createLife'))
                         const did = Number(selectedDid)
                         // 优先尝试 update_life，若失败再回退 create_life
-                        const bytes = strToBytes(lifeCid)
+                        const bytes = strToBytes(cidToUse)
                         try {
                           const h = await signAndSendLocalWithPassword(section, 'updateLife', [did, bytes], txPwd)
                           message.success('已提交更新生平：'+h)
