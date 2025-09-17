@@ -20,6 +20,14 @@ import DashboardPage from './features/dashboard/DashboardPage';
 import CreateGraveForm from './features/grave/CreateGraveForm';
 import GraveDetailPage from './features/grave/GraveDetailPage';
 import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';
+import DeceasedListPage from './features/deceased/DeceasedListPage';
+import CoverOptionsPage from './features/grave/CoverOptionsPage';
+import CreateCoverOptionPage from './features/grave/CreateCoverOptionPage';
+import CreateCategoryPage from './features/offerings/CreateCategoryPage';
+import CreatePrimaryCategoryPage from './features/offerings/CreatePrimaryCategoryPage';
+import CreateSacrificePage from './features/offerings/CreateSacrificePage';
+import CreateScenePage from './features/offerings/CreateScenePage';
+import CategoryListPage from './features/offerings/CategoryListPage';
 import './App.css';
 
 /**
@@ -47,19 +55,26 @@ const App: React.FC = () => {
             {hash === '#/admin/pause' ? <AdminPause />
               : hash === '#/admin/category' ? <AdminCategory />
               : hash === '#/admin/effect' ? <AdminEffect />
-              : hash === '#/browse/category' ? <CategoryBrowse />
+              : hash.startsWith('#/browse/category') ? <CategoryBrowse />
               : hash === '#/orders' ? <MyOrders />
               : hash === '#/timeline' ? <OfferingsTimeline />
               : hash === '#/offerings/by-who' ? <OfferingsByWho />
               : hash === '#/grave/create' ? <CreateGraveForm />
               : hash === '#/deceased/create' ? <CreateDeceasedForm />
-              : hash === '#/grave/detail' ? <GraveDetailPage />
-              : hash === '#/grave/list' ? <GraveListPage />
+              : hash.startsWith('#/grave/detail') ? <GraveDetailPage />
+              : hash === '#/deceased/list' ? <DeceasedListPage />
               : hash === '#/grave/my' ? <MyGravesPage />
               : hash === '#/treasury' ? <TreasuryPage />
               : hash === '#/dashboard' ? <DashboardPage />
               : hash === '#/gov/me' ? <MyGovernancePage />
               : hash === '#/profile' ? <ProfilePage />
+              : hash === '#/covers' ? <CoverOptionsPage />
+              : hash === '#/covers/create' ? <CreateCoverOptionPage />
+              : hash === '#/category/create' ? <CreateCategoryPage />
+              : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
+              : hash === '#/category/list' ? <CategoryListPage />
+              : hash === '#/sacrifice/create' ? <CreateSacrificePage />
+              : hash === '#/scene/create' ? <CreateScenePage />
               : <AuthEntryPage />}
             <BottomNav />
           </WalletProvider>

@@ -5544,7 +5544,8 @@ dependencies = [
  "pallet-collective",
  "pallet-conviction-voting",
  "pallet-deceased",
- "pallet-deceased-data",
+ "pallet-deceased-media",
+ "pallet-deceased-text",
  "pallet-escrow",
  "pallet-evidence",
  "pallet-fee-guard",
@@ -6388,7 +6389,6 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
- "pallet-deceased-data",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
@@ -6396,16 +6396,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-deceased-data"
+name = "pallet-deceased-media"
 version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-io",
+ "sp-core",
  "sp-runtime",
- "sp-std",
+]
+
+[[package]]
+name = "pallet-deceased-text"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]

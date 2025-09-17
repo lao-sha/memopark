@@ -67,7 +67,7 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 
 	/// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
 	/// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
-	fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
+    fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
 		match (ns, call) {
 			// 设备/冥想相关调用已移除
 			// 仲裁域：允许提交争议与裁决（可叠加白名单控制仲裁者）
@@ -96,10 +96,24 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 				pallet_otc_listing::Call::create_listing { .. }
 			),
 			// 纪念馆已拆分至 pallet-memo-hall：不再匹配旧 create_hall
-			(n, RuntimeCall::MemorialOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
+            (n, RuntimeCall::MemorialOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
 				inner,
 				pallet_memo_offerings::Call::offer { .. }
 			),
+            // 内容治理域：允许代付 Gov2 提案关键步骤（预映像与提交）
+            // - 通过该域，前端可离线组装将要执行的 RuntimeCall（例如 gov_add_data_for），
+            //   先 note_preimage，再 referenda::submit 并指定 proposal_origin。
+            (n, RuntimeCall::Preimage(inner)) if n == ContentNsBytes::get() => matches!(
+                inner,
+                pallet_preimage::Call::note_preimage { .. } |
+                pallet_preimage::Call::unnote_preimage { .. }
+            ),
+            (n, RuntimeCall::Referenda(inner)) if n == ContentNsBytes::get() => matches!(
+                inner,
+                pallet_referenda::Call::submit { .. } |
+                pallet_referenda::Call::kill { .. } |
+                pallet_referenda::Call::cancel { .. }
+            ),
 			_ => false,
 		}
 	}
@@ -277,6 +291,8 @@ parameter_types! {
     pub const ArbitrationNsBytes: [u8; 8] = *b"arb___ _"; // 8字节
     pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
     pub const OtcListingNsBytes: [u8; 8] = *b"otc_lst_";
+    /// 函数级中文注释：内容治理命名空间（forwarder 代付 preimage/referenda 用）
+    pub const ContentNsBytes: [u8; 8] = *b"content_";
 }
 
 // ===== temple 已移除；保留 agent/order 配置 =====
@@ -312,6 +328,8 @@ parameter_types! {
     pub const GraveFollowDeposit: Balance = 0;
     /// 函数级中文注释：创建墓地的一次性协议费（默认 0，便于灰度开启）。
     pub const GraveCreateFee: Balance = 0;
+    /// 函数级中文注释：公共封面目录容量上限（避免状态膨胀）。
+    pub const GraveMaxCoverOptions: u32 = 256;
 }
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
@@ -339,6 +357,8 @@ impl pallet_memo_grave::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         EnsureContentSigner
     >;
+    /// 函数级中文注释：注入公共封面目录容量上限。
+    type MaxCoverOptions = GraveMaxCoverOptions;
 }
 
 // ===== deceased 配置 =====
@@ -424,14 +444,6 @@ parameter_types! {
 
 /// 函数级中文注释：逝者访问适配器，实现 `DeceasedAccess`，以 `pallet-deceased` 为后端。
 pub struct DeceasedProviderAdapter;
-impl pallet_deceased_data::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
-    /// 检查逝者是否存在
-    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
-    /// 检查操作者是否可管理该逝者（当前：记录 owner）
-    fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
-        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
-    }
-}
 
 /// 函数级中文注释：Deceased token 适配器，将 `pallet-deceased` 的 `deceased_token` 转换为 `BoundedVec<u8, GraveMaxCidLen>`。
 pub struct DeceasedTokenProviderAdapter;
@@ -447,55 +459,103 @@ impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for Deceased
     }
 }
 
-/// 函数级中文注释：为 `pallet-deceased-data` 提供逝者令牌访问实现，来源同 `pallet-deceased`。
-impl pallet_deceased_data::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+// （已移除对 pallet-deceased-data 的适配实现）
+
+// ===== 为新拆分的内容 Pallet 实现相同的适配器（保持低耦合复用） =====
+impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
+    /// 检查逝者是否存在
+    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
+    /// 检查操作者是否可管理该逝者
+    fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+    }
+}
+impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
-            let bytes: Vec<u8> = d.deceased_token.to_vec();
-            let max = GraveMaxCidLen::get() as usize;
-            let mut v = bytes;
-            if v.len() > max { v.truncate(max); }
+            let mut v = d.deceased_token.to_vec();
+            let max = GraveMaxCidLen::get() as usize; if v.len() > max { v.truncate(max); }
             frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
         } else { None }
     }
 }
 
-impl pallet_deceased_data::Config for Runtime {
+impl pallet_deceased_text::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
+    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
+    fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+    }
+}
+impl pallet_deceased_text::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+    fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
+            let mut v = d.deceased_token.to_vec(); let max = GraveMaxCidLen::get() as usize; if v.len() > max { v.truncate(max); }
+            frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
+        } else { None }
+    }
+}
+
+// （已移除 pallet-deceased-data 的 Config 实现）
+
+// ===== deceased-media 配置 =====
+parameter_types! {
+    pub const MediaMaxAlbumsPerDeceased: u32 = 64;
+    pub const MediaMaxVideoCollectionsPerDeceased: u32 = 64;
+    pub const MediaMaxPhotosPerAlbum: u32 = 256;
+    pub const MediaStringLimit: u32 = 512;
+    pub const MediaMaxTags: u32 = 16;
+    pub const MediaMaxReorderBatch: u32 = 100;
+}
+impl pallet_deceased_media::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
     type AlbumId = u64;
     type VideoCollectionId = u64;
-    type DataId = u64;
-    type MaxAlbumsPerDeceased = DataMaxAlbumsPerDeceased;
-    type MaxVideoCollectionsPerDeceased = DataMaxVideoCollectionsPerDeceased;
-    type MaxPhotoPerAlbum = DataMaxPhotosPerAlbum;
+    type MediaId = u64;
+    type MaxAlbumsPerDeceased = MediaMaxAlbumsPerDeceased;
+    type MaxVideoCollectionsPerDeceased = MediaMaxVideoCollectionsPerDeceased;
+    type MaxPhotoPerAlbum = MediaMaxPhotosPerAlbum;
+    type StringLimit = MediaStringLimit;
+    type MaxTags = MediaMaxTags;
+    type MaxReorderBatch = MediaMaxReorderBatch;
+    type MaxTokenLen = GraveMaxCidLen;
+    type DeceasedProvider = DeceasedProviderAdapter;
+    type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        EnsureContentSigner,
+    >;
+    type Currency = Balances;
+    type AlbumDeposit = MediaAlbumDeposit;
+    type VideoCollectionDeposit = MediaAlbumDeposit;
+    type MediaDeposit = DataMediaDeposit;
+    type CreateFee = MediaCreateFee;
+    type FeeCollector = TreasuryAccount;
+    type ComplaintDeposit = DataMediaDeposit;
+    type ArbitrationAccount = TreasuryAccount;
+    type ComplaintPeriod = MediaComplaintPeriod;
+}
+
+// ===== deceased-text 配置 =====
+parameter_types! {}
+impl pallet_deceased_text::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DeceasedId = u64;
+    type TextId = u64;
     type StringLimit = DataStringLimit;
-    type MaxTags = DataMaxTags;
-    type MaxReorderBatch = DataMaxReorderBatch;
     type MaxTokenLen = GraveMaxCidLen;
     type MaxMessagesPerDeceased = DataMaxMessagesPerDeceased;
     type MaxEulogiesPerDeceased = DataMaxEulogiesPerDeceased;
     type DeceasedProvider = DeceasedProviderAdapter;
     type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
-    /// 函数级中文注释：治理起源绑定为 Root 或 内容治理签名账户（过渡期双通道）。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
         EnsureContentSigner,
     >;
-    /// 函数级中文注释：押金与费用使用原生余额。
     type Currency = Balances;
-    /// 函数级中文注释：相册与媒体押金、小额创建费常量。
-    type AlbumDeposit = MediaAlbumDeposit;
-    type VideoCollectionDeposit = MediaAlbumDeposit;
-    type DataDeposit = DataMediaDeposit;
-    /// 函数级中文注释：申诉押金常量（示例：与 DataDeposit 一致）。
+    type TextDeposit = DataMediaDeposit;
     type ComplaintDeposit = DataMediaDeposit;
-    type CreateFee = MediaCreateFee;
-    /// 函数级中文注释：费用接收账户绑定为国库 PalletId 派生地址。
-    type FeeCollector = TreasuryAccount;
-    /// 函数级中文注释：仲裁费用接收账户（暂复用国库）。
     type ArbitrationAccount = TreasuryAccount;
-    /// 函数级中文注释：投诉观察/成熟期（默认 1 年）。
     type ComplaintPeriod = MediaComplaintPeriod;
 }
 // ========= OriginRestriction 过滤器与配置 =========

@@ -46,6 +46,17 @@ impl pallet_deceased::Config for Runtime {
   - 仅 Admin（含 owner）
   - 修改该逝者的公开可见性；默认公开（创建时已设为 true）
 
+- set_main_image(id, cid)
+  - 说明：设置/修改逝者主图（链下 CID，如 IPFS CID）。
+  - 权限：owner 可直接调用；非 owner 需 Root 治理来源。
+  - 校验：仅长度校验，使用 `TokenLimit` 限长；不做 URI 语义校验。
+  - 事件：`MainImageUpdated(id, true)`。
+
+- clear_main_image(id)
+  - 说明：清空逝者主图。
+  - 权限：owner 或 Root。
+  - 事件：`MainImageUpdated(id, false)`。
+
 权限：
 - 创建/迁移：`GraveProvider::can_attach(who, grave_id)`。
   - 判定规则（单一权威源：`pallet-memo-grave`）：
@@ -68,6 +79,7 @@ impl pallet_deceased::Config for Runtime {
   - death_ts: Option<BoundedVec<u8>>（YYYYMMDD）
   - deceased_token: BoundedVec<u8>（自动生成：gender+birth+death+name_badge）
   - name_full_cid: Option<BoundedVec<u8>>（完整姓名链下指针，建议前端通过该 CID 展示全名）
+  - main_image_cid: Option<BoundedVec<u8>>（主图 CID；用于头像/主图展示）
 
 ### 迁移
 - StorageVersion = 2：
@@ -77,6 +89,8 @@ impl pallet_deceased::Config for Runtime {
     - 生成 deceased_token。
 - StorageVersion = 3：
   - 从 v2 迁移至 v3：新增 `name_full_cid=None`，不改变既有字段含义。
+- StorageVersion = 5：
+  - 从 v4 迁移至 v5：为 `Deceased` 新增 `main_image_cid=None` 字段。
 
 ## 逝者↔逝者关系（族谱）
 - 存储：

@@ -10,4 +10,5 @@ memopark-dapp/.idea
 memopark-dapp/.DS_Store
 memopark-dapp/*.suo
 memopark-dapp/*.ntvs*
+my-chain-state/
 key.md

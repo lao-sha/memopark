@@ -132,7 +132,7 @@ const NewProposalPage: React.FC = () => {
         </div>
 
         <div style={{ border: '1px dashed #e5e7eb', borderRadius: 8, padding: 12 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>deceased-data 治理快捷构建</div>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>deceased-media / deceased-text 治理快捷构建</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
               <input value={albumId} onChange={(e)=>setAlbumId(e.target.value)} placeholder="albumId" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />

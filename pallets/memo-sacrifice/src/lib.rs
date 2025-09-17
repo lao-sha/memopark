@@ -92,6 +92,29 @@ pub mod pallet {
     #[pallet::storage] pub type NextSacrificeId<T: Config> = StorageValue<_, u64, ValueQuery>;
     #[pallet::storage] pub type SacrificeOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, SacrificeItem<T>, OptionQuery>;
 
+    /// 函数级中文注释：场景主数据（短期内内置于本 pallet；如需跨域共享可后续抽离为独立 pallet）。
+    /// - 用于标记祭祀品的使用场景/展示位/主题，不影响资金路径，仅用于筛选与规范化。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct Scene<T: Config> {
+        /// 自增 ID（u32）
+        pub id: u32,
+        /// 名称（受 StringLimit 约束）
+        pub name: BoundedVec<u8, T::StringLimit>,
+        /// 描述（受 DescriptionLimit 约束）
+        pub desc: BoundedVec<u8, T::DescriptionLimit>,
+        /// 可选域编码（例如 1=Grave, 3=Pet），仅作展示/筛选
+        pub domain: Option<u8>,
+        /// 是否启用
+        pub active: bool,
+    }
+
+    /// 函数级中文注释：场景存储与索引。
+    #[pallet::storage] pub type NextSceneId<T: Config> = StorageValue<_, u32, ValueQuery>;
+    #[pallet::storage] pub type SceneOf<T: Config> = StorageMap<_, Blake2_128Concat, u32, Scene<T>, OptionQuery>;
+    /// 按域索引（可选）：domain -> [scene_id]
+    #[pallet::storage] pub type ScenesByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, BoundedVec<u32, ConstU32<1000>>, ValueQuery>;
+
     /// 函数级中文注释：押金/成熟/投诉占位（与 Data/Life/Eulogy 风格保持一致）
     #[pallet::storage] pub type SacrificeDeposits<T: Config> = StorageMap<_, Blake2_128Concat, u64, (T::AccountId, BalanceOf<T>), OptionQuery>;
     #[pallet::storage] pub type SacrificeMaturity<T: Config> = StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>, OptionQuery>;
@@ -124,6 +147,10 @@ pub mod pallet {
         SacrificeApproved(u64),
         /// 函数级中文注释：委员会已拒绝，押金10%划转国库，其余退回。
         SacrificeRejected(u64, BalanceOf<T>),
+        /// 函数级中文注释：场景事件（创建/更新/启停）。
+        SceneCreated(u32),
+        SceneUpdated(u32),
+        SceneStatusSet(u32, bool),
     }
 
     #[pallet::error]
@@ -133,6 +160,10 @@ pub mod pallet {
         DepositFailed,
         NotMatured,
         NoDepositToClaim,
+        /// 场景不存在
+        SceneNotFound,
+        /// 场景未启用
+        SceneInactive,
     }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续替换为基准权重
@@ -162,6 +193,8 @@ pub mod pallet {
             let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
             let url_bv: BoundedVec<_, T::UriLimit> = BoundedVec::try_from(resource_url).map_err(|_| Error::<T>::BadInput)?;
             let desc_bv: BoundedVec<_, T::DescriptionLimit> = BoundedVec::try_from(description).map_err(|_| Error::<T>::BadInput)?;
+            // 场景校验：若提供 scene_id，要求存在且 active
+            if let Some(sid) = scene_id { let sc = SceneOf::<T>::get(sid).ok_or(Error::<T>::SceneNotFound)?; ensure!(sc.active, Error::<T>::SceneInactive); }
 
             let id = NextSacrificeId::<T>::mutate(|n| { let x = *n; *n = x.saturating_add(1); x });
             let now = <frame_system::Pallet<T>>::block_number();
@@ -219,6 +252,8 @@ pub mod pallet {
             let url_bv: BoundedVec<_, T::UriLimit> = BoundedVec::try_from(resource_url).map_err(|_| Error::<T>::BadInput)?;
             let desc_bv: BoundedVec<_, T::DescriptionLimit> = BoundedVec::try_from(description).map_err(|_| Error::<T>::BadInput)?;
             let exclusive_bv: BoundedVec<(u8,u64), T::MaxExclusivePerItem> = BoundedVec::try_from(exclusive_subjects).map_err(|_| Error::<T>::BadInput)?;
+            // 场景校验：若提供 scene_id，要求存在且 active
+            if let Some(sid) = scene_id { let sc = SceneOf::<T>::get(sid).ok_or(Error::<T>::SceneNotFound)?; ensure!(sc.active, Error::<T>::SceneInactive); }
             let id = NextSacrificeId::<T>::mutate(|n| { let x = *n; *n = x.saturating_add(1); x });
             let now = <frame_system::Pallet<T>>::block_number();
             let item = SacrificeItem::<T> {
@@ -452,6 +487,55 @@ pub mod pallet {
             SacrificeDeposits::<T>::remove(id);
             SacrificeMaturity::<T>::remove(id);
             Self::deposit_event(Event::SacrificeDepositRefunded(id, who, amt));
+            Ok(())
+        }
+
+        /// 函数级中文注释：创建场景（Admin）。
+        /// - name/desc 受上限约束；domain 可空；默认 active=true。
+        #[pallet::call_index(11)]
+        #[pallet::weight(10_000)]
+        pub fn create_scene(origin: OriginFor<T>, name: Vec<u8>, desc: Option<Vec<u8>>, domain: Option<u8>) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
+            let desc_bv: BoundedVec<_, T::DescriptionLimit> = BoundedVec::try_from(desc.unwrap_or_default()).map_err(|_| Error::<T>::BadInput)?;
+            let id = NextSceneId::<T>::mutate(|n| { let x=*n; *n = x.saturating_add(1); x });
+            let sc = Scene::<T> { id, name: name_bv, desc: desc_bv, domain, active: true };
+            SceneOf::<T>::insert(id, &sc);
+            if let Some(d) = sc.domain { ScenesByDomain::<T>::try_mutate(d, |v| v.try_push(id).map_err(|_| Error::<T>::BadInput))?; }
+            Self::deposit_event(Event::SceneCreated(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：更新场景（Admin）。
+        /// - 支持可选更新 name/desc/domain/active；当变更 domain 时同步索引。
+        #[pallet::call_index(12)]
+        #[pallet::weight(10_000)]
+        pub fn update_scene(origin: OriginFor<T>, id: u32, name: Option<Vec<u8>>, desc: Option<Vec<u8>>, domain: Option<Option<u8>>, active: Option<bool>) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            SceneOf::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let sc = maybe.as_mut().ok_or(Error::<T>::SceneNotFound)?;
+                if let Some(n) = name { sc.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(dv) = desc { sc.desc = BoundedVec::try_from(dv).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(dom) = domain {
+                    // 同步索引：从旧域移除，加入新域
+                    if let Some(old) = sc.domain { ScenesByDomain::<T>::mutate(old, |v| { if let Some(p)=v.iter().position(|x| *x==id){ v.swap_remove(p);} }); }
+                    sc.domain = dom;
+                    if let Some(nd) = sc.domain { ScenesByDomain::<T>::try_mutate(nd, |v| v.try_push(id).map_err(|_| Error::<T>::BadInput))?; }
+                }
+                if let Some(a) = active { sc.active = a; }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::SceneUpdated(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：启停场景（Admin）。
+        #[pallet::call_index(13)]
+        #[pallet::weight(10_000)]
+        pub fn set_scene_active(origin: OriginFor<T>, id: u32, on: bool) -> DispatchResult {
+            T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
+            SceneOf::<T>::try_mutate(id, |maybe| -> DispatchResult { let sc = maybe.as_mut().ok_or(Error::<T>::SceneNotFound)?; sc.active = on; Ok(()) })?;
+            Self::deposit_event(Event::SceneStatusSet(id, on));
             Ok(())
         }
     }

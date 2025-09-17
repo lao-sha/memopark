@@ -8,7 +8,7 @@ import { mapDispatchErrorMessage } from '../../lib/errors'
  * 函数级详细中文注释：追忆文章创建表单
  * - 仅支持将“文章 JSON”作为 IPFS CID 写入 `uri`，同时在链上保存 `content_hash`（blake2-256）。
  * - 允许用户直接粘贴 CID 与 JSON 正文（前端计算哈希）；也可手工粘贴 `content_hash`。
- * - extrinsic：`deceasedData.addData(container_kind=0(Album), container_id=album_id, kind=3(Article), uri, None, content_hash, title?, summary?, None, None, None, order_index?)`。
+ * - extrinsic（已迁移）：`deceasedText.setArticle(deceased_id, cid, title?, summary?)`。
  * - 费用提示：创建费 + 交易费 + 可退押金（由运行时参数决定）。
  */
 const CreateArticleForm: React.FC = () => {
@@ -66,25 +66,24 @@ const CreateArticleForm: React.FC = () => {
   }, [])
 
   /**
-   * 函数级中文注释：提交交易，调用 deceasedData.addData 生成文章媒体
+   * 函数级中文注释：提交交易，调用 deceasedText.setArticle 生成文章记录
    */
   const onFinish = useCallback(async (values: any) => {
     try {
       setLoading(true)
       const {
-        albumId,
+        deceasedId,
         uriCid,
         title,
         summary,
-        orderIndex,
         contentJson,
         contentHashHex,
       } = values
 
       if (!pwd || pwd.length < 8) { setLoading(false); return message.warning('请输入至少 8 位签名密码') }
-      // 表单校验：albumId
-      if (albumId === null || albumId === undefined || isNaN(Number(albumId)) || Number(albumId) < 0) {
-        setLoading(false); return message.warning('相册ID需为非负数字')
+      // 校验逝者ID
+      if (deceasedId === null || deceasedId === undefined || isNaN(Number(deceasedId)) || Number(deceasedId) < 0) {
+        setLoading(false); return message.warning('请输入有效的逝者ID')
       }
       // 表单校验：CID（宽松，仅非空且长度校验）
       if (!uriCid || String(uriCid).length < 10) { setLoading(false); return message.warning('请输入有效的 IPFS CID') }
@@ -105,25 +104,10 @@ const CreateArticleForm: React.FC = () => {
 
       if (!hashHex) { setLoading(false); return message.warning('content_hash 生成失败，请检查 JSON') }
 
-      // 统一参数字节化：uri/title/summary 走 UTF-8 字节数组；content_hash 转 32 字节数组
-      const hashBytes = hex32ToBytes(hashHex)
-      if (!hashBytes) { setLoading(false); return message.error('content_hash 非法（需 0x 开头 32 字节）') }
-      const args: any[] = [
-        0, // container_kind = Album
-        Number(albumId), // container_id
-        3, // kind = Article
-        strToBytes(String(uriCid)),
-        null, // thumbnail_uri
-        hashBytes, // content_hash: Option<[u8;32]>
-        title ? strToBytes(String(title)) : null,
-        summary ? strToBytes(String(summary)) : null,
-        null, // duration_secs
-        null, // width
-        null, // height
-        typeof orderIndex === 'number' ? Number(orderIndex) : null,
-      ]
-
-      await signAndSendLocalWithPassword('deceasedData','addData', args, pwd)
+      // 统一参数字节化：uri/title/summary 走 UTF-8 字节数组
+      const did = Number(deceasedId)
+      const args: any[] = [did, strToBytes(String(uriCid)), title? strToBytes(String(title)) : null, summary? strToBytes(String(summary)) : null]
+      await signAndSendLocalWithPassword('deceasedText','setArticle', args, pwd)
       message.success('已提交文章创建交易')
     } catch (e: any) {
       console.error(e)
@@ -148,8 +132,8 @@ const CreateArticleForm: React.FC = () => {
             <Form.Item label="签名密码" required>
               <Input.Password placeholder="至少 8 位" value={pwd} onChange={e=> setPwd(e.target.value)} />
             </Form.Item>
-            <Form.Item name="albumId" label="相册ID" rules={[{ required: true, message: '请输入相册ID（仅相册 owner 可添加）' }]}>
-              <InputNumber min={0} style={{ width: '100%' }} placeholder="例如 0" />
+            <Form.Item name="deceasedId" label="逝者ID" rules={[{ required: true, message: '请输入逝者ID' }]}>
+              <InputNumber min={0} style={{ width: '100%' }} placeholder="例如 1" />
             </Form.Item>
 
             <Form.Item name="title" label="标题">
@@ -178,9 +162,7 @@ const CreateArticleForm: React.FC = () => {
               <Input placeholder="例如 bafy..." />
             </Form.Item>
 
-            <Form.Item name="orderIndex" label="排序号">
-              <InputNumber min={0} style={{ width: '100%' }} placeholder="可选" />
-            </Form.Item>
+            {/* 文章排序由前端列表决定，此处不再提供 orderIndex */}
 
             <Button type="primary" htmlType="submit" loading={loading} block>提交文章</Button>
             {computedHash && (

@@ -296,8 +296,11 @@ mod runtime {
 	#[runtime::pallet_index(19)]
 	pub type Deceased = pallet_deceased;
 
-	#[runtime::pallet_index(20)]
-	pub type DeceasedData = pallet_deceased_data;
+	#[runtime::pallet_index(36)]
+	pub type DeceasedMedia = pallet_deceased_media;
+
+	#[runtime::pallet_index(37)]
+	pub type DeceasedText = pallet_deceased_text;
 
 	#[runtime::pallet_index(21)]
 	pub type GraveLedger = pallet_ledger;

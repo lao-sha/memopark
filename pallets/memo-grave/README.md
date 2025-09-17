@@ -14,52 +14,61 @@
  - `ComplaintsByGrave: GraveId -> BoundedVec<Complaint>`
  - `NameIndex: blake2_256(lowercase(name)) -> BoundedVec<GraveId>`
  - `GraveAdmins: GraveId -> BoundedVec<AccountId>`（墓位管理员集合，供子模块只读引用）
-
-### 新增（Slug 与成员）
 - `SlugOf: GraveId -> BoundedVec<u8, SlugLen>`（10 位数字）
 - `GraveBySlug: Slug -> GraveId`
 - `JoinPolicyOf: GraveId -> u8`（0=Open,1=Whitelist）
 - `Members: (GraveId, AccountId) -> ()`
 - `PendingApplications: (GraveId, AccountId) -> BlockNumber`
+- `FollowersOf / IsFollower / LastFollowAction / BannedFollowers`（关注相关：已停用）
+- `CoverCidOf: GraveId -> Option<CID>`（墓地封面 CID）
+- `LegacyFollowRefunds: AccountId -> Balance`（迁移退款口）
 
-### 变更（方案B：去关注/亲友）
-- 自 v10 起，墓位不再承载“关注/亲友”功能；相关接口已停用（调用将返回策略违规）。
-- 新增 `LegacyFollowRefunds: AccountId -> Balance` 用于迁移时统计旧关注押金余额，用户可通过退款口一次性解除保留押金。
+### 新增（公共封面目录）
+- `CoverOptions: BoundedVec<CID, MaxCoverOptions>`：全局可选封面列表，仅治理可增删；任意墓地可选择其一作为封面。CID 明文保存（不加密）。
 
-### 变更（Hall 拆分）
-- Hall 相关逻辑已迁移至独立 `pallet-memo-hall`；本模块不再包含 Hall 的存储与调用。
+## 常量参数（由 runtime 注入）
+- `MaxCidLen`：CID 最大字节数（建议 64）。
+- `MaxPerPark`、`MaxIntermentsPerGrave`、`MaxIdsPerName`、`MaxComplaintsPerGrave`、`MaxAdminsPerGrave`、`SlugLen`、`MaxFollowers`。
+- `FollowCooldownBlocks`、`FollowDeposit`（关注相关，已停用）。
+- `CreateFee`/`FeeCollector`：创建费与收款账户。
+- 新增：`MaxCoverOptions`：公共封面目录容量上限（例如 256）。
 
 ## Extrinsics
 - `create_grave(park_id?: Option<ParkId>, name)`
-- `update_grave(id, name?, active?)`
+- `update_grave(id, name?, active?, is_public?)`
 - `transfer_grave(id, new_owner)`
+- `set_park(id, park_id?)`
 - `inter(id, deceased_id, slot?, note_cid?)`
 - `exhume(id, deceased_id)`
- - `set_meta(id, categories?, religion?)`
- - `complain(id, cid)`
- - `restrict(id, on, reason_code)` / `remove(id, reason_code)`
- - `set_name_hash(id, name_hash)` / `clear_name_hash(id, name_hash)`
- - `add_admin(id, who)` / `remove_admin(id, who)`（仅墓主或园区管理员）
- - 新增：`set_policy(id, policy)`（0/1）
- - 新增：`join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
- - （停用）`set_visibility(id, ...)` 中的 public_follow 已无效；`follow/unfollow` 已停用并返回策略违规。
- - 新增：`claim_legacy_follow_refund()`：领取旧关注押金（若迁移统计到余额）。
--（移除）`create_hall/attach_deceased/set_hall_params` 已迁移至 `pallet-memo-hall`
+- `set_meta(id, categories?, religion?)`
+- `complain(id, cid)`
+- `restrict(id, on, reason_code)` / `remove(id, reason_code)`
+- `set_name_hash(id, name_hash)` / `clear_name_hash(id, name_hash)`
+- `add_admin(id, who)` / `remove_admin(id, who)`
+- `set_policy(id, policy)`（0/1）
+- `join_open(id)` / `apply_join(id)` / `approve_member(id, who)` / `reject_member(id, who)`
+- （停用）`set_visibility/follow/unfollow`
+- `claim_legacy_follow_refund()`
 
-### 创建费（CreateFee，无押金）
-- 自 v9 起，`create_grave` 在创建前会一次性收取“创建费”（协议费），转入运行时绑定的 `FeeCollector` 账户（通常为国库）。
-- 费用由运行时常量 `GraveCreateFee` 提供，默认 0，治理可升级后开启/调整。
-- 扣费使用 KeepAlive 模式：若扣费会导致账户低于存在性余额（ED）而被回收，则整个交易失败并不产生状态变更。
-- 不与押金混用：本费用为一次性消耗，删除或转让墓地不返还。
+### 封面相关
+- `set_cover(id, cid)`：仅墓主；事件 `CoverSet { id }`。
+- `clear_cover(id)`：仅墓主；事件 `CoverCleared { id }`。
+- `set_cover_via_governance(id, cid)` / `clear_cover_via_governance(id)`：治理路径。
+- 新增（公共目录）：
+  - `add_cover_option(cid)`：仅治理；若存在则 `CoverOptionExists`；事件 `CoverOptionAdded {}`。
+  - `remove_cover_option(cid)`：仅治理；若不存在则 `CoverOptionNotFound`；事件 `CoverOptionRemoved {}`。
+  - `set_cover_from_option(id, index)`：仅墓主；按索引选择目录项；越界报 `InvalidCoverIndex`；事件 `CoverSet { id }`。
 
-## 权限
-- 墓地主人、墓位管理员，或 `ParkAdminOrigin::ensure(park_id, origin)` 通过的起源（部分接口）。当 `park_id=None` 时，仅墓主可管理（园区管理员校验不可用）。
-  - `pallet-deceased` 通过运行时适配器只读引用 `Graves/GraveAdmins` 做权限判定，无独立管理员集合，天然保持同步。
-- 存储版本：StorageVersion=10（v3: `park_id`→Option；v4: 移除 Hall；v5: 删除 kind/capacity；v6: 删除 metadata_cid；v7: 新增 deceased_tokens；v10: 去关注并引入退款口），提供迁移以兼容旧数据。
-- 与 `pallet-memo-hall` 的关系：通过 `Hall::link_grave_id` 可选关联，无循环依赖，建议由查询层整合展示。
+## 事件
+- `CoverSet { id }`、`CoverCleared { id }`
+- 新增：`CoverOptionAdded {}`、`CoverOptionRemoved {}`
 
-### 编译零警告策略（-D warnings）
-- 全仓库已启用 `-D warnings`：所有警告视为错误，确保上链代码安全可审计。
-- 本 pallet 已为每个 extrinsic 显式声明 `#[pallet::call_index(N)]`，避免隐式索引弃用警告。
-- 权重标注将由临时常量迁移到 `weights::WeightInfo`：后续将补充基准测试与 `weights.rs`，逐步移除常量权重。
-- 迁移 API 使用 `in_code_storage_version` 替代已弃用的 `current_storage_version`。
+## 押金/成熟/投诉规则
+- 墓地封面设置沿用本模块既有权限模型；目录项由治理维护，建议免押金。
+- IPFS 要求：CID 全局不加密；由前端/IPFS 网关渲染。
+
+## 前端调用建议
+- 墓地设置封面弹窗提供两种方式：
+  1) 自定义 CID：上传至 IPFS，获取 CID 后调用 `set_cover` 或治理版。
+  2) 从公共目录选择：读取 `CoverOptions` 展示网格，选择后调用 `set_cover_from_option`。
+- Subsquid 建议订阅 `CoverOptionAdded/Removed` 与 `CoverSet/CoverCleared`，做缓存与审计。

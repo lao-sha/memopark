@@ -191,22 +191,20 @@ export async function buildBalancesForceTransferPreimage(
 }
 
 /**
- * 函数级详细中文注释：尝试解析不同 section 命名的 deceased-data pallet
- * - 不同 runtime 里 pallet 名可能为 deceasedMedia / deceased_media 等
- * - 返回可用的 section 名称，若均不可用则抛错
+ * 函数级详细中文注释：尝试解析不同 section 命名的媒体域 pallet（deceased-media）
+ * - 兼容旧名 deceasedData，以便过渡
  */
 async function resolveDeceasedMediaSection(api: any): Promise<string> {
-  const candidates = ['deceasedData', 'deceased_data', 'deceaseddata', 'deceasedMedia', 'deceased_media', 'deceasedmedia']
+  const candidates = ['deceasedMedia', 'deceased_media', 'deceasedmedia', 'deceasedData', 'deceased_data', 'deceaseddata']
   for (const name of candidates) {
     if ((api.tx as any)[name]) return name
   }
-  throw new Error('运行时未启用 deceased-data 模块（或名称不匹配）')
+  throw new Error('运行时未启用 deceased-media 模块（或名称不匹配）')
 }
 
 /**
- * 函数级详细中文注释：构建 deceased-data 治理动作的通用预映像（按 method 透传）
- * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveData | govSetAlbumMeta
- * - args: 对应上述方法的参数数组
+ * 函数级中文注释：构建 deceased-media 治理动作的通用预映像（按 method 透传）
+ * - method: govFreezeAlbum | govSetMediaHidden | govReplaceMediaUri | govRemoveMedia 等
  */
 export async function buildDeceasedMediaGovPreimage(method: string, args: any[]): Promise<{ hex: string; hash: string }>{
   const api = await getApi()
@@ -227,9 +225,7 @@ export async function buildMediaGovReplaceMediaUri(mediaId: number, newUri: stri
   // uri 以字节传输，前端传入 UTF-8 字符串
   return buildDeceasedMediaGovPreimage('govReplaceMediaUri', [mediaId, newUri])
 }
-export async function buildMediaGovRemoveMedia(mediaId: number) {
-  return buildDeceasedMediaGovPreimage('govRemoveData', [mediaId])
-}
+export async function buildMediaGovRemoveMedia(mediaId: number) { return buildDeceasedMediaGovPreimage('govRemoveMedia', [mediaId]) }
 
 /**
  * 函数级详细中文注释：deceased-data 申诉与裁决预映像构建辅助
@@ -244,14 +240,12 @@ export async function buildMediaComplainAlbum(albumId: number) {
 export async function buildMediaComplainMedia(mediaId: number) {
   const api = await getApi()
   const section = await resolveDeceasedMediaSection(api)
-  return buildCallPreimageHex(section, 'complainData', [mediaId])
+  return buildCallPreimageHex(section, 'complainMedia', [mediaId])
 }
 export async function buildMediaGovResolveAlbumComplaint(albumId: number, uphold: boolean) {
   return buildDeceasedMediaGovPreimage('govResolveAlbumComplaint', [albumId, uphold])
 }
-export async function buildMediaGovResolveMediaComplaint(mediaId: number, uphold: boolean) {
-  return buildDeceasedMediaGovPreimage('govResolveDataComplaint', [mediaId, uphold])
-}
+export async function buildMediaGovResolveMediaComplaint(mediaId: number, uphold: boolean) { return buildDeceasedMediaGovPreimage('govResolveMediaComplaint', [mediaId, uphold]) }
 
 /**
  * 函数级详细中文注释：解析不同 section 命名的 origin-restriction pallet 名。
@@ -657,31 +651,31 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
     const section = call.section
     const method = call.method
     const args = (call.args || []).map((x: any) => (x?.toString ? x.toString() : String(x)))
-    // deceased-data 系摘要（兼容旧名）
-    if (/^deceased[_-]?data$/i.test(section) || /^deceaseddata$/i.test(section) || /^deceased[_-]?media$/i.test(section) || /^deceasedmedia$/i.test(section)) {
+    // 媒体域摘要（兼容旧名）
+    if (/^deceased[_-]?media$/i.test(section) || /^deceasedmedia$/i.test(section) || /^deceased[_-]?data$/i.test(section) || /^deceaseddata$/i.test(section)) {
       if (method === 'govFreezeAlbum') {
-        return `deceased-data.govFreezeAlbum → 相册 ${args[0]} ${args[1]==='true'?'冻结':'解冻'}`
+        return `deceased-media.govFreezeAlbum → 相册 ${args[0]} ${args[1]==='true'?'冻结':'解冻'}`
       }
       if (method === 'govSetMediaHidden') {
-        return `deceased-data.govSetMediaHidden → 媒体 ${args[0]} ${args[1]==='true'?'隐藏':'取消隐藏'}`
+        return `deceased-media.govSetMediaHidden → 媒体 ${args[0]} ${args[1]==='true'?'隐藏':'取消隐藏'}`
       }
       if (method === 'govReplaceMediaUri') {
-        return `deceased-data.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
+        return `deceased-media.govReplaceMediaUri → 媒体 ${args[0]} 新URI=${args[1]}`
       }
-      if (method === 'govRemoveData') {
-        return `deceased-data.govRemoveData → 移除媒体 ${args[0]}`
+      if (method === 'govRemoveMedia' || method === 'govRemoveData') {
+        return `deceased-media.govRemoveMedia → 移除媒体 ${args[0]}`
       }
       if (method === 'complainAlbum') {
-        return `deceased-data.complainAlbum → 申诉相册 ${args[0]}`
+        return `deceased-media.complainAlbum → 申诉相册 ${args[0]}`
       }
-      if (method === 'complainData') {
-        return `deceased-data.complainData → 申诉媒体 ${args[0]}`
+      if (method === 'complainMedia' || method === 'complainData') {
+        return `deceased-media.complainMedia → 申诉媒体 ${args[0]}`
       }
       if (method === 'govResolveAlbumComplaint') {
-        return `deceased-data.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+        return `deceased-media.govResolveAlbumComplaint → 裁决相册 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
-      if (method === 'govResolveDataComplaint') {
-        return `deceased-data.govResolveDataComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
+      if (method === 'govResolveMediaComplaint' || method === 'govResolveDataComplaint') {
+        return `deceased-media.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
     }
     if (section === 'treasury' && (method === 'spend' || method === 'proposeSpend')) {

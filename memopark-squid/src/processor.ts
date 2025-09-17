@@ -135,13 +135,31 @@ processor.run(new TypeormDatabase(), async (ctx) => {
       }
 
       // ===== Deceased media mapping（相册/媒体）
-      if (name?.endsWith('deceased_media.MediaAdded')) {
+      if (name?.endsWith('deceased_media.MediaAdded') || name?.endsWith('deceased_media.MediaAddedToVideoCollection')) {
         const ev: any = i.event
-        const {arg0, arg1} = ev.args // MediaId, AlbumId（命名取决于元数据）
+        const {arg0, arg1} = ev.args // MediaId, 容器ID（命名取决于元数据）
         const createdAt = b.header.height
         await ctx.store.save(new MediaItem({ id: arg0.toString(), hallId: BigInt(0), kind: 'unknown', uri: '', block: createdAt }))
-        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased_media', kind: 'MediaAdded', refId: arg0.toString(), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ albumId: arg1.toString() }) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased_media', kind: name.endsWith('MediaAddedToVideoCollection')?'MediaAddedToVideoCollection':'MediaAdded', refId: arg0.toString(), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ containerId: arg1?.toString?.() }) }))
         continue
+      }
+
+      // 投诉裁决类事件（媒体域）
+      if (name?.startsWith('deceased_media.')) {
+        const evName = name.split('.')[1]
+        if (['ComplaintResolved','ComplaintPayoutWinner','ComplaintPayoutArbitration','ComplaintPayoutLoserRefund','AlbumPrimaryChanged','PrimaryImageChanged','VideoCollectionPrimaryChanged','GovMediaHidden','GovMediaReplaced','MediaRemoved','AlbumCreated','VideoCollectionCreated'].includes(evName)) {
+          await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased_media', kind: evName, refId: null, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+          continue
+        }
+      }
+
+      // 文本域（deceased_text）关键事件
+      if (name?.startsWith('deceased_text.')) {
+        const evName = name.split('.')[1]
+        if (['ArticleSet','MessageAdded','TextEdited','TextRemoved','LifeCreated','LifeUpdated','LifeUpdatedByOthers','EulogyCreated','EulogyUpdated','EulogyRemoved','ComplaintResolved','ComplaintPayoutWinner','ComplaintPayoutArbitration','ComplaintPayoutLoserRefund'].includes(evName)) {
+          await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased_text', kind: evName, refId: null, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+          continue
+        }
       }
 
       // ===== Referrals mapping =====

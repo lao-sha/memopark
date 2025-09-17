@@ -31,6 +31,13 @@ const ProfilePage: React.FC = () => {
             <Button type="primary" onClick={() => window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create-grave' } }))}>创建陵墓</Button>
             <Button onClick={()=> { window.location.hash = '#/grave/my' }}>我的墓地</Button>
             <Button onClick={()=> { window.location.hash = '#/treasury' }}>国库</Button>
+            <Button onClick={()=> { window.location.hash = '#/covers' }}>封面库</Button>
+            <Button onClick={()=> { window.location.hash = '#/covers/create' }}>创建封面图</Button>
+            <Button onClick={()=> { window.location.hash = '#/sacrifice/create' }}>创建祭祀品</Button>
+            <Button onClick={()=> { window.location.hash = '#/category/create' }}>创建类目</Button>
+            <Button onClick={()=> { window.location.hash = '#/category/create-primary' }}>创建一级类目</Button>
+            <Button onClick={()=> { window.location.hash = '#/category/list' }}>类目列表</Button>
+            <Button onClick={()=> { window.location.hash = '#/scene/create' }}>创建场景</Button>
           </Space>
         </Space>
       </Card>

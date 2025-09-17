@@ -58,7 +58,12 @@ const DashboardPage: React.FC = () => {
       ])
       setBest(hdr.number.toNumber())
       setFinalized(finHdr.number.toNumber())
-      try { const ps: any = await api.rpc.system.peers(); setPeers(ps?.length || 0) } catch { setPeers(0) }
+      // peers() 在多数远程节点默认被禁用（Unsafe RPC）。改用安全的 system.health().peers。
+      try {
+        const health: any = await (api.rpc as any)?.system?.health?.()
+        const p = (health && (health.peers?.toNumber?.() ?? Number(health.peers))) || 0
+        setPeers(Number.isFinite(p) ? p : 0)
+      } catch { setPeers(0) }
       // 性能估算：读取最近块的 extrinsics 数量，并计算时间间隔
       const now = Date.now()
       const blockHash = await api.rpc.chain.getBlockHash(hdr.number.toNumber())
@@ -271,5 +276,3 @@ const DashboardPage: React.FC = () => {
 }
 
 export default DashboardPage
-
-
