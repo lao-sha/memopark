@@ -49,6 +49,10 @@ pub trait WeightInfo {
     fn reject_kinship() -> Weight;
     fn update_kinship() -> Weight;
     fn remove_kinship() -> Weight;
+    /// 公共封面目录项增删与选择
+    fn add_cover_option() -> Weight;
+    fn remove_cover_option() -> Weight;
+    fn set_cover_from_option() -> Weight;
 }
 
 /// 函数级中文注释：未基准化前的兜底实现，全部返回零权重。
@@ -82,6 +86,9 @@ impl WeightInfo for TestWeights {
     fn reject_kinship() -> Weight { Weight::zero() }
     fn update_kinship() -> Weight { Weight::zero() }
     fn remove_kinship() -> Weight { Weight::zero() }
+    fn add_cover_option() -> Weight { Weight::zero() }
+    fn remove_cover_option() -> Weight { Weight::zero() }
+    fn set_cover_from_option() -> Weight { Weight::zero() }
 }
 
 

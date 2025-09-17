@@ -30,7 +30,8 @@ export async function getApi(): Promise<ApiPromise> {
     isConnecting = true
     const endpoint = AppConfig.wsEndpoint
     console.log('[polkadot-safe] 正在连接节点:', endpoint)
-    const provider = new WsProvider(endpoint, true, {}, 10_000)
+    // @polkadot/api WsProvider 构造签名：(endpoint, autoConnect?, headers?)
+    const provider = new WsProvider(endpoint, undefined, {})
     const connect = ApiPromise.create({ provider, throwOnConnect: true })
     const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('区块链连接超时')), 6_000))
     api = await Promise.race([connect, timeout])

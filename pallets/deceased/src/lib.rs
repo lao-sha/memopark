@@ -65,6 +65,11 @@ pub struct Deceased<T: Config> {
     /// 出生与离世日期（可选，格式：YYYYMMDD，如 19811224）
     pub birth_ts: Option<BoundedVec<u8, T::StringLimit>>,
     pub death_ts: Option<BoundedVec<u8, T::StringLimit>>,
+    /// 函数级中文注释：逝者主图 CID（IPFS/HTTPS 等）
+    /// - 用途：前端头像/主图展示的链下资源指针；不在链上存原图
+    /// - 安全：仅存 CID 字节；不涉及任何 MEMO 代币逻辑；长度受 TokenLimit 约束
+    /// - 权限：owner 可直接设置/修改；非 owner 需通过 Root 治理设置
+    pub main_image_cid: Option<BoundedVec<u8, T::TokenLimit>>,
     /// 逝者令牌（在 pallet 内构造）：gender + birth + death + name_badge
     /// 例如：M1981122420250901LIUXIAODONG
     /// 长度上限单独由 `Config::TokenLimit` 约束，便于与外部引用保持一致。
@@ -174,6 +179,8 @@ pub mod pallet {
         RelationRevoked(T::DeceasedId, T::DeceasedId),
         /// 逝者关系：备注更新
         RelationUpdated(T::DeceasedId, T::DeceasedId),
+        /// 函数级中文注释：主图已更新（true=设置/修改；false=清空）
+        MainImageUpdated(T::DeceasedId, bool),
     }
 
     #[pallet::error]
@@ -217,7 +224,7 @@ pub mod pallet {
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(5);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -415,6 +422,7 @@ pub mod pallet {
                 name_full_cid: name_full_cid_bv,
                 birth_ts: birth_bv,
                 death_ts: death_bv,
+                main_image_cid: None,
                 deceased_token,
                 links: links_bv,
                 created: now,
@@ -475,6 +483,7 @@ pub mod pallet {
                         None => None,
                     };
                 }
+                // 主图字段通过专用接口设置/清空（见 set_main_image/clear_main_image）
                 if let Some(bi) = birth_ts {
                     d.birth_ts = match bi { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
                 }
@@ -576,6 +585,56 @@ pub mod pallet {
             ensure!(Self::is_admin(id, &who), Error::<T>::NotAuthorized);
             VisibilityOf::<T>::insert(id, public);
             Self::deposit_event(Event::VisibilityChanged(id, public));
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置/修改逝者主图（CID）。
+        /// - 权限：owner 可直接设置；非 owner 需 Root 治理来源。
+        /// - 事件：MainImageUpdated(id, true)
+        #[pallet::call_index(40)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn set_main_image(origin: OriginFor<T>, id: T::DeceasedId, cid: Vec<u8>) -> DispatchResult {
+            let is_root = ensure_root(origin.clone()).is_ok();
+            let who = ensure_signed(origin.clone()).ok();
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                if !is_root {
+                    let caller = who.as_ref().ok_or(Error::<T>::NotAuthorized)?;
+                    ensure!(d.owner == *caller, Error::<T>::NotAuthorized);
+                }
+                let bv: BoundedVec<u8, T::TokenLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+                d.main_image_cid = Some(bv);
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
+            // 事件维持，便于前端平滑过渡。
+            Self::deposit_event(Event::MainImageUpdated(id, true));
+            Ok(())
+        }
+
+        /// 函数级中文注释：清空逝者主图。
+        /// - 权限：owner 或 Root。
+        /// - 事件：MainImageUpdated(id, false)
+        #[pallet::call_index(41)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn clear_main_image(origin: OriginFor<T>, id: T::DeceasedId) -> DispatchResult {
+            let is_root = ensure_root(origin.clone()).is_ok();
+            let who = ensure_signed(origin.clone()).ok();
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                if !is_root {
+                    let caller = who.as_ref().ok_or(Error::<T>::NotAuthorized)?;
+                    ensure!(d.owner == *caller, Error::<T>::NotAuthorized);
+                }
+                d.main_image_cid = None;
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
+            Self::deposit_event(Event::MainImageUpdated(id, false));
             Ok(())
         }
 
@@ -866,6 +925,7 @@ pub mod pallet {
                         name_full_cid: None,
                         birth_ts: birth_str,
                         death_ts: death_str,
+                        main_image_cid: None,
                         deceased_token,
                         links: old.links,
                         created: old.created,
@@ -907,6 +967,7 @@ pub mod pallet {
                         name_full_cid: None,
                         birth_ts: old.birth_ts,
                         death_ts: old.death_ts,
+                        main_image_cid: None,
                         deceased_token: old.deceased_token,
                         links: old.links,
                         created: old.created,
@@ -921,6 +982,47 @@ pub mod pallet {
                 // v3 -> v4：引入亲友团存储（默认空），仅写入版本号。
                 StorageVersion::new(4).put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+            }
+            if current < 5 {
+                // v4 -> v5：新增 Deceased.main_image_cid=None
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV4<TC: Config> {
+                    grave_id: TC::GraveId,
+                    owner: TC::AccountId,
+                    name: BoundedVec<u8, TC::StringLimit>,
+                    name_badge: BoundedVec<u8, TC::StringLimit>,
+                    gender: super::Gender,
+                    name_full_cid: Option<BoundedVec<u8, TC::TokenLimit>>,
+                    birth_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    death_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    deceased_token: BoundedVec<u8, TC::TokenLimit>,
+                    links: BoundedVec<BoundedVec<u8, TC::StringLimit>, TC::MaxLinks>,
+                    created: BlockNumberFor<TC>,
+                    updated: BlockNumberFor<TC>,
+                }
+                let mut migrated: u64 = 0;
+                DeceasedOf::<T>::translate(|_key, old: OldV4<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Deceased::<T> {
+                        grave_id: old.grave_id,
+                        owner: old.owner,
+                        name: old.name,
+                        name_badge: old.name_badge,
+                        gender: old.gender,
+                        name_full_cid: old.name_full_cid,
+                        birth_ts: old.birth_ts,
+                        death_ts: old.death_ts,
+                        main_image_cid: None,
+                        deceased_token: old.deceased_token,
+                        links: old.links,
+                        created: old.created,
+                        updated: old.updated,
+                    })
+                });
+                StorageVersion::new(5).put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(30_000) as u64, 0));
             }
             weight
         }

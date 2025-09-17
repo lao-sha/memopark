@@ -23,7 +23,7 @@ members = [
     "pallets/memo-hall",
     "pallets/ledger",
     "pallets/deceased",
-    "pallets/deceased-data",
+    # 已迁移：删除旧 deceased-data
     "pallets/memo-offerings",
     "pallets/memo-referrals",
     "pallets/memo-affiliate",

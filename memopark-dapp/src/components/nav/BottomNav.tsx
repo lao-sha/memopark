@@ -19,7 +19,7 @@ const BottomNav: React.FC = () => {
     const h = window.location.hash || ''
     if (h === '#/' || h === '' ) return 'home'
     if (h.startsWith('#/grave/create')) return 'create-grave'
-    if (h.startsWith('#/grave/list')) return 'grave-list'
+    if (h.startsWith('#/deceased/list')) return 'deceased-list'
     if (h.startsWith('#/gov/me')) return 'gov-me'
     if (h.startsWith('#/profile')) return 'profile'
     return 'home'
@@ -79,9 +79,9 @@ const BottomNav: React.FC = () => {
             <PlusCircleOutlined />
             <span style={txtStyle}>创建陵墓</span>
           </button>
-          <button onClick={() => go('grave-list', '#/grave/list')} style={{ ...btnStyle, ...(active==='grave-list'?btnActiveStyle:undefined) }}>
+          <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
             <UnorderedListOutlined />
-            <span style={txtStyle}>墓地列表</span>
+            <span style={txtStyle}>逝者列表</span>
           </button>
           <button onClick={() => go('gov-me', '#/gov/me')} style={{ ...btnStyle, ...(active==='gov-me'?btnActiveStyle:undefined) }}>
             <CrownOutlined />

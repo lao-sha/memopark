@@ -1,0 +1,26 @@
+[package]
+name = "pallet-deceased-media"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+codec = { workspace = true, features = ["derive"] }
+scale-info = { workspace = true, features = ["derive"] }
+sp-runtime = { workspace = true }
+sp-core = { workspace = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+
+[features]
+default = ["std"]
+std = [
+  "codec/std",
+  "scale-info/std",
+  "sp-runtime/std",
+  "sp-core/std",
+  "frame-support/std",
+  "frame-system/std",
+]
+
+

@@ -13,7 +13,7 @@ import { signAndSendLocalWithPassword as _s } from '../../lib/polkadot-safe'
  * - 数据来源：
  *   1) 墓地详情：pallet-memo-grave → Graves, SlugOf
  *   2) 逝者列表：pallet-deceased → DeceasedByGrave, DeceasedOf
- *   3) 媒体与生平：pallet-deceased-data → albumsByDeceased, mediaByAlbum, mediaOf
+ *   3) 媒体与文本：pallet-deceased-media（albumsByDeceased/mediaByAlbum/mediaOf），pallet-deceased-text（lifeOf/messagesByDeceased/textOf/articlesByDeceased）
  * - 交互：顶部输入 GraveId 或从其它页面传入 localStorage('mp.grave.detailId')
  * - 性能：小规模遍历（基于 nextId 的直接索引），后续可由 Subsquid 聚合替代
  */
@@ -27,14 +27,16 @@ const GraveDetailPage: React.FC = () => {
   // 墓地信息
   const [graveInfo, setGraveInfo] = React.useState<{ id: number; owner?: string; parkId?: number|null; name?: string; slug?: string; active?: boolean; isPublic?: boolean } | null>(null)
   // 逝者列表
-  const [deceased, setDeceased] = React.useState<Array<{ id: number; name?: string; nameBadge?: string; gender?: string; genderCode?: number; birth?: string|null; death?: string|null; token?: string; links?: string[]; nameFullCid?: string|null }>>([])
+  const [deceased, setDeceased] = React.useState<Array<{ id: number; owner?: string; name?: string; nameBadge?: string; gender?: string; genderCode?: number; birth?: string|null; death?: string|null; token?: string; links?: string[]; nameFullCid?: string|null; mainImageCid?: string|null }>>([])
   // 选中逝者详情弹窗
   const [detailOpen, setDetailOpen] = React.useState(false)
-  const [detailItem, setDetailItem] = React.useState<null | { id: number; name?: string; nameBadge?: string; gender?: string; genderCode?: number; birth?: string|null; death?: string|null; token?: string; links?: string[]; nameFullCid?: string|null }>(null)
+  const [detailItem, setDetailItem] = React.useState<null | { id: number; owner?: string; name?: string; nameBadge?: string; gender?: string; genderCode?: number; birth?: string|null; death?: string|null; token?: string; links?: string[]; nameFullCid?: string|null; mainImageCid?: string|null }>(null)
   // 聚合媒体（相册/视频/文章）
   const [albums, setAlbums] = React.useState<Array<{ albumId: number; mediaIds: number[] }>>([])
   const [videos, setVideos] = React.useState<Array<{ id: string; title?: string; uri?: string }>>([])
   const [articles, setArticles] = React.useState<Array<{ id: string; title?: string; summary?: string; uri?: string }>>([])
+  // 相册图片（按相册ID分组的缩略图数据）
+  const [albumPhotos, setAlbumPhotos] = React.useState<Record<number, Array<{ id: number; cid: string; w?: number|null; h?: number|null }>>>({})
   // 留言（Message）聚合
   const [messages, setMessages] = React.useState<Array<{ id: number; deceasedId: number; cid: string; thumb?: string }>>([])
   // 留言明文缓存（id -> text）
@@ -46,6 +48,14 @@ const GraveDetailPage: React.FC = () => {
   const [cidInput, setCidInput] = React.useState('')
   const [pwdInput, setPwdInput] = React.useState('')
   const [coverSubmitting, setCoverSubmitting] = React.useState(false)
+  // 逝者主图设置弹窗
+  const [mainOpen, setMainOpen] = React.useState(false)
+  const [mainCidInput, setMainCidInput] = React.useState('')
+  const [mainPwdInput, setMainPwdInput] = React.useState('')
+  const [mainSubmitting, setMainSubmitting] = React.useState(false)
+  const [mainErr, setMainErr] = React.useState('')
+  // 在“设置逝者主图”弹窗中选择的逝者ID
+  const [mainSelectedDid, setMainSelectedDid] = React.useState<number | null>(null)
   // 创建留言弹窗
   const [msgOpen, setMsgOpen] = React.useState(false)
 
@@ -183,6 +193,7 @@ const GraveDetailPage: React.FC = () => {
         try {
           const d: any = (raw && raw.isSome && raw.unwrap) ? raw.unwrap() : raw
           const idNum = (ids[idx]?.toString ? Number(ids[idx].toString()) : Number(ids[idx]))
+          const owner = d.owner?.toString?.() || String(d.owner || '')
           const name = toStringFromAny(d.name)
           const badge = toStringFromAny(d.name_badge || d.nameBadge)
           const genderEnum = String((d.gender?.toJSON?.() || d.gender || '')).toUpperCase()
@@ -196,50 +207,83 @@ const GraveDetailPage: React.FC = () => {
             try { return new TextDecoder().decode(new Uint8Array(u8)) } catch { return '' }
           }).filter(Boolean)
           const nameFullCid = toStringFromAny(d.name_full_cid || d.nameFullCid) || null
-          return { id: idNum, name, nameBadge: badge, gender, genderCode, birth, death, token, links, nameFullCid }
+          const mainImageCid = toStringFromAny(d.main_image_cid || d.mainImageCid) || null
+          return { id: idNum, owner, name, nameBadge: badge, gender, genderCode, birth, death, token, links, nameFullCid, mainImageCid }
         } catch { return null }
       }).filter(Boolean) as any[]
       setDeceased(parsed)
 
-      // ===== 3) 聚合媒体（按每位逝者 → 相册 → 媒体）
+      // ===== 3) 聚合媒体（按每位逝者 → 相册 → 媒体）（deceased-media）
       const qr2: any = (api.query as any)
-      let ddq: any = qr2.deceasedData || qr2.deceased_data
-      if (!ddq) {
-        const key = Object.keys(qr2).find(k => /deceased[_-]?data/i.test(k))
-        if (key) ddq = qr2[key]
-      }
-      if (!ddq) throw new Error('未找到 deceased-data 查询接口')
-      const albumIdLists: any[] = await ddq.albumsByDeceased.multi(ids)
+      let dmq: any = qr2.deceasedMedia || qr2.deceased_media
+      if (!dmq) { const key = Object.keys(qr2).find(k => /deceased[_-]?media/i.test(k)); if (key) dmq = qr2[key] }
+      if (!dmq) throw new Error('未找到 deceased-media 查询接口')
+      const albumIdLists: any[] = await dmq.albumsByDeceased.multi(ids)
       const allAlbumIds: number[] = albumIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
-      // 修正存储名称：deceased-data 中为 DataByAlbum → dataByAlbum
-      const mediaIdLists: any[] = allAlbumIds.length ? await ddq.dataByAlbum.multi(allAlbumIds) : []
+      // 新命名：MediaByAlbum
+      const mediaIdLists: any[] = allAlbumIds.length ? await dmq.mediaByAlbum.multi(allAlbumIds) : []
       const grouped = allAlbumIds.map((aid: any, idx: number) => ({ albumId: Number(aid), mediaIds: ((mediaIdLists[idx]?.toJSON?.() as any[]) || []).map((x:any)=> Number(x)) }))
       setAlbums(grouped)
       const allMediaIds: number[] = grouped.flatMap(g => g.mediaIds)
       if (!allMediaIds.length) { setVideos([]); setArticles([]); setLoading(false); return }
-      // 修正存储名称：deceased-data 中为 DataOf → dataOf
-      const media: any[] = await ddq.dataOf.multi(allMediaIds)
-      // 解析 kind/title/summary/uri（兼容 toHuman）
+      // 新命名：MediaOf
+      const media: any[] = await dmq.mediaOf.multi(allMediaIds)
+      // 解析 kind/title/summary/uri，并额外聚合图片到相册（兼容 toHuman/toJSON 字段命名）
       const videoList: Array<{ id: string; title?: string; uri?: string }> = []
       const articleList: Array<{ id: string; title?: string; summary?: string; uri?: string }> = []
+      const photoMap: Record<number, Array<{ id: number; cid: string; w?: number|null; h?: number|null }>> = {}
+      const dataIdToAlbumId: Record<number, number> = {}
+      grouped.forEach(g => g.mediaIds.forEach(mid => { dataIdToAlbumId[Number(mid)] = g.albumId }))
+      const decodeBytes = (val: any): string => {
+        try {
+          if (!val) return ''
+          if (typeof val === 'string') return val
+          const u8 = new Uint8Array(val)
+          return new TextDecoder().decode(u8)
+        } catch { return '' }
+      }
       media.forEach((m: any, idx: number) => {
         try {
-          const idStr = String(allMediaIds[idx])
+          const dataId = Number(allMediaIds[idx])
           const human: any = m?.toHuman?.() || m?.toJSON?.() || m
           const kindStr: string = String(human?.kind ?? human?.Kind ?? human?.kind?.__kind ?? '')
           const title = human?.title || human?.Title || ''
           const summary = human?.summary || human?.Summary || ''
-          const uri = human?.uri || human?.Uri || ''
-          if (/Video/i.test(kindStr)) videoList.push({ id: idStr, title, uri })
-          else if (/Article/i.test(kindStr)) articleList.push({ id: idStr, title, summary, uri })
+          // 优先从 toHuman 读取 uri；若为空则尝试从 toJSON 的字节数组解码
+          let uri: string = human?.uri || human?.Uri || ''
+          if (!uri) {
+            const j: any = m?.toJSON?.() || {}
+            const uriBytes = j?.uri || j?.Uri
+            uri = decodeBytes(uriBytes)
+          }
+          if (/Video/i.test(kindStr)) {
+            videoList.push({ id: String(dataId), title, uri })
+            return
+          }
+          if (/Article/i.test(kindStr)) {
+            articleList.push({ id: String(dataId), title, summary, uri })
+            return
+          }
+          // 其余类型默认按“图片/照片”处理（因本分支 dataOf 来源于相册容器，不包含留言等）
+          const albumIdForData = dataIdToAlbumId[dataId]
+          if (albumIdForData != null && uri) {
+            const w = (human?.width ?? human?.Width) ?? null
+            const h = (human?.height ?? human?.Height) ?? null
+            if (!photoMap[albumIdForData]) photoMap[albumIdForData] = []
+            photoMap[albumIdForData].push({ id: dataId, cid: uri, w: w==null? null:Number(w), h: h==null? null:Number(h) })
+          }
         } catch {}
       })
       setVideos(videoList)
       setArticles(articleList)
+      setAlbumPhotos(photoMap)
 
-      // ===== 3.1) 生平（Life）：为每位逝者读取 CID，渲染时再按 CID 拉取明文
+      // ===== 3.1) 生平（Life，deceased-text）：为每位逝者读取 CID
       try {
-        const lifeOpts: any[] = await ddq.lifeOf.multi(ids)
+        let dtq: any = qr2.deceasedText || qr2.deceased_text
+        if (!dtq) { const key = Object.keys(qr2).find(k => /deceased[_-]?text/i.test(k)); if (key) dtq = qr2[key] }
+        if (!dtq) throw new Error('未找到 deceased-text 查询接口')
+        const lifeOpts: any[] = await dtq.lifeOf.multi(ids)
         // 在 UI 渲染时用 LifeText 组件通过 CID 拉取明文，不做此处并发拉取
         // 仅将 CID 临时附加到 deceased 列表用于展示
         const cidMap: Record<number, string> = {}
@@ -256,15 +300,17 @@ const GraveDetailPage: React.FC = () => {
         setDeceased(prev => prev.map(d => ({ ...d, lifeCid: cidMap[d.id] })) as any)
       } catch {}
 
-      // ===== 4) 留言（Message，按整个墓位下所有逝者聚合）
+      // ===== 4) 留言（Message，按整个墓位下所有逝者聚合，deceased-text）
       try {
-        const msgIdLists: any[] = await ddq.messagesByDeceased.multi(ids)
+        let dtq2: any = qr2.deceasedText || qr2.deceased_text
+        if (!dtq2) { const key = Object.keys(qr2).find(k => /deceased[_-]?text/i.test(k)); if (key) dtq2 = qr2[key] }
+        if (!dtq2) throw new Error('未找到 deceased-text 查询接口')
+        const msgIdLists: any[] = await dtq2.messagesByDeceased.multi(ids)
         let allMsgIds: number[] = msgIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || []).map((x:any)=> Number(x))
         // 留言按倒序展示：按 ID 倒序请求与渲染
         allMsgIds = allMsgIds.sort((a,b)=> b-a)
         if (allMsgIds.length) {
-          const dataQuery: any = ddq.dataOf || ddq.mediaOf
-          const msgItems: any[] = dataQuery ? await dataQuery.multi(allMsgIds) : []
+          const msgItems: any[] = dtq2.textOf ? await dtq2.textOf.multi(allMsgIds) : []
           const parsedMsg = msgItems.map((m: any, idx: number) => {
             try {
               // 优先以 toJSON 获取原始字节再解码，避免 toHuman 字段名不一致
@@ -281,13 +327,13 @@ const GraveDetailPage: React.FC = () => {
                   return new TextDecoder().decode(u8)
                 } catch { return '' }
               }
-              const uriBytes = j?.uri || j?.Uri
-              const thumbBytes = j?.thumbnail_uri || j?.ThumbnailUri
-              const cid = decodeBytes(uriBytes)
-              const thumbStr = decodeBytes(thumbBytes)
-              return { id: Number(allMsgIds[idx]), deceasedId: 0, cid, thumb: thumbStr }
+              const cidBytes = j?.cid || j?.Cid
+              const titleBytes = j?.title || j?.Title
+              const cid = decodeBytes(cidBytes)
+              const title = decodeBytes(titleBytes)
+              return { id: Number(allMsgIds[idx]), deceasedId: 0, cid, thumb: undefined, title }
             } catch { return null }
-          }).filter(Boolean) as Array<{ id:number; deceasedId:number; text:string; thumb?:string }>
+          }).filter(Boolean) as Array<{ id:number; deceasedId:number; cid:string; thumb?:string }>
           setMessages(parsedMsg as any)
         } else { setMessages([]) }
       } catch { setMessages([]) }
@@ -310,35 +356,70 @@ const GraveDetailPage: React.FC = () => {
     return 'grave'
   }, [])
 
-  /**
-   * 函数级中文注释：解析 deceasedData Pallet 的 tx section 名称（兼容不同命名风格）。
-   * - 优先尝试 deceasedData，其次 deceased_data，再次遍历匹配 /deceased[_-]?data/i。
-   */
-  const resolveDeceasedDataSection = React.useCallback(async (): Promise<string> => {
-    try {
-      const api = await getApi()
-      const txRoot: any = (api.tx as any)
-      const candidates = ['deceasedData','deceased_data', ...Object.keys(txRoot)]
-      for (const s of candidates) {
-        if (txRoot[s]?.addData || txRoot[s]?.createAlbum) return s
-      }
-    } catch {}
-    return 'deceasedData'
+  // 解析新模块 tx section（媒体/文本）
+  const resolveDeceasedMediaSectionFor = React.useCallback(async (method: string): Promise<string> => {
+    const api = await getApi(); const txRoot: any = (api.tx as any)
+    const c = ['deceasedMedia','deceased_media', ...Object.keys(txRoot)]
+    for (const s of c) { if (txRoot[s] && typeof txRoot[s][method] === 'function') return s }
+    // 兼容旧名
+    const old = ['deceasedData','deceased_data']
+    for (const s of old) { if (txRoot[s] && typeof txRoot[s][method] === 'function') return s }
+    throw new Error(`运行时未找到媒体方法：${method}`)
+  }, [])
+
+  const resolveDeceasedTextSectionFor = React.useCallback(async (method: string): Promise<string> => {
+    const api = await getApi(); const txRoot: any = (api.tx as any)
+    const c = ['deceasedText','deceased_text', ...Object.keys(txRoot)]
+    for (const s of c) { if (txRoot[s] && typeof txRoot[s][method] === 'function') return s }
+    throw new Error(`运行时未找到文本方法：${method}`)
   }, [])
 
   /**
-   * 函数级中文注释：按具体方法名解析 deceasedData section，确保该方法存在再返回。
-   * - 解决因不同命名风格导致方法不存在而“点击无反应”的问题；若找不到将抛错供 UI 提示。
+   * 函数级中文注释：上传“逝者主图”到 IPFS 并自动回填 CID（不加密）。
+   * - 参数：file 浏览器文件对象
+   * - 行为：调用通用 uploadToIpfs，将返回的 CID 写入 mainCidInput，并提示成功。
+   * - 返回：Promise<boolean>，用于配合 beforeUpload 拦截默认上传。
    */
-  const resolveDeceasedDataSectionFor = React.useCallback(async (method: string): Promise<string> => {
+  const handleUploadMainImage = React.useCallback(async (file: File): Promise<boolean> => {
+    try {
+      message.loading({ key: 'up-main', content: '正在上传主图到 IPFS…' })
+      const cid = await uploadToIpfs(file as any)
+      setMainCidInput(cid)
+      message.success({ key: 'up-main', content: '已上传：'+cid })
+      return false
+    } catch (e:any) {
+      message.error({ key: 'up-main', content: e?.message || '上传失败' })
+      return false
+    }
+  }, [])
+
+  /**
+   * 函数级中文注释：跳转到供奉页面（携带 domain/target 参数）
+   * - domain：供奉域编码（示例：0=Grave，1=Deceased）
+   * - target：目标对象ID
+   */
+  const goOfferings = React.useCallback((domain: number, target: number) => {
+    try {
+      window.location.hash = `#/browse/category?domain=${Number(domain)}&target=${Number(target)}`
+    } catch {}
+  }, [])
+
+  /**
+   * 函数级中文注释：解析 deceased Pallet 的 tx section 名称（兼容不同命名风格）。
+   * - 用于 setMainImage/clearMainImage 等接口。
+   */
+  const resolveDeceasedSectionFor = React.useCallback(async (method: string): Promise<string> => {
     const api = await getApi()
     const txRoot: any = (api.tx as any)
-    const candidates = ['deceasedData','deceased_data', ...Object.keys(txRoot)]
-    for (const s of candidates) {
-      if (txRoot[s] && typeof txRoot[s][method] === 'function') return s
-    }
+    const candidates = ['deceased','deceased_', 'memo_deceased', ...Object.keys(txRoot)]
+    for (const s of candidates) { if (txRoot[s] && typeof txRoot[s][method] === 'function') return s }
+    // 尝试下划线命名
+    const snake = method.replace(/[A-Z]/g, m=> '_'+m.toLowerCase())
+    for (const s of candidates) { if (txRoot[s] && typeof txRoot[s][snake] === 'function') return s }
     throw new Error(`运行时未找到方法：${method}`)
   }, [])
+
+  // 旧解析器（deceasedData）已废弃
 
   /**
    * 函数级中文注释：工具 - 将字符串按 UTF-8 编码为 Array<number>，用于链上 BoundedVec<u8> 参数。
@@ -360,7 +441,7 @@ const GraveDetailPage: React.FC = () => {
 
   /**
    * 函数级中文注释：加载“当前选中逝者”的相册下拉选项
-   * - 查询 deceasedData.albumsByDeceased(did) 获取相册ID列表
+   * - 查询 deceasedMedia.albumsByDeceased(did) 获取相册ID列表
    * - 批量读取 albumOf 解析标题，生成下拉 label
    */
   const loadAlbumOptions = React.useCallback(async (did: number) => {
@@ -368,12 +449,9 @@ const GraveDetailPage: React.FC = () => {
     try {
       const api = await getApi()
       const qr3: any = (api.query as any)
-      let dq: any = qr3.deceasedData || qr3.deceased_data
-      if (!dq) {
-        const key = Object.keys(qr3).find(k => /deceased[_-]?data/i.test(k))
-        if (key) dq = qr3[key]
-      }
-      if (!dq) throw new Error('未找到 deceased-data 查询接口')
+      let dq: any = qr3.deceasedMedia || qr3.deceased_media
+      if (!dq) { const key = Object.keys(qr3).find(k => /deceased[_-]?media/i.test(k)); if (key) dq = qr3[key] }
+      if (!dq) throw new Error('未找到 deceased-media 查询接口')
       const listAny: any = await dq.albumsByDeceased(did)
       const ids: number[] = (listAny?.toJSON?.() as any[])?.map((x:any)=> Number(x)) || []
       if (!ids.length) { setAlbumOptions([]); return }
@@ -413,22 +491,7 @@ const GraveDetailPage: React.FC = () => {
       </div>
 
       <div style={{ padding: 12 }}>
-        {/* 封面展示与操作 */}
-        <Card size="small" title="墓地封面" style={{ marginBottom: 12 }}>
-          {coverCid ? (
-            <div style={{ width: '100%', border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
-              <img src={`https://ipfs.io/ipfs/${coverCid}`} alt="cover" style={{ width: '100%', display: 'block' }} />
-            </div>
-          ) : (
-            <Alert type="info" showIcon message="尚未设置封面" />
-          )}
-          <div style={{ marginTop: 8 }}>
-            <Space>
-              <Button size="small" onClick={()=> { setCidInput(coverCid||''); setCoverOpen(true) }}>设置/提议封面</Button>
-            </Space>
-          </div>
-          {coverErr && <Alert type="error" showIcon message={coverErr} style={{ marginTop: 8 }} />}
-        </Card>
+        
         {err && <Alert type="error" showIcon message={err} style={{ marginBottom: 8 }} />}
         {graveInfo && (
           <Card size="small" title={`#${graveInfo.id} ${graveInfo.name || ''}`} extra={<Space>
@@ -439,9 +502,22 @@ const GraveDetailPage: React.FC = () => {
               {graveInfo.slug && <div><Typography.Text type="secondary">Slug：</Typography.Text><Typography.Text code>{graveInfo.slug}</Typography.Text></div>}
               {graveInfo.parkId!=null && <div><Typography.Text type="secondary">园区：</Typography.Text><span>{graveInfo.parkId}</span></div>}
               {graveInfo.owner && <div><Typography.Text type="secondary">墓主：</Typography.Text><Typography.Text code>{graveInfo.owner}</Typography.Text></div>}
+              {(() => {
+                const firstWithMain = deceased.find(d => d.mainImageCid)
+                if (!firstWithMain) return null
+                const gw = (()=>{ try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' } })()
+                const clean = String(firstWithMain.mainImageCid).replace(/^ipfs:\/\//i,'')
+                return (
+                  <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+                    <img src={`${gw}/ipfs/${clean}`} alt="main" style={{ width: '100%', display: 'block' }} />
+                  </div>
+                )
+              })()}
             </Space>
           </Card>
         )}
+
+        {/* 已按需求移除顶部英雄封面组件 */}
 
         <Divider style={{ margin: '12px 0' }} />
 
@@ -453,7 +529,15 @@ const GraveDetailPage: React.FC = () => {
             { key:'life', label:'生平' },
             { key:'article', label:'追忆文章' },
           ]} />
-          <Button size="small" type="primary" onClick={()=> setEditorOpen(true)}>编辑</Button>
+          <Space>
+            <Button size="small" onClick={()=> { setMainOpen(true); setMainCidInput(''); setMainPwdInput(''); setMainErr(''); try { const d0 = deceased?.[0]?.id; setMainSelectedDid((selectedDid as any) ?? (d0!=null? Number(d0): null)) } catch {} }}>设置逝者主图</Button>
+            <Button size="small" type="primary" onClick={()=> setEditorOpen(true)}>编辑</Button>
+            <Button size="small" onClick={()=>{
+              const tgt = Number(graveId||0)
+              if (!Number.isFinite(tgt) || tgt<=0) return message.warning('无效的墓位ID')
+              goOfferings(0, tgt)
+            }}>前往供奉</Button>
+          </Space>
         </div>
 
         {activeTab === 'deceased' && (
@@ -471,6 +555,7 @@ const GraveDetailPage: React.FC = () => {
                       {it.name && <Tag color="green">{it.name}</Tag>}
                       {it.nameBadge && <Tag>{it.nameBadge}</Tag>}
                       {it.gender && <Tag color="blue">{it.gender}</Tag>}
+                      <Button size="small" onClick={(e)=>{ e.stopPropagation(); goOfferings(1, Number(it.id)) }}>供奉TA</Button>
                     </Space>
                     <div style={{ fontSize: 12, color: '#666' }}>
                       {it.birth && <span style={{ marginRight: 12 }}>出生：{it.birth}</span>}
@@ -535,12 +620,13 @@ const GraveDetailPage: React.FC = () => {
             locale={{ emptyText: '暂无相册' }}
             renderItem={(it)=> (
               <List.Item>
-                <Space direction="vertical">
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
                   <Space>
                     <Typography.Text strong>相册ID：</Typography.Text>
                     <Typography.Text code>{it.albumId}</Typography.Text>
                   </Space>
                   <div style={{ fontSize: 12, color: '#666' }}>媒体数：{it.mediaIds.length}</div>
+                  <AlbumThumbGrid albumId={it.albumId} photos={albumPhotos[it.albumId] || []} />
                 </Space>
               </List.Item>
             )}
@@ -567,7 +653,7 @@ const GraveDetailPage: React.FC = () => {
         {activeTab === 'life' && (
           <Card size="small" title="生平（概览）" loading={loading}>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              生平详情将接入 `deceased-data` 的专属 Life 模块或采用文章富文本呈现。当前展示逝者 token 与日期作为概览。
+              生平详情由 `deceased-text` 模块提供（Life），当前展示逝者 token 与日期作为概览。
             </Typography.Paragraph>
             {deceased.length === 0 ? (
               <Typography.Text type="secondary">暂无逝者</Typography.Text>
@@ -662,6 +748,60 @@ const GraveDetailPage: React.FC = () => {
         </Space>
       </Modal>
       {/* 编辑器弹窗：生平/相册/视频/文章/删除/上传 */}
+      {/* 逝者主图设置/治理弹窗 */}
+      <Modal
+        open={mainOpen}
+        onCancel={()=> { setMainOpen(false); setMainCidInput(''); setMainPwdInput(''); setMainErr('') }}
+        title="设置逝者主图（Owner直改/非Owner走治理）"
+        okText="提交"
+        cancelText="取消"
+        confirmLoading={mainSubmitting}
+        onOk={async ()=>{
+          try {
+            if (mainSelectedDid==null) { message.warning('请选择逝者'); return }
+            if (!mainCidInput) { message.warning('请填写主图 CID'); return }
+            if (!pwdInput && !current) { /* 无法判断 owner，这里要求密码 */ }
+            if (!mainPwdInput || mainPwdInput.length < 8) { message.warning('请输入至少 8 位签名密码'); return }
+            setMainSubmitting(true); setMainErr('')
+            const section = await resolveDeceasedSectionFor('setMainImage')
+            const bytes = Array.from(new TextEncoder().encode(mainCidInput))
+            const hash = await signAndSendLocalWithPassword(section, 'setMainImage', [Number(mainSelectedDid), bytes], mainPwdInput)
+            message.success('主图已提交：'+hash)
+            setMainOpen(false); setMainPwdInput(''); setMainCidInput('')
+            try { if (graveId!=null) await loadAll(graveId) } catch {}
+          } catch (e:any) { setMainErr(e?.message || '提交失败') } finally { setMainSubmitting(false) }
+        }}
+        centered
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Alert type="info" showIcon message="说明" description="如果当前账户不是逝者 owner，请通过治理入口使用 govSetPrimaryImageFor（媒体域）。" />
+          <div>
+            <Typography.Text type="secondary">选择逝者：</Typography.Text>
+            <Select
+              style={{ width: '100%', marginTop: 6, marginBottom: 6 }}
+              placeholder="请选择逝者"
+              value={mainSelectedDid as any}
+              options={deceased.map(d=> ({ value: d.id, label: `#${d.id} ${d.name || ''}` }))}
+              onChange={(v)=> setMainSelectedDid(Number(v))}
+            />
+          </div>
+          <Input placeholder="主图 CID（ipfs://CID 的 CID 部分）" value={mainCidInput} onChange={e=> setMainCidInput(e.target.value)} />
+          <Upload
+            accept="image/*"
+            showUploadList={false}
+            beforeUpload={async (file) => { await handleUploadMainImage(file as any); return false }}
+          >
+            <Button>上传图片并自动回填 CID</Button>
+          </Upload>
+          <Input.Password placeholder="签名密码（至少 8 位）" value={mainPwdInput} onChange={e=> setMainPwdInput(e.target.value)} />
+          {mainCidInput && (
+            <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+              <img src={`https://ipfs.io/ipfs/${mainCidInput}`} alt="preview" style={{ width: '100%', display: 'block' }} />
+            </div>
+          )}
+          {mainErr && <Alert type="error" showIcon message={mainErr} />}
+        </Space>
+      </Modal>
       <Modal
         open={editorOpen}
         title="编辑内容（生平/相册/视频/文章）"
@@ -727,7 +867,7 @@ const GraveDetailPage: React.FC = () => {
                           setLifeCid(cidToUse)
                         }
                         setEditorSubmitting(true)
-                        const section = await resolveDeceasedDataSectionFor('updateLife').catch(async ()=> resolveDeceasedDataSectionFor('createLife'))
+                        const section = await resolveDeceasedTextSectionFor('updateLife').catch(async ()=> resolveDeceasedTextSectionFor('createLife'))
                         const did = Number(selectedDid)
                         // 优先尝试 update_life，若失败再回退 create_life
                         const bytes = strToBytes(cidToUse)
@@ -760,7 +900,7 @@ const GraveDetailPage: React.FC = () => {
                       if (selectedDid==null) return message.warning('请选择逝者')
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (!albumTitle) return message.warning('请填写标题')
-                      const section = await resolveDeceasedDataSectionFor('createAlbum')
+                      const section = await resolveDeceasedMediaSectionFor('createAlbum')
                       setEditorSubmitting(true)
                       const did = Number(selectedDid)
                       const h = await signAndSendLocalWithPassword(section, 'createAlbum', [did, strToBytes(albumTitle), strToBytes(albumDesc||''), 0, []], txPwd)
@@ -815,12 +955,11 @@ const GraveDetailPage: React.FC = () => {
                       if (albumId==null) return message.warning('请输入相册ID')
                       if (!photoCid) return message.warning('请填写或上传图片 CID')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSectionFor('addData')
+                      const section = await resolveDeceasedMediaSectionFor('addMedia')
                       const bytes = strToBytes(photoCid)
                       const w = photoWidth==null? null : Number(photoWidth)
                       const h = photoHeight==null? null : Number(photoHeight)
-                      const hsh = null
-                      const txh = await signAndSendLocalWithPassword(section, 'addData', [0, Number(albumId), 0, bytes, null, hsh, null, null, null, w, h, null], txPwd)
+                      const txh = await signAndSendLocalWithPassword(section, 'addMedia', [0, Number(albumId), 0, bytes, null, null, null, w, h, null], txPwd)
                       message.success('已提交添加图片：'+txh)
                       if (graveId!=null) await loadAll(graveId)
                     } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
@@ -842,7 +981,7 @@ const GraveDetailPage: React.FC = () => {
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (!vcTitle) return message.warning('请填写标题')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSectionFor('createVideoCollection')
+                      const section = await resolveDeceasedMediaSectionFor('createVideoCollection')
                       const did = Number(selectedDid)
                       const h = await signAndSendLocalWithPassword(section, 'createVideoCollection', [did, strToBytes(vcTitle), strToBytes(vcDesc||''), []], txPwd)
                       message.success('已提交创建视频集：'+h)
@@ -863,8 +1002,8 @@ const GraveDetailPage: React.FC = () => {
                       if (vcId==null) return message.warning('请输入视频集ID')
                       if (!videoUri) return message.warning('请填写视频URI')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSectionFor('addData')
-                      const txh = await signAndSendLocalWithPassword(section, 'addData', [1, Number(vcId), 1, strToBytes(videoUri), null, null, null, null, videoDuration==null? null:Number(videoDuration), null, null, null], txPwd)
+                      const section = await resolveDeceasedMediaSectionFor('addMedia')
+                      const txh = await signAndSendLocalWithPassword(section, 'addMedia', [1, Number(vcId), 1, strToBytes(videoUri), null, null, videoDuration==null? null:Number(videoDuration), null, null, null], txPwd)
                       message.success('已提交添加视频：'+txh)
                       if (graveId!=null) await loadAll(graveId)
                     } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
@@ -894,11 +1033,10 @@ const GraveDetailPage: React.FC = () => {
                     if (articleAlbumId==null) return message.warning('请输入相册ID')
                     if (!articleCid) return message.warning('请填写文章正文 CID')
                     setEditorSubmitting(true)
-                    const section = await resolveDeceasedDataSectionFor('addData')
+                    const section = await resolveDeceasedTextSectionFor('setArticle')
                     const bytes = strToBytes(articleCid)
-                    // 文章需要 content_hash 为 Some，这里占位 32 字节零值（后续可替换为 blake2_256(cid)）
-                    const zero32 = new Array(32).fill(0)
-                    const txh = await signAndSendLocalWithPassword(section, 'addData', [0, Number(articleAlbumId), 3, bytes, null, zero32, articleTitle? strToBytes(articleTitle): null, articleSummary? strToBytes(articleSummary): null, null, null, null, null], txPwd)
+                    const did = Number(selectedDid)
+                    const txh = await signAndSendLocalWithPassword(section, 'setArticle', [did, bytes, articleTitle? strToBytes(articleTitle): null, articleSummary? strToBytes(articleSummary): null], txPwd)
                     message.success('已提交添加文章：'+txh)
                     if (graveId!=null) await loadAll(graveId)
                   } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
@@ -917,27 +1055,14 @@ const GraveDetailPage: React.FC = () => {
                       if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
                       if (removeDataId==null) return message.warning('请输入媒体ID')
                       setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSectionFor('removeData')
-                      const h = await signAndSendLocalWithPassword(section, 'removeData', [Number(removeDataId)], txPwd)
+                      const section = await resolveDeceasedMediaSectionFor('removeMedia')
+                      const h = await signAndSendLocalWithPassword(section, 'removeMedia', [Number(removeDataId)], txPwd)
                       message.success('已提交删除媒体：'+h)
                       if (graveId!=null) await loadAll(graveId)
                     } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
                   }}>删除媒体</Button>
                 </Space>
-                <Space>
-                  <InputNumber placeholder="相册ID" value={deleteAlbumId as any} onChange={(v)=> setDeleteAlbumId((v as any) ?? null)} />
-                  <Button danger loading={editorSubmitting} onClick={async ()=>{
-                    try {
-                      if (!txPwd || txPwd.length<8) return message.warning('请输入至少 8 位签名密码')
-                      if (deleteAlbumId==null) return message.warning('请输入相册ID')
-                      setEditorSubmitting(true)
-                      const section = await resolveDeceasedDataSectionFor('deleteAlbum')
-                      const h = await signAndSendLocalWithPassword(section, 'deleteAlbum', [Number(deleteAlbumId)], txPwd)
-                      message.success('已提交删除相册：'+h)
-                      if (graveId!=null) await loadAll(graveId)
-                    } catch(e:any) { message.error(e?.message || '提交失败') } finally { setEditorSubmitting(false) }
-                  }}>删除相册</Button>
-                </Space>
+                {/* 相册删除入口暂未提供（需治理端实现 gov 接口） */}
               </Space>
             </Card>
           )}
@@ -1003,6 +1128,17 @@ const CreateMessageInline: React.FC<{
 
   const strToBytes = React.useCallback((s: string): number[] => Array.from(new TextEncoder().encode(String(s || ''))), [])
 
+  // 函数级中文注释：在内联组件中本地解析 `deceasedText` section 名称（兼容蛇形）
+  const resolveTextSectionLocal = React.useCallback(async (): Promise<string> => {
+    try {
+      const api = await getApi()
+      const txRoot: any = (api.tx as any)
+      const candidates = ['deceasedText','deceased_text', ...Object.keys(txRoot)]
+      for (const s of candidates) { if (txRoot[s]?.addMessage) return s }
+    } catch {}
+    return 'deceasedText'
+  }, [])
+
   return (
     <Space direction="vertical" style={{ width: '100%' }} size={8}>
       <Space style={{ width: '100%' }}>
@@ -1038,9 +1174,9 @@ const CreateMessageInline: React.FC<{
           const blob = new Blob([text], { type: 'text/plain; charset=utf-8' })
           const file = new File([blob], 'message.txt', { type: 'text/plain' })
           const cid = await uploadToIpfs(file)
-          const section = 'deceasedData'
-          const args = [2, Number(did), 4, strToBytes(cid), thumbCid? strToBytes(thumbCid): null, null, null, null, null, null, null, null]
-          const h = await _s(section, 'addData', args as any, pwd)
+          const section = await resolveTextSectionLocal()
+          const args = [Number(did), strToBytes(cid), null]
+          const h = await _s(section, 'addMessage', args as any, pwd)
           message.success('已提交留言：'+h)
           setText(''); setThumbCid('')
           onSubmitted && onSubmitted()
@@ -1074,5 +1210,70 @@ const MessageText: React.FC<{ cid: string; cache: Record<number, string>; setCac
   }, [cid])
   if (loading && !text) return <Typography.Text type="secondary">加载中…</Typography.Text>
   return <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{text || '(空)'}</Typography.Paragraph>
+}
+
+
+/**
+ * 函数级详细中文注释：相册缩略图网格组件
+ * - 输入：albumId（相册ID）、photos（该相册下的图片列表，包含 dataId 与 CID 及可选宽高）
+ * - 展示：移动端优先的网格布局（每行最多4列，自动换行），图片裁剪为方形缩略图
+ * - 交互：点击缩略图打开大图预览（Modal），可左右切换下一张/上一张
+ * - 安全：仅从 IPFS 网关读取公开图片，不存储任何敏感数据
+ * - 可扩展：后续可加入懒加载、骨架屏、长按保存/分享、Exif 信息等
+ */
+const AlbumThumbGrid: React.FC<{ albumId: number; photos: Array<{ id: number; cid: string; w?: number|null; h?: number|null }> }> = ({ albumId, photos }) => {
+  const [previewOpen, setPreviewOpen] = React.useState(false)
+  const [index, setIndex] = React.useState(0)
+
+  const norm = React.useCallback((cid: string): string => String(cid || '').replace(/^ipfs:\/\//i, ''), [])
+  const gateway = React.useMemo(() => {
+    try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' }
+  }, [])
+
+  if (!photos || photos.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: '#999' }}>该相册暂无图片</div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {photos.map((p, i) => (
+          <div key={p.id} style={{ width: 72, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #eee', background: '#fafafa' }}>
+            <img
+              alt={`album-${albumId}-${p.id}`}
+              src={`${gateway}/ipfs/${norm(p.cid)}`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onClick={() => { setIndex(i); setPreviewOpen(true) }}
+            />
+          </div>
+        ))}
+      </div>
+      <Modal
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        footer={
+          photos.length > 1 ? (
+            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Button onClick={() => setIndex(prev => (prev - 1 + photos.length) % photos.length)}>上一张</Button>
+              <div style={{ fontSize: 12, color: '#666' }}>#{photos[index]?.id}（{index + 1}/{photos.length}）</div>
+              <Button onClick={() => setIndex(prev => (prev + 1) % photos.length)}>下一张</Button>
+            </Space>
+          ) : null
+        }
+        centered
+        width={360}
+      >
+        <div style={{ width: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid #eee' }}>
+          <img
+            alt={`preview-${albumId}-${photos[index]?.id}`}
+            src={`${gateway}/ipfs/${norm(photos[index]?.cid || '')}`}
+            style={{ width: '100%', display: 'block' }}
+          />
+        </div>
+      </Modal>
+    </div>
+  )
 }
 

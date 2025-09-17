@@ -87,6 +87,13 @@ pub mod pallet {
         /// 函数级中文注释：创建费接收账户（例如：国库账户）。
         /// - 由运行时实现返回一个稳定账户（可由 PalletId 派生或直接指向 Treasury）。
         type FeeCollector: Get<Self::AccountId>;
+
+        /// 函数级中文注释：公共封面目录容量上限（用于限制 `CoverOptions` 列表长度，防止状态膨胀）。
+        /// - 目录仅存储 CID 字节，不存放图片本体；
+        /// - 建议取值 128/256，具体由运行时常量注入；
+        /// - 目录项的增删仅允许治理起源调用。
+        #[pallet::constant]
+        type MaxCoverOptions: Get<u32>;
     }
 
     /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
@@ -207,6 +214,18 @@ pub mod pallet {
     #[pallet::storage]
     pub type CoverCidOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
 
+    /// 函数级中文注释：公共封面目录（全局可选封面 CID 列表）。
+    /// - 仅存储明文 CID（不加密），供前端/索引层渲染；
+    /// - 仅治理起源可增删目录项；
+    /// - 任意墓地可通过 `set_cover_from_option` 选择其中一项作为封面；
+    /// - 列表去重：相同 CID 不重复插入；删除按值匹配。
+    #[pallet::storage]
+    pub type CoverOptions<T: Config> = StorageValue<
+        _,
+        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxCoverOptions>,
+        ValueQuery
+    >;
+
     /// 函数级中文注释：旧关注押金退款余额（方案B迁移专用）。
     /// - 在 on_runtime_upgrade(v9->v10) 中，为每个账户累计 FollowDeposit×关注次数；用户可调用退款接口解除保留押金。
     #[pallet::storage]
@@ -285,6 +304,9 @@ pub mod pallet {
         /// 函数级中文注释：封面图片 CID 已设置/清除
         CoverSet { id: u64 },
         CoverCleared { id: u64 },
+        /// 函数级中文注释：公共封面目录项增删（仅治理）
+        CoverOptionAdded {},
+        CoverOptionRemoved {},
     }
 
     #[pallet::error]
@@ -321,6 +343,12 @@ pub mod pallet {
         DepositFailed,
         /// 创建费扣款失败（余额不足或 KeepAlive 保护触发）
         FeePaymentFailed,
+        /// 目录项已存在
+        CoverOptionExists,
+        /// 目录项不存在
+        CoverOptionNotFound,
+        /// 目录索引非法
+        InvalidCoverIndex,
     }
 
     #[pallet::call]
@@ -450,6 +478,68 @@ pub mod pallet {
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             CoverCidOf::<T>::remove(id);
             Self::deposit_event(Event::CoverCleared { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：新增公共封面目录项（仅治理）。
+        /// - 输入：`cid` 明文 CID 字节，长度受 `MaxCidLen` 约束；
+        /// - 行为：若已存在则返回 `CoverOptionExists`；否则追加到 `CoverOptions`（受 `MaxCoverOptions` 限制）。
+        /// - 事件：`CoverOptionAdded {}`。
+        #[pallet::call_index(45)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn add_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
+                if list.iter().any(|x| x == &cid) { return Err(Error::<T>::CoverOptionExists.into()); }
+                list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::CoverOptionAdded {});
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：移除公共封面目录项（仅治理）。
+        /// - 按值匹配移除第一处出现；若不存在返回 `CoverOptionNotFound`。
+        /// - 事件：`CoverOptionRemoved {}`。
+        #[pallet::call_index(46)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn remove_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
+                if let Some(pos) = list.iter().position(|x| x == &cid) {
+                    list.swap_remove(pos);
+                    Ok(())
+                } else {
+                    Err(Error::<T>::CoverOptionNotFound.into())
+                }
+            })?;
+            Self::deposit_event(Event::CoverOptionRemoved {});
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：从公共目录设置墓地封面（仅所有者直接设置；非所有者走治理接口）。
+        /// - 输入：`id` 墓地编号，`index` 目录索引（0..len-1）。
+        /// - 校验：存在性、所有权、索引边界。
+        /// - 事件：`CoverSet { id }`。
+        #[pallet::call_index(47)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_cover_from_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            // 所有权/园区管理员校验策略与 set_cover 对齐：此处仅允许墓主直接设置
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            let list = CoverOptions::<T>::get();
+            let idx = index as usize;
+            ensure!(idx < list.len(), Error::<T>::InvalidCoverIndex);
+            let chosen = list[idx].clone();
+            CoverCidOf::<T>::insert(id, chosen);
+            Self::deposit_event(Event::CoverSet { id });
             Ok(())
         }
 

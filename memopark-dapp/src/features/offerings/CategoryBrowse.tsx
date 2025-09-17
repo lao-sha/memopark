@@ -22,6 +22,7 @@ const CategoryBrowse: React.FC = () => {
   const [buyForm] = Form.useForm()
   const wallet = useWallet()
   const [exclusiveOk, setExclusiveOk] = useState<boolean>(true)
+  const [computedPrice, setComputedPrice] = useState<number | null>(null)
 
   const loadCats = async () => {
     try {
@@ -91,12 +92,40 @@ const CategoryBrowse: React.FC = () => {
 
   useEffect(() => { if (open && activeId!=null) loadDetail(activeId) }, [open, activeId])
 
+  /**
+   * 函数级中文注释：URL 预填参数（hash 或 search）
+   * - 支持：sacrifice（目录项ID）、domain、target
+   * - 命中后自动打开详情抽屉并回填表单
+   */
+  useEffect(() => {
+    try {
+      const parse = (s: string) => {
+        const qIdx = s.indexOf('?'); if (qIdx<0) return new URLSearchParams()
+        return new URLSearchParams(s.slice(qIdx+1))
+      }
+      const params = new URLSearchParams(window.location.search)
+      const hparams = parse(window.location.hash||'')
+      const get = (k: string) => params.get(k) || hparams.get(k)
+      const sac = get('sacrifice') || get('item')
+      const dom = get('domain')
+      const tgt = get('target') || get('targetId')
+      if (sac) { const id = Number(sac); if (Number.isFinite(id)) { setActiveId(id); setOpen(true) } }
+      const patch: any = {}
+      if (dom!=null && dom!=='') patch.domain = Number(dom)
+      if (tgt!=null && tgt!=='') patch.targetId = Number(tgt)
+      if (Object.keys(patch).length>0) buyForm.setFieldsValue(patch)
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const onBuy = async (v:any) => {
     try {
       if (activeId == null) return
       const domain = Number(v.domain)
       const targetId = Number(v.targetId)
       if (!Number.isFinite(domain) || !Number.isFinite(targetId)) return message.error('请输入有效的 domain / targetId')
+      // 未命中专属限制禁止提交
+      if (!exclusiveOk) return message.warning('未命中专属限制，无法提交')
       setBuying(true)
       const media: any[] = []
       const duration = v.duration==='' || v.duration==null ? null : Number(v.duration)
@@ -199,6 +228,13 @@ const CategoryBrowse: React.FC = () => {
                           const tid = Number(buyForm.getFieldValue('targetId'))
                           const ex = detail?.spec?.exclusive || []
                           setExclusiveOk(ex.length===0 || ex.some((p:any)=> p[0]===dom && p[1]===tid))
+                          // 价格动态：固定价保持不变；按周价依赖 duration
+                          const unit = detail?.spec?.unitPricePerWeek
+                          if (detail?.spec?.fixedPrice!=null) setComputedPrice(Number(detail.spec.fixedPrice))
+                          else if (unit!=null) {
+                            const dur = Number(buyForm.getFieldValue('duration')||0)
+                            setComputedPrice(dur>0? Number(unit)*dur : null)
+                          } else setComputedPrice(null)
                         }} />
                       </Form.Item>
                       <Form.Item name="targetId" label="target_id(u64)" rules={[{ required: true }]}>
@@ -207,21 +243,34 @@ const CategoryBrowse: React.FC = () => {
                           const tid = Number(v||0)
                           const ex = detail?.spec?.exclusive || []
                           setExclusiveOk(ex.length===0 || ex.some((p:any)=> p[0]===dom && p[1]===tid))
+                          const unit = detail?.spec?.unitPricePerWeek
+                          if (detail?.spec?.fixedPrice!=null) setComputedPrice(Number(detail.spec.fixedPrice))
+                          else if (unit!=null) {
+                            const dur = Number(buyForm.getFieldValue('duration')||0)
+                            setComputedPrice(dur>0? Number(unit)*dur : null)
+                          } else setComputedPrice(null)
                         }} />
                       </Form.Item>
                       {detail.spec?.unitPricePerWeek!=null && (
                         <Form.Item name="duration" label="时长(周)" rules={[{ required: true, message: '必填' }]}>
-                          <InputNumber min={1} style={{ width: 140 }} />
+                          <InputNumber min={1} style={{ width: 140 }} onChange={(v)=>{
+                            const unit = detail?.spec?.unitPricePerWeek
+                            const dur = Number(v||0)
+                            setComputedPrice(unit!=null && dur>0 ? Number(unit)*dur : null)
+                          }} />
                         </Form.Item>
                       )}
                       <Form.Item name="isVip" valuePropName="checked" label="VIP">
                         <Checkbox />
                       </Form.Item>
                       <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={buying}>提交购买</Button>
+                        <Button type="primary" htmlType="submit" loading={buying} disabled={!exclusiveOk}>提交购买</Button>
                       </Form.Item>
                     </Space>
                   </Form>
+                  {computedPrice!=null && (
+                    <div style={{ marginTop: 8, color: '#333' }}>预计应付金额：<b>{computedPrice}</b></div>
+                  )}
                 </div>
               </div>
             ) : '未找到详情'

@@ -4,7 +4,8 @@ import { getApi } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：文章列表页（按相册 ID 查询）
- * - 通过 `deceasedData.mediaByAlbum(albumId)` 读取媒体 ID 列表，再批量读取 `mediaOf(mediaId)` 详情。
+ * - 通过 `deceasedText.articlesByDeceased(deceasedId)` 或 `textOf(textId)` 读取文本域文章；
+ * - 旧基于相册的文章数据已迁移至 `pallet-deceased-text`。
  * - 过滤 `kind=Article(3)`，展示标题/摘要/uri（IPFS CID）。
  * - 由于未生成类型定义，采用 `toHuman()/toJSON()` 方式做兼容解析。
  */
@@ -34,30 +35,20 @@ const ArticleListPage: React.FC = () => {
       setLoading(true)
       const api = await getApi()
       // 优先按 albumId 查询；否则尝试 deceased_token → deceased_id → albums → media
-      if (albumId !== null && albumId !== undefined && albumId !== ('' as any)) {
-        const idsAny: any = await (api.query as any).deceasedData.dataByAlbum(albumId)
-        const ids = (idsAny?.toJSON?.() as any[]) || []
-        if (!ids.length) { setItems([]); setLoading(false); return }
-        const q: any[] = await (api.query as any).deceasedData.dataOf.multi(ids)
-        const parsed = q.map((m: any, idx: number) => parseMedia(m, ids[idx])).filter(Boolean)
-        setItems(parsed)
-        setLoading(false)
-        return
-      }
-      if (!deceasedToken) { message.warning('请输入相册ID或逝者token'); setLoading(false); return }
+      if (!deceasedToken && (albumId===null || albumId===undefined || albumId===("" as any))) { message.warning('请输入逝者token'); setLoading(false); return }
       const enc = new TextEncoder().encode(deceasedToken)
       const didOpt: any = await (api.query as any).deceased.deceasedIdByToken(enc)
       const has = didOpt && (didOpt.isSome || didOpt.toJSON?.())
       const deceasedId = has && (didOpt.isSome ? didOpt.unwrap() : didOpt.toJSON?.())
       if (!deceasedId) { message.warning('未找到对应逝者ID'); setItems([]); setLoading(false); return }
-      const albumsAny: any = await (api.query as any).deceasedData.albumsByDeceased(deceasedId)
-      const albums: any[] = (albumsAny?.toJSON?.() as any[]) || []
-      if (!albums.length) { setItems([]); setLoading(false); return }
-      const mediaIdLists: any[] = await (api.query as any).deceasedData.dataByAlbum.multi(albums)
-      const allIds: any[] = mediaIdLists.flatMap((v: any) => (v?.toJSON?.() as any[]) || [])
-      if (!allIds.length) { setItems([]); setLoading(false); return }
-      const media: any[] = await (api.query as any).deceasedData.dataOf.multi(allIds)
-      const parsed = media.map((m: any, idx: number) => parseMedia(m, allIds[idx])).filter(Boolean)
+      // 新接口：文本域 articlesByDeceased + textOf
+      const dtq: any = (api.query as any).deceasedText || (api.query as any).deceased_text
+      if (!dtq) { message.error('未启用 deceased-text'); setLoading(false); return }
+      const idsAny: any = await dtq.articlesByDeceased(deceasedId)
+      const ids = (idsAny?.toJSON?.() as any[]) || []
+      if (!ids.length) { setItems([]); setLoading(false); return }
+      const q: any[] = await dtq.textOf.multi(ids)
+      const parsed = q.map((m:any, idx:number)=> parseMedia(m, ids[idx])).filter(Boolean)
       setItems(parsed)
       setLoading(false)
     } catch (e: any) {
