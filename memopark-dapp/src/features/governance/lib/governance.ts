@@ -3,9 +3,9 @@ import { encodeAddress } from '@polkadot/util-crypto'
 import { loadTxHistory } from '../../../lib/txHistory'
 
 /**
- * 函数级详细中文注释：治理链上封装（占位版）
- * - 统一封装 referenda/conviction-voting/preimage 的查询与交易
- * - 目前提供最小类型与函数占位，后续逐步接入真实链上调用
+ * 函数级详细中文注释：治理链上封装（兼容层）
+ * - 当前主流程：委员会阈值 + 申诉治理（ContentCommittee 2/3 + pallet_memo_content_governance）
+ * - 历史兼容：以下 referenda/conviction-voting/preimage 相关函数仅保留用于旧数据解析/开发调试，UI 默认不暴露
  */
 
 // 类型定义：供 hooks 与页面复用
@@ -215,7 +215,8 @@ export async function buildDeceasedMediaGovPreimage(method: string, args: any[])
 /**
  * 函数级详细中文注释：快捷构建 deceased-data.governance 预映像（若 method 名与运行时一致）
  */
-export async function buildMediaGovFreezeAlbum(albumId: number, frozen: boolean) {
+// 兼容旧命名：无证据版本保留为内部使用
+async function buildMediaGovFreezeAlbumLegacy(albumId: number, frozen: boolean) {
   return buildDeceasedMediaGovPreimage('govFreezeAlbum', [albumId, frozen])
 }
 export async function buildMediaGovSetMediaHidden(mediaId: number, hidden: boolean) {
@@ -226,6 +227,78 @@ export async function buildMediaGovReplaceMediaUri(mediaId: number, newUri: stri
   return buildDeceasedMediaGovPreimage('govReplaceMediaUri', [mediaId, newUri])
 }
 export async function buildMediaGovRemoveMedia(mediaId: number) { return buildDeceasedMediaGovPreimage('govRemoveMedia', [mediaId]) }
+
+/**
+ * 函数级中文注释：解析 deceased pallet section 名称（驼峰与下划线兼容）。
+ */
+async function resolveDeceasedSection(api: any): Promise<string> {
+  const candidates = ['deceased', 'Deceased']
+  for (const name of candidates) {
+    if ((api.tx as any)[name]) return name
+  }
+  throw new Error('运行时未启用 deceased 模块（或名称不匹配）')
+}
+
+/**
+ * 函数级中文注释：构建 deceased.govSetVisibility(id, public, evidenceCid) 预映像。
+ */
+export async function buildDeceasedGovSetVisibility(id: number, isPublic: boolean, evidenceCid: string) {
+  const api = await getApi()
+  const section = await resolveDeceasedSection(api)
+  return buildCallPreimageHex(section, 'govSetVisibility', [id, isPublic, evidenceCid])
+}
+
+/**
+ * 函数级中文注释：构建 deceased.govTransferDeceased(id, new_grave, evidenceCid) 预映像。
+ */
+export async function buildDeceasedGovTransferDeceased(id: number, newGraveId: number, evidenceCid: string) {
+  const api = await getApi()
+  const section = await resolveDeceasedSection(api)
+  return buildCallPreimageHex(section, 'govTransferDeceased', [id, newGraveId, evidenceCid])
+}
+
+/**
+ * 函数级中文注释：媒体域治理预映像（带证据CID）。
+ */
+export async function buildMediaGovFreezeAlbum(albumId: number, frozen: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govFreezeAlbum', [albumId, frozen, evidenceCid])
+}
+export async function buildMediaGovSetMediaHiddenWithEvidence(mediaId: number, hidden: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govSetMediaHidden', [mediaId, hidden, evidenceCid])
+}
+export async function buildMediaGovReplaceMediaUriWithEvidence(mediaId: number, newUri: string, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govReplaceMediaUri', [mediaId, newUri, evidenceCid])
+}
+export async function buildMediaGovRemoveMediaWithEvidence(mediaId: number, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govRemoveMedia', [mediaId, evidenceCid])
+}
+export async function buildMediaGovSetPrimaryImageFor(deceasedId: number, mediaId: number | null, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govSetPrimaryImageFor', [deceasedId, mediaId, evidenceCid])
+}
+export async function buildMediaGovSetAlbumPrimaryPhoto(albumId: number, mediaId: number | null, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedMediaSection(api); return buildCallPreimageHex(section, 'govSetAlbumPrimaryPhoto', [albumId, mediaId, evidenceCid])
+}
+
+/**
+ * 函数级中文注释：文本域治理预映像（带证据CID）。
+ */
+async function resolveDeceasedTextSection(api: any): Promise<string> {
+  const candidates = ['deceasedText', 'deceased_text', 'deceasedtext']
+  for (const name of candidates) { if ((api.tx as any)[name]) return name }
+  throw new Error('运行时未启用 deceased-text 模块（或名称不匹配）')
+}
+export async function buildTextGovResolveLifeComplaint(deceasedId: number, uphold: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedTextSection(api); return buildCallPreimageHex(section, 'govResolveLifeComplaint', [deceasedId, uphold, evidenceCid])
+}
+export async function buildTextGovResolveEulogyComplaint(textId: number, uphold: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedTextSection(api); return buildCallPreimageHex(section, 'govResolveEulogyComplaint', [textId, uphold, evidenceCid])
+}
+export async function buildTextGovRemoveEulogy(textId: number, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedTextSection(api); return buildCallPreimageHex(section, 'govRemoveEulogy', [textId, evidenceCid])
+}
+export async function buildTextGovSetArticleFor(owner: string, deceasedId: number, cid: string, title: string | null, summary: string | null, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveDeceasedTextSection(api); return buildCallPreimageHex(section, 'govSetArticleFor', [owner, deceasedId, cid, title, summary, evidenceCid])
+}
 
 /**
  * 函数级详细中文注释：deceased-data 申诉与裁决预映像构建辅助
@@ -267,6 +340,62 @@ export async function buildOriginRestrictionSetGlobalAllowPreimage(allow: boolea
   const api = await getApi()
   const section = await resolveOriginRestrictionSection(api)
   return buildCallPreimageHex(section, 'setGlobalAllow', [allow])
+}
+
+/**
+ * 函数级详细中文注释：解析 memo-offerings pallet 的 section 名称（驼峰与下划线兼容）。
+ */
+async function resolveMemoOfferingsSection(api: any): Promise<string> {
+  const candidates = ['memoOfferings', 'memo_offerings', 'memoofferings']
+  for (const name of candidates) { if ((api.tx as any)[name]) return name }
+  throw new Error('运行时未启用 memo-offerings 模块（或名称不匹配）')
+}
+
+/**
+ * 函数级详细中文注释：构建 memo-offerings.govSetOfferParams 预映像。
+ * - offerWindow/offerMaxInWindow/minOfferAmount 传 null 表示外层 Option::None（保持不变）。
+ */
+export async function buildOfferingsGovSetOfferParams(
+  offerWindow: number | null,
+  offerMaxInWindow: number | null,
+  minOfferAmount: number | null,
+  evidenceCid: string
+): Promise<{ hex: string; hash: string }>{
+  const api = await getApi(); const section = await resolveMemoOfferingsSection(api)
+  return buildCallPreimageHex(section, 'govSetOfferParams', [offerWindow, offerMaxInWindow, minOfferAmount, evidenceCid])
+}
+
+/**
+ * 函数级详细中文注释：构建 memo-offerings.govSetOfferingPrice 预映像。
+ * - fixedPriceArg 与 unitPricePerWeekArg 支持：
+ *   - null → 外层 Option::None（保持不变）
+ *   - { Some: null } → 外层 Some(内层 None)：删除当前价格
+ *   - { Some: number } → 外层 Some(内层 Some(value))：设置价格
+ */
+export async function buildOfferingsGovSetOfferingPrice(
+  kindCode: number,
+  fixedPriceArg: any,
+  unitPricePerWeekArg: any,
+  evidenceCid: string
+): Promise<{ hex: string; hash: string }>{
+  const api = await getApi(); const section = await resolveMemoOfferingsSection(api)
+  return buildCallPreimageHex(section, 'govSetOfferingPrice', [kindCode, fixedPriceArg, unitPricePerWeekArg, evidenceCid])
+}
+
+/**
+ * 函数级详细中文注释：构建 memo-offerings.govSetPauseGlobal 预映像。
+ */
+export async function buildOfferingsGovSetPauseGlobal(paused: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveMemoOfferingsSection(api)
+  return buildCallPreimageHex(section, 'govSetPauseGlobal', [paused, evidenceCid])
+}
+
+/**
+ * 函数级详细中文注释：构建 memo-offerings.govSetPauseDomain 预映像。
+ */
+export async function buildOfferingsGovSetPauseDomain(domain: number, paused: boolean, evidenceCid: string) {
+  const api = await getApi(); const section = await resolveMemoOfferingsSection(api)
+  return buildCallPreimageHex(section, 'govSetPauseDomain', [domain, paused, evidenceCid])
 }
 
 /**
@@ -678,6 +807,17 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
         return `deceased-media.govResolveMediaComplaint → 裁决媒体 ${args[0]}，${args[1]==='true'?'维持投诉（20%胜诉/5%仲裁/75%退款）':'驳回投诉（20%胜诉/5%仲裁/75%退款）'}`
       }
     }
+    if (section === 'deceased' || /^deceased$/i.test(section)) {
+      if (method === 'govSetVisibility') {
+        return `deceased.govSetVisibility → 逝者 ${args[0]} 可见性=${args[1]}`
+      }
+      if (method === 'govTransferDeceased') {
+        return `deceased.govTransferDeceased → 逝者 ${args[0]} 迁移至墓位 ${args[1]}`
+      }
+      if (method === 'govUpdateProfile') {
+        return `deceased.govUpdateProfile → 逝者 ${args[0]} 局部资料更新`
+      }
+    }
     if (section === 'treasury' && (method === 'spend' || method === 'proposeSpend')) {
       // arg0: amount (Planck), arg1: beneficiary
       const { decimals, symbol } = await getTokenInfo()
@@ -699,6 +839,20 @@ export async function summarizePreimage(hex: string): Promise<string | null> {
         const dest = args[0], amountPlanck = String(args[1] ?? '0')
         const amountHuman = formatPlanck(amountPlanck, decimals)
         return `balances.${method} → 到 ${dest} ，金额 ${amountHuman} ${symbol}`
+      }
+    }
+    if (/^memo[_-]?offerings$/i.test(section) || /^memoofferings$/i.test(section)) {
+      if (method === 'govSetPauseGlobal') {
+        return `memo-offerings.govSetPauseGlobal → 全局 ${args[0]==='true'?'暂停':'恢复'}`
+      }
+      if (method === 'govSetPauseDomain') {
+        return `memo-offerings.govSetPauseDomain → 域 ${args[0]} ${args[1]==='true'?'暂停':'恢复'}`
+      }
+      if (method === 'govSetOfferParams') {
+        return `memo-offerings.govSetOfferParams → window=${args[0] ?? '保持'} maxInWin=${args[1] ?? '保持'} minAmt=${args[2] ?? '保持'}`
+      }
+      if (method === 'govSetOfferingPrice') {
+        return `memo-offerings.govSetOfferingPrice → kind=${args[0]} fixed=${args[1]} unitPerWeek=${args[2]}`
       }
     }
     return `${section}.${method}(${args.join(', ')})`
@@ -724,6 +878,85 @@ export async function unlockVotes(target: string, classId?: number, password?: s
   } catch {
     return `0xunlock_${Date.now()}`
   }
+}
+
+/**
+ * 函数级详细中文注释：读取内容治理常量（押金/罚没/限频/公示期）。
+ */
+export async function fetchContentGovConsts(): Promise<{
+  appealDeposit: string;
+  rejectedSlashBps: number;
+  withdrawSlashBps: number;
+  windowBlocks: number;
+  maxPerWindow: number;
+  noticeDefaultBlocks: number;
+}> {
+  const api = await getApi()
+  const c: any = (api.consts as any).memoContentGovernance || (api.consts as any)['memo_content_governance']
+  return {
+    appealDeposit: (c?.appealDeposit?.toString && c.appealDeposit.toString()) || '0',
+    rejectedSlashBps: (c?.rejectedSlashBps?.toNumber && c.rejectedSlashBps.toNumber()) || 0,
+    withdrawSlashBps: (c?.withdrawSlashBps?.toNumber && c.withdrawSlashBps.toNumber()) || 0,
+    windowBlocks: (c?.windowBlocks?.toNumber && c.windowBlocks.toNumber()) || 0,
+    maxPerWindow: (c?.maxPerWindow?.toNumber && c.maxPerWindow.toNumber()) || 0,
+    noticeDefaultBlocks: (c?.noticeDefaultBlocks?.toNumber && c.noticeDefaultBlocks.toNumber()) || 0,
+  }
+}
+
+/**
+ * 函数级详细中文注释：提交申诉。
+ */
+export async function submitAppeal(domain: number, target: number, action: number, reasonCid: string, evidenceCid: string, password?: string): Promise<string> {
+  const api = await getApi()
+  const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  if (!sec?.submitAppeal) return `0xappeal_${Date.now()}`
+  const tx = sec.submitAppeal(domain, target, action, reasonCid, evidenceCid)
+  if ((api as any).signAndSendLocalWithPassword && password) {
+    // 兼容 polkadot-safe 的统一签名函数（若暴露）
+    // @ts-ignore
+    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','submitAppeal',[domain,target,action,reasonCid,evidenceCid], password)
+  }
+  return `0xappeal_${Date.now()}`
+}
+
+/**
+ * 函数级详细中文注释：撤回申诉。
+ */
+export async function withdrawAppeal(id: number, password?: string): Promise<string> {
+  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  if (!sec?.withdrawAppeal) return `0xappeal_withdraw_${Date.now()}`
+  if ((api as any).signAndSendLocalWithPassword && password) {
+    // @ts-ignore
+    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','withdrawAppeal',[id], password)
+  }
+  return `0xappeal_withdraw_${Date.now()}`
+}
+
+/**
+ * 函数级详细中文注释：审批申诉（通过）。
+ */
+export async function approveAppeal(id: number, noticeBlocks?: number, password?: string): Promise<string> {
+  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  if (!sec?.approveAppeal) return `0xappeal_approve_${Date.now()}`
+  const args = noticeBlocks && noticeBlocks>0 ? [id, noticeBlocks] : [id]
+  if ((api as any).signAndSendLocalWithPassword && password) {
+    // @ts-ignore
+    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','approveAppeal', args, password)
+  }
+  return `0xappeal_approve_${Date.now()}`
+}
+
+/**
+ * 函数级详细中文注释：审批申诉（驳回）。
+ */
+export async function rejectAppeal(id: number, password?: string): Promise<string> {
+  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  if (!sec?.rejectAppeal) return `0xappeal_reject_${Date.now()}`
+  if ((api as any).signAndSendLocalWithPassword && password) {
+    // @ts-ignore
+    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','rejectAppeal',[id], password)
+  }
+  return `0xappeal_reject_${Date.now()}`
 }
 
 

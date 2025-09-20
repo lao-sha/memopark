@@ -132,6 +132,8 @@ pub mod pallet {
         ComplaintPayoutWinner(T::AccountId, BalanceOf<T>),
         ComplaintPayoutArbitration(T::AccountId, BalanceOf<T>),
         ComplaintPayoutLoserRefund(T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：治理证据已记录（scope,id,cid）。scope:3=Life(deceased),4=Eulogy(text)
+        GovEvidenceNoted(u8, u64, BoundedVec<u8, T::StringLimit>),
     }
 
     #[pallet::error]
@@ -158,6 +160,15 @@ pub mod pallet {
         pub deposit: BalanceOf<T>,
         pub created: BlockNumberFor<T>,
         pub status: ComplaintStatus,
+    }
+
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
+        fn note_evidence(scope: u8, id: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::StringLimit>, DispatchError> {
+            let bv: BoundedVec<u8, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            Self::deposit_event(Event::GovEvidenceNoted(scope, id, bv.clone()));
+            Ok(bv)
+        }
     }
 
     #[pallet::call]
@@ -222,8 +233,9 @@ pub mod pallet {
         #[pallet::call_index(15)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_resolve_life_complaint(origin: OriginFor<T>, deceased_id: T::DeceasedId, uphold: bool) -> DispatchResult {
+        pub fn gov_resolve_life_complaint(origin: OriginFor<T>, deceased_id: T::DeceasedId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;
             ensure!(LifeOf::<T>::contains_key(deceased_id), Error::<T>::BadInput);
             let key = (3u8, deceased_id.into()); let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
             let arb = T::ArbitrationAccount::get();
@@ -242,8 +254,9 @@ pub mod pallet {
         #[pallet::call_index(16)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_resolve_eulogy_complaint(origin: OriginFor<T>, id: T::TextId, uphold: bool) -> DispatchResult {
+        pub fn gov_resolve_eulogy_complaint(origin: OriginFor<T>, id: T::TextId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
             ensure!(EulogyOf::<T>::contains_key(id) || EulogyDeposits::<T>::contains_key(id), Error::<T>::TextNotFound);
             let key = (4u8, id.into()); let case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
             let arb = T::ArbitrationAccount::get();
@@ -309,6 +322,69 @@ pub mod pallet {
             let now = <frame_system::Pallet<T>>::block_number();
             TextMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
             Self::deposit_event(Event::TextRemoved(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】强制删除文本（Message/Article 均可），并记录证据。
+        /// - 用于纠纷裁决或合规治理；删除后写入成熟期，作者可按期领取押金（若有）。
+        #[pallet::call_index(17)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_remove_text(origin: OriginFor<T>, id: T::TextId, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(4u8, id.into(), evidence_cid);
+            let rec = TextOf::<T>::take(id).ok_or(Error::<T>::TextNotFound)?;
+            match rec.kind { TextKind::Message => {
+                MessagesByDeceased::<T>::mutate(rec.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
+            }, TextKind::Article => {
+                ArticlesByDeceased::<T>::mutate(rec.deceased_id, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
+            }}
+            let now = <frame_system::Pallet<T>>::block_number();
+            TextMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
+            Self::deposit_event(Event::TextRemoved(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】强制编辑文本（Article/Message），并记录证据。
+        /// - 可选参数保持不变；仅提供的字段会被更新。
+        #[pallet::call_index(18)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_edit_text(origin: OriginFor<T>, id: T::TextId, cid: Option<Vec<u8>>, title: Option<Option<Vec<u8>>>, summary: Option<Option<Vec<u8>>>, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
+            TextOf::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let t = maybe.as_mut().ok_or(Error::<T>::TextNotFound)?;
+                if let Some(v) = cid { t.cid = BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(tt) = title { t.title = match tt { Some(v)=>Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None }; }
+                if let Some(ss) = summary { t.summary = match ss { Some(v)=>Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None }; }
+                t.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::TextEdited(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】强制设置生平（Life）CID，覆盖现有内容。
+        /// - 行为：仅允许覆盖已存在的 Life；缺失时返回错误，避免创建时 owner 不确定。
+        #[pallet::call_index(19)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_life(origin: OriginFor<T>, deceased_id: T::DeceasedId, cid: Vec<u8>, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;
+            ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
+            let bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            LifeOf::<T>::try_mutate(deceased_id, |maybe| -> DispatchResult {
+                let l = maybe.as_mut().ok_or(Error::<T>::BadInput)?;
+                l.cid = bv.clone();
+                l.updated = now;
+                l.version = l.version.saturating_add(1);
+                l.last_editor = None;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::LifeUpdated(deceased_id));
             Ok(())
         }
 
@@ -418,8 +494,9 @@ pub mod pallet {
         #[pallet::call_index(10)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_remove_eulogy(origin: OriginFor<T>, id: T::TextId) -> DispatchResult {
+        pub fn gov_remove_eulogy(origin: OriginFor<T>, id: T::TextId, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
             let (did, _cid, _author) = EulogyOf::<T>::take(id).ok_or(Error::<T>::TextNotFound)?;
             EulogiesByDeceased::<T>::mutate(did, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
             let now = <frame_system::Pallet<T>>::block_number(); EulogyMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
@@ -446,10 +523,11 @@ pub mod pallet {
         #[pallet::call_index(12)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_article_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, cid: Vec<u8>, title: Option<Vec<u8>>, summary: Option<Vec<u8>>) -> DispatchResult {
+        pub fn gov_set_article_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, cid: Vec<u8>, title: Option<Vec<u8>>, summary: Option<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             ensure!(T::DeceasedProvider::can_manage(&owner, deceased_id), Error::<T>::NotAuthorized);
+            let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;
             let cid_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             let title_bv = match title { Some(v)=>Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None };
             let summary_bv = match summary { Some(v)=>Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None };

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {SubstrateBatchProcessor} from '@subsquid/substrate-processor'
-import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot, OfferingPauseEvent, OfferingBySacrifice} from './model'
+import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot, OfferingPauseEvent, OfferingParamsSnapshot, OfferingBySacrifice, GovCase, GovAction} from './model'
 
 const processor = new SubstrateBatchProcessor()
   .setDataSource({
@@ -110,6 +110,57 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const up = (unit_price_per_week === null || unit_price_per_week === undefined) ? null : BigInt(unit_price_per_week)
         await ctx.store.save(new OfferingPriceSnapshot({ id: `${kind_code}-${createdAt}`, kindCode: Number(kind_code), fixedPrice: fp, unitPricePerWeek: up, block: createdAt }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingPriceUpdated', refId: String(kind_code), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ fixed: fixed_price ?? null, unit: unit_price_per_week ?? null }) }))
+        // 将价格更新纳入治理时间线（scope=2，key=kind_code）
+        const scope = 2, key = BigInt(kind_code)
+        const objectId = ((BigInt(scope) << 56n) + key).toString()
+        const caseId = await ensureGovCase('memo_offerings', objectId, createdAt, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-PriceUpdated-${createdAt}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'PriceUpdated', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ kind_code: String(kind_code), fixed: fixed_price ?? null, unit: unit_price_per_week ?? null }) }))
+        continue
+      }
+
+      // 供奉风控参数更新（仅记录时间点，作为审计时间线的一部分）
+      if (name?.endsWith('memo_offerings.OfferParamsUpdated')) {
+        const createdAt = b.header.height
+        // 从同一 extrinsic 输入参数解析（gov_set_offer_params 或 set_offer_params）
+        let offerWindow: number | null = null
+        let offerMaxInWindow: number | null = null
+        let minOfferAmount: bigint | null = null
+        try {
+          const call: any = i.extrinsic?.call
+          if (call) {
+            const section = call.section?.toString?.() || ''
+            const method = call.method?.toString?.() || ''
+            const args: any[] = call.args || []
+            if (/memo[_-]?offerings/i.test(section) && /setOfferParams|govSetOfferParams/.test(method)) {
+              // 形参顺序：[offer_window, offer_max_in_window, min_offer_amount, (evidence?)]
+              offerWindow = args?.[0] == null ? null : Number(args[0])
+              offerMaxInWindow = args?.[1] == null ? null : Number(args[1])
+              minOfferAmount = args?.[2] == null ? null : BigInt(args[2])
+            }
+          }
+        } catch {}
+        await ctx.store.save(new OfferingParamsSnapshot({ id: `${createdAt}-${i.idx}`, block: createdAt, offerWindow: offerWindow == null ? null : Number(offerWindow), offerMaxInWindow: offerMaxInWindow == null ? null : Number(offerMaxInWindow), minOfferAmount: minOfferAmount == null ? null : BigInt(minOfferAmount) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferParamsUpdated', refId: null, actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ offerWindow, offerMaxInWindow, minOfferAmount: minOfferAmount == null ? null : minOfferAmount.toString() }) }))
+        // 将参数更新纳入治理时间线（scope=1，key=0）
+        const scope = 1, key = 0n
+        const objectId = ((BigInt(scope) << 56n) + key).toString()
+        const caseId = await ensureGovCase('memo_offerings', objectId, createdAt, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-ParamsUpdated-${createdAt}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'ParamsUpdated', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        continue
+      }
+
+      // 供奉域：治理证据
+      if (name?.endsWith('memo_offerings.GovEvidenceNoted')) {
+        const ev: any = i.event
+        const {arg0, arg1, arg2} = ev.args // scope(u8), key(u64), cid(bytes)
+        const scope = Number(arg0)
+        const key = BigInt(arg1)
+        const cid = typeof arg2 === 'string' ? arg2 : (Buffer.from(arg2?.toString?.() || '').toString())
+        // 组合 objectId：高 8 比特为 scope，低 56 比特为 key（足够覆盖 u64 的低位场景）
+        const objectId = ((BigInt(scope) << 56n) + key).toString()
+        const caseId = await ensureGovCase('memo_offerings', objectId, b.header.height, cid)
+        await ctx.store.save(new GovAction({ id: `${caseId}-Evidence-${b.header.height}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'GovEvidenceNoted', block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ scope, key: key.toString(), cid }) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'GovEvidenceNoted', refId: `${scope}-${key.toString()}`, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ cid }) }))
         continue
       }
 
@@ -119,6 +170,12 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const {paused} = ev.args
         await ctx.store.save(new OfferingPauseEvent({ id: `G-${b.header.height}-${i.idx}`, scope: 'Global', domain: null, paused: Boolean(paused), block: b.header.height }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'PausedGlobalSet', refId: null, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ paused: Boolean(paused) }) }))
+        // 纳入治理时间线（scope=3，key=0）
+        const createdAt = b.header.height
+        const scope = 3, key = 0n
+        const objectId = ((BigInt(scope) << 56n) + key).toString()
+        const caseId = await ensureGovCase('memo_offerings', objectId, createdAt, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-PausedGlobalSet-${createdAt}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'PausedGlobalSet', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ paused: Boolean(paused) }) }))
         continue
       }
       if (name?.endsWith('memo_offerings.PausedDomainSet')) {
@@ -126,6 +183,12 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const {domain, paused} = ev.args
         await ctx.store.save(new OfferingPauseEvent({ id: `D-${domain}-${b.header.height}-${i.idx}`, scope: 'Domain', domain: Number(domain), paused: Boolean(paused), block: b.header.height }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'PausedDomainSet', refId: String(domain), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ domain: Number(domain), paused: Boolean(paused) }) }))
+        // 纳入治理时间线（scope=4，key=domain）
+        const createdAt = b.header.height
+        const scope = 4, key = BigInt(domain)
+        const objectId = ((BigInt(scope) << 56n) + key).toString()
+        const caseId = await ensureGovCase('memo_offerings', objectId, createdAt, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-PausedDomainSet-${createdAt}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'PausedDomainSet', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ domain: Number(domain), paused: Boolean(paused) }) }))
         continue
       }
 
@@ -210,6 +273,54 @@ processor.run(new TypeormDatabase(), async (ctx) => {
       if (name?.endsWith('otc_order.OrderDisputed')) { const {id} = (i.event as any).args; await saveOrderAction(id, 'Disputed'); await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'otc_order', kind: 'OrderDisputed', refId: id.toString(), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null })); continue }
       if (name?.endsWith('otc_order.PaymentRevealed')) { const {id} = (i.event as any).args; await saveOrderAction(id, 'PaymentRevealed'); await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'otc_order', kind: 'PaymentRevealed', refId: id.toString(), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null })); continue }
       if (name?.endsWith('otc_order.ContactRevealed')) { const {id} = (i.event as any).args; await saveOrderAction(id, 'ContactRevealed'); await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'otc_order', kind: 'ContactRevealed', refId: id.toString(), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null })); continue }
+
+      // ===== Governance: deceased 事件 → GovCase/GovAction
+      const ensureGovCase = async (pallet: string, objectId: string, block: number, evidenceCid?: string | null) => {
+        const caseId = `${pallet}-${objectId}`
+        let c = await ctx.store.findOneBy(GovCase, { id: caseId })
+        if (!c) {
+          c = new GovCase({ id: caseId, pallet, objectId: BigInt(objectId), openedAt: block, lastActionAt: block, evidenceCid: evidenceCid || '' })
+        }
+        if (evidenceCid) c.evidenceCid = evidenceCid
+        c.lastActionAt = block
+        await ctx.store.save(c)
+        return caseId
+      }
+      // GovEvidenceNoted(id, evidence_cid)
+      if (name?.endsWith('deceased.GovEvidenceNoted')) {
+        const ev: any = i.event
+        const {arg0, arg1} = ev.args // id, cid (bytes)
+        const id = String(arg0)
+        const cid = typeof arg1 === 'string' ? arg1 : (Buffer.from(arg1?.toString?.() || '').toString())
+        const caseId = await ensureGovCase('deceased', id, b.header.height, cid)
+        await ctx.store.save(new GovAction({ id: `${caseId}-Evidence-${b.header.height}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'GovEvidenceNoted', block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ cid }) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased', kind: 'GovEvidenceNoted', refId: id, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ cid }) }))
+        continue
+      }
+      if (name?.endsWith('deceased.DeceasedUpdated')) {
+        const {arg0} = (i.event as any).args // id
+        const id = String(arg0)
+        const caseId = await ensureGovCase('deceased', id, b.header.height, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-Updated-${b.header.height}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'DeceasedUpdated', block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased', kind: 'DeceasedUpdated', refId: id, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        continue
+      }
+      if (name?.endsWith('deceased.DeceasedTransferred')) {
+        const {arg0, arg1, arg2} = (i.event as any).args // id, from, to
+        const id = String(arg0)
+        const caseId = await ensureGovCase('deceased', id, b.header.height, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-Transferred-${b.header.height}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'DeceasedTransferred', block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ from: String(arg1), to: String(arg2) }) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased', kind: 'DeceasedTransferred', refId: id, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ from: String(arg1), to: String(arg2) }) }))
+        continue
+      }
+      if (name?.endsWith('deceased.VisibilityChanged')) {
+        const {arg0, arg1} = (i.event as any).args // id, public
+        const id = String(arg0)
+        const caseId = await ensureGovCase('deceased', id, b.header.height, null)
+        await ctx.store.save(new GovAction({ id: `${caseId}-Visibility-${b.header.height}-${i.idx}`, case: new GovCase({ id: caseId }), kind: 'VisibilityChanged', block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ public: Boolean(arg1) }) }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased', kind: 'VisibilityChanged', refId: id, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ public: Boolean(arg1) }) }))
+        continue
+      }
 
       // ===== Arbitration mapping =====
       if (name?.endsWith('arbitration.Disputed')) {

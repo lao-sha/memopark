@@ -62,13 +62,35 @@
 ## 事件
 - `CoverSet { id }`、`CoverCleared { id }`
 - 新增：`CoverOptionAdded {}`、`CoverOptionRemoved {}`
+- 新增：`GovEvidenceNoted(scope, key, cid)`（强制接口证据事件）
+
+## 强制接口（治理专用）
+- `gov_transfer_grave(id, new_owner, evidence_cid)`：强制转让墓地
+- `gov_set_restricted(id, on, reason_code, evidence_cid)`：设置/取消限制
+- `gov_remove_grave(id, reason_code, evidence_cid)`：软删除（removed=true, restricted=true）
+- `gov_restore_grave(id, evidence_cid)`：恢复展示（撤销 removed/restricted）
+
+### 路由码表（示例）
+- 墓地域 `domain=1`：
+  - `(1,10)` 清空封面
+  - `(1,11)` 转让墓地
+  - `(1,12)` 设置限制
+  - `(1,13)` 软删除
+  - `(1,14)` 恢复展示
 
 ## 押金/成熟/投诉规则
 - 墓地封面设置沿用本模块既有权限模型；目录项由治理维护，建议免押金。
 - IPFS 要求：CID 全局不加密；由前端/IPFS 网关渲染。
 
 ## 前端调用建议
+- 治理强制接口：在 DApp 管理端展示仅委员会可用的按钮（需内容委员会 2/3 或 Root）。
 - 墓地设置封面弹窗提供两种方式：
   1) 自定义 CID：上传至 IPFS，获取 CID 后调用 `set_cover` 或治理版。
   2) 从公共目录选择：读取 `CoverOptions` 展示网格，选择后调用 `set_cover_from_option`。
 - Subsquid 建议订阅 `CoverOptionAdded/Removed` 与 `CoverSet/CoverCleared`，做缓存与审计。
+
+## 委员会阈值 + 申诉治理流程
+- 申诉：前端 `#/gov/appeal` 提交 `domain/action/target/reason_cid/evidence_cid`，链上冻结押金。
+- 审批：内容委员会 2/3 通过进入公示；驳回/撤回按参数罚没至国库。
+- 执行：公示期满路由至本模块 `gov_*` 执行并记录证据事件；CID 明文不加密。
+- 模板：前端 `#/gov/templates` 提供常用动作说明与复制入口。

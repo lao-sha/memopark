@@ -18,6 +18,7 @@
   - `gov_set_media_hidden(media_id, hidden)`：隐藏/取消隐藏媒体。
   - `gov_replace_media_uri(media_id, new_uri)`：替换媒体 URI（涉敏打码等）。
   - `gov_remove_media(media_id)`：治理移除，押金成熟后可退。
+  - `gov_freeze_video_collection(video_id, frozen)`：冻结/解冻视频集。
 - 无私钥治理落地（代用户最终写入）：
   - `gov_create_album_for(owner, deceased_id, ...)`
   - `gov_add_media_for(owner, container_kind, container_id, kind, ...)`
@@ -35,23 +36,26 @@
 
 ## 权限
 - 用户操作要求 `DeceasedProvider.can_manage(who, deceased_id)` 为真（通常为墓主/管理员）。
-- 治理操作由 `GovernanceOrigin` 执行（Root/内容治理签名账户）。
+- 治理操作由 `GovernanceOrigin` 执行（Root/内容委员会阈值）。
+
+## 强制接口与路由码表（示例）
+- 内容治理路由 `domain/action`：
+  - 媒体域：`(4,30)` 隐藏媒体、`(4,31)` 替换 URI、`(4,32)` 冻结视频集。
+  - 文本域：`(3,20)` 移除悼词、`(3,21)` 强制删除文本、`(3,22)` 治理编辑文本、`(3,23)` 设置生平。
+  - 逝者域：`(2,1)` 设为可见、`(2,2)` 清空主图、`(2,3)` 设置主图。
 
 ## 与前端的使用建议
 - 仅存 CID/URI 与尺寸/时长等元信息；原图/视频走 IPFS/外部对象存储。
 - 图片需校验宽高>0；视频/音频需校验时长>0。
 
-## 无私钥 + 有押金（代付治理）流程（与 forwarder + OpenGov 配合）
-1. 前端上传媒体至 IPFS，取回 CID/URI。
-2. 后端组装真实调用：
-   - Photo: `DeceasedMedia.gov_add_media_for(owner, 0, album_id, 0, uri, ...)`
-   - Video/Audio: `DeceasedMedia.gov_add_media_for(owner, 1, video_collection_id, 1|2, uri, ...)`
-3. 生成预映像：`Preimage.note_preimage(call)`。
-4. 提交公投：`Referenda.submit { proposal_origin=EnsureContentSigner, proposal_hash=..., track=Content }`。
-5. 公投通过后由调度执行预映像，链上以 `owner` 账户完成押金保留与记录落账。
-6. 到期后 `owner` 调用 `claim_*_deposit` 取回押金。
-
-> 注意：本流程通过运行时的 forwarder 授权命名空间 `content_` 代付 `preimage/submit` 交易，无需用户链上私钥。
+## 委员会阈值 + 申诉治理流程（ContentCommittee 2/3）
+1. 申诉提交：任何账户在 `#/gov/appeal` 提交包含 `domain/action/target/reason_cid/evidence_cid` 的申诉；链上冻结 `AppealDeposit`。
+2. 审批与公示：内容委员会（2/3）通过 `approve_appeal` 进入 `NoticeDefaultBlocks` 公示；若 `reject/withdraw` 则按 `RejectedSlashBps/WithdrawSlashBps` 罚没至国库。
+3. 到期执行：`execute_approved` 路由到本模块 `gov_*` 执行（记录证据事件，CID 明文不加密）：
+   - `(4,30)` → `gov_set_media_hidden(media_id, true, evidence_cid)`
+   - `(4,31)` → `gov_replace_media_uri(media_id, new_uri, evidence_cid)`
+   - `(4,32)` → `gov_freeze_video_collection(video_id, true, evidence_cid)`
+4. 限频控制与模板：按 `WindowBlocks/MaxPerWindow` 控制频率；前端 `#/gov/templates` 提供常用动作模板与 target 填写提示。
 
 ## 运行时参数（示例）
 - `AlbumDeposit=0.02 UNIT`、`MediaDeposit=0.005 UNIT`、`CreateFee=0.001 UNIT`

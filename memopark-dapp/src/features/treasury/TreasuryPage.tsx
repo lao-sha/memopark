@@ -8,6 +8,7 @@ import { decodePreimageHex, getTokenInfo, formatPlanck } from '../governance/lib
  * - 显示链上国库账户地址与实时余额（使用已有 useBalance 钩子）
  * - 地址依据当前运行时配置：TreasuryAccount=PlatformAccount=AccountId32(全0)，在 SS58(42) 下为固定值
  * - 页面简单自适应 ≤640px，提供复制地址与轻量刷新（通过轮询）
+ * - 解析 preimage 记录仅用于历史兼容（Legacy），当前主流程为委员会阈值治理
  */
 const TREASURY_ADDRESS = '5C4hrfjw9DjXZTzV3MwzrrAr9P1MJhSrvWGWqi1eSuyUpnhM'
 

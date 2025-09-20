@@ -4,8 +4,8 @@ import { fetchPreimageHexByHash, summarizePreimage } from '../lib/governance'
 import { useEffect, useState } from 'react'
 
 /**
- * 函数级详细中文注释：预映像信息查看组件
- * - 根据哈希展示预映像是否可用、长度与提供者（占位数据）
+ * 函数级详细中文注释：预映像信息查看组件（Legacy）
+ * - 仅用于开发/历史数据解析；常规 UI 不再暴露
  */
 const PreimageViewer: React.FC<{ hash?: string; hex?: string }> = ({ hash, hex }) => {
   const { loading, error, data } = usePreimage(hash)

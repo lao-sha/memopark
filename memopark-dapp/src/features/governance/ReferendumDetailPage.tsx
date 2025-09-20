@@ -8,9 +8,8 @@ import { useGovernanceStore, syncReferendumIdFromHash, listenHashChange } from '
 import PasswordModal from './components/PasswordModal';
 
 /**
- * 函数级详细中文注释：公投详情页面（移动端优先）
- * - 展示单个公投的状态时间线、轨道参数、预映像与投票面板（后续接入）
- * - 当前提供骨架与占位内容
+ * 函数级详细中文注释：公投详情页面（Legacy 占位）
+ * - 主流程已迁移至“内容委员会 + 申诉治理”；本页仅保留开发/历史调试用途
  */
 const ReferendumDetailPage: React.FC = () => {
   const rid = useGovernanceStore(s => s.currentReferendumId) || 101
@@ -111,6 +110,7 @@ const ReferendumDetailPage: React.FC = () => {
               <div style={{ fontWeight: 700, marginBottom: 4 }}>危险轨道（Root）</div>
               <div style={{ fontSize: 12, lineHeight: 1.5 }}>
                 此提案属于高风险轨道，通常需要高保证金、较长冷静期与生效延迟。请务必校验预映像哈希与调用内容后再操作。
+                请注意，此页面已不再维护，投票功能已移至内容委员会与申诉治理。
               </div>
             </div>
           )}

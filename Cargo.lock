@@ -597,12 +597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "assert_matches"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
-
-[[package]]
 name = "async-channel"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5542,7 +5536,6 @@ dependencies = [
  "pallet-aura",
  "pallet-balances",
  "pallet-collective",
- "pallet-conviction-voting",
  "pallet-deceased",
  "pallet-deceased-media",
  "pallet-deceased-text",
@@ -5554,6 +5547,7 @@ dependencies = [
  "pallet-identity",
  "pallet-ledger",
  "pallet-memo-affiliate",
+ "pallet-memo-content-governance",
  "pallet-memo-endowment",
  "pallet-memo-grave",
  "pallet-memo-ipfs",
@@ -5566,9 +5560,6 @@ dependencies = [
  "pallet-otc-listing",
  "pallet-otc-maker",
  "pallet-otc-order",
- "pallet-preimage",
- "pallet-referenda",
- "pallet-scheduler",
  "pallet-sudo",
  "pallet-template",
  "pallet-timestamp",
@@ -6368,22 +6359,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-conviction-voting"
-version = "41.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk.git?rev=f3969c7ddd34985e6e709ed458bcc519f651682a#f3969c7ddd34985e6e709ed458bcc519f651682a"
-dependencies = [
- "assert_matches",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-io",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-deceased"
 version = "0.1.0"
 dependencies = [
@@ -6541,6 +6516,18 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memo-content-governance"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6754,56 +6741,6 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
-]
-
-[[package]]
-name = "pallet-preimage"
-version = "41.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk.git?rev=f3969c7ddd34985e6e709ed458bcc519f651682a#f3969c7ddd34985e6e709ed458bcc519f651682a"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
-]
-
-[[package]]
-name = "pallet-referenda"
-version = "41.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk.git?rev=f3969c7ddd34985e6e709ed458bcc519f651682a#f3969c7ddd34985e6e709ed458bcc519f651682a"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-arithmetic",
- "sp-io",
- "sp-runtime",
-]
-
-[[package]]
-name = "pallet-scheduler"
-version = "42.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk.git?rev=f3969c7ddd34985e6e709ed458bcc519f651682a#f3969c7ddd34985e6e709ed458bcc519f651682a"
-dependencies = [
- "docify",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-io",
- "sp-runtime",
- "sp-weights",
 ]
 
 [[package]]

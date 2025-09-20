@@ -317,22 +317,10 @@ mod runtime {
 	#[runtime::pallet_index(26)]
 	pub type MemoIpfs = pallet_memo_ipfs;
 
-	#[runtime::pallet_index(27)]
-	pub type Preimage = pallet_preimage;
-
-	#[runtime::pallet_index(28)]
-	pub type Scheduler = pallet_scheduler;
-
 	#[runtime::pallet_index(29)]
 	pub type Treasury = pallet_treasury;
 
 	// OpenGov pallets
-	#[runtime::pallet_index(30)]
-	pub type ConvictionVoting = pallet_conviction_voting;
-
-	#[runtime::pallet_index(31)]
-	pub type Referenda = pallet_referenda;
-
 	#[runtime::pallet_index(32)]
 	pub type OriginRestriction = pallet_origin_restriction;
 
@@ -345,5 +333,18 @@ mod runtime {
 	#[runtime::pallet_index(35)]
 	pub type MemoPet = pallet_memo_pet;
 
-// 预留：委员会 Pallet 接入后启用
+	// 委员会（Council）
+	#[runtime::pallet_index(38)]
+	pub type Council = pallet_collective<Instance1>;
+
+	// 技术与安全委员会（Technical Committee）
+	#[runtime::pallet_index(39)]
+	pub type TechnicalCommittee = pallet_collective<Instance2>;
+
+	// 内容委员会（Content Committee）
+	#[runtime::pallet_index(40)]
+	pub type ContentCommittee = pallet_collective<Instance3>;
+
+	#[runtime::pallet_index(41)]
+	pub type ContentGovernance = pallet_memo_content_governance;
 }

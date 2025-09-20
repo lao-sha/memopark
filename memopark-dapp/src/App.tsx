@@ -28,6 +28,10 @@ import CreatePrimaryCategoryPage from './features/offerings/CreatePrimaryCategor
 import CreateSacrificePage from './features/offerings/CreateSacrificePage';
 import CreateScenePage from './features/offerings/CreateScenePage';
 import CategoryListPage from './features/offerings/CategoryListPage';
+import GovTicketPage from './features/governance/GovTicketPage';
+import ContentCommitteePage from './features/governance/ContentCommitteePage';
+import SubmitAppealPage from './features/governance/SubmitAppealPage';
+import CommitteeTemplatesPage from './features/governance/CommitteeTemplatesPage';
 import './App.css';
 
 /**
@@ -66,7 +70,11 @@ const App: React.FC = () => {
               : hash === '#/grave/my' ? <MyGravesPage />
               : hash === '#/treasury' ? <TreasuryPage />
               : hash === '#/dashboard' ? <DashboardPage />
+              : hash === '#/gov/ticket' ? <GovTicketPage />
               : hash === '#/gov/me' ? <MyGovernancePage />
+              : hash === '#/gov/content' ? <ContentCommitteePage />
+              : hash === '#/gov/appeal' ? <SubmitAppealPage />
+              : hash === '#/gov/templates' ? <CommitteeTemplatesPage />
               : hash === '#/profile' ? <ProfilePage />
               : hash === '#/covers' ? <CoverOptionsPage />
               : hash === '#/covers/create' ? <CreateCoverOptionPage />

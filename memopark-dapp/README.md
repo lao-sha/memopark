@@ -43,25 +43,21 @@ VITE_ALLOW_DEV_SESSION=1
 - 会话握手：开发环境使用本地签名与后端交互；可通过 `VITE_ALLOW_DEV_SESSION=1` 启用开发回退会话。
 - 数据查询：高变动/易膨胀查询建议下沉到 Subsquid（详见 `memopark-squid`）。
 
-## 无私钥治理代付（内容提交）指引
+## 申诉治理（无扩展/无链上私钥亦可）
 
-本 DApp 支持“无扩展、无链上私钥”的内容提交流程，依赖运行时 `forwarder` + OpenGov：
+本 DApp 已从 OpenGov 公投迁移为“内容委员会(2/3) + 申诉治理”流程。用户与第三方可通过“提交申诉”发起内容治理请求，由内容委员会审批、公示并强制执行对应 `gov_*` 接口。
 
-1. 前端上传文件至 IPFS，得到 CID/URI（不把大对象上链）。
-2. 前端将待执行的链上调用参数（例如 `DeceasedMedia.gov_add_media_for(owner, ...)` 或 `DeceasedText.gov_set_article_for(owner, ...)`）发送至后端。
-3. 后端：
-   - 使用命名空间 `content_` 调用代付接口，代付 `preimage.note_preimage` 与 `referenda.submit`；
-   - 提交到 Content 轨道，引用上一步的预映像；
-4. 前端订阅公投与执行事件，显示进度：Submitted → Deciding → Approved → Enacted → Executed。
-5. 执行成功后，记录以 `owner` 身份落账；成熟到期后 `owner` 在“我的提交”中领取押金。
+流程：
+1. 提交申诉：前往 `#/gov/appeal`，填写 `domain/action/target/reason_cid/evidence_cid` 并提交（链上冻结 `AppealDeposit`）。
+2. 审批与公示：内容委员会（2/3 阈值）审批；`approve` 后进入公示期（`NoticeDefaultBlocks`）；`reject/withdraw` 将按 `RejectedSlashBps/WithdrawSlashBps` 比例罚没押金至国库。
+3. 到期执行：公示期满由 `execute_approved` 路由到各内容 Pallet 的 `gov_*` 接口执行，并记录证据事件（CID 全局不加密）。
+4. 模板与指引：`#/gov/templates` 提供常用动作模板（含 domain/action 与 target 填写提示）。
 
-接口约束与映射请参考后端 runtime 两个内容 Pallet README：
-- `pallets/deceased-media/README.md`
-- `pallets/deceased-text/README.md`
+提示：在“申诉提交”页会显示链上治理常量（押金、公示期、罚没比例、限频窗口）。
 
 ## 设置逝者主图（前端使用说明与示例）
 
-主图功能已迁移至媒体域（`pallet-deceased-media`），统一由媒体模块管理与治理。支持两种路径：本地直发与无私钥治理代付。
+主图功能已迁移至媒体/逝者域的治理接口，支持两种路径：本地直发与申诉治理。
 
 ### 1) 本地直发（用户签名）
 
@@ -69,14 +65,14 @@ VITE_ALLOW_DEV_SESSION=1
 
 示例：
 ```ts
-// 设置主图
+// 设置主图（媒体域）
 await signAndSendLocalFromKeystore(
   'deceasedMedia',
   'setPrimaryImageFor',
   [deceasedId, mediaId]
 );
 
-// 清空主图
+// 清空主图（媒体域）
 await signAndSendLocalFromKeystore(
   'deceasedMedia',
   'clearPrimaryImageFor',
@@ -90,25 +86,12 @@ await signAndSendLocalFromKeystore(
 前端展示建议：
 - 优先读主图；若无主图则回退为该逝者最新照片；再无则使用占位图。
 
-### 2) 无私钥治理代付（通过 Content 轨道公投执行）
+### 2) 申诉治理（内容委员会阈值执行）
 
-适用于平台代付与统一治理审核的场景。后端代付 `preimage.notePreimage + referenda.submit`，成功后由调度执行 `deceasedMedia.govSetPrimaryImageFor`。
+适用于平台统一治理审核的场景。通过“提交申诉”发起对应强制接口：
 
-示例（伪代码）：
-```ts
-// 1) 组装真实调用（由后端或前端构造，再交给后端代付）
-const call = api.tx.deceasedMedia.govSetPrimaryImageFor(deceasedId, mediaId);
-
-// 2) 后端代付（命名空间 content_）：
-//  - preimage.notePreimage(call)
-//  - referenda.submit({ track: Content, proposal_origin: EnsureContentSigner, proposal: preimageHash })
-await fetch(`${import.meta.env.VITE_FORWARD_API}`, {
-  method: 'POST',
-  body: JSON.stringify({ ns: 'content_', action: 'submit_primary_image', deceasedId, mediaId }),
-});
-
-// 3) 前端订阅公投与执行事件，显示进度
-```
+- 清空主图：在 `#/gov/appeal` 提交 `domain=2, action=2, target=deceasedId`（路由到 `deceased.gov_set_main_image(id, None, evidence_cid)`）。
+- 设置主图：在 `#/gov/appeal` 提交 `domain=2, action=3, target=deceasedId`（路由到 `deceased.gov_set_main_image(id, Some(cid), evidence_cid)`，当前前端以占位方式提交 CID）。
 
 注意：
 - 隐藏/删除该媒体时，链上会自动清空主图并发 `PrimaryImageChanged(deceasedId, None)`，前端应回退展示。

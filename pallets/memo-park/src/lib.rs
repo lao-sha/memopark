@@ -11,6 +11,7 @@ pub mod pallet {
     use super::*;
     use frame_support::{pallet_prelude::*, BoundedVec};
     use frame_system::pallet_prelude::*;
+    use alloc::vec::Vec; // 函数级中文注释：在 no_std 环境下显式引入 Vec
 
     /// 函数级中文注释：用于校验某个 RuntimeOrigin 是否具备指定陵园的管理员权限。
     /// 设计目的：
@@ -32,6 +33,8 @@ pub mod pallet {
         #[pallet::constant] type MaxParksPerCountry: Get<u32>;
         /// 运行时注入的陵园管理员权限校验器（桥接官方治理/多签）
         type ParkAdmin: ParkAdminOrigin<Self::RuntimeOrigin>;
+        /// 函数级中文注释：治理起源（Root / 内容治理签名账户等），用于 gov* 接口与证据记录。
+        type GovernanceOrigin: frame_support::traits::EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     /// 函数级中文注释：陵园登记信息结构。
@@ -76,6 +79,10 @@ pub mod pallet {
         /// 状态变更
         ParkActivated { id: u64 },
         ParkDeactivated { id: u64 },
+        /// 函数级中文注释：治理证据记录（scope, key, cid）。scope：1=Update/SetAdmin/Transfer/Activate 等；key=id。
+        GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
+        /// 函数级中文注释：治理设置园区封面（Some 设置；None 清空）。
+        GovParkCoverSet(u64, bool),
     }
 
     #[pallet::error]
@@ -88,6 +95,15 @@ pub mod pallet {
     }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
+        fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+            Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
+            Ok(bv)
+        }
+    }
+
     #[allow(warnings)]
     #[allow(deprecated)]
     #[pallet::call]
@@ -170,6 +186,78 @@ pub mod pallet {
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(who == park.owner, Error::<T>::NotOwner);
+                park.owner = new_owner.clone();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::ParkTransferred { id, new_owner });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】更新陵园（可选字段），并记录证据。
+        /// - 仅允许 `T::GovernanceOrigin`；记录 `GovEvidenceNoted(1,id,cid)`。
+        #[pallet::call_index(10)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_update_park(
+            origin: OriginFor<T>, id: u64,
+            region_code: Option<BoundedVec<u8, T::MaxRegionLen>>,
+            metadata_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            active: Option<bool>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid)?;
+            Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                if let Some(rc) = region_code { park.region_code = rc; }
+                if let Some(cid) = metadata_cid { park.metadata_cid = cid; }
+                if let Some(a) = active { park.active = a; }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::ParkUpdated { id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置/清空管理员（记录证据）。
+        #[pallet::call_index(11)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_park_admin(origin: OriginFor<T>, id: u64, admin_group: Option<u64>, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid)?;
+            Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                park.admin_group = admin_group;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::AdminSet { id, admin_group });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置/清空园区封面 CID（作为展示元数据的一部分）。
+        /// - 由于本 Pallet 未维护封面字段，采用事件记录方式供前端/索引读取。
+        #[pallet::call_index(13)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_park_cover(origin: OriginFor<T>, id: u64, cover_cid: Option<BoundedVec<u8, T::MaxCidLen>>, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid)?;
+            ensure!(Parks::<T>::contains_key(id), Error::<T>::NotFound);
+            // 事件化存证（不落存储，保持低耦合与轻状态）：is_set=true/false
+            let _ = cover_cid; // 仅事件化输出
+            Self::deposit_event(Event::GovParkCoverSet(id, cover_cid.is_some()));
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】转让陵园所有权（记录证据）。
+        #[pallet::call_index(12)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_transfer_park(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid)?;
+            Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 park.owner = new_owner.clone();
                 Ok(())
             })?;
