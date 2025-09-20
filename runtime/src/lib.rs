@@ -347,4 +347,7 @@ mod runtime {
 
 	#[runtime::pallet_index(41)]
 	pub type ContentGovernance = pallet_memo_content_governance;
+
+	#[runtime::pallet_index(42)]
+	pub type MemoBridge = pallet_memo_bridge;
 }

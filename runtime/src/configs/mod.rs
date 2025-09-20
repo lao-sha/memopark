@@ -41,6 +41,7 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
 use frame_support::traits::{Contains, EnsureOrigin};
+use frame_support::PalletId;
 // ===== memo-content-governance 运行时配置（占位骨架） =====
 impl pallet_memo_content_governance::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -848,6 +849,24 @@ pub struct TreasuryAccount;
 impl sp_core::Get<AccountId> for TreasuryAccount {
     fn get() -> AccountId { TreasuryPalletId::get().into_account_truncating() }
 }
+// ===== memo-bridge（MEMO↔ETH）运行时配置 =====
+parameter_types! {
+    /// 函数级中文注释：桥托管账户 PalletId
+    pub const BridgePalletId: PalletId = PalletId(*b"m/bridge");
+    /// 函数级中文注释：最小锁定额（示例：0.01 UNIT）
+    pub const BridgeMinLock: Balance = 10_000_000_000;
+}
+impl pallet_memo_bridge::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type FeeCollector = TreasuryAccount;
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
+    type MinLock = BridgeMinLock;
+    type BridgePalletId = BridgePalletId;
+}
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
 // 修正命名：由旧 crate 前缀 memorial 切换为 memo，保证与 `pallets/memo-park` 对应
@@ -1303,7 +1322,7 @@ impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernan
 }
 
 // ===== exchange 配置 =====
-use frame_support::PalletId;
+// duplicate import removed
 
 // 已移除：pallet-exchange 参数与 Config
 

@@ -5547,6 +5547,7 @@ dependencies = [
  "pallet-identity",
  "pallet-ledger",
  "pallet-memo-affiliate",
+ "pallet-memo-bridge",
  "pallet-memo-content-governance",
  "pallet-memo-endowment",
  "pallet-memo-grave",
@@ -6516,6 +6517,19 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-memo-bridge"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

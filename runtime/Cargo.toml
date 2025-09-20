@@ -49,6 +49,7 @@ pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
 pallet-memo-content-governance = { path = "../pallets/memo-content-governance", default-features = false }
 pallet-collective = { path = "../pallets/collective", default-features = false }
 pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
+pallet-memo-bridge = { path = "../pallets/memo-bridge", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -115,6 +116,7 @@ std = [
     "pallet-memo-content-governance/std",
 	"pallet-collective/std",
 	"pallet-memo-pet/std",
+    "pallet-memo-bridge/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
