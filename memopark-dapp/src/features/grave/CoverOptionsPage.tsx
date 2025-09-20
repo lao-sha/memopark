@@ -73,6 +73,7 @@ const CoverOptionsPage: React.FC = () => {
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
       <Card title="公共封面库" extra={<Button size="small" onClick={load} loading={loading}>刷新</Button>}>
         <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Alert type="info" showIcon message="本目录的新增/维护需内容委员会审批（ContentCommittee）。" />
           {error && <Alert type="error" showIcon message={error} />}
           <Space>
             <Typography.Text>Grave ID：</Typography.Text>

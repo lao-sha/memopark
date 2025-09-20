@@ -3,8 +3,8 @@ import { getApi } from '../../../lib/polkadot-safe'
 import { fetchPreimageInfo } from '../lib/governance'
 
 /**
- * 函数级详细中文注释：预映像查询 Hook（占位实现）
- * - 依据哈希查询链上预映像元信息；当前返回占位数据
+ * 函数级详细中文注释：预映像查询 Hook（Legacy 占位）
+ * - 主流程为“内容委员会 + 申诉治理”，预映像相关仅用于旧记录解析
  */
 export interface PreimageInfo { hash: string; length?: number; provider?: string; available: boolean }
 

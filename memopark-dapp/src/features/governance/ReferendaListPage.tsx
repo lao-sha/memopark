@@ -5,9 +5,8 @@ import { useTracks } from './hooks/useTracks';
 import TrackSelector from './components/TrackSelector';
 
 /**
- * 函数级详细中文注释：公投列表页面（移动端优先）
- * - 展示按轨道/状态筛选的公投卡片（后续由 hooks 提供数据）
- * - 当前为最小占位 UI，确保不阻断构建
+ * 函数级详细中文注释：公投列表页面（Legacy 占位）
+ * - 主流程已迁移至“内容委员会 + 申诉治理”，本页仅保留开发/历史调试用途
  */
 /**
  * 函数级详细中文注释：公投列表页面（移动端优先，带筛选）

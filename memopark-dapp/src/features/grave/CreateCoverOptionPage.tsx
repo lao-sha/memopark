@@ -42,6 +42,7 @@ const CreateCoverOptionPage: React.FC = () => {
       <Card title="创建封面图（公共封面库）">
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Alert type="info" showIcon message="目录由内容委员会维护：新增/下架需内容委员会审批。确保 CID 不加密。" />
           <Typography.Paragraph type="secondary">上传图片到 IPFS 获得 CID 后，提交到链上的公共封面库。此目录由治理维护，所有墓地可复用。</Typography.Paragraph>
           <Form form={form} layout="vertical" onFinish={onSubmit}>
             <Form.Item name="cid" label="IPFS CID" rules={[{ required: true }]}>

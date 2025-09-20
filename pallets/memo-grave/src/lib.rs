@@ -307,6 +307,8 @@ pub mod pallet {
         /// 函数级中文注释：公共封面目录项增删（仅治理）
         CoverOptionAdded {},
         CoverOptionRemoved {},
+        /// 函数级中文注释：治理证据已记录（scope, key, cid）。scope：1=Grave元/封面/所有权等
+        GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
     }
 
     #[pallet::error]
@@ -540,6 +542,66 @@ pub mod pallet {
             let chosen = list[idx].clone();
             CoverCidOf::<T>::insert(id, chosen);
             Self::deposit_event(Event::CoverSet { id });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】强制转让墓地所有权（用于丢钥匙救济/纠纷裁决）。
+        /// - 起源：`T::GovernanceOrigin`（Root | 内容委员会阈值(2/3)）。
+        /// - 行为：不检查当前 owner，直接将 `id` 的所有权指向 `new_owner`；记录证据 CID。
+        #[pallet::call_index(48)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::transfer_grave())]
+        pub fn gov_transfer_grave(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid);
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                g.owner = new_owner.clone();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::GraveTransferred { id, new_owner });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置/取消限制（Moderation.restricted）。
+        /// - 仅治理起源；记录证据；常用于临时下线展示或等待整改。
+        #[pallet::call_index(49)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::restrict())]
+        pub fn gov_set_restricted(origin: OriginFor<T>, id: u64, on: bool, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid);
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            ModerationOf::<T>::mutate(id, |m| { m.restricted = on; m.reason_code = reason_code; });
+            Self::deposit_event(Event::Restricted { id, on, reason_code });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】软删除墓地（Moderation.removed=true，restricted=true）。
+        /// - 仅治理起源；记录证据；用于严重违规或权利人要求下线。
+        #[pallet::call_index(50)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::remove())]
+        pub fn gov_remove_grave(origin: OriginFor<T>, id: u64, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid);
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            ModerationOf::<T>::mutate(id, |m| { m.removed = true; m.restricted = true; m.reason_code = reason_code; });
+            Self::deposit_event(Event::Removed { id, reason_code });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】恢复墓地展示（撤销 removed/restricted）。
+        /// - 仅治理起源；记录证据；reason_code 置 0。
+        #[pallet::call_index(51)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::restrict())]
+        pub fn gov_restore_grave(origin: OriginFor<T>, id: u64, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, id, evidence_cid);
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            ModerationOf::<T>::mutate(id, |m| { m.removed = false; m.restricted = false; m.reason_code = 0; });
+            Self::deposit_event(Event::Restricted { id, on: false, reason_code: 0 });
             Ok(())
         }
 
@@ -1181,6 +1243,13 @@ pub mod pallet {
 
         /// 函数级详细中文注释：检查某账户是否为成员。
         pub fn is_member(id: u64, who: &T::AccountId) -> bool { Members::<T>::contains_key(id, who) }
+
+        /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
+        pub(crate) fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+            Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
+            Ok(bv)
+        }
     }
 }
 

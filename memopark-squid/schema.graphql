@@ -183,3 +183,37 @@ type OfferingPauseEvent @entity {
   block: Int!
 }
 
+"""
+供奉风控参数快照：在 OfferParamsUpdated 事件发生时记录
+- offerWindow: 滑动窗口大小（块），为空表示“保持不变/未显式设置”
+- offerMaxInWindow: 窗口内最大次数，空=保持
+- minOfferAmount: 最小供奉金额（Planck），空=保持
+"""
+type OfferingParamsSnapshot @entity {
+  id: ID!          # 组合键："<block>-<idx>"
+  block: Int!
+  offerWindow: Int
+  offerMaxInWindow: Int
+  minOfferAmount: BigInt
+}
+
+# ===== Governance（治理工单与时间线） =====
+type GovCase @entity {
+  id: ID!                # 组合键："deceased-<id>"
+  pallet: String!        # deceased
+  objectId: BigInt!      # deceased_id
+  openedAt: Int!         # 首次记录证据事件区块
+  lastActionAt: Int!
+  evidenceCid: String!   # 最近一次证据 CID（明文）
+  actions: [GovAction!]! @derivedFrom(field: "case")
+}
+
+type GovAction @entity {
+  id: ID!
+  case: GovCase!
+  kind: String!          # GovEvidenceNoted | DeceasedUpdated | DeceasedTransferred | VisibilityChanged
+  block: Int!
+  extrinsicHash: String
+  meta: String
+}
+

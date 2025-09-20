@@ -14,6 +14,11 @@ impl pallet_deceased::Config for Runtime {
     type MaxLinks = DeceasedMaxLinks;
     type GraveProvider = GraveProviderAdapter; // 由 runtime 实现
     type WeightInfo = ();
+    /// 治理起源（Root | 内容委员会阈值），用于 gov* 接口
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        ContentAtLeast2of3
+    >;
 }
 ```
 
@@ -141,7 +146,38 @@ impl pallet_deceased::Config for Runtime {
 - 字段长度、数量受限，防止滥用与状态膨胀。
 
 ## 冗余与迁移
-- 若墓位以 NFT/唯一资产表示，可复用官方 `pallet-nfts` 管理所有权，本模块仅做“关系与最小元数据”。
-- 可在未来增加与 `pallet-nfts` 的映射字段，平滑迁移。
+
+## 治理专用接口（gov*）与“失钥救济”
+
+- 设计目标：当 `owner` 私钥丢失或出现内容合规问题时，通过治理通道执行必要的 C/U/D 行为，且保证可审计与可回溯。
+- 起源：`Config::GovernanceOrigin`（Root 或 内容委员会 2/3）。
+- 证据：所有 gov* 接口都要求携带 `evidence_cid`（IPFS/HTTPS 明文），模块会发出 `GovEvidenceNoted(id, cid)` 事件。
+
+### 接口与事件
+
+- `gov_update_profile(id, name?, name_badge?, gender_code?, name_full_cid??, birth_ts??, death_ts??, links?, evidence_cid)`
+  - 功能：治理更新资料（不改 owner）。
+  - 流程：记录证据事件 → 按传入字段更新 → 重建 `deceased_token` 并维护唯一索引 → 事件 `DeceasedUpdated(id)`。
+  - 失败：若新 token 冲突，返回 `DeceasedTokenExists`。
+
+- `gov_transfer_deceased(id, new_grave, evidence_cid)`
+  - 功能：治理迁移逝者到新墓位（不改 owner）。
+  - 校验：新墓位存在与软上限；写入/移除 grave 下索引；事件 `DeceasedTransferred(id, from, to)`。
+
+- `gov_set_visibility(id, public, evidence_cid)`
+  - 功能：治理设置可见性（不要求 owner/Admin）。
+  - 事件：`VisibilityChanged(id, public)`。
+
+- `gov_set_main_image(id, cid?, evidence_cid)`
+  - 功能：治理设置/清空主图（CID）。
+  - 事件：`GovMainImageSet(id, set)`。
+
+- 统一事件：`GovEvidenceNoted(id, cid)`（每次治理动作都记录最近证据）。
+
+### 委员会阈值 + 申诉治理流程
+- 申诉：前端 `#/gov/appeal` 提交 `domain/action/target/reason_cid/evidence_cid`；链上冻结押金。
+- 审批：内容委员会 2/3 通过后进入公示期；若驳回/撤回，按比例罚没至国库。
+- 执行：公示期满路由至本模块 `gov_*` 执行并记录证据；CID 明文保存（不加密）。
+- 模板：前端 `#/gov/templates` 提供常用动作快捷说明。
 
 

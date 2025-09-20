@@ -40,10 +40,144 @@ use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
-use frame_support::traits::Contains;
+use frame_support::traits::{Contains, EnsureOrigin};
+// ===== memo-content-governance 运行时配置（占位骨架） =====
+impl pallet_memo_content_governance::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    /// 申诉押金（示例：0.01 UNIT）
+    type AppealDeposit = frame_support::traits::ConstU128<10_000_000_000>;
+    /// 驳回罚没 30% 入国库
+    type RejectedSlashBps = frame_support::traits::ConstU16<3000>;
+    /// 撤回罚没 10% 入国库（示例）
+    type WithdrawSlashBps = frame_support::traits::ConstU16<1000>;
+    /// 限频窗口（块）
+    type WindowBlocks = frame_support::traits::ConstU32<600>;
+    /// 窗口内最多提交次数
+    type MaxPerWindow = frame_support::traits::ConstU32<5>;
+    /// 默认公示期（块）
+    type NoticeDefaultBlocks = frame_support::traits::ConstU32<{ 7 * DAYS as u32 }>;
+    /// 国库账户（罚没接收）
+    type TreasuryAccount = TreasuryAccount;
+    /// 执行路由占位实现
+    type Router = ContentGovernanceRouter;
+}
+// ====== 委员会（Council）运行时配置 ======
+parameter_types! {
+    /// 函数级中文注释：委员会动议最长投票期（示例：7天）。
+    pub const CouncilMotionDuration: BlockNumber = 7 * DAYS;
+    /// 函数级中文注释：委员会并行提案上限（示例：50）。
+    pub const CouncilMaxProposals: u32 = 50;
+    /// 函数级中文注释：委员会最大成员数（示例：50）。
+    pub const CouncilMaxMembers: u32 = 50;
+    /// 函数级中文注释：提案最大权重上限（简化为 2 秒计算上限）。
+    pub const CouncilMaxProposalWeight: Weight = Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX);
+}
+
+type CouncilCollective = pallet_collective::Instance1;
+impl pallet_collective::Config<CouncilCollective> for Runtime {
+    /// 函数级中文注释：起源类型绑定到运行时。
+    type RuntimeOrigin = RuntimeOrigin;
+    /// 函数级中文注释：可被动议执行的调用类型。
+    type Proposal = RuntimeCall;
+    /// 函数级中文注释：事件类型绑定到运行时事件。
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：动议持续时间配置。
+    type MotionDuration = CouncilMotionDuration;
+    /// 函数级中文注释：并行提案数上限。
+    type MaxProposals = CouncilMaxProposals;
+    /// 函数级中文注释：成员数上限。
+    type MaxMembers = CouncilMaxMembers;
+    /// 函数级中文注释：默认投票策略（跟随 Prime）。
+    type DefaultVote = pallet_collective::PrimeDefaultVote;
+    /// 函数级中文注释：权重信息（占位）。
+    type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
+    /// 函数级中文注释：允许设置成员的起源（Root）。
+    type SetMembersOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：提案最大可执行权重上限。
+    type MaxProposalWeight = CouncilMaxProposalWeight;
+    /// 函数级中文注释：可无成本否决提案的起源（Root）。
+    type DisapproveOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：可杀死恶意提案的起源（Root）。
+    type KillOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：提案押金/成本考虑（无）。
+    type Consideration = ();
+}
+
+// ====== 技术与安全委员会（Technical Committee）运行时配置 ======
+parameter_types! {
+    /// 函数级中文注释：技术委员会动议持续期（示例：3天）。
+    pub const TechMotionDuration: BlockNumber = 3 * DAYS;
+    /// 函数级中文注释：技术委员会并行提案上限。
+    pub const TechMaxProposals: u32 = 30;
+    /// 函数级中文注释：技术委员会最大成员数。
+    pub const TechMaxMembers: u32 = 15;
+    /// 函数级中文注释：技术委员会提案最大权重上限（2 秒）。
+    pub const TechMaxProposalWeight: Weight = Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX);
+}
+
+// ====== 内容委员会（Content Committee）运行时配置 ======
+parameter_types! {
+    /// 函数级中文注释：内容委员会动议持续期（示例：5天）。
+    pub const ContentMotionDuration: BlockNumber = 5 * DAYS;
+    /// 函数级中文注释：内容委员会并行提案上限。
+    pub const ContentMaxProposals: u32 = 50;
+    /// 函数级中文注释：内容委员会最大成员数。
+    pub const ContentMaxMembers: u32 = 25;
+    /// 函数级中文注释：内容委员会提案最大权重上限（2 秒）。
+    pub const ContentMaxProposalWeight: Weight = Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX);
+}
+
+type ContentCollective = pallet_collective::Instance3;
+impl pallet_collective::Config<ContentCollective> for Runtime {
+    type RuntimeOrigin = RuntimeOrigin;
+    type Proposal = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type MotionDuration = ContentMotionDuration;
+    type MaxProposals = ContentMaxProposals;
+    type MaxMembers = ContentMaxMembers;
+    type DefaultVote = pallet_collective::PrimeDefaultVote;
+    type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
+    type SetMembersOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxProposalWeight = ContentMaxProposalWeight;
+    type DisapproveOrigin = frame_system::EnsureRoot<AccountId>;
+    type KillOrigin = frame_system::EnsureRoot<AccountId>;
+    type Consideration = ();
+}
+
+type TechnicalCollective = pallet_collective::Instance2;
+impl pallet_collective::Config<TechnicalCollective> for Runtime {
+    /// 函数级中文注释：起源类型绑定到运行时。
+    type RuntimeOrigin = RuntimeOrigin;
+    /// 函数级中文注释：可被动议执行的调用类型。
+    type Proposal = RuntimeCall;
+    /// 函数级中文注释：事件类型绑定到运行时事件。
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：动议持续时间配置。
+    type MotionDuration = TechMotionDuration;
+    /// 函数级中文注释：并行提案数上限。
+    type MaxProposals = TechMaxProposals;
+    /// 函数级中文注释：成员数上限。
+    type MaxMembers = TechMaxMembers;
+    /// 函数级中文注释：默认投票策略（跟随 Prime）。
+    type DefaultVote = pallet_collective::PrimeDefaultVote;
+    /// 函数级中文注释：权重信息（占位）。
+    type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
+    /// 函数级中文注释：允许设置成员的起源（Root）。
+    type SetMembersOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：提案最大可执行权重上限。
+    type MaxProposalWeight = TechMaxProposalWeight;
+    /// 函数级中文注释：可无成本否决提案的起源（Root）。
+    type DisapproveOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：可杀死恶意提案的起源（Root）。
+    type KillOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：提案押金/成本考虑（无）。
+    type Consideration = ();
+}
 
 // 引入以区块数表示的一天常量
-use crate::{DAYS, OriginCaller};
+use crate::DAYS;
+use alloc::vec;
 // 引入以区块数表示的一分钟常量，用于设备挑战 TTL 等时间参数
 // 引入余额单位常量（已移除与设备/挖矿相关依赖，无需引入 MINUTES/MILLI_UNIT）
 
@@ -100,20 +234,7 @@ impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 				inner,
 				pallet_memo_offerings::Call::offer { .. }
 			),
-            // 内容治理域：允许代付 Gov2 提案关键步骤（预映像与提交）
-            // - 通过该域，前端可离线组装将要执行的 RuntimeCall（例如 gov_add_data_for），
-            //   先 note_preimage，再 referenda::submit 并指定 proposal_origin。
-            (n, RuntimeCall::Preimage(inner)) if n == ContentNsBytes::get() => matches!(
-                inner,
-                pallet_preimage::Call::note_preimage { .. } |
-                pallet_preimage::Call::unnote_preimage { .. }
-            ),
-            (n, RuntimeCall::Referenda(inner)) if n == ContentNsBytes::get() => matches!(
-                inner,
-                pallet_referenda::Call::submit { .. } |
-                pallet_referenda::Call::kill { .. } |
-                pallet_referenda::Call::cancel { .. }
-            ),
+            // OpenGov（referenda/conviction-voting）已移除：不再放行相关代付
 			_ => false,
 		}
 	}
@@ -291,8 +412,6 @@ parameter_types! {
     pub const ArbitrationNsBytes: [u8; 8] = *b"arb___ _"; // 8字节
     pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
     pub const OtcListingNsBytes: [u8; 8] = *b"otc_lst_";
-    /// 函数级中文注释：内容治理命名空间（forwarder 代付 preimage/referenda 用）
-    pub const ContentNsBytes: [u8; 8] = *b"content_";
 }
 
 // ===== temple 已移除；保留 agent/order 配置 =====
@@ -313,6 +432,11 @@ impl pallet_memo_park::Config for Runtime {
     type MaxCidLen = ParkMaxCidLen;
     type MaxParksPerCountry = ParkMaxPerCountry;
     type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
+	/// 函数级中文注释：治理起源采用 Root | 委员会阈值(2/3)。
+	type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+		frame_system::EnsureRoot<AccountId>,
+		pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
+	>;
 }
 
 parameter_types! {
@@ -352,10 +476,10 @@ impl pallet_memo_grave::Config for Runtime {
     /// 函数级中文注释：绑定创建费与收款账户（指向国库 PalletId 派生地址）。
     type CreateFee = GraveCreateFee;
     type FeeCollector = TreasuryAccount;
-    /// 函数级中文注释：治理起源绑定（Root | 内容治理签名账户）。
+    /// 函数级中文注释：治理起源绑定（Root | 内容委员会阈值 2/3）。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
     >;
     /// 函数级中文注释：注入公共封面目录容量上限。
     type MaxCoverOptions = GraveMaxCoverOptions;
@@ -426,6 +550,11 @@ impl pallet_deceased::Config for Runtime {
     type TokenLimit = GraveMaxCidLen;
     type GraveProvider = GraveProviderAdapter;
     type WeightInfo = ();
+    /// 函数级中文注释：绑定治理起源为 Root | 内容委员会阈值(2/3) 双通道，用于 gov* 接口。
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
 }
 
 // ===== deceased-data 配置 =====
@@ -523,7 +652,7 @@ impl pallet_deceased_media::Config for Runtime {
     type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     type Currency = Balances;
     type AlbumDeposit = MediaAlbumDeposit;
@@ -550,7 +679,7 @@ impl pallet_deceased_text::Config for Runtime {
     type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
     type Currency = Balances;
     type TextDeposit = DataMediaDeposit;
@@ -572,37 +701,14 @@ impl Contains<RuntimeCall> for OriginRestrictionFilter {
 
 impl pallet_origin_restriction::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    /// 函数级中文注释：治理起源采用 Root | 内容治理签名账户 双通道，便于灰度切换。
+    /// 函数级中文注释：治理起源采用 Root | 委员会阈值(2/3) 双通道。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
     >;
 }
 
-/// 函数级中文注释：内容治理签名账户（固定 AccountId32，无私钥暴露）。
-pub struct ContentGovernorAccount;
-impl sp_core::Get<AccountId> for ContentGovernorAccount {
-    fn get() -> AccountId {
-        // 使用固定字节串 b"memo/cgov" 前 9 字节，余位补 0。
-        let mut bytes = [0u8; 32];
-        const SEED: &[u8; 9] = b"memo/cgov";
-        bytes[..SEED.len()].copy_from_slice(SEED);
-        sp_core::crypto::AccountId32::new(bytes).into()
-    }
-}
-
-/// 函数级中文注释：Ensure 策略：仅允许由内容治理账户签名的起源。
-pub type EnsureContentSigner = frame_system::EnsureSignedBy<ContentGovernorAccount, AccountId>;
-
-/// 函数级中文注释：为 EnsureSignedBy 提供成员集合（单元素：内容治理账户）。
-impl frame_support::traits::SortedMembers<AccountId> for ContentGovernorAccount {
-    fn sorted_members() -> alloc::vec::Vec<AccountId> {
-        alloc::vec![ContentGovernorAccount::get()]
-    }
-    fn contains(t: &AccountId) -> bool {
-        *t == ContentGovernorAccount::get()
-    }
-}
+// 方案B：移除单点治理账户（内容治理签名账户）
 
 // ===== ledger 配置（精简） =====
 impl pallet_ledger::Config for Runtime {
@@ -635,8 +741,16 @@ impl pallet_memo_offerings::Config for Runtime {
     type MinOfferAmount = ConstU128<1_000_000_000>; // 0.001 UNIT
     type TargetCtl = AllowAllTargetControl;
     type OnOffering = GraveOfferingHook;
-    /// 函数级中文注释：管理员 Origin 注入；当前使用 Root（后续可切换为 council/多签）。
-    type AdminOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：管理员 Origin 改为 Root | 委员会阈值(2/3)。
+    type AdminOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
+    >;
+    /// 函数级中文注释：治理起源（Root | 委员会阈值），用于 gov* 接口证据化调整。
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
     /// 函数级中文注释：供奉转账使用链上余额
     type Currency = Balances;
     /// 函数级中文注释：捐赠账户解析
@@ -667,10 +781,10 @@ impl pallet_memo_sacrifice::Config for Runtime {
     type StringLimit = SacStringLimit;
     type UriLimit = SacUriLimit;
     type DescriptionLimit = SacDescLimit;
-    // 暂以 Root | 内容治理签名账户 双通道，委员会接入后再切换
+    // 管理员 Origin：Root | 委员会阈值(2/3)
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
     >;
     type Currency = Balances;
     type ListingDeposit = SacListingDeposit;
@@ -738,16 +852,26 @@ impl sp_core::Get<AccountId> for TreasuryAccount {
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
 // 修正命名：由旧 crate 前缀 memorial 切换为 memo，保证与 `pallets/memo-park` 对应
 impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
-    /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
+    /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
-        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+        if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
+            return Ok(())
+        }
+        pallet_collective::EnsureProportionAtLeast::<AccountId, pallet_collective::Instance1, 2, 3>::try_origin(origin)
+            .map(|_| ())
+            .map_err(|_| sp_runtime::DispatchError::BadOrigin)
     }
 }
 
 impl pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
-    /// 函数级中文注释：临时管理员校验适配；当前仅 Root 通过。后续可替换为 collective/multisig。
+    /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
-        Ok(frame_system::ensure_root(origin).map(|_| ())?)
+        if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
+            return Ok(())
+        }
+        pallet_collective::EnsureProportionAtLeast::<AccountId, pallet_collective::Instance1, 2, 3>::try_origin(origin)
+            .map(|_| ())
+            .map_err(|_| sp_runtime::DispatchError::BadOrigin)
     }
 }
 
@@ -1091,6 +1215,93 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
     }
 }
 
+// ===== 内容治理执行路由：将决议分发到目标 Pallet 强制接口 =====
+pub struct ContentGovernanceRouter;
+/// 函数级中文注释：内容治理路由器实现。
+/// - 根据 (domain, action) 将调用分发到相应 pallet 的 gov*/force* 接口；
+/// - MVP：先覆盖常见内容域（grave/deceased/deceased-text/deceased-media/offerings/park）；
+/// - 安全：仅在 memo-content-governance Pallet 审批通过后由 Hooks 调用，无需二次权限判断。
+impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernanceRouter {
+    fn execute(_who: &AccountId, domain: u8, target: u64, action: u8) -> frame_support::dispatch::DispatchResult {
+        match (domain, action) {
+            // 1=grave：治理强制执行（示例：10=清空封面；11=强制转让墓地 owner 到平台账户）
+            (1, 10) => {
+                // 清空封面
+                pallet_memo_grave::pallet::Pallet::<Runtime>::clear_cover_via_governance(RuntimeOrigin::root(), target)
+            }
+            (1, 11) => {
+                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_transfer_grave(RuntimeOrigin::root(), target, PlatformAccount::get(), vec![])
+            }
+            // 1=grave：12=设置限制；13=软删除；14=恢复
+            (1, 12) => {
+                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_set_restricted(RuntimeOrigin::root(), target, true, 1u8, vec![])
+            }
+            (1, 13) => {
+                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_remove_grave(RuntimeOrigin::root(), target, 1u8, vec![])
+            }
+            (1, 14) => {
+                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_restore_grave(RuntimeOrigin::root(), target, vec![])
+            }
+            // 2=deceased：更新 profile（此处作为示例仅切换可见性为 true）
+            (2, 1) => {
+                // 证据由上层记录；此处直接调用 gov_set_visibility(true)
+                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_visibility(RuntimeOrigin::root(), target as u64, true, vec![])
+            }
+            // 2=deceased：2=清空主图；3=设置主图（以事件化为主，字段存储在 deceased）
+            (2, 2) => {
+                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(RuntimeOrigin::root(), target as u64, None, vec![])
+            }
+            (2, 3) => {
+                // 占位：设置为默认头像（前端约定 CID），此处用 None 保持接口对齐
+                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(RuntimeOrigin::root(), target as u64, None, vec![])
+            }
+            // 3=deceased-text：20=移除悼词；21=强制删除文本（支持文章/留言）
+            (3, 20) => {
+                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_eulogy(RuntimeOrigin::root(), target as u64, vec![])
+            }
+            (3, 21) => {
+                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_text(RuntimeOrigin::root(), target as u64, vec![])
+            }
+            // 3=deceased-text：22=治理编辑文本；23=治理设置生平
+            (3, 22) => {
+                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_edit_text(RuntimeOrigin::root(), target as u64, None, None, None, vec![])
+            }
+            (3, 23) => {
+                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_set_life(RuntimeOrigin::root(), target as u64, vec![], vec![])
+            }
+            // 4=deceased-media：隐藏媒体（target 为 media_id）
+            (4, 30) => {
+                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_set_media_hidden(RuntimeOrigin::root(), target as u64, true, vec![])
+            }
+            // 4=deceased-media：31=替换媒体URI；32=冻结视频集
+            (4, 31) => {
+                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_replace_media_uri(RuntimeOrigin::root(), target as u64, vec![], vec![])
+            }
+            (4, 32) => {
+                // 将 target 解读为 VideoCollectionId
+                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_freeze_video_collection(RuntimeOrigin::root(), target as u64, true, vec![])
+            }
+            // 5=park：转移园区所有权（占位，new_owner=平台账户）
+            (5, 40) => {
+                pallet_memo_park::pallet::Pallet::<Runtime>::gov_transfer_park(RuntimeOrigin::root(), target as u64, PlatformAccount::get(), vec![])
+            }
+            // 5=park：41=设置园区封面（事件化）
+            (5, 41) => {
+                pallet_memo_park::pallet::Pallet::<Runtime>::gov_set_park_cover(RuntimeOrigin::root(), target as u64, None, vec![])
+            }
+            // 6=offerings：按域暂停（domain=1 grave）
+            (6, 50) => {
+                pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_pause_domain(RuntimeOrigin::root(), 1u8, true, vec![])
+            }
+            // 6=offerings：51=上/下架供奉模板
+            (6, 51) => {
+                pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_offering_enabled(RuntimeOrigin::root(), target as u8, true, vec![])
+            }
+            _ => Err(sp_runtime::DispatchError::Other("UnsupportedContentAction"))
+        }
+    }
+}
+
 // ===== exchange 配置 =====
 use frame_support::PalletId;
 
@@ -1161,50 +1372,6 @@ impl pallet_memo_endowment::SlaProvider<AccountId, BlockNumber> for SlaFromIpfs 
     }
 }
 
-// ===== scheduler & preimage 运行时配置 =====
-impl pallet_preimage::Config for Runtime {
-    /// 事件类型
-    type RuntimeEvent = RuntimeEvent;
-    /// 费用货币
-    type Currency = Balances;
-    /// 管理者 Origin（允许清理/强制操作）
-    type ManagerOrigin = frame_system::EnsureRoot<AccountId>;
-    /// 费用考虑（占位）：无成本（`()`) 实现 Consideration，便于先行集成
-    type Consideration = ();
-    /// 权重信息（占位）
-    type WeightInfo = ();
-}
-
-parameter_types! {
-    pub const MaxScheduledPerBlock: u32 = 64;
-    /// 调度允许的最大权重（2 秒计算上限；以参考权重为单位）。
-    pub const SchedulerMaximumWeight: Weight = Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX);
-}
-impl pallet_scheduler::Config for Runtime {
-    /// 事件类型
-    type RuntimeEvent = RuntimeEvent;
-    /// Origin 类型
-    type RuntimeOrigin = RuntimeOrigin;
-    /// 可调度权限
-    type ScheduleOrigin = frame_system::EnsureRoot<AccountId>;
-    /// 每块最多调度任务数
-    type MaxScheduledPerBlock = MaxScheduledPerBlock;
-    /// Preimage Pallet
-    type Preimages = pallet_preimage::Pallet<Runtime>;
-    /// PalletsOrigin（使用 runtime 宏导出的 OriginCaller）
-    type PalletsOrigin = OriginCaller;
-    /// RuntimeCall（由 runtime 宏导出）
-    type RuntimeCall = RuntimeCall;
-    /// 最大权重（占位：2 秒计算上限）
-    type MaximumWeight = SchedulerMaximumWeight;
-    /// Origin 权限比较器（默认允许 Root 更高）
-    type OriginPrivilegeCmp = frame_support::traits::EqualPrivilegeOnly;
-    /// BlockNumber 提供者
-    type BlockNumberProvider = frame_system::Pallet<Runtime>;
-    /// 权重信息
-    type WeightInfo = ();
-}
-
 // ===== affiliate（计酬）配置 =====
 parameter_types! {
     /// 函数级中文注释：计酬最大层级（与推荐层级上限相近）。
@@ -1272,8 +1439,7 @@ impl sp_core::Get<&'static [u16]> for LevelRatesArray {
     }
 }
 
-use pallet_conviction_voting as cv;
-use alloc::borrow::Cow;
+// 已移除：OpenGov 轨道相关 Cow（未使用）
 use alloc::vec::Vec;
 
 parameter_types! {
@@ -1283,95 +1449,25 @@ parameter_types! {
 parameter_types! { pub const MaxVotes: u32 = 256; }
 parameter_types! { pub const MaxTurnoutLimit: Balance = 0; }
 
-impl cv::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type Polls = pallet_referenda::Pallet<Runtime>;
-    type MaxTurnout = MaxTurnoutLimit;
-    type MaxVotes = MaxVotes;
-    type VoteLockingPeriod = VoteLockingPeriod;
-    type BlockNumberProvider = frame_system::Pallet<Runtime>;
-    type VotingHooks = ();
-    type WeightInfo = ();
-}
+// 方案B：已移除 conviction-voting 配置
 
 parameter_types! { pub const UndecidingTimeout: BlockNumber = 7 * DAYS; }
 
-pub struct TracksInfo;
-impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
-    type Id = u16;
-    type RuntimeOrigin = <RuntimeOrigin as frame_support::traits::OriginTrait>::PalletsOrigin;
-
-    fn tracks() -> impl Iterator<Item = Cow<'static, pallet_referenda::Track<Self::Id, Balance, BlockNumber>>> {
-        const ROOT_NAME: [u8; 25] = *b"Root_____________________";
-        const CONTENT_NAME: [u8; 25] = *b"Content__________________";
-        let root = pallet_referenda::Track {
-            id: 0u16,
-            info: pallet_referenda::TrackInfo {
-                name: ROOT_NAME,
-                max_deciding: 1,
-                decision_deposit: 0,
-                prepare_period: 0,
-                decision_period: 14 * DAYS,
-                confirm_period: 2 * DAYS,
-                min_enactment_period: 1 * DAYS,
-                min_approval: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
-                min_support: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
-            }
-        };
-        let content = pallet_referenda::Track {
-            id: 20u16,
-            info: pallet_referenda::TrackInfo {
-                name: CONTENT_NAME,
-                max_deciding: 2,
-                decision_deposit: 0,
-                prepare_period: 0,
-                decision_period: 7 * DAYS,
-                confirm_period: 1 * DAYS,
-                min_enactment_period: 1 * DAYS,
-                // 采用较温和曲线（示例）
-                min_approval: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(50), ceil: sp_runtime::Perbill::from_percent(100) },
-                min_support: pallet_referenda::Curve::LinearDecreasing { length: sp_runtime::Perbill::from_percent(100), floor: sp_runtime::Perbill::from_percent(10), ceil: sp_runtime::Perbill::from_percent(100) },
-            }
-        };
-        [root, content].into_iter().map(Cow::Owned)
-    }
-
-    fn track_for(_origin: &Self::RuntimeOrigin) -> Result<Self::Id, ()> { Ok(0u16) }
-}
+// 方案B：已移除 referenda 轨道配置
 
 parameter_types! { pub const SubmissionDeposit: Balance = 0; }
 parameter_types! { pub const MaxQueued: u32 = 100; }
 parameter_types! { pub const AlarmInterval: BlockNumber = 10; }
 
-impl pallet_referenda::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
-    type WeightInfo = ();
-    type Scheduler = pallet_scheduler::Pallet<Runtime>;
-    type Currency = Balances;
-    type SubmitOrigin = frame_support::traits::AsEnsureOriginWithArg<frame_system::EnsureSigned<AccountId>>;
-    type CancelOrigin = frame_system::EnsureRoot<AccountId>;
-    type KillOrigin = frame_system::EnsureRoot<AccountId>;
-    type Slash = ();
-    type Votes = pallet_conviction_voting::VotesOf<Runtime>;
-    type Tally = pallet_conviction_voting::TallyOf<Runtime>;
-    type SubmissionDeposit = SubmissionDeposit;
-    type MaxQueued = MaxQueued;
-    type UndecidingTimeout = UndecidingTimeout;
-    type AlarmInterval = AlarmInterval;
-    type Tracks = TracksInfo;
-    type Preimages = pallet_preimage::Pallet<Runtime>;
-    type BlockNumberProvider = frame_system::Pallet<Runtime>;
-}
+// 方案B：已移除 referenda 配置
 
 // ========= FeeGuard（仅手续费账户保护） =========
 impl pallet_fee_guard::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
-    /// 函数级中文注释：管理员起源采用 Root | 内容治理签名账户 双通道，便于灰度控制。
+    /// 函数级中文注释：管理员起源采用 Root | 委员会阈值(2/3)。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        EnsureContentSigner,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
 }

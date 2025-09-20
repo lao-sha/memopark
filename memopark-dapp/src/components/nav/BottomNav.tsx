@@ -21,6 +21,7 @@ const BottomNav: React.FC = () => {
     if (h.startsWith('#/grave/create')) return 'create-grave'
     if (h.startsWith('#/deceased/list')) return 'deceased-list'
     if (h.startsWith('#/gov/me')) return 'gov-me'
+    if (h.startsWith('#/gov/content')) return 'gov-content'
     if (h.startsWith('#/profile')) return 'profile'
     return 'home'
   }, [])
@@ -83,9 +84,9 @@ const BottomNav: React.FC = () => {
             <UnorderedListOutlined />
             <span style={txtStyle}>逝者列表</span>
           </button>
-          <button onClick={() => go('gov-me', '#/gov/me')} style={{ ...btnStyle, ...(active==='gov-me'?btnActiveStyle:undefined) }}>
+          <button onClick={() => go('gov-content', '#/gov/content')} style={{ ...btnStyle, ...(active==='gov-content'?btnActiveStyle:undefined) }}>
             <CrownOutlined />
-            <span style={txtStyle}>我的治理</span>
+            <span style={txtStyle}>内容委员会</span>
           </button>
           <button onClick={() => go('profile', '#/profile')} style={{ ...btnStyle, ...(active==='profile'?btnActiveStyle:undefined) }}>
             <UserOutlined />

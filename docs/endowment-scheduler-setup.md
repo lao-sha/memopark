@@ -1,23 +1,15 @@
-# Endowment 定时结算（Scheduler）配置说明
+# Endowment 定时结算（Scheduler）配置说明（已调整）
 
-本文档说明如何使用预镜像（preimage）+ 调度（scheduler）来周期调用 `MemoEndowment.close_epoch_and_pay(budget)`。
+> 注意：当前运行时已移除 `pallet-preimage` 与 `pallet-scheduler` 的集成。本说明仅作为历史参考。如需定时任务，请在未来版本按需恢复 Scheduler，并改用“委员会阈值 + 申诉治理”或链下自动化（外部服务）触发。
 
-## 运行时前提
-- runtime 已集成 `pallet-preimage` 与 `pallet-scheduler`（本仓库已完成）。
+## 替代路径（建议）
+- 委员会阈值 + 申诉治理：通过 `pallet_memo_content_governance` 发起“定期执行结算”的申诉，委员会批量审批后按公示期到点执行（适合低频、人工复核场景）。
+- 外部调度服务：使用后端 Cron/Serverless 定期触发 `memo_endowment.close_epoch_and_pay(budget)` 的 Root/委员会动议或直调（需具备权限且做好限频与风控）。
 
-## 步骤（polkadot.js Apps）
-1. 构造待调度的调用：`MemoEndowment.close_epoch_and_pay(budget)`，例如 `budget=1_000_000_000_000`。
-2. 通过 `preimage.notePreimage(call)` 上链存证，得到 `callHash`（Apps 会显示）。
-3. 通过 `scheduler.scheduleNamed` 指定：
-   - `id`: 任意字节标识（建议 blake2 过的唯一值）；
-   - `when`: 起始区块（e.g. 当前区块+10）；
-   - `maybe_periodic`: 周期参数 `{ period, count }`，例如每 `7*24*60*10` 区块一次；
-   - `priority`: 建议 127；
-   - `call`: 使用 `preimage` 的 `callHash` 引用。
-
-## 预算建议
-- 结合 `set_annual_budget(year, max_budget)` 设置年度预算上限；
-- 定时任务 `budget` 可为固定值，或按周/月更新预镜像以反映“收益池余额的 x%”。
+## 历史步骤（仅参考，不再适用当前运行时）
+1. 构造待调度的调用：`MemoEndowment.close_epoch_and_pay(budget)`。
+2. 通过 `preimage.notePreimage(call)` 上链存证，得到 `callHash`。
+3. 通过 `scheduler.scheduleNamed` 指定：`id/when/maybe_periodic/priority/callHash` 等参数。
 
 ## 风控联动
 - 暂停：`set_paused(true)` 时调度执行会直接失败；

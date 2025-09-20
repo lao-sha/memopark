@@ -16,6 +16,9 @@
   - `create_eulogy(deceased_id, cid)`/`update_eulogy(id, cid)`/`claim_eulogy_deposit(id)`：悼词创建/更新/押金领取。
 - 治理入口（仅 `GovernanceOrigin`）：
   - `gov_remove_eulogy(id)`：治理移除悼词（押金成熟后可退）。
+  - `gov_remove_text(id)`：治理强制删除文本（Message/Article）。
+  - `gov_edit_text(id, cid?, title??, summary??, evidence_cid)`：治理编辑文本。
+  - `gov_set_life(deceased_id, cid, evidence_cid)`：治理覆盖生平（仅已存在的 Life）。
 - 无私钥治理落地（代用户最终写入）：
   - `gov_set_article_for(owner, deceased_id, cid, title?, summary?)`
 
@@ -32,18 +35,26 @@
 
 ## 权限
 - 文章、生平仅 `can_manage` 的账户可创建/更新；留言/悼词任何签名账户可发起（可按需接入成员/黑名单校验）。
-- 治理操作由 `GovernanceOrigin` 执行（Root/内容治理签名账户）。
+- 治理操作由 `GovernanceOrigin` 执行（Root/内容委员会阈值）。
 
 ## 前端调用建议
+## 强制接口与路由码表（示例）
+- 文本域 `domain/action`：
+  - `(3,20)` 移除悼词
+  - `(3,21)` 强制删除文本
+  - `(3,22)` 治理编辑文本
+  - `(3,23)` 覆盖生平
 - 仅存 CID/标题/摘要，正文放 IPFS；
 - 文章与生平在详情页渲染时异步取回 IPFS 内容；留言采用分页加载。
 
-## 无私钥 + 有押金（代付治理）流程（与 forwarder + OpenGov 配合）
-1. 前端写入 IPFS，得到 CID。
-2. 后端组装真实调用：`DeceasedText.gov_set_article_for(owner, deceased_id, cid, ...)`。
-3. 生成预映像：`Preimage.note_preimage(call)`。
-4. 提交公投：`Referenda.submit { proposal_origin=EnsureContentSigner, proposal_hash=..., track=Content }`。
-5. 公投通过后由调度执行，链上以 `owner` 账户完成押金保留与记录落账。
-6. 到期后 `owner` 调用 `claim_text_deposit` 或生平/悼词对应领取接口退押金。
-
-> 注意：通过运行时的 forwarder 命名空间 `content_` 放行 `preimage/submit`，实现“无扩展、无链上私钥”的代付体验。
+## 委员会阈值 + 申诉治理流程（ContentCommittee 2/3）
+1. 申诉提交：任何账户均可在前端 `#/gov/appeal` 提交申诉，填写 `domain/action/target/reason_cid/evidence_cid`；链上 `pallet_memo_content_governance::submit_appeal` 冻结 `AppealDeposit`。
+2. 审批与公示：内容委员会（2/3 阈值）通过 `approve_appeal` 后进入公示期 `NoticeDefaultBlocks`；若 `reject_appeal/withdraw_appeal` 则按 `RejectedSlashBps/WithdrawSlashBps` 比例罚没入国库账户。
+3. 到期执行：公示期满由 `execute_approved` 路由到本模块 `gov_*` 接口执行，例如：
+   - `(3,20)` → `gov_remove_eulogy(id, evidence_cid)`
+   - `(3,21)` → `gov_remove_text(id, evidence_cid)`
+   - `(3,22)` → `gov_edit_text(id, ...)`
+   - `(3,23)` → `gov_set_life(deceased_id, ...)`
+   执行前后记录证据事件；全局要求 CID 明文（不加密）。
+4. 限频控制：按 `WindowBlocks/MaxPerWindow` 控制每账户申诉频率，防滥用。
+5. 模板与说明：前端 `#/gov/templates` 提供常用动作（含 domain/action 与 target 提示）；复制后到申诉页粘贴即可。

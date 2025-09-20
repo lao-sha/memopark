@@ -23,7 +23,7 @@ pub fn local_chain_spec() -> Result<ChainSpec, String> {
 		None,
 	)
 	.with_name("MEMOPARK")
-	.with_id("memopark")
+	.with_id("memopark-dev")
 	.with_chain_type(ChainType::Local)
 	.with_genesis_config_preset_name(sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET)
 	.with_properties(default_properties())

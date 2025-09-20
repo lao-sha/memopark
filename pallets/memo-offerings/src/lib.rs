@@ -102,6 +102,8 @@ pub mod pallet {
         type OnOffering: OnOfferingCommitted<Self::AccountId>;
         /// 函数级中文注释：管理员 Origin（Root / Council / 多签等），用于上架/下架/编辑。
         type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// 函数级中文注释：治理起源（Root/内容治理签名账户），用于带证据的 gov* 接口。
+        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         /// 函数级中文注释：用于资金转账的货币接口。
         type Currency: Currency<Self::AccountId>;
         /// 函数级中文注释：捐赠账户解析器，根据目标解析接收账户。
@@ -267,6 +269,8 @@ pub mod pallet {
         PausedGlobalSet { paused: bool },
         /// 函数级中文注释：域暂停状态已更新
         PausedDomainSet { domain: u8, paused: bool },
+        /// 函数级中文注释：治理证据已记录（scope, key, cid）。scope：1=Params, 2=Price, 3=PauseG, 4=PauseD
+        GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
     }
 
     #[pallet::error]
@@ -292,6 +296,15 @@ pub mod pallet {
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
     #[allow(warnings)]
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
+        fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+            Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
+            Ok(bv)
+        }
+    }
+
     #[allow(deprecated)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -477,6 +490,26 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级中文注释：【治理】更新供奉风控参数（携带证据）。
+        #[pallet::call_index(10)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_offer_params(
+            origin: OriginFor<T>,
+            offer_window: Option<BlockNumberFor<T>>,
+            offer_max_in_window: Option<u32>,
+            min_offer_amount: Option<u128>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, 0u64, evidence_cid)?;
+            if let Some(v) = offer_window { OfferWindowParam::<T>::put(v); }
+            if let Some(v) = offer_max_in_window { OfferMaxInWindowParam::<T>::put(v); }
+            if let Some(v) = min_offer_amount { MinOfferAmountParam::<T>::put(v); }
+            Self::deposit_event(Event::OfferParamsUpdated);
+            Ok(())
+        }
+
         /// 函数级中文注释：设置/更新定价（Root/Admin）。
         /// - Instant：fixed_price；Timed：unit_price_per_week；未提供的字段不变；
         #[pallet::call_index(6)]
@@ -495,6 +528,27 @@ pub mod pallet {
             if let Some(up) = unit_price_per_week {
                 match up { Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v), None => UnitPricePerWeekOf::<T>::remove(kind_code) }
             }
+            let cur_fp = FixedPriceOf::<T>::get(kind_code);
+            let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
+            Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置定价（携带证据）。
+        #[pallet::call_index(11)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_offering_price(
+            origin: OriginFor<T>,
+            kind_code: u8,
+            fixed_price: Option<Option<u128>>,
+            unit_price_per_week: Option<Option<u128>>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(2u8, kind_code as u64, evidence_cid)?;
+            if let Some(fp) = fixed_price { match fp { Some(v) => FixedPriceOf::<T>::insert(kind_code, v), None => FixedPriceOf::<T>::remove(kind_code) } }
+            if let Some(up) = unit_price_per_week { match up { Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v), None => UnitPricePerWeekOf::<T>::remove(kind_code) } }
             let cur_fp = FixedPriceOf::<T>::get(kind_code);
             let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
             Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
@@ -525,6 +579,47 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级中文注释：【治理】设置全局暂停（携带证据）。
+        #[pallet::call_index(12)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_pause_global(origin: OriginFor<T>, paused: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(3u8, 0u64, evidence_cid)?;
+            PausedGlobal::<T>::put(paused);
+            Self::deposit_event(Event::PausedGlobalSet { paused });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】设置按域暂停（携带证据）。
+        #[pallet::call_index(13)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_pause_domain(origin: OriginFor<T>, domain: u8, paused: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(4u8, domain as u64, evidence_cid)?;
+            PausedByDomain::<T>::insert(domain, paused);
+            Self::deposit_event(Event::PausedDomainSet { domain, paused });
+            Ok(())
+        }
+
+        /// 函数级中文注释：【治理】启用/停用供奉模板（上/下架）。
+        /// - 仅治理起源；记录证据；与 `set_offering_enabled` 等效但具备审计事件。
+        #[pallet::call_index(14)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_set_offering_enabled(origin: OriginFor<T>, kind_code: u8, enabled: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, kind_code as u64, evidence_cid)?;
+            Specs::<T>::try_mutate(kind_code, |maybe| -> DispatchResult {
+                let s = maybe.as_mut().ok_or(Error::<T>::BadKind)?;
+                s.enabled = enabled;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::OfferingEnabled { kind_code, enabled });
+            Ok(())
+        }
+
         /// 函数级中文注释：基于祭祀品目录的下单入口（自动读取定价与可购校验）。
         /// - 输入：target 域对象、sacrifice_id、媒体列表（CID+承诺，可空）、可选 duration（周）、是否会员 is_vip；
         /// - 逻辑：读取目录 spec，校验启用与会员限制，计算应付金额（fixed 或 unit×duration），完成转账并落记录。
@@ -545,7 +640,7 @@ pub mod pallet {
             if PausedByDomain::<T>::get(target.0) { return Err(Error::<T>::NotAllowed.into()); }
             ensure!(T::TargetCtl::exists(target), Error::<T>::TargetNotFound);
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
-            let (fixed, unit, enabled, vip_only, exclusive) = T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
+            let (fixed, unit, enabled, _vip_only, exclusive) = T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
             ensure!(enabled, Error::<T>::NotFound);
             ensure!(T::Catalog::can_purchase(&who, sacrifice_id, is_vip), Error::<T>::NotAllowed);
             if !exclusive.is_empty() { ensure!(exclusive.iter().any(|pair| pair.0 == target.0 && pair.1 == target.1), Error::<T>::NotAllowed); }

@@ -16,6 +16,7 @@
 // limitations under the License.
 
 use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig, UNIT};
+use crate::Runtime;
 use crate::configs::BurnAccount;
 use alloc::{vec, vec::Vec};
 use frame_support::build_struct_json_patch;
@@ -52,6 +53,32 @@ fn testnet_genesis(
 		grandpa: pallet_grandpa::GenesisConfig {
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect::<Vec<_>>(),
 		},
+        // 函数级中文注释：初始化委员会（Council）成员，采用默认开发账户 Alice/Bob/Charlie。
+        // - 仅初始化成员列表，Prime 留空；后续可通过 Root 或委员会动议调整成员。
+        council: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance1> {
+            members: vec![
+                Sr25519Keyring::Alice.to_account_id(),
+                Sr25519Keyring::Bob.to_account_id(),
+                Sr25519Keyring::Charlie.to_account_id(),
+            ],
+            phantom: Default::default(),
+        },
+        technical_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance2> {
+            members: vec![
+                Sr25519Keyring::Dave.to_account_id(),
+                Sr25519Keyring::Eve.to_account_id(),
+                Sr25519Keyring::Ferdie.to_account_id(),
+            ],
+            phantom: Default::default(),
+        },
+        content_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance3> {
+            members: vec![
+                Sr25519Keyring::Alice.to_account_id(),
+                Sr25519Keyring::Bob.to_account_id(),
+                Sr25519Keyring::Charlie.to_account_id(),
+            ],
+            phantom: Default::default(),
+        },
 		sudo: SudoConfig { key: Some(root) },
 	})
 }

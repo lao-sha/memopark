@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 
 /**
- * 函数级详细中文注释：查询治理轨道元数据的 Hook（占位版）
- * - 未来通过 @polkadot/api 查询 referenda/parameters 获取轨道配置
- * - 目前返回模拟数据，保证页面可渲染与类型稳定
+ * 函数级详细中文注释：治理轨道元数据 Hook（Legacy 占位）
+ * - 主流程：委员会阈值 + 申诉治理；轨道仅用于旧版公投页面
  */
 export interface TrackMeta { id: number; name: string; summary: string }
 

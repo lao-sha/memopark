@@ -182,6 +182,8 @@ pub mod pallet {
         GovAlbumFrozen(T::AlbumId, bool),
         GovMediaHidden(T::MediaId, bool),
         GovMediaReplaced(T::MediaId),
+        /// 函数级中文注释：视频集冻结状态已变更（治理）。
+        GovVideoCollectionFrozen(T::VideoCollectionId, bool),
         /// 函数级中文注释：逝者主图已更新（Some 设置主图；None 清空）。
         PrimaryImageChanged(T::DeceasedId, Option<T::MediaId>),
         /// 函数级中文注释：投诉相关事件与分账。
@@ -191,6 +193,8 @@ pub mod pallet {
         ComplaintPayoutWinner(T::AccountId, BalanceOf<T>),
         ComplaintPayoutArbitration(T::AccountId, BalanceOf<T>),
         ComplaintPayoutLoserRefund(T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：治理证据已记录（scope,id,cid）。scope:1=Album,2=Media,3=VideoCollection,9=Deceased
+        GovEvidenceNoted(u8, u64, BoundedVec<u8, T::StringLimit>),
     }
 
     #[pallet::error]
@@ -225,6 +229,15 @@ pub mod pallet {
         pub deposit: BalanceOf<T>,
         pub created: BlockNumberFor<T>,
         pub status: ComplaintStatus,
+    }
+
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
+        fn note_evidence(scope: u8, id: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::StringLimit>, DispatchError> {
+            let bv: BoundedVec<u8, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            Self::deposit_event(Event::GovEvidenceNoted(scope, id, bv.clone()));
+            Ok(bv)
+        }
     }
 
     #[pallet::call]
@@ -300,8 +313,9 @@ pub mod pallet {
         #[pallet::call_index(15)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_primary_image_for(origin: OriginFor<T>, deceased_id: T::DeceasedId, media_id: Option<T::MediaId>) -> DispatchResult {
+        pub fn gov_set_primary_image_for(origin: OriginFor<T>, deceased_id: T::DeceasedId, media_id: Option<T::MediaId>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(9u8, deceased_id.into(), evidence_cid)?;
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             if let Some(mid) = media_id {
                 let m = MediaOf::<T>::get(mid).ok_or(Error::<T>::MediaNotFound)?;
@@ -346,8 +360,9 @@ pub mod pallet {
         #[pallet::call_index(17)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_album_primary_photo(origin: OriginFor<T>, album_id: T::AlbumId, media: Option<T::MediaId>) -> DispatchResult {
+        pub fn gov_set_album_primary_photo(origin: OriginFor<T>, album_id: T::AlbumId, media: Option<T::MediaId>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             AlbumOf::<T>::try_mutate(album_id, |maybe| -> DispatchResult {
                 let a = maybe.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
                 if let Some(mid) = media {
@@ -404,8 +419,9 @@ pub mod pallet {
         #[pallet::call_index(20)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_resolve_album_complaint(origin: OriginFor<T>, album_id: T::AlbumId, uphold: bool) -> DispatchResult {
+        pub fn gov_resolve_album_complaint(origin: OriginFor<T>, album_id: T::AlbumId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
             let key = (1u8, album_id.into());
             let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
@@ -445,8 +461,9 @@ pub mod pallet {
         #[pallet::call_index(21)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_resolve_media_complaint(origin: OriginFor<T>, media_id: T::MediaId, uphold: bool) -> DispatchResult {
+        pub fn gov_resolve_media_complaint(origin: OriginFor<T>, media_id: T::MediaId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
             let key = (2u8, media_id.into());
             let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
@@ -669,8 +686,9 @@ pub mod pallet {
         #[pallet::call_index(7)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_freeze_album(origin: OriginFor<T>, album_id: T::AlbumId, frozen: bool) -> DispatchResult {
+        pub fn gov_freeze_album(origin: OriginFor<T>, album_id: T::AlbumId, frozen: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
             AlbumFrozen::<T>::insert(album_id, frozen);
             Self::deposit_event(Event::GovAlbumFrozen(album_id, frozen));
@@ -681,8 +699,9 @@ pub mod pallet {
         #[pallet::call_index(8)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_media_hidden(origin: OriginFor<T>, media_id: T::MediaId, hidden: bool) -> DispatchResult {
+        pub fn gov_set_media_hidden(origin: OriginFor<T>, media_id: T::MediaId, hidden: bool, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
             MediaHidden::<T>::insert(media_id, hidden);
             // 若隐藏的是逝者主图，则联动清空
@@ -708,8 +727,9 @@ pub mod pallet {
         #[pallet::call_index(9)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::MediaId, new_uri: Vec<u8>) -> DispatchResult {
+        pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::MediaId, new_uri: Vec<u8>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             MediaOf::<T>::try_mutate(media_id, |maybe| -> DispatchResult {
                 let m = maybe.as_mut().ok_or(Error::<T>::MediaNotFound)?;
                 m.uri = BoundedVec::try_from(new_uri).map_err(|_| Error::<T>::BadInput)?;
@@ -724,8 +744,9 @@ pub mod pallet {
         #[pallet::call_index(10)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_remove_media(origin: OriginFor<T>, media_id: T::MediaId) -> DispatchResult {
+        pub fn gov_remove_media(origin: OriginFor<T>, media_id: T::MediaId, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             let existed = MediaOf::<T>::take(media_id).ok_or(Error::<T>::MediaNotFound)?;
             if let Some(aid) = existed.album_id { MediaByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| *x == media_id) { list.swap_remove(pos); } }); }
             if let Some(vsid) = existed.video_collection_id { MediaByVideoCollection::<T>::mutate(vsid, |list| { if let Some(pos) = list.iter().position(|x| *x == media_id) { list.swap_remove(pos); } }); }
@@ -735,17 +756,32 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级中文注释：【治理】冻结/解冻视频集。
+        /// - 仅治理起源；常用于大规模违规内容的临时冻结或恢复。
+        #[pallet::call_index(22)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn gov_freeze_video_collection(origin: OriginFor<T>, video_id: T::VideoCollectionId, frozen: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(3u8, video_id.into(), evidence_cid)?;
+            ensure!(VideoCollectionOf::<T>::contains_key(video_id), Error::<T>::VideoCollectionNotFound);
+            VideoCollectionFrozen::<T>::insert(video_id, frozen);
+            Self::deposit_event(Event::GovVideoCollectionFrozen(video_id, frozen));
+            Ok(())
+        }
+
         // ============== 治理专用最终落地接口（无私钥路径） ==============
         /// 函数级中文注释：【治理】代表 owner 创建相册（押金/费用从 owner 账户处理）。
         #[pallet::call_index(11)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_create_album_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, title: Vec<u8>, desc: Vec<u8>, visibility: u8, tags: Vec<Vec<u8>>) -> DispatchResult {
+        pub fn gov_create_album_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, title: Vec<u8>, desc: Vec<u8>, visibility: u8, tags: Vec<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             // 重用 create_album 逻辑（以 owner 身份扣费/押金）
             // 简化：直接内联实现，避免 cross-dispatch
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             ensure!(T::DeceasedProvider::can_manage(&owner, deceased_id), Error::<T>::NotAuthorized);
+            let _ = Self::note_evidence(9u8, deceased_id.into(), evidence_cid)?;
             let title_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(title).map_err(|_| Error::<T>::BadInput)?;
             let desc_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(desc).map_err(|_| Error::<T>::BadInput)?;
             let mut tags_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxTags> = Default::default();
@@ -766,7 +802,7 @@ pub mod pallet {
         #[pallet::call_index(12)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_add_media_for(origin: OriginFor<T>, owner: T::AccountId, container_kind: u8, container_id: u64, kind: u8, uri: Vec<u8>, thumbnail_uri: Option<Vec<u8>>, content_hash: Option<[u8;32]>, duration_secs: Option<u32>, width: Option<u32>, height: Option<u32>, order_index: Option<u32>) -> DispatchResult {
+        pub fn gov_add_media_for(origin: OriginFor<T>, owner: T::AccountId, container_kind: u8, container_id: u64, kind: u8, uri: Vec<u8>, thumbnail_uri: Option<Vec<u8>>, content_hash: Option<[u8;32]>, duration_secs: Option<u32>, width: Option<u32>, height: Option<u32>, order_index: Option<u32>, evidence_cid: Vec<u8>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             // 直接重用 add_media 的核心逻辑，但以 owner 账户处理押金
             let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
@@ -779,6 +815,7 @@ pub mod pallet {
                     let album = AlbumOf::<T>::get(aid).ok_or(Error::<T>::AlbumNotFound)?;
                     ensure!(album.owner == owner, Error::<T>::NotAuthorized);
                     ensure!(!AlbumFrozen::<T>::get(aid), Error::<T>::Frozen);
+                    let _ = Self::note_evidence(1u8, aid.into(), evidence_cid)?;
                     if let (Some(w), Some(h)) = (width, height) { ensure!(w > 0 && h > 0, Error::<T>::BadInput); }
                     let id = NextMediaId::<T>::get(); NextMediaId::<T>::put(id.saturating_add(T::MediaId::from(1u64)));
                     let mut list = MediaByAlbum::<T>::get(aid);
@@ -798,6 +835,7 @@ pub mod pallet {
                     ensure!(vs.owner == owner, Error::<T>::NotAuthorized);
                     ensure!(!VideoCollectionFrozen::<T>::get(vsid), Error::<T>::Frozen);
                     if let Some(d) = duration_secs { ensure!(d > 0u32, Error::<T>::BadInput); }
+                    let _ = Self::note_evidence(3u8, vsid.into(), evidence_cid)?;
                     let id = NextMediaId::<T>::get(); NextMediaId::<T>::put(id.saturating_add(T::MediaId::from(1u64)));
                     let mut list = MediaByVideoCollection::<T>::get(vsid);
                     let ord = order_index.unwrap_or(list.len() as u32);

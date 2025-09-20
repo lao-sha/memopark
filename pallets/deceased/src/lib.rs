@@ -128,6 +128,11 @@ pub mod pallet {
 
         /// 权重信息
         type WeightInfo: WeightInfo;
+
+        /// 函数级中文注释：治理起源（内容治理轨道/委员会白名单/Root 等）。
+        /// - 用于本 Pallet 的治理专用接口（gov*），执行“失钥救济/内容治理类 C/U/D”。
+        /// - 建议在 Runtime 中绑定为 EitherOfDiverse<Root, EnsureContentSigner>，与其他内容域保持一致。
+        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     #[pallet::storage]
@@ -181,6 +186,10 @@ pub mod pallet {
         RelationUpdated(T::DeceasedId, T::DeceasedId),
         /// 函数级中文注释：主图已更新（true=设置/修改；false=清空）
         MainImageUpdated(T::DeceasedId, bool),
+        /// 函数级中文注释：治理证据已记录 (id, evidence_cid)。
+        GovEvidenceNoted(T::DeceasedId, BoundedVec<u8, T::TokenLimit>),
+        /// 函数级中文注释：治理设置主图（Some 设置；None 清空）。
+        GovMainImageSet(T::DeceasedId, bool),
     }
 
     #[pallet::error]
@@ -325,6 +334,13 @@ pub mod pallet {
             if let Some(rec) = FriendsOf::<T>::get(deceased_id, who) {
                 matches!(rec.role, FriendRole::Admin)
             } else { false }
+        }
+
+        /// 函数级中文注释（内部工具）：将证据 CID 记入事件，返回有界向量。
+        pub(crate) fn note_evidence(id: T::DeceasedId, cid: Vec<u8>) -> Result<BoundedVec<u8, T::TokenLimit>, sp_runtime::DispatchError> {
+            let bv: BoundedVec<u8, T::TokenLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+            Self::deposit_event(Event::GovEvidenceNoted(id, bv.clone()));
+            Ok(bv)
         }
     }
 
@@ -638,6 +654,133 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级中文注释：【治理】设置/清空逝者主图（CID）。
+        /// - 允许非 owner，通过治理路径强制修复头像内容；记录证据。
+        #[pallet::call_index(45)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn gov_set_main_image(origin: OriginFor<T>, id: T::DeceasedId, cid: Option<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(id, evidence_cid)?;
+            let is_some = cid.is_some();
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                d.main_image_cid = match cid { Some(v)=>Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None };
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                Ok(())
+            })?;
+            Self::deposit_event(Event::GovMainImageSet(id, is_some));
+            Ok(())
+        }
+
+        // =================== 治理专用接口（gov*） ===================
+        /// 函数级中文注释：治理更新逝者信息（不变更 owner）。
+        /// - 起源：T::GovernanceOrigin（内容治理轨道授权/委员会白名单/Root）。
+        /// - 要求：必须携带证据 CID（IPFS 明文），仅长度校验，内容由前端/索引侧审计。
+        /// - 行为：与 `update_deceased` 类似，但不校验 owner；不可更改 owner。
+        #[pallet::call_index(42)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn gov_update_profile(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            name: Option<Vec<u8>>,
+            name_badge: Option<Vec<u8>>,
+            gender_code: Option<u8>,
+            name_full_cid: Option<Option<Vec<u8>>>,
+            birth_ts: Option<Option<Vec<u8>>>,
+            death_ts: Option<Option<Vec<u8>>>,
+            links: Option<Vec<Vec<u8>>>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(id, evidence_cid)?;
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                let original_owner = d.owner.clone();
+                let old_token = d.deceased_token.clone();
+                if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(nb) = name_badge {
+                    let vec = nb.into_iter().filter_map(|b| { let up = if (b'a'..=b'z').contains(&b) { b-32 } else { b }; if (b'A'..=b'Z').contains(&up) { Some(up) } else { None } }).collect::<Vec<u8>>();
+                    d.name_badge = BoundedVec::try_from(vec).map_err(|_| Error::<T>::BadInput)?;
+                }
+                if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
+                if let Some(cid_opt) = name_full_cid {
+                    d.name_full_cid = match cid_opt { Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                }
+                if let Some(bi) = birth_ts {
+                    d.birth_ts = match bi { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                }
+                if let Some(de) = death_ts {
+                    d.death_ts = match de { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                }
+                if let Some(ls) = links {
+                    let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
+                    for l in ls.into_iter() {
+                        let lb: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
+                        links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
+                    }
+                    d.links = links_bv;
+                }
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                // 重建 token 并维护唯一索引
+                let mut v: Vec<u8> = Vec::new();
+                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
+                v.push(c);
+                if let Some(ref b) = d.birth_ts { v.extend_from_slice(b.as_slice()); }
+                if let Some(ref de) = d.death_ts { v.extend_from_slice(de.as_slice()); }
+                v.extend_from_slice(d.name_badge.as_slice());
+                let max = <T as Config>::TokenLimit::get() as usize; if v.len() > max { v.truncate(max); }
+                let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                if new_token != old_token {
+                    if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) { if existing_id != id { return Err(Error::<T>::DeceasedTokenExists.into()); } }
+                    d.deceased_token = new_token.clone();
+                    DeceasedIdByToken::<T>::remove(old_token);
+                    DeceasedIdByToken::<T>::insert(new_token, id);
+                }
+                ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DeceasedUpdated(id));
+            Ok(())
+        }
+
+        /// 函数级中文注释：治理迁移逝者到新墓位（不更改 owner）。
+        #[pallet::call_index(43)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::transfer())]
+        pub fn gov_transfer_deceased(origin: OriginFor<T>, id: T::DeceasedId, new_grave: T::GraveId, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(id, evidence_cid)?;
+            ensure!(T::GraveProvider::grave_exists(new_grave), Error::<T>::GraveNotFound);
+            let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
+            ensure!(existing_in_target < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                let original_owner = d.owner.clone();
+                DeceasedByGrave::<T>::try_mutate(new_grave, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
+                DeceasedByGrave::<T>::mutate(d.grave_id, |list| { if let Some(pos) = list.iter().position(|x| x == &id) { list.swap_remove(pos); } });
+                let old = d.grave_id;
+                d.grave_id = new_grave;
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
+                Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
+                Ok(())
+            })
+        }
+
+        /// 函数级中文注释：治理设置可见性（不要求 owner/Admin）。
+        #[pallet::call_index(44)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn gov_set_visibility(origin: OriginFor<T>, id: T::DeceasedId, public: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let _ = Self::note_evidence(id, evidence_cid)?;
+            ensure!(DeceasedOf::<T>::contains_key(id), Error::<T>::DeceasedNotFound);
+            VisibilityOf::<T>::insert(id, public);
+            Self::deposit_event(Event::VisibilityChanged(id, public));
+            Ok(())
+        }
         /// 函数级中文注释：从 A(发起方) → B(对方) 发起关系绑定请求。
         /// - 权限：A 所属墓位的管理员（通过 GraveProvider::can_attach(sender, A.grave_id) 判定）。
         #[pallet::call_index(4)]

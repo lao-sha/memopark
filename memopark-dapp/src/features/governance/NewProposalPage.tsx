@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import TrackSelector, { type TrackOption } from './components/TrackSelector';
 import { useTracks } from './hooks/useTracks';
-import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage, buildMediaGovFreezeAlbum, buildMediaGovSetMediaHidden, buildMediaGovReplaceMediaUri, buildMediaGovRemoveMedia, buildOriginRestrictionSetGlobalAllowPreimage, buildMediaComplainAlbum, buildMediaComplainMedia, buildMediaGovResolveAlbumComplaint, buildMediaGovResolveMediaComplaint } from './lib/governance';
+import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage, buildMediaGovFreezeAlbum as buildMediaGovFreezeAlbumWithEvidence, buildMediaGovSetMediaHidden, buildMediaGovReplaceMediaUri, buildMediaGovRemoveMedia, buildOriginRestrictionSetGlobalAllowPreimage, buildMediaComplainAlbum, buildMediaComplainMedia, buildMediaGovResolveAlbumComplaint, buildMediaGovResolveMediaComplaint } from './lib/governance';
 import PasswordModal from './components/PasswordModal';
 import { appendTx } from '../../lib/txHistory';
 import { useWallet } from '../../providers/WalletProvider';
@@ -143,7 +143,9 @@ const NewProposalPage: React.FC = () => {
             <button onClick={async()=>{
               try {
                 if (!/^\d+$/.test(albumId)) return window.alert('albumId 需为数字')
-                const { hex, hash } = await buildMediaGovFreezeAlbum(parseInt(albumId,10), albumFrozen)
+                const evidence = window.prompt('请输入证据CID（冻结/解冻需证据）') || ''
+                if (!evidence) return window.alert('证据CID不能为空')
+                const { hex, hash } = await buildMediaGovFreezeAlbumWithEvidence(parseInt(albumId,10), albumFrozen, evidence)
                 setPreimage(hex); window.alert(`已生成预映像\n哈希：${hash}`)
               } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
             }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>冻结/解冻相册 预映像</button>

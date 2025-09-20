@@ -3,10 +3,8 @@ import { getApi } from '../../../lib/polkadot-safe'
 import { fetchReferendaRecent, fetchReferendumDetail } from '../lib/governance'
 
 /**
- * 函数级详细中文注释：公投列表与详情的 Hooks（占位实现）
- * - useReferendaList：返回公投卡片基本信息的列表，后续接入链上与索引
- * - useReferendum：返回单个公投详情（状态、轨道、预映像哈希等占位字段）
- * - 设计目标：在无 Subsquid 的前提下可先行开发 UI，不阻塞编译
+ * 函数级详细中文注释：公投列表与详情 Hooks（Legacy 占位）
+ * - 说明：主流程已迁移到“委员会阈值 + 申诉治理”；此处仅为兼容旧页面的占位实现
  */
 
 export interface ReferendumBrief {
