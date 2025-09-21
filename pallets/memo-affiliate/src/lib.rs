@@ -3,6 +3,7 @@
 #![allow(deprecated)]
 
 pub use pallet::*;
+extern crate alloc;
 
 /// 函数级中文注释：对外暴露的“消费上报”Trait，供供奉/消费来源调用。
 /// - 托管模式：只记账与托管归集，不即时发放；
@@ -24,6 +25,7 @@ pub mod pallet {
         traits::{Currency, ExistenceRequirement::KeepAlive, StorageVersion, Get, ConstU32},
     };
     use frame_system::pallet_prelude::*;
+    use alloc::vec::Vec;
     use core::convert::TryInto;
     use frame_support::sp_runtime::traits::{AccountIdConversion, Saturating};
     use pallet_memo_referrals::ReferralProvider;
@@ -140,6 +142,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type SettleCursor<T: Config> = StorageMap<_, Blake2_128Concat, u32, u32, ValueQuery>;
 
+    /// 函数级中文注释：账户主推荐码（一次性领取，不可重复）。
+    #[pallet::storage]
+    pub type CodeOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
+
+    /// 函数级中文注释：推荐码归属索引（规范化码 → 账户）。
+    #[pallet::storage]
+    pub type OwnerOfCode<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -157,6 +167,9 @@ pub mod pallet {
         RewardClaimed { cycle: u32, to: T::AccountId, amount: BalanceOf<T> },
         /// 参数更新（预算来源/上限/门槛）。
         RewardParamsUpdated,
+        /// 函数级中文注释：已为账户分配唯一推荐码（默认码）。
+        /// - code 采用规范化（大写十六进制）编码，仅包含 [0-9A-F]，长度固定 8。
+        ReferralCodeAssigned { who: T::AccountId, code: BoundedVec<u8, ConstU32<16>> },
     }
 
     #[pallet::error]
@@ -165,6 +178,12 @@ pub mod pallet {
         BadParams,
         /// 目标周无应结数据。
         NothingToSettle,
+        /// 函数级中文注释：尚未绑定推荐人（sponsor），不可领取默认码。
+        NotEligible,
+        /// 函数级中文注释：已存在推荐码，不可重复领取。
+        AlreadyHasCode,
+        /// 函数级中文注释：推荐码生成发生冲突（重试后仍冲突）。
+        CodeCollision,
     }
 
     #[pallet::hooks]
@@ -265,6 +284,46 @@ pub mod pallet {
             if let Some(ms) = min_stake_for_reward { MinStakeForReward::<T>::put(ms); }
             if let Some(mq) = min_qual_actions { MinQualifyingAction::<T>::put(mq); }
             Self::deposit_event(Event::RewardParamsUpdated);
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：领取默认推荐码（一次性，不可重复）。
+        /// - 条件：该账户必须已绑定推荐人（Referrals.sponsor_of(Some)）。
+        /// - 生成：取 blake2_256(account_id ++ salt) 的前 4 字节，编码为大写十六进制（长度 8）。
+        /// - 冲突：如已被占用，salt 自增重试（最多 8 次）。
+        #[pallet::call_index(3)]
+        #[pallet::weight(10_000)]
+        pub fn claim_default_code(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(<Self as ReferralView<T>>::sponsor_of(&who).is_some(), Error::<T>::NotEligible);
+            ensure!(!CodeOf::<T>::contains_key(&who), Error::<T>::AlreadyHasCode);
+
+            let mut salt: u8 = 0;
+            let mut assigned: Option<BoundedVec<u8, ConstU32<16>>> = None;
+            while salt < 8 {
+                let mut bytes: Vec<u8> = who.encode();
+                bytes.push(salt);
+                let hash = sp_core::hashing::blake2_256(&bytes);
+                // 取前 4 字节，编码为 8 位大写十六进制
+                let mut code_bytes: [u8; 8] = [0u8; 8];
+                for i in 0..4 {
+                    let b = hash[i];
+                    code_bytes[i*2] = Self::hex_upper(b >> 4);
+                    code_bytes[i*2+1] = Self::hex_upper(b & 0x0F);
+                }
+                let vec_code = code_bytes.to_vec();
+                let bv_key: BoundedVec<u8, ConstU32<16>> = BoundedVec::try_from(vec_code.clone()).map_err(|_| Error::<T>::CodeCollision)?;
+                if !OwnerOfCode::<T>::contains_key(&bv_key) {
+                    let bv: BoundedVec<u8, ConstU32<16>> = bv_key.clone();
+                    CodeOf::<T>::insert(&who, &bv);
+                    OwnerOfCode::<T>::insert(&bv_key, who.clone());
+                    assigned = Some(bv);
+                    break;
+                }
+                salt = salt.saturating_add(1);
+            }
+            ensure!(assigned.is_some(), Error::<T>::CodeCollision);
+            Self::deposit_event(Event::ReferralCodeAssigned { who, code: assigned.unwrap() });
             Ok(())
         }
     }
@@ -389,6 +448,10 @@ pub mod pallet {
         pub fn report(who: &T::AccountId, amount: BalanceOf<T>, meta: Option<(u8, u64)>, now: BlockNumberFor<T>, duration_weeks: Option<u32>) {
             <Self as crate::ConsumptionReporter<_, _, _>>::report(who, amount, meta, now, duration_weeks)
         }
+
+        /// 函数级中文注释：十六进制编码辅助（大写）。输入低 4 比特，返回 ASCII 字节。
+        #[inline]
+        fn hex_upper(n: u8) -> u8 { match n { 0..=9 => b'0'+n, 10..=15 => b'A'+(n-10), _ => b'0' } }
     }
 
     

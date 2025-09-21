@@ -1,43 +1,23 @@
-module.exports = {
-    root: true,
-    env: {
-        browser: true,
-        es2021: true,
-        node: true
-    },
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+import { globalIgnores } from 'eslint/config'
+
+export default tseslint.config([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
     extends: [
-        'eslint:recommended',
-        '@typescript-eslint/recommended',
-        'prettier'
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs['recommended-latest'],
+      reactRefresh.configs.vite,
     ],
-    parser: '@typescript-eslint/parser',
-    parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module'
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.browser,
     },
-    plugins: [
-        '@typescript-eslint'
-    ],
-    rules: {
-        // AI 生成代码的常见问题规则
-        'no-unused-vars': 'warn',
-        'no-console': 'warn',
-        'prefer-const': 'error',
-        'no-var': 'error',
-
-        // TypeScript 规则
-        '@typescript-eslint/no-explicit-any': 'warn',
-        '@typescript-eslint/no-unused-vars': 'warn',
-
-        // 代码风格
-        'quotes': ['error', 'single'],
-        'semi': ['error', 'never'],
-        'comma-dangle': ['error', 'never']
-    },
-    ignorePatterns: [
-        'node_modules/',
-        'dist/',
-        'build/',
-        '*.min.js'
-    ]
-}
+  },
+])

@@ -145,6 +145,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type Interments<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<IntermentRecord<T>, T::MaxIntermentsPerGrave>, ValueQuery>;
 
+    /// 函数级中文注释：主逝者反向索引。记录每个墓位的“主逝者”ID，便于索引层或其他 Pallet 快速定位，避免线性扫描。
+    /// 维护策略：
+    /// - 在首次安葬(`inter`)时若尚未设置，则将该逝者设为主逝者；
+    /// - 在起掘(`exhume`)移除当前主逝者时，从剩余安葬记录中挑选一个作为新的主逝者（优先选择 slot 最小的记录）；
+    /// - 若墓位无安葬记录，则清除该索引。
+    #[pallet::storage]
+    pub type PrimaryDeceasedOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
+
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
     pub struct GraveMeta { pub categories: u32, pub religion: u8 }
 
@@ -667,6 +675,10 @@ pub mod pallet {
                 // 简化：不做重复槽校验，记录层面由上层约束（可扩展）
                 records.try_push(IntermentRecord::<T> { deceased_id, slot: use_slot, time: now, note_cid }).map_err(|_| Error::<T>::CapacityExceeded)?;
                 Interments::<T>::insert(id, records);
+                // 维护主逝者：若尚未设置，则将本次安葬设为主逝者
+                if !PrimaryDeceasedOf::<T>::contains_key(id) {
+                    PrimaryDeceasedOf::<T>::insert(id, deceased_id);
+                }
                 // 同步令牌列表：拉取 token 并加入 deceased_tokens（最多保留 6 条，先进先出）
                 if let Some(mut g) = Graves::<T>::get(id) {
                     if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
@@ -699,6 +711,21 @@ pub mod pallet {
                 if let Some(pos) = records.iter().position(|r| r.deceased_id == deceased_id) {
                     records.swap_remove(pos);
                     Interments::<T>::insert(id, records);
+                    // 若移除的是当前主逝者，则重选主逝者
+                    if PrimaryDeceasedOf::<T>::get(id) == Some(deceased_id) {
+                        let recs = Interments::<T>::get(id);
+                        if recs.is_empty() {
+                            PrimaryDeceasedOf::<T>::remove(id);
+                        } else {
+                            // 选择 slot 最小者作为新的主逝者
+                            let mut best = recs[0].deceased_id;
+                            let mut best_slot = recs[0].slot;
+                            for r in recs.iter() {
+                                if r.slot < best_slot { best = r.deceased_id; best_slot = r.slot; }
+                            }
+                            PrimaryDeceasedOf::<T>::insert(id, best);
+                        }
+                    }
                     Ok(())
                 } else {
                     Err(Error::<T>::NotFound.into())

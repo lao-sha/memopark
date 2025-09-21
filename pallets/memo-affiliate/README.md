@@ -1,4 +1,11 @@
 # pallet-memo-affiliate
+## 推荐码（已迁移与去耦）
+
+- 自本版本起，推荐码的“策略/生成/事件”已统一迁移至 `pallet-memo-referrals`：
+  - 领取入口：`memoReferrals.claimDefaultCode()`（仅当已绑定 sponsor 时可领，一次性）。
+  - 事件：`memo_referrals.ReferralCodeAssigned`（Subsquid 监听以建立 code↔owner 映射）。
+  - 策略治理（可选扩展）：长度/黑名单/是否允许重领，均在 referrals 侧集中治理，affiliate 不再承载，降低耦合与维护成本。
+  - 前端：Profile 页读取/领取推荐码统一迁往 `memoReferrals`。
 
 联盟计酬模块（托管结算 + 15 层压缩分配），依赖 `pallet-memo-referrals` 作为唯一推荐关系源。
 

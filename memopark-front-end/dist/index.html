@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- 开发模式下移除 CSP 等强限制，避免 Vite HMR/React Refresh 被拦截导致白屏。
+         线上部署再由网关/服务器注入严格安全头。 -->
+    
+    <title>Memopark DApp - 纪念公园</title>
+    <script type="module" crossorigin src="/assets/index-BgdTO_Sp.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CKgIy66X.css">
+  </head>
+  <body>
+    <div id="root">
+      <div style="padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto;">
+        正在启动应用… 如果一直停留在此，请按 F12 打开控制台截图给我们。
+      </div>
+    </div>
+    <script>
+      // 开发自检：确认浏览器脚本是否能执行
+      try {
+        const el = document.getElementById('root')
+        if (el) {
+          const now = new Date().toLocaleTimeString()
+          el.firstElementChild && (el.firstElementChild.textContent = `脚本已执行(${now})，开始加载应用…`)
+          console.log('[memopark] Inline script executed at', now)
+        }
+      } catch (e) {
+        console.error('[memopark] Inline script error', e)
+      }
+    </script>
+    <script>
+      // 后备加载：若 /src/main.tsx 未执行，则尝试动态导入并回显错误
+      (async () => {
+        if (!(window).__memopark_main_loaded__) {
+          const root = document.getElementById('root')
+          try {
+            root && root.firstElementChild && (root.firstElementChild.textContent = '尝试后备加载 main.tsx …')
+            await import('data:application/octet-stream;base64,aW1wb3J0IHsgU3RyaWN0TW9kZSB9IGZyb20gJ3JlYWN0JwppbXBvcnQgeyBjcmVhdGVSb290IH0gZnJvbSAncmVhY3QtZG9tL2NsaWVudCcKaW1wb3J0ICcuL2luZGV4LmNzcycKaW1wb3J0ICdhbnRkL2Rpc3QvcmVzZXQuY3NzJwppbXBvcnQgQXBwIGZyb20gJy4vQXBwLnRzeCcKaW1wb3J0IEVycm9yQm91bmRhcnkgZnJvbSAnLi9jb21wb25lbnRzL0Vycm9yQm91bmRhcnknCgovLyDosIPor5XvvJrlnKggUmVhY3Qg5riy5p+T5YmN5pu05paw5Y2g5L2N5paH5qGI77yM56Gu6K6k5qih5Z2X5bey5omn6KGMCnRyeSB7CiAgY29uc3QgZWwgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgncm9vdCcpCiAgaWYgKGVsICYmIGVsLmZpcnN0RWxlbWVudENoaWxkKSB7CiAgICBlbC5maXJzdEVsZW1lbnRDaGlsZC50ZXh0Q29udGVudCA9ICdtYWluLnRzeCDlt7LliqDovb3vvIzlh4blpIfmjILovb0gUmVhY3TigKYnCiAgfQogIC8vIOagh+iusOWIsOWFqOWxgOS7peS+v+aOkuafpQogIDsod2luZG93IGFzIGFueSkuX19tZW1vcGFya19tYWluX2xvYWRlZF9fID0gdHJ1ZQp9IGNhdGNoIChlKSB7CiAgY29uc29sZS5lcnJvcignW21haW4udHN4XSBwcmUtbW91bnQgZXJyb3InLCBlKQp9CgpjcmVhdGVSb290KGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdyb290JykhKS5yZW5kZXIoCiAgPFN0cmljdE1vZGU+CiAgICA8RXJyb3JCb3VuZGFyeT4KICAgICAgPEFwcCAvPgogICAgPC9FcnJvckJvdW5kYXJ5PgogIDwvU3RyaWN0TW9kZT4KKQo=')
+            console.log('[memopark] Fallback dynamic import succeeded')
+          } catch (e) {
+            console.error('[memopark] Fallback dynamic import failed', e)
+            root && root.firstElementChild && (root.firstElementChild.textContent = '加载失败：' + (e && (e.message || e)))
+          }
+        }
+      })()
+    </script>
+  </body>
+</html>

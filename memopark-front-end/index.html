@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- 开发模式下移除 CSP 等强限制，避免 Vite HMR/React Refresh 被拦截导致白屏。
+         线上部署再由网关/服务器注入严格安全头。 -->
+    
+    <title>Memopark DApp - 纪念公园</title>
+  </head>
+  <body>
+    <div id="root">
+      <div style="padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto;">
+        正在启动应用… 如果一直停留在此，请按 F12 打开控制台截图给我们。
+      </div>
+    </div>
+    <script>
+      // 开发自检：确认浏览器脚本是否能执行
+      try {
+        const el = document.getElementById('root')
+        if (el) {
+          const now = new Date().toLocaleTimeString()
+          el.firstElementChild && (el.firstElementChild.textContent = `脚本已执行(${now})，开始加载应用…`)
+          console.log('[memopark] Inline script executed at', now)
+        }
+      } catch (e) {
+        console.error('[memopark] Inline script error', e)
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // 后备加载：若 /src/main.tsx 未执行，则尝试动态导入并回显错误
+      (async () => {
+        if (!(window).__memopark_main_loaded__) {
+          const root = document.getElementById('root')
+          try {
+            root && root.firstElementChild && (root.firstElementChild.textContent = '尝试后备加载 main.tsx …')
+            await import('/src/main.tsx')
+            console.log('[memopark] Fallback dynamic import succeeded')
+          } catch (e) {
+            console.error('[memopark] Fallback dynamic import failed', e)
+            root && root.firstElementChild && (root.firstElementChild.textContent = '加载失败：' + (e && (e.message || e)))
+          }
+        }
+      })()
+    </script>
+  </body>
+</html>

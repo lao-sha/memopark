@@ -21,6 +21,46 @@
 5) 巡检与修复：OCW 周期遍历 `PinState in {Pinning,Pinned}`，不足副本则再次 `POST /pins`（指数退避与全局锁防抖）；后续可细化 `ReplicaDegraded/ReplicaRepaired`
 6) SLA 统计：OCW 读 `/peers` 上报 `report_probe(ok)`；基金会按期 `close_epoch_and_pay(budget)` 依权重发放
 
+## 计费生命周期（新增）
+
+设计目标：上传与计费解耦；以链上请求为付费起点；从“主体派生资金账户”自动扣费，事件可审计、治理可控。
+
+- 主体资金账户：`subject_account = SubjectPalletId.into_sub_account_truncating((owner, subject_id))`（不可签名，仅托管/扣费）。
+- 两步法：用户先向主体资金账户充值；再调用 `request_pin_for_deceased(subject_id, ...)` 固化进入生命周期。
+- 周期扣费：按周（可配置）从主体账户扣 MEMO，失败进入宽限，超期过期。
+
+### 新增存储
+- `PricePerGiBWeek: u128`：每 GiB·周 单价（最小单位）。
+- `BillingPeriodBlocks: u32`：计费周期区块数（默认 100_800 ≈ 1 周）。
+- `GraceBlocks: u32`：宽限期区块数。
+- `MaxChargePerBlock: u32`：每块最大扣费数（限流）。
+- `SubjectMinReserve: Balance`：主体账户最低保留（KeepAlive 保护）。
+- `BillingPaused: bool`：计费暂停开关。
+- `PinBilling{cid_hash -> (next_charge_at, unit_price_snapshot, state)}`：state=0 Active/1 Grace/2 Expired。
+- `PinSubjectOf{cid_hash -> (owner, subject_id)}`：仅“主体扣费”场景登记来源。
+- `DueQueue{block -> Vec<cid_hash>}`：到期队列（每块处理上限）。
+
+### 新增事件
+- `PinCharged(cid_hash, amount, period_blocks, next_charge_at)`：成功扣费并推进下一期。
+- `PinGrace(cid_hash)`：余额不足进入宽限。
+- `PinExpired(cid_hash)`：超出宽限仍不足，标记过期。
+
+### 扣费计算
+`amount = ceil(size_bytes / GiB) * replicas * PricePerGiBWeek`。为避免小数，建议使用整数定价基数。
+
+### 新增接口
+- `request_pin_for_deceased(subject_id, cid_hash, size_bytes, replicas, price)`：从主体资金账户一次性扣除请求价，并初始化计费（登记 `PinSubjectOf`、`PinBilling`、入队 `DueQueue`）。
+- `charge_due(limit)`【治理/白名单】：处理当前区块到期的 ≤limit 个 CID，完成扣费/宽限/过期处理，并事件记录。
+- `set_billing_params(price_per_gib_week?, period_blocks?, grace_blocks?, max_charge_per_block?, subject_min_reserve?, paused?)`：治理更新参数（可部分更新）。
+
+### 安全与治理
+- 仅允许 Pallet 内从“主体派生账户”扣款；金额依据链上参数与 CID 元数据计算；转账采用 `KeepAlive` 并校验 `free - amount ≥ SubjectMinReserve`。
+- 通过 `BillingPaused` 可暂停计费；参数可治理调整；白名单服务商可触发 `charge_due(limit)` 无权变更金额。
+
+### 前端使用建议
+- 两步法页面展示：主体资金账户余额、预估单周成本、下次扣费区块、当前状态（Active/Grace/Expired）。
+- 支持输入 owner+subject_id 推导派生地址并一键复制；提供充值快捷入口。
+
 ## 存储（新增）
 - `PinMeta{cid_hash -> (replicas, size_bytes, created, last_checked)}`
 - `PinStateOf{cid_hash -> u8}`：0=Requested,1=Pinning,2=Pinned,3=Degraded,4=Failed

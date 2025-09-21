@@ -20,6 +20,13 @@ use serde_json::Value as JsonValue;
 
 pub use pallet::*;
 
+/// 函数级详细中文注释：逝者 owner 只读提供者（低耦合）。
+/// - 由 runtime 注入实现，通常从 pallet-deceased 读取 owner 字段。
+pub trait OwnerProvider<AccountId> {
+    /// 返回 subject(owner)；None 表示 subject 不存在。
+    fn owner_of(subject_id: u64) -> Option<AccountId>;
+}
+
 /// 专用 Offchain 签名 KeyType。注意：需要在节点端注册对应密钥。
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"ipfs");
 
@@ -40,9 +47,12 @@ pub mod pallet {
     use frame_support::traits::StorageVersion;
     use frame_support::traits::ConstU32;
     use sp_runtime::traits::Saturating;
+    use sp_runtime::SaturatedConversion;
     // 已移除签名交易上报，避免对 CreateSignedTransaction 约束
     use frame_support::traits::tokens::Imbalance;
     use alloc::string::ToString;
+    use frame_support::PalletId;
+    use sp_runtime::traits::AccountIdConversion;
 
     /// 余额别名
     pub type BalanceOf<T> = <T as Config>::Balance;
@@ -82,6 +92,14 @@ pub mod pallet {
 
         /// 权重信息占位
         type WeightInfo: WeightInfo;
+
+        /// 函数级中文注释：派生“主题资金账户”的 PalletId（creator+subject_id 派生稳定地址）
+        #[pallet::constant]
+        type SubjectPalletId: Get<PalletId>;
+
+        /// 函数级中文注释：逝者所有者只读提供者（低耦合）。
+        /// - 返回 `Some(owner)` 则视为 subject 存在；None 表示不存在。
+        type OwnerProvider: OwnerProvider<Self::AccountId>;
     }
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
@@ -155,6 +173,57 @@ pub mod pallet {
     #[pallet::storage]
     pub type OperatorSla<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, SlaStats<T>, ValueQuery>;
 
+    // ====== 计费与生命周期（最小增量）======
+    /// 函数级中文注释：每 GiB·周 单价（治理可调）。单位使用链上最小余额单位的整数，建议采用按字节的定点基数以避免小数。
+    #[pallet::type_value]
+    pub fn DefaultPricePerGiBWeek<T: Config>() -> u128 { 1_000_000_000 }
+    #[pallet::storage]
+    pub type PricePerGiBWeek<T: Config> = StorageValue<_, u128, ValueQuery, DefaultPricePerGiBWeek<T>>;
+
+    /// 函数级中文注释：计费周期（块），默认一周（6s/块 × 60 × 60 × 24 × 7 = 100_800）。
+    #[pallet::type_value]
+    pub fn DefaultBillingPeriodBlocks<T: Config>() -> u32 { 100_800 }
+    #[pallet::storage]
+    pub type BillingPeriodBlocks<T: Config> = StorageValue<_, u32, ValueQuery, DefaultBillingPeriodBlocks<T>>;
+
+    /// 函数级中文注释：宽限期（块）。在余额不足时进入 Grace，超过宽限仍不足则过期。
+    #[pallet::type_value]
+    pub fn DefaultGraceBlocks<T: Config>() -> u32 { 10_080 }
+    #[pallet::storage]
+    pub type GraceBlocks<T: Config> = StorageValue<_, u32, ValueQuery, DefaultGraceBlocks<T>>;
+
+    /// 函数级中文注释：每块处理的最大扣费数，用于限流保护。
+    #[pallet::type_value]
+    pub fn DefaultMaxChargePerBlock<T: Config>() -> u32 { 50 }
+    #[pallet::storage]
+    pub type MaxChargePerBlock<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMaxChargePerBlock<T>>;
+
+    /// 函数级中文注释：主体资金账户最低保留（KeepAlive 余量），扣费需确保余额-金额≥该值。
+    #[pallet::type_value]
+    pub fn DefaultSubjectMinReserve<T: Config>() -> BalanceOf<T> { BalanceOf::<T>::default() }
+    #[pallet::storage]
+    pub type SubjectMinReserve<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultSubjectMinReserve<T>>;
+
+    /// 函数级中文注释：计费暂停总开关（治理控制）。
+    #[pallet::type_value]
+    pub fn DefaultBillingPaused<T: Config>() -> bool { false }
+    #[pallet::storage]
+    pub type BillingPaused<T: Config> = StorageValue<_, bool, ValueQuery, DefaultBillingPaused<T>>;
+
+    /// 函数级中文注释：到期队列容量上限（每个区块键对应的最大 CID 数）。
+    #[pallet::type_value]
+    pub fn DefaultDueListCap<T: Config>() -> u32 { 1024 }
+    #[pallet::storage]
+    pub type DueQueue<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<T::Hash, ConstU32<1024>>, ValueQuery>;
+
+    /// 函数级中文注释：每个 CID 的计费状态：下一次扣费块高、单价快照、状态（0=Active,1=Grace,2=Expired）。
+    #[pallet::storage]
+    pub type PinBilling<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (BlockNumberFor<T>, u128, u8), OptionQuery>;
+
+    /// 函数级中文注释：仅对“逝者主题扣费”的 CID 记录 funding 来源（owner, subject_id），用于从派生账户自动扣款。
+    #[pallet::storage]
+    pub type PinSubjectOf<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u64), OptionQuery>;
+
     /// 事件
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -183,6 +252,14 @@ pub mod pallet {
         ReplicaRepaired(T::Hash, T::AccountId),
         /// 降级累计达到告警阈值（operator, degraded_count）
         OperatorDegradationAlert(T::AccountId, u32),
+        /// 主题账户已充值（subject_id, from, to, amount）
+        SubjectFunded(u64, T::AccountId, T::AccountId, BalanceOf<T>),
+        /// 函数级中文注释：已完成一次周期扣费（cid_hash, amount, period_blocks, next_charge_at）。
+        PinCharged(T::Hash, BalanceOf<T>, u32, BlockNumberFor<T>),
+        /// 函数级中文注释：余额不足进入宽限期（cid_hash）。
+        PinGrace(T::Hash),
+        /// 函数级中文注释：超出宽限期仍欠费，标记过期（cid_hash）。
+        PinExpired(T::Hash),
     }
 
     #[pallet::error]
@@ -212,6 +289,13 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：根据 owner 与主题ID（逝者ID）计算派生子账户
+        /// - 使用 `SubjectPalletId.into_sub_account_truncating((owner, subject_id))` 派生稳定地址
+        /// - 该账户无私钥，不可外发，仅用于托管与扣费
+        #[inline]
+        pub fn subject_account(owner: &T::AccountId, subject_id: u64) -> T::AccountId {
+            T::SubjectPalletId::get().into_sub_account_truncating((owner, subject_id))
+        }
         /// 函数级详细中文注释：CID 解密/映射内部工具函数（非外部可调用）
         /// - 从 offchain local storage 读取 `/memo/ipfs/cid/<hash_hex>` 对应的明文 CID；
         /// - 若不存在，返回占位 `"<redacted>"`，用于上层降级处理。
@@ -231,6 +315,21 @@ pub mod pallet {
     #[allow(warnings)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：为“逝者主题资金账户”充值（留审计事件）
+        /// - 限制：必须为该 subject 的 owner 调用；amount>0
+        /// - 行为：从 caller → 派生账户 转账（KeepAlive）
+        #[pallet::call_index(9)]
+        #[pallet::weight(10_000)]
+        pub fn fund_subject_account(origin: OriginFor<T>, subject_id: u64, amount: BalanceOf<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(amount != BalanceOf::<T>::default(), Error::<T>::BadParams);
+            let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
+            ensure!(owner == who, Error::<T>::BadStatus);
+            let to = Self::subject_account(&owner, subject_id);
+            <T as Config>::Currency::transfer(&who, &to, amount, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+            Self::deposit_event(Event::SubjectFunded(subject_id, who, to, amount));
+            Ok(())
+        }
         /// 函数级详细中文注释：用户请求 Pin（一次性付费进入基金会）
         /// - 输入为 `cid_hash`（避免泄露明文 CID）、大小与副本数；
         /// - 价格计算在链上依据 `PricingParams` 得出；当前骨架由外部直接给出 `price`；
@@ -252,6 +351,127 @@ pub mod pallet {
             PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
             PinStateOf::<T>::insert(&cid_hash, 0u8); // Requested
             Self::deposit_event(Event::PinRequested(cid_hash, who, replicas, size_bytes, price));
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：为“逝者主题”发起 Pin（从派生账户扣费）
+        /// - 授权：caller 必须为该 subject 的 owner
+        /// - 资金：从 subject_account(owner, subject_id) → 基金会本金池
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::request_pin())]
+        pub fn request_pin_for_deceased(
+            origin: OriginFor<T>,
+            subject_id: u64,
+            cid_hash: T::Hash,
+            size_bytes: u64,
+            replicas: u32,
+            price: T::Balance,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
+            let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
+            ensure!(owner == who, Error::<T>::BadStatus);
+            let payer = Self::subject_account(&owner, subject_id);
+            T::Endowment::deposit_from_storage(&payer, price, cid_hash)?;
+            PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
+            let now = <frame_system::Pallet<T>>::block_number();
+            PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
+            PinStateOf::<T>::insert(&cid_hash, 0u8);
+            Self::deposit_event(Event::PinRequested(cid_hash, who, replicas, size_bytes, price));
+            // 计费初始化：仅对“主题扣费”场景登记来源/周期
+            PinSubjectOf::<T>::insert(&cid_hash, (owner.clone(), subject_id));
+            let period = BillingPeriodBlocks::<T>::get();
+            let unit = PricePerGiBWeek::<T>::get();
+            let next = now.saturating_add(period.into());
+            PinBilling::<T>::insert(&cid_hash, (next, unit, 0u8));
+            // 加入到期队列（若容量满，静默丢弃，后续可由治理修复/补处理）
+            DueQueue::<T>::mutate(next, |list| { let _ = list.try_push(cid_hash); });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：【治理/服务商】处理到期扣费项（limit 条）
+        /// - Origin：GovernanceOrigin（可扩展加入白名单服务商 Origin）
+        /// - 行为：从到期队列中取出 ≤limit 个，到期的 CID 进行扣费；成功则推进下一次扣费并重新入队；余额不足则进入宽限或过期。
+        #[pallet::call_index(11)]
+        #[pallet::weight(10_000)]
+        pub fn charge_due(origin: OriginFor<T>, limit: u32) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(!BillingPaused::<T>::get(), Error::<T>::BadStatus);
+            let now = <frame_system::Pallet<T>>::block_number();
+            let mut left = core::cmp::min(limit, MaxChargePerBlock::<T>::get());
+            if left == 0 { return Ok(()); }
+            // 取出本块到期列表
+            let mut list = DueQueue::<T>::take(now);
+            while left > 0 {
+                let Some(cid) = list.pop() else { break };
+                left = left.saturating_sub(1);
+                // 读取计费与来源
+                if let Some((_, unit_price, state)) = PinBilling::<T>::get(&cid) {
+                    if let Some((owner, subject_id)) = PinSubjectOf::<T>::get(&cid) {
+                        // 仅处理 Active/Grace，已过期则跳过
+                        if state <= 1u8 {
+                            // 计算应收：ceil(size/GiB) * replicas * unit_price
+                            if let Some((replicas, size_bytes, _c, _l)) = PinMeta::<T>::get(&cid) {
+                                let gib: u128 = 1_073_741_824u128; // 1024^3
+                                let sz = size_bytes as u128;
+                                let units = (sz + gib - 1) / gib; // ceil
+                                let due_u128 = units.saturating_mul(replicas as u128).saturating_mul(unit_price);
+                                let due_bal: BalanceOf<T> = due_u128.saturated_into();
+                                let payer = Self::subject_account(&owner, subject_id);
+                                let min_res = SubjectMinReserve::<T>::get();
+                                let free = <T as Config>::Currency::free_balance(&payer);
+                                if free.saturating_sub(due_bal) >= min_res {
+                                    // 扣费：打入基金会
+                                    T::Endowment::deposit_from_storage(&payer, due_bal, cid)?;
+                                    // 推进下一期并重新入队
+                                    let period = BillingPeriodBlocks::<T>::get();
+                                    let next = now.saturating_add(period.into());
+                                    PinBilling::<T>::insert(&cid, (next, unit_price, 0u8));
+                                    DueQueue::<T>::mutate(next, |lst| { let _ = lst.try_push(cid); });
+                                    Self::deposit_event(Event::PinCharged(cid, due_bal, period, next));
+                                } else {
+                                    // 余额不足：首次不足进入 Grace；已在 Grace 再次不足则过期
+                                    if state == 0u8 {
+                                        let g = GraceBlocks::<T>::get();
+                                        let next = now.saturating_add(g.into());
+                                        PinBilling::<T>::insert(&cid, (next, unit_price, 1u8));
+                                        DueQueue::<T>::mutate(next, |lst| { let _ = lst.try_push(cid); });
+                                        Self::deposit_event(Event::PinGrace(cid));
+                                    } else {
+                                        PinBilling::<T>::insert(&cid, (now, unit_price, 2u8));
+                                        Self::deposit_event(Event::PinExpired(cid));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 剩余未处理的放回队列
+            if !list.is_empty() { DueQueue::<T>::insert(now, list); }
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：治理设置/暂停计费参数。
+        /// - 任何入参为 None 表示保持不变；部分更新。
+        #[pallet::call_index(12)]
+        #[pallet::weight(10_000)]
+        pub fn set_billing_params(
+            origin: OriginFor<T>,
+            price_per_gib_week: Option<u128>,
+            period_blocks: Option<u32>,
+            grace_blocks: Option<u32>,
+            max_charge_per_block: Option<u32>,
+            subject_min_reserve: Option<BalanceOf<T>>,
+            paused: Option<bool>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            if let Some(v) = price_per_gib_week { PricePerGiBWeek::<T>::put(v); }
+            if let Some(v) = period_blocks { BillingPeriodBlocks::<T>::put(v); }
+            if let Some(v) = grace_blocks { GraceBlocks::<T>::put(v); }
+            if let Some(v) = max_charge_per_block { MaxChargePerBlock::<T>::put(v); }
+            if let Some(v) = subject_min_reserve { SubjectMinReserve::<T>::put(v); }
+            if let Some(v) = paused { BillingPaused::<T>::put(v); }
             Ok(())
         }
 

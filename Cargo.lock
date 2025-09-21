@@ -6517,6 +6517,7 @@ dependencies = [
  "pallet-memo-referrals",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
  "sp-runtime",
 ]
 
@@ -6648,6 +6649,7 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
  "sp-runtime",
 ]
 

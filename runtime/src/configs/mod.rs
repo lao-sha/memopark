@@ -743,6 +743,8 @@ impl pallet_memo_offerings::Config for Runtime {
     type MinOfferAmount = ConstU128<1_000_000_000>; // 0.001 UNIT
     type TargetCtl = AllowAllTargetControl;
     type OnOffering = GraveOfferingHook;
+    /// 函数级中文注释：多路分账路由实现（内容治理可配置）
+    type DonationRouter = OfferDonationRouter;
     /// 函数级中文注释：管理员 Origin 改为 Root | 委员会阈值(2/3)。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
@@ -761,6 +763,63 @@ impl pallet_memo_offerings::Config for Runtime {
     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 memo-pet 接管。
     type Consumer = NoopConsumer;
+}
+
+/// 函数级详细中文注释：供奉收款路由实现
+/// - 目标域为 Grave(=1) 时，将 SubjectBps 部分路由到“逝者主题资金账户”，其余走原 Resolver。
+pub struct OfferDonationRouter;
+impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationRouter {
+    fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)> {
+        if gross == 0 { return alloc::vec::Vec::new(); }
+        // 优先按域路由表；无则按全局；再无则按旧 SubjectBps 单路策略
+        if let Some(table) = pallet_memo_offerings::pallet::RouteTableByDomain::<Runtime>::get(target.0) {
+            return resolve_table(target, table);
+        }
+        if let Some(table) = pallet_memo_offerings::pallet::RouteTableGlobal::<Runtime>::get() {
+            return resolve_table(target, table);
+        }
+        // 旧策略回退：仅 Grave 域路由到主题账户
+        const DOMAIN_GRAVE: u8 = 1;
+        if target.0 == DOMAIN_GRAVE {
+            if let Some(primary_id) = pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1) {
+                if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
+                    let owner = d.owner.clone();
+                    let subject_acc = EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
+                    let bps = pallet_memo_offerings::pallet::SubjectBps::<Runtime>::get();
+                    return alloc::vec::Vec::from([(subject_acc, bps)]);
+                }
+            }
+        }
+        alloc::vec::Vec::new()
+    }
+}
+
+/// 函数级中文注释：解析路由表，将 SubjectFunding/SpecificAccount 映射为实际账户与份额。
+fn resolve_table<I>(target: (u8,u64), table: I) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)>
+where
+    I: IntoIterator<Item = pallet_memo_offerings::pallet::RouteEntry<Runtime>>,
+{
+    use pallet_memo_offerings::pallet::RouteEntry;
+    const DOMAIN_GRAVE: u8 = 1;
+    let mut out: alloc::vec::Vec<(AccountId, sp_runtime::Permill)> = alloc::vec::Vec::new();
+    for RouteEntry { kind, account, share } in table.into_iter() {
+        match (kind, account) {
+            (0, _) => {
+                if target.0 == DOMAIN_GRAVE {
+                    if let Some(primary_id) = pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1) {
+                        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
+                            let owner = d.owner.clone();
+                            let subject_acc = EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
+                            out.push((subject_acc, share));
+                        }
+                    }
+                }
+            }
+            (1, Some(acc)) => out.push((acc, share)),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// 函数级中文注释：消费回调占位实现（不做任何状态变更），保障编译期绑定。
@@ -783,10 +842,11 @@ impl pallet_memo_sacrifice::Config for Runtime {
     type StringLimit = SacStringLimit;
     type UriLimit = SacUriLimit;
     type DescriptionLimit = SacDescLimit;
-    // 管理员 Origin：Root | 委员会阈值(2/3)
+    // 管理员 Origin：Root | 内容委员会(Instance3，2/3)
+    // 函数级中文注释：将目录创建/更新的治理权限绑定到“内容委员会”，便于链上内容治理一体化。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
     >;
     type Currency = Balances;
     type ListingDeposit = SacListingDeposit;
@@ -1395,6 +1455,19 @@ impl pallet_memo_ipfs::Config for Runtime {
     type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
     type MinCapacityGiB = frame_support::traits::ConstU32<100>; // 至少 100 GiB 示例
     type WeightInfo = ();
+    /// 函数级中文注释：为“逝者主题资金账户”绑定 PalletId（可复用 escrow 的 PalletId 也可新设）
+    type SubjectPalletId = EscrowPalletId;
+    /// 函数级中文注释：OwnerProvider 适配器，将 subject_id→owner 从 pallet-deceased 读取
+    type OwnerProvider = DeceasedOwnerAdapter;
+}
+
+/// 函数级详细中文注释：逝者 owner 只读适配器
+pub struct DeceasedOwnerAdapter;
+impl pallet_memo_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
+    fn owner_of(subject_id: u64) -> Option<AccountId> {
+        use pallet_deceased::pallet::DeceasedOf as DMap;
+        DMap::<Runtime>::get(subject_id).map(|d| d.owner)
+    }
 }
 
 /// 函数级中文注释：SLA 数据提供者，从 `pallet-memo-ipfs` 读取运营者统计

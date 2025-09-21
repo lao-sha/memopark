@@ -13,7 +13,8 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, Currency, ExistenceRequirement}};
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
-    use sp_runtime::traits::{SaturatedConversion, Saturating};
+    // 引入 PerThing 以便使用 Permill::ACCURACY 常量
+    use sp_runtime::{traits::{SaturatedConversion, Saturating}, Permill, PerThing};
 
     /// 函数级中文注释：目标控制接口。
     /// - exists：目标是否存在；
@@ -42,6 +43,13 @@ pub mod pallet {
     /// - 输入目标 (domain_code, id)，返回应接收捐赠的账户。
     pub trait DonationAccountResolver<AccountId> {
         fn account_for(target: (u8, u64)) -> AccountId;
+    }
+
+    /// 函数级中文注释：供奉收款路由（多路分账）。
+    /// - 输入：目标与总额（u128），返回 [(账户, 份额permill)]；∑ ≤ 100%。
+    /// - Pallet 内部将按比例转账；剩余部分回退到 DonationResolver 账户。
+    pub trait DonationRouter<AccountId> {
+        fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, Permill)>;
     }
 
     /// 函数级中文注释：祭祀品目录只读接口（由 runtime 提供实现，指向 memo-sacrifice）。
@@ -108,6 +116,8 @@ pub mod pallet {
         type Currency: Currency<Self::AccountId>;
         /// 函数级中文注释：捐赠账户解析器，根据目标解析接收账户。
         type DonationResolver: DonationAccountResolver<Self::AccountId>;
+        /// 函数级中文注释：收款路由（多路分账），返回若干 (账户, permill)；为空则回退到 DonationResolver。
+        type DonationRouter: DonationRouter<Self::AccountId>;
         /// 函数级中文注释：目录只读接口（低耦合）。
         type Catalog: SacrificeCatalog<Self::AccountId, u64, u128, BlockNumberFor<Self>>;
         /// 函数级中文注释：消费回调，由消费侧 Pallet 实现（如 memo-pet）。
@@ -187,6 +197,47 @@ pub mod pallet {
     /// 按域暂停
     #[pallet::storage] pub type PausedByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, bool, ValueQuery>;
 
+    /// 函数级中文注释：逝者主题账户分账比例（Permill，默认 20%）。
+    #[pallet::type_value]
+    pub fn DefaultSubjectBps<T: Config>() -> Permill { Permill::from_percent(20) }
+    #[pallet::storage]
+    pub type SubjectBps<T: Config> = StorageValue<_, Permill, ValueQuery, DefaultSubjectBps<T>>;
+
+    /// 函数级中文注释：路由分账最大笔数（用于裁剪 Router 返回项，防止状态/计算膨胀）。
+    #[pallet::type_value]
+    pub fn DefaultMaxRouteSplits<T: Config>() -> u32 { 5 }
+    #[pallet::storage]
+    pub type MaxRouteSplits<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMaxRouteSplits<T>>;
+
+    /// 函数级中文注释：是否将超过 100% 的剩余（或 Router 返回为空时）回退至默认收款账户。
+    /// - true：回退到 `DonationResolver::account_for(target)`；
+    /// - false：忽略剩余（不再额外转账）。
+    #[pallet::type_value]
+    pub fn DefaultRouteRemainderToDefault<T: Config>() -> bool { true }
+    #[pallet::storage]
+    pub type RouteRemainderToDefault<T: Config> = StorageValue<_, bool, ValueQuery, DefaultRouteRemainderToDefault<T>>;
+
+    // ====== 多路分账（可治理）======
+    /// 函数级中文注释：路由项（最多 5 条）。
+    /// - kind：0=SubjectFunding（派生主题资金账户），1=SpecificAccount（固定账户）。
+    /// - account：当 kind=1 时必填；其余为 None。
+    /// - share：Permill 分配比例。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct RouteEntry<T: Config> {
+        pub kind: u8,
+        pub account: Option<T::AccountId>,
+        pub share: Permill,
+    }
+
+    /// 函数级中文注释：全局路由表（当按域未配置时回退）。
+    #[pallet::storage]
+    pub type RouteTableGlobal<T: Config> = StorageValue<_, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
+
+    /// 函数级中文注释：按域路由表（优先级高于全局）。key = domain（u8）。
+    #[pallet::storage]
+    pub type RouteTableByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
+
     #[pallet::storage]
     pub type Specs<T: Config> = StorageMap<_, Blake2_128Concat, u8, OfferingSpec<T>, OptionQuery>;
 
@@ -255,6 +306,14 @@ pub mod pallet {
         },
         /// 函数级中文注释：供奉风控参数已更新（Root）。
         OfferParamsUpdated,
+        /// 函数级中文注释：供奉分账路由快照（便于审计）。
+        OfferingRouted {
+            id: u64,
+            target: (u8, u64),
+            gross: u128,
+            shares: alloc::vec::Vec<(T::AccountId, u128)>,
+            remainder: u128,
+        },
         /// 函数级中文注释：通过祭祀品目录下单完成（便于 Subsquid 索引）。
         OfferingCommittedBySacrifice {
             id: u64,
@@ -271,6 +330,8 @@ pub mod pallet {
         PausedDomainSet { domain: u8, paused: bool },
         /// 函数级中文注释：治理证据已记录（scope, key, cid）。scope：1=Params, 2=Price, 3=PauseG, 4=PauseD
         GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
+        /// 函数级中文注释：路由表已更新（scope=0 全局；scope=1 按域，key 为 domain）。
+        RouteTableUpdated { scope: u8, key: u64 },
     }
 
     #[pallet::error]
@@ -439,9 +500,31 @@ pub mod pallet {
                     }
                 }
             }
-            let dest = T::DonationResolver::account_for(target);
-            let amt_balance: BalanceOf<T> = amt.saturated_into();
-            T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
+            // 分账路由：优先使用 DonationRouter，按 MaxRouteSplits 裁剪；剩余根据 RouteRemainderToDefault 策略回退
+            let mut remainder_u128: u128 = amt;
+            let mut routed: alloc::vec::Vec<(T::AccountId, u128)> = alloc::vec::Vec::new();
+            let mut shares = T::DonationRouter::route(target, amt);
+            // 裁剪条数上限
+            let max_splits = MaxRouteSplits::<T>::get().max(0);
+            if shares.len() as u32 > max_splits { shares.truncate(max_splits as usize); }
+            // 执行转账（超额部分由 remainder 承担）
+            for (acc, pm) in shares.into_iter() {
+                let part_u128: u128 = pm * amt; // Permill * u128 → u128
+                if part_u128 == 0 { continue; }
+                let transfer_u128 = core::cmp::min(part_u128, remainder_u128);
+                if transfer_u128 == 0 { break; }
+                let bal: BalanceOf<T> = transfer_u128.saturated_into();
+                T::Currency::transfer(&who, &acc, bal, ExistenceRequirement::KeepAlive)?;
+                routed.push((acc, transfer_u128));
+                remainder_u128 = remainder_u128.saturating_sub(transfer_u128);
+                if remainder_u128 == 0 { break; }
+            }
+            // 处理回退：根据策略决定是否回退到默认收款账户
+            if remainder_u128 > 0 && RouteRemainderToDefault::<T>::get() {
+                let dest = T::DonationResolver::account_for(target);
+                let bal: BalanceOf<T> = remainder_u128.saturated_into();
+                T::Currency::transfer(&who, &dest, bal, ExistenceRequirement::KeepAlive)?;
+            }
             let settled_amount: Option<u128> = Some(amt);
             // 将输入 media 转换为受上限约束的 BoundedVec<MediaItem>
             let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
@@ -454,6 +537,8 @@ pub mod pallet {
             let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code, amount: settled_amount, media: items, duration, time: now };
             OfferingRecords::<T>::insert(id, &rec);
             OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            // 审计分账事件
+            Self::deposit_event(Event::OfferingRouted { id, target, gross: amt, shares: routed, remainder: remainder_u128 });
             // 传递以“周”为单位的有效期：Instant=None，Timed=Some(duration)
             let duration_weeks: Option<u32> = match &spec.kind { OfferingKind::Instant => None, OfferingKind::Timed { .. } => duration };
             T::OnOffering::on_offering(target, kind_code, &who, settled_amount, duration_weeks);
@@ -481,12 +566,52 @@ pub mod pallet {
             offer_window: Option<BlockNumberFor<T>>,
             offer_max_in_window: Option<u32>,
             min_offer_amount: Option<u128>,
+            subject_bps: Option<u32>,
         ) -> DispatchResult {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
             if let Some(v) = offer_window { OfferWindowParam::<T>::put(v); }
             if let Some(v) = offer_max_in_window { OfferMaxInWindowParam::<T>::put(v); }
             if let Some(v) = min_offer_amount { MinOfferAmountParam::<T>::put(v); }
+            if let Some(p) = subject_bps { SubjectBps::<T>::put(Permill::from_parts(p.min(1_000_000))); }
             Self::deposit_event(Event::OfferParamsUpdated);
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：【治理】设置全局多路路由表（最多 5 条，∑permill ≤ 100%）。
+        #[pallet::call_index(15)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn set_route_table_global(origin: OriginFor<T>, routes: Vec<(u8, Option<T::AccountId>, u32)>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let mut list: BoundedVec<RouteEntry<T>, ConstU32<5>> = Default::default();
+            let mut sum: u32 = 0;
+            for (kind, acc, ppm) in routes.into_iter() {
+                let pm = Permill::from_parts(ppm.min(1_000_000));
+                sum = sum.saturating_add(pm.deconstruct() as u32);
+                list.try_push(RouteEntry::<T> { kind, account: acc, share: pm }).map_err(|_| Error::<T>::TooMany)?;
+            }
+            ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
+            RouteTableGlobal::<T>::put(list);
+            Self::deposit_event(Event::RouteTableUpdated { scope: 0, key: 0 });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：【治理】设置按域路由表（最多 5 条，∑permill ≤ 100%）。
+        #[pallet::call_index(16)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn set_route_table_by_domain(origin: OriginFor<T>, domain: u8, routes: Vec<(u8, Option<T::AccountId>, u32)>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let mut list: BoundedVec<RouteEntry<T>, ConstU32<5>> = Default::default();
+            let mut sum: u32 = 0;
+            for (kind, acc, ppm) in routes.into_iter() {
+                let pm = Permill::from_parts(ppm.min(1_000_000));
+                sum = sum.saturating_add(pm.deconstruct() as u32);
+                list.try_push(RouteEntry::<T> { kind, account: acc, share: pm }).map_err(|_| Error::<T>::TooMany)?;
+            }
+            ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
+            RouteTableByDomain::<T>::insert(domain, list);
+            Self::deposit_event(Event::RouteTableUpdated { scope: 1, key: domain as u64 });
             Ok(())
         }
 

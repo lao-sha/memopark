@@ -10,6 +10,17 @@
 - 新增：`ReferralsOf: AccountId -> BoundedVec<AccountId, MaxReferralsPerAccount>`（反向索引）
 - 新增：`BannedSponsors: AccountId -> ()`（封禁推荐人，仅影响计酬归集）
 
+### 推荐码（集中治理）
+- 统一归口：推荐码的生成、长度、黑名单与“一次性/是否允许重领”等策略，全部在本模块（referrals）集中治理与实现；其他模块（如 affiliate）不再承载推荐码策略，降低耦合与维护成本。
+- 存储：
+  - `CodeOf{AccountId -> BoundedVec<u8,16>}`：账户默认推荐码（一次性领取）。
+  - `OwnerOfCode{BoundedVec<u8,16> -> AccountId}`：规范化码的归属索引。
+- 事件：
+  - `ReferralCodeAssigned{ who, code }`：首次分配默认码（8位大写HEX）。
+- 外部函数：
+  - `claim_default_code()`：仅当已绑定 sponsor 时可领取；发生冲突自动重试（最多8次）。
+  - 若需进一步策略（长度/黑名单/是否允许重领）治理，可追加：`set_code_policy(length?, allow_reassign?)`、`set_code_blacklist(code, banned)` 与事件 `CodePolicyUpdated/CodeBlacklistSet`（最小实现已可上线）。
+
 ## 事件
 - `SponsorBound { who, sponsor }`
 - `PausedSet { value }`
@@ -27,8 +38,10 @@
 
 ## 只读接口（Trait）
 - `ReferralProvider::{ sponsor_of, ancestors }`
+  - 前端与索引建议：默认推荐码读取优先从 `memoReferrals` 读取；Subsquid 监听 `memo_referrals.ReferralCodeAssigned` 事件建立 code↔owner 映射。
 
 ## 治理与风控建议
 - 反向索引上限：`MaxReferralsPerAccount`（运行时配置）。
 - 封禁策略：被封禁推荐人的佣金在 `pallet-memo-affiliate` 中统一归集 `TreasuryAccount/PlatformAccount`，不改 SponsorOf 图。
+- 推荐码归口：自本版本起，推荐码策略在 referrals 统一治理；`pallet-memo-affiliate` 不再承载“码策略/生成/事件”，仅依赖 referrals 的只读关系与（如需）只读推荐码。
 - 迁移路线：`StorageVersion` bump 至 v2 时，遍历 SponsorOf 构建 ReferralsOf，超上限截断并记录指标；当前版本为 v1，后续升级再引入迁移逻辑。

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import TrackSelector, { type TrackOption } from './components/TrackSelector';
 import { useTracks } from './hooks/useTracks';
-import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage, buildMediaGovFreezeAlbum as buildMediaGovFreezeAlbumWithEvidence, buildMediaGovSetMediaHidden, buildMediaGovReplaceMediaUri, buildMediaGovRemoveMedia, buildOriginRestrictionSetGlobalAllowPreimage, buildMediaComplainAlbum, buildMediaComplainMedia, buildMediaGovResolveAlbumComplaint, buildMediaGovResolveMediaComplaint } from './lib/governance';
+import { submitPreimage, submitProposal, buildTreasurySpendPreimage, decodePreimageHex, summarizePreimage, buildBalancesForceTransferPreimage, buildMediaGovFreezeAlbum as buildMediaGovFreezeAlbumWithEvidence, buildMediaGovSetMediaHidden, buildMediaGovReplaceMediaUri, buildMediaGovRemoveMedia, buildOriginRestrictionSetGlobalAllowPreimage, buildMediaComplainAlbum, buildMediaComplainMedia, buildMediaGovResolveAlbumComplaint, buildMediaGovResolveMediaComplaint, buildSacrificeCreateCategoryPreimage } from './lib/governance';
 import PasswordModal from './components/PasswordModal';
 import { appendTx } from '../../lib/txHistory';
 import { useWallet } from '../../providers/WalletProvider';
@@ -37,6 +37,9 @@ const NewProposalPage: React.FC = () => {
   const [resolveAlbumUphold, setResolveAlbumUphold] = useState(true)
   const [resolveMediaId, setResolveMediaId] = useState('')
   const [resolveMediaUphold, setResolveMediaUphold] = useState(true)
+  // 创建类目表单
+  const [catName, setCatName] = useState('')
+  const [catParent, setCatParent] = useState('')
   // 从列表跳转预填 mediaId
   React.useEffect(() => {
     try {
@@ -126,6 +129,24 @@ const NewProposalPage: React.FC = () => {
                 const { hex, hash, planck, symbol } = await buildBalancesForceTransferPreimage(forceSrc, forceDest, forceAmt)
                 setPreimage(hex)
                 window.alert(`已生成预映像\n哈希：${hash}\n原始金额：${planck} ${symbol}`)
+              } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
+            }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>生成预映像</button>
+          </div>
+        </div>
+
+        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 8, padding: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>创建类目（memo-sacrifice.createCategory）</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input value={catName} onChange={(e)=>setCatName(e.target.value)} placeholder="类目名（UTF-8）" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <input value={catParent} onChange={(e)=>setCatParent(e.target.value)} placeholder="父类目ID（留空=一级）" style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={async()=>{
+              try {
+                if (!catName.trim()) return window.alert('请输入类目名')
+                const parent = catParent.trim() === '' ? null : parseInt(catParent,10)
+                if (parent !== null && (!/^-?\d+$/.test(String(parent)) || parent < 0)) return window.alert('父类目ID需为非负整数或留空')
+                const { hex, hash } = await buildSacrificeCreateCategoryPreimage(catName.trim(), parent)
+                setPreimage(hex)
+                window.alert(`已生成预映像\n哈希：${hash}`)
               } catch(e) { window.alert(e instanceof Error? e.message: String(e)) }
             }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }}>生成预映像</button>
           </div>

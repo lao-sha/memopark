@@ -1,53 +1,7 @@
 {
-    "compilerOptions": {
-        // 基础配置
-        "target": "ES2022",
-        "lib": [
-            "ES2022",
-            "DOM",
-            "DOM.Iterable"
-        ],
-        "allowJs": true,
-        "skipLibCheck": true,
-        "esModuleInterop": true,
-        "allowSyntheticDefaultImports": true,
-        // 严格模式 - 提高 AI 代码质量
-        "strict": true,
-        "noImplicitAny": true,
-        "strictNullChecks": true,
-        "strictFunctionTypes": true,
-        "noImplicitReturns": true,
-        "noImplicitThis": true,
-        // 模块解析
-        "forceConsistentCasingInFileNames": true,
-        "moduleResolution": "node",
-        "resolveJsonModule": true,
-        "isolatedModules": true,
-        "noEmit": true,
-        // 路径映射
-        "baseUrl": ".",
-        "paths": {
-            "@/*": [
-                "src/*"
-            ],
-            "@/components/*": [
-                "src/components/*"
-            ],
-            "@/utils/*": [
-                "src/utils/*"
-            ],
-            "@/types/*": [
-                "src/types/*"
-            ]
-        }
-    },
-    "include": [
-        "src/**/*",
-        "types/**/*"
-    ],
-    "exclude": [
-        "node_modules",
-        "dist",
-        "build"
-    ]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
 }

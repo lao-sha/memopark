@@ -1,7 +1,7 @@
 // @ts-nocheck
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {SubstrateBatchProcessor} from '@subsquid/substrate-processor'
-import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, OfferingPriceSnapshot, OfferingPauseEvent, OfferingParamsSnapshot, OfferingBySacrifice, GovCase, GovAction} from './model'
+import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, ReferralCode, OfferingPriceSnapshot, OfferingPauseEvent, OfferingParamsSnapshot, OfferingBySacrifice, OfferingSettlement, PinBillingEvent, GovCase, GovAction} from './model'
 
 const processor = new SubstrateBatchProcessor()
   .setDataSource({
@@ -79,6 +79,85 @@ processor.run(new TypeormDatabase(), async (ctx) => {
           if (grave) { grave.offeringsCount += 1; grave.offeringsAmount = BigInt(grave.offeringsAmount) + BigInt(amount||0); await ctx.store.save(grave) }
           await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingCommitted', refId: id.toString(), actor: who.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ target: target[1].toString() }) }))
         }
+        continue
+      }
+      // 供奉分账结算：OfferingRouted（按 id 合并视图）
+      if (name?.endsWith('memo_offerings.OfferingRouted')) {
+        const ev: any = i.event
+        const {id, target, gross, shares, remainder} = ev.args
+        const createdAt = b.header.height
+        // shares: Vec<(AccountId, u128)>
+        let parsedShares: {account: string, amount: string}[] = []
+        try {
+          const arr = shares as any[]
+          parsedShares = (arr || []).map((x: any) => ({ account: x[0].toString(), amount: (x[1]||0).toString() }))
+        } catch {}
+        await ctx.store.save(new OfferingSettlement({
+          id: id.toString(),
+          targetDomain: Number(target[0]),
+          targetId: BigInt(target[1]),
+          gross: BigInt(gross||0),
+          remainder: BigInt(remainder||0),
+          shares: JSON.stringify(parsedShares),
+          block: createdAt,
+        }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingRouted', refId: id.toString(), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ target: target[1].toString() }) }))
+        continue
+      }
+
+      // ===== memo_ipfs 计费生命周期事件 =====
+      if (name?.endsWith('memo_ipfs.PinCharged')) {
+        const ev: any = i.event
+        const {arg0, arg1, arg2, arg3} = ev.args // cid_hash, amount, period_blocks, next_charge_at
+        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
+        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinCharged', amount: BigInt(arg1||0), periodBlocks: Number(arg2||0), nextChargeAt: Number(arg3||0), block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinCharged', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        // 合并视图：累计费用与下一扣费/状态
+        const cid = Buffer.from(arg0).toString('hex')
+        let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
+        if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Active' })
+        ov.totalCharged = BigInt(ov.totalCharged) + BigInt(arg1||0)
+        ov.lastNextChargeAt = Number(arg3||0)
+        ov.lastState = 'Active'
+        await ctx.store.save(ov)
+        continue
+      }
+      if (name?.endsWith('memo_ipfs.PinGrace')) {
+        const ev: any = i.event
+        const {arg0} = ev.args // cid_hash
+        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
+        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinGrace', amount: null, periodBlocks: null, nextChargeAt: null, block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinGrace', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        const cid = Buffer.from(arg0).toString('hex')
+        let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
+        if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Grace' })
+        ov.lastState = 'Grace'
+        await ctx.store.save(ov)
+        continue
+      }
+      if (name?.endsWith('memo_ipfs.PinExpired')) {
+        const ev: any = i.event
+        const {arg0} = ev.args // cid_hash
+        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
+        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinExpired', amount: null, periodBlocks: null, nextChargeAt: null, block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinExpired', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        const cid = Buffer.from(arg0).toString('hex')
+        let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
+        if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Expired' })
+        ov.lastState = 'Expired'
+        await ctx.store.save(ov)
+        continue
+      }
+
+      // PinRequested → 初始化合并视图（若来自 memo_ipfs）
+      if (name?.endsWith('memo_ipfs.PinRequested')) {
+        const ev: any = i.event
+        const {arg0, arg1, arg2, arg3, arg4} = ev.args // cid_hash, owner, replicas, size_bytes, price
+        const cid = Buffer.from(arg0).toString('hex')
+        let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
+        if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: String(arg1), replicas: Number(arg2), sizeBytes: BigInt(arg3), totalCharged: 0n, lastNextChargeAt: null, lastState: 'Requested' })
+        await ctx.store.save(ov)
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinRequested', refId: cid, actor: String(arg1), block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ replicas: Number(arg2), sizeBytes: String(arg3), price: String(arg4) }) }))
         continue
       }
 
@@ -231,6 +310,15 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const {who, sponsor} = ev.args
         await ctx.store.save(new ReferralLink({ id: `${who}-${sponsor}`, who: who.toString(), sponsor: sponsor.toString(), block: b.header.height }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_referrals', kind: 'SponsorBound', refId: who.toString(), actor: sponsor.toString(), block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
+        continue
+      }
+      // 推荐码分配事件（已统一在 memo_referrals）
+      if (name?.endsWith('memo_referrals.ReferralCodeAssigned')) {
+        const ev: any = i.event
+        const {who, code} = ev.args
+        const codeStr = typeof code === 'string' ? code : Buffer.from(code?.toString?.() || '').toString()
+        await ctx.store.save(new ReferralCode({ id: codeStr, owner: who.toString(), block: b.header.height }))
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_referrals', kind: 'ReferralCodeAssigned', refId: codeStr, actor: who.toString(), block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
       }
       if (name?.endsWith('otc_listing.ListingCanceled')) {

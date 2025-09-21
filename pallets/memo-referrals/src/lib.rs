@@ -14,6 +14,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
+    use frame_support::traits::ConstU32;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
@@ -56,6 +57,14 @@ pub mod pallet {
     #[pallet::getter(fn paused)]
     pub type Paused<T: Config> = StorageValue<_, bool, ValueQuery>;
 
+    /// 函数级中文注释：账户主推荐码（一次性领取，不可重复）。
+    #[pallet::storage]
+    pub type CodeOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
+
+    /// 函数级中文注释：推荐码归属索引（规范化码 → 账户）。
+    #[pallet::storage]
+    pub type OwnerOfCode<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -65,6 +74,9 @@ pub mod pallet {
         PausedSet { value: bool },
         /// 已更新封禁推荐人状态（仅治理）。
         SponsorBannedSet { who: T::AccountId, banned: bool },
+        /// 函数级中文注释：已为账户分配唯一默认推荐码。
+        /// - code 为 8 位大写十六进制（ASCII），仅包含 [0-9A-F]。
+        ReferralCodeAssigned { who: T::AccountId, code: BoundedVec<u8, ConstU32<16>> },
     }
 
     #[pallet::error]
@@ -77,6 +89,12 @@ pub mod pallet {
         CycleDetected,
         /// 系统已暂停新绑定。
         Paused,
+        /// 函数级中文注释：尚未绑定推荐人，不能领取默认推荐码。
+        NotEligible,
+        /// 函数级中文注释：已领取过默认推荐码，不能重复领取。
+        AlreadyHasCode,
+        /// 函数级中文注释：推荐码生成冲突（多次重试仍冲突）。
+        CodeCollision,
     }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
@@ -139,6 +157,42 @@ pub mod pallet {
             Self::deposit_event(Event::SponsorBannedSet { who, banned });
             Ok(())
         }
+
+        /// 函数级详细中文注释：领取“唯一默认推荐码”（一次性，不可重复）。
+        /// - 前置：必须已绑定推荐人（SponsorOf 存在）。
+        /// - 生成：blake2_256(account_id||salt)→前4字节→8位大写 HEX；冲突时 salt 自增重试（最多8次）。
+        #[pallet::call_index(3)]
+        #[allow(deprecated)]
+        #[pallet::weight(10_000)]
+        pub fn claim_default_code(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(SponsorOf::<T>::contains_key(&who), Error::<T>::NotEligible);
+            ensure!(!CodeOf::<T>::contains_key(&who), Error::<T>::AlreadyHasCode);
+            let mut salt: u8 = 0;
+            let mut assigned: Option<BoundedVec<u8, ConstU32<16>>> = None;
+            while salt < 8 {
+                let mut bytes = who.encode();
+                bytes.push(salt);
+                let hash = sp_core::hashing::blake2_256(&bytes);
+                let mut code_bytes: [u8; 8] = [0u8; 8];
+                for i in 0..4 {
+                    let b = hash[i];
+                    code_bytes[i*2] = Self::hex_upper(b >> 4);
+                    code_bytes[i*2+1] = Self::hex_upper(b & 0x0F);
+                }
+                let bv: BoundedVec<u8, ConstU32<16>> = BoundedVec::try_from(code_bytes.to_vec()).map_err(|_| Error::<T>::CodeCollision)?;
+                if !OwnerOfCode::<T>::contains_key(&bv) {
+                    CodeOf::<T>::insert(&who, &bv);
+                    OwnerOfCode::<T>::insert(&bv, who.clone());
+                    assigned = Some(bv);
+                    break;
+                }
+                salt = salt.saturating_add(1);
+            }
+            ensure!(assigned.is_some(), Error::<T>::CodeCollision);
+            Self::deposit_event(Event::ReferralCodeAssigned { who, code: assigned.unwrap() });
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -160,6 +214,10 @@ pub mod pallet {
             }
             out
         }
+
+        /// 函数级中文注释：十六进制编码（大写），输入低 4 比特返回 ASCII 字节。
+        #[inline]
+        fn hex_upper(n: u8) -> u8 { match n { 0..=9 => b'0'+n, 10..=15 => b'A'+(n-10), _ => b'0' } }
     }
 }
 

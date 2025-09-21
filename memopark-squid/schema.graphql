@@ -86,6 +86,17 @@ type Notification @entity {
   meta: String
 }
 
+# Pin 生命周期与计费（从 memo_ipfs）
+type PinBillingEvent @entity {
+  id: ID!           # "<cid>-<block>-<idx>"
+  cid: String!
+  kind: String!     # PinCharged | PinGrace | PinExpired
+  amount: BigInt
+  periodBlocks: Int
+  nextChargeAt: Int
+  block: Int!
+}
+
 # 仲裁日指标（仪表盘）
 type ArbDailyStat @entity {
   id: ID!        # day key (blockHeight / blocksPerDay)
@@ -141,6 +152,29 @@ type OfferingBySacrifice @entity {
   block: Int!
 }
 
+# 供奉分账结算（由 OfferingRouted 事件产生，按 id 与 Offering 合并视图）
+type OfferingSettlement @entity {
+  id: ID!              # offering id
+  targetDomain: Int!
+  targetId: BigInt!
+  gross: BigInt!
+  remainder: BigInt!
+  shares: String       # JSON 字符串：[{account, amount}]
+  block: Int!
+}
+
+# Pin 合并视图（按 cid 聚合生命周期与费用曲线）
+type PinOverview @entity {
+  id: ID!            # cid(hex)
+  firstSeen: Int!
+  owner: String
+  replicas: Int
+  sizeBytes: BigInt
+  totalCharged: BigInt!
+  lastNextChargeAt: Int
+  lastState: String
+}
+
 type GuestbookMessage @entity {
   id: ID!
   hallId: BigInt!
@@ -162,6 +196,13 @@ type ReferralLink @entity {
   id: ID!
   who: String!
   sponsor: String!
+  block: Int!
+}
+
+# 推荐码事件（默认码领取）
+type ReferralCode @entity {
+  id: ID!         # code
+  owner: String!
   block: Int!
 }
 

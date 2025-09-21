@@ -399,6 +399,32 @@ export async function buildOfferingsGovSetPauseDomain(domain: number, paused: bo
 }
 
 /**
+ * 函数级详细中文注释：解析 memo-sacrifice（目录）pallet 的 section 名称（驼峰/下划线兼容）。
+ */
+async function resolveMemoSacrificeSection(api: any): Promise<string> {
+  const candidates = ['memoSacrifice', 'memo_sacrifice', 'sacrifice']
+  for (const name of candidates) { if ((api.tx as any)[name]?.createCategory) return name }
+  // 若找不到 createCategory，也允许返回存在的 memo_sacrifice 以便给出更友好错误
+  for (const name of candidates) { if ((api.tx as any)[name]) return name }
+  throw new Error('运行时未启用 memo-sacrifice 模块（或名称不匹配）')
+}
+
+/**
+ * 函数级详细中文注释：构建 memo-sacrifice.createCategory(nameBytes, parentOpt) 预映像。
+ * - name: 类目名称（UTF-8 字符串，将转为 Bytes）
+ * - parent: 父类目ID（null/undefined 表示创建一级类目）
+ */
+export async function buildSacrificeCreateCategoryPreimage(
+  name: string,
+  parent?: number | null
+): Promise<{ hex: string; hash: string }>{
+  const api = await getApi(); const section = await resolveMemoSacrificeSection(api)
+  const nameBytes = new TextEncoder().encode(String(name||''))
+  const parentArg = (parent === null || parent === undefined) ? null : Number(parent)
+  return buildCallPreimageHex(section, 'createCategory', [Array.from(nameBytes), parentArg])
+}
+
+/**
  * 函数级详细中文注释：提交预映像（占位）
  * - 未来调用 api.tx.preimage.notePreimage(bytes)
  */
