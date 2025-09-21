@@ -12,3 +12,7 @@ memopark-dapp/*.suo
 memopark-dapp/*.ntvs*
 my-chain-state/
 key.md
+
+# ignore frontend legacy workspace dependencies
+memopark-front-end/node_modules
+memopark-front-end/dist
