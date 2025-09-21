@@ -12,7 +12,8 @@
 
 ## Extrinsic（MVP）
 - `dispute(domain, id, reason)`：登记争议，校验是否允许进入仲裁（由 Router 的 `can_dispute` 决定）。
-- `arbitrate(domain, id, decision)`：执行裁决，Router 调用业务 Hook 落地资金流。
+- `arbitrate(domain, id, decision)`：执行裁决，Router 调用业务 Hook 落地资金流；
+  - 起源 `DecisionOrigin` 由 runtime 绑定为 `Root | 内容委员会(2/3)`，普通账户无权直接调用。
 
 ### 证据存储改造（V2）
 - 统一通过 `pallet-evidence` 存储证据：加密文件放链下（IPFS/对象存储），链上仅存承诺哈希或加密 CID 的不可逆承诺。

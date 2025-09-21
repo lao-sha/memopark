@@ -1276,4 +1276,3 @@ const AlbumThumbGrid: React.FC<{ albumId: number; photos: Array<{ id: number; ci
     </div>
   )
 }
-

@@ -19,6 +19,7 @@ sp-std = { workspace = true }
 pallet-balances = { workspace = true }
 pallet-otc-maker = { path = "../otc-maker", default-features = false }
 pallet-escrow = { path = "../escrow", default-features = false }
+pallet-pricing = { path = "../pricing", default-features = false }
 
 [features]
 default = ["std"]
@@ -33,6 +34,7 @@ std = [
     "pallet-balances/std",
     "pallet-otc-maker/std",
     "pallet-escrow/std",
+    "pallet-pricing/std",
 ]
 
 

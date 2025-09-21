@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Alert, Button, Form, Input, InputNumber, Row, Col, Select, Switch, Typography, message, Space, Tag } from 'antd'
+import { Alert, Button, Form, Input, InputNumber, Row, Col, Select, Switch, Typography, message, Space, Tag, Modal } from 'antd'
 import { signAndSend } from '../../lib/polkadot'
 import { useWallet } from '../../providers/WalletProvider'
 import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
+import { useKyc } from '../../hooks/useKyc'
 
 /**
  * 函数级详细中文注释：创建挂单（移动端高保真）
@@ -14,7 +15,9 @@ import { getApi } from '../../lib/polkadot'
 const CreateListingForm: React.FC = () => {
   const wallet = useWallet()
   const [form] = Form.useForm()
-  const [consts, setConsts] = useState<{ requireKyc?: boolean; createWindow?: number; createMax?: number; listingFee?: string; listingBond?: string } | null>(null)
+  const [consts, setConsts] = useState<{ requireKyc?: boolean; createWindow?: number; createMax?: number; listingFee?: string; listingBond?: string; maxSpread?: number; } | null>(null)
+  const { current } = wallet
+  const { loading: kycLoading, verified } = useKyc(current)
 
   useEffect(() => {
     (async () => {
@@ -25,7 +28,8 @@ const CreateListingForm: React.FC = () => {
         const createMax = Number((api.consts as any).otcListing?.createMaxInWindow || 0)
         const listingFee = ((api.consts as any).otcListing?.listingFee || 0n).toString()
         const listingBond = ((api.consts as any).otcListing?.listingBond || 0n).toString()
-        setConsts({ requireKyc, createWindow, createMax, listingFee, listingBond })
+        const maxSpread = Number((api.consts as any).otcListing?.maxSpreadBps || 0)
+        setConsts({ requireKyc, createWindow, createMax, listingFee, listingBond, maxSpread })
       } catch {}
     })()
   }, [])
@@ -81,12 +85,20 @@ const CreateListingForm: React.FC = () => {
       <div style={{ padding: '8px 8px 0' }}>
         <Space direction="vertical" style={{ width: '100%' }}>
           <Alert type="info" showIcon message="由平台代付 Gas（forwarder）" />
+          {!kycLoading && consts?.requireKyc && !verified && (
+            <Alert
+              type="warning"
+              showIcon
+              message={<span>你尚未通过 KYC，无法创建挂单。请前往身份页完成实名判定（KnownGood / Reasonable）。</span>}
+              action={<Button size="small" onClick={()=>{ window.location.hash = '#/profile' }}>去身份页</Button>}
+            />
+          )}
           {consts && (
             <Alert
               type="warning"
               showIcon
               message={<span>
-                KYC{consts.requireKyc ? '已启用' : '未启用'}；创建限频窗口 {consts.createWindow} 块，最多 {consts.createMax} 次；
+                仅允许发布卖单；KYC{consts.requireKyc ? '已启用' : '未启用'}；创建限频窗口 {consts.createWindow} 块，最多 {consts.createMax} 次；
                 上架费 {consts.listingFee}，保证金 {consts.listingBond}
               </span>}
             />
@@ -96,17 +108,26 @@ const CreateListingForm: React.FC = () => {
 
       {/* 表单主体 */}
       <div style={{ padding: 8 }}>
-        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ side: 0, partial: true }}>
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ side: 1, partial: true }}>
           <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
             <Input placeholder="5F..." size="large" />
           </Form.Item>
-          <Form.Item name="side" label="方向(买=0/卖=1)" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: '买入(0)', value: 0 },
-                { label: '卖出(1)', value: 1 },
-              ]}
-              size="large"
+          <Form.Item name="side" label="方向(仅卖=1)" rules={[{ required: true }]}> 
+            <Select 
+              options={[{ label: '卖出(1)', value: 1 }, { label: '买入(0)', value: 0 }]} 
+              size="large" 
+              onChange={(v)=>{
+                if (v === 0) {
+                  Modal.info({
+                    title: '买单请走桥兑换',
+                    content: '为简化审计与风控，买单统一走“桥-锁定（报价保护）”。点击“前往桥”即可跳转。',
+                    okText: '前往桥',
+                    onOk: () => { window.location.hash = '#/bridge/lock' }
+                  })
+                  form.setFieldsValue({ side: 1 })
+                }
+              }}
+              value={1}
             />
           </Form.Item>
 
@@ -123,8 +144,8 @@ const CreateListingForm: React.FC = () => {
             </Col>
           </Row>
 
-          <Form.Item name="price" label="价格(price)" rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} size="large" />
+          <Form.Item name="spread_bps" label={`价差(spread, bps)${consts?.maxSpread ? ` (≤ ${consts.maxSpread})` : ''}`} rules={[{ required: true }]}>
+            <InputNumber min={0} max={consts?.maxSpread || 10000} style={{ width: '100%' }} size="large" />
           </Form.Item>
 
           <Row gutter={8}>
@@ -143,6 +164,19 @@ const CreateListingForm: React.FC = () => {
           <Form.Item name="total" label="总量(total)" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} size="large" />
           </Form.Item>
+
+          <Row gutter={8}>
+            <Col span={12}>
+              <Form.Item name="price_min" label="最小成交价(可选)" >
+                <InputNumber min={0} style={{ width: '100%' }} size="large" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="price_max" label="最大成交价(可选)">
+                <InputNumber min={0} style={{ width: '100%' }} size="large" />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Row gutter={8}>
             <Col span={12}>
@@ -165,7 +199,7 @@ const CreateListingForm: React.FC = () => {
           <Form.Item noStyle>
             <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #eee', padding: '8px 12px 16px', zIndex: 1000 }}>
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Button type="primary" htmlType="submit" block size="large">直发提交</Button>
+                <Button type="primary" htmlType="submit" block size="large" disabled={!!consts?.requireKyc && !verified}>直发提交</Button>
                 <Button onClick={()=>{
                   form.validateFields().then(async (values:any)=>{
                     const owner = values.owner?.trim() || wallet.current
@@ -176,7 +210,10 @@ const CreateListingForm: React.FC = () => {
                     const hash = await wallet.sendViaForwarder('otcListing' as any, 'otcListing', 'createListing', args)
                     message.success(`已提交代付：${hash}`)
                   }).catch(()=>{})
-                }} block size="large">代付提交</Button>
+                }} block size="large" disabled={!!consts?.requireKyc && !verified}>代付提交</Button>
+                {consts?.requireKyc && !verified && (
+                  <Button onClick={()=>{ window.location.hash = '#/profile' }} block size="large">去身份页完成 KYC</Button>
+                )}
               </Space>
             </div>
           </Form.Item>

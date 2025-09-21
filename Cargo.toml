@@ -35,6 +35,7 @@ members = [
     "pallets/memo-sacrifice",
     "pallets/origin-restriction",
     "pallets/fee-guard",
+    "pallets/pricing",
     "runtime",
 ]
 resolver = "2"

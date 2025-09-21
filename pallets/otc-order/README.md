@@ -1,22 +1,18 @@
-# pallet-otc-order
+# pallet-otc-order（撮合与订单）
 
-- 职责：吃单→下单→履约→放行/退款→仲裁。链上仅存承诺（支付方式、联系方式）。
+- 职责：基于挂单撮合生成订单、记录金额与状态流转（已付/放行/退款/争议）。
+- 定价：撮合价不再信任前端/静态输入，统一按“链上价 + spread”计算，并在事件中留存快照。
 
-## 接口（骨架）
-- `open_order(...)`：基于挂单创建订单（吃单）。
-- `mark_paid(id)`：买家标记已支付/已提交凭据。
-- `mark_disputed(id)`：将订单标记为争议中（仲裁登记在仲裁 pallet）。
-- `release(id)`：卖家放行（从挂单托管划转到买家）。
-- `refund_on_timeout(id)`：超时退款（任意人可触发）。
-- `reveal_payment(id, payload, salt)` / `reveal_contact(id, payload, salt)`：承诺揭示与校验。
+## 撮合价格
+- 从 `pallet-pricing` 读取 `(price_num, price_den, ts)`，校验 `!is_stale(now)`。
+- 计算：`base_price = floor(num/den)`；`exec_price = base_price * (1 + spread_bps/10000)`，其中 `spread_bps` 来自关联的 `Listing`。
+- 价带保护：若 `price_min/max` 存在，要求 `price_min ≤ exec_price ≤ price_max`。
 
-## 存储
-- `Orders: id -> Order{ listing_id, maker, taker, price, qty, amount, commits, state }`
-- `NextOrderId`
-- `ExpiringAt: block -> [order_id]`（到期索引）
-- `OpenRate: who -> (start, count)`（吃单限频）
-- `PaidRate: who -> (start, count)`（标记支付限频）
+## 事件
+- `OrderOpened { id, listing_id, maker, taker, price, qty, amount, created_at, expire_at }`
+  - 其中 `price` 为本次成交的 `exec_price`（按链上价+spread 计算）。
 
-## 风控（限频）
-- `OpenWindow/OpenMaxInWindow`：吃单滑动窗口与窗口内最大次数（常量，可由 runtime 配置）。
-- `PaidWindow/PaidMaxInWindow`：标记支付滑动窗口与窗口内最大次数（常量，可由 runtime 配置）。
+## 风控
+- 吃单限频：`OpenRate`（窗口大小与上限由运行时参数配置）。
+- 最小订单金额：`MinOrderAmount`。
+- 订单确认与证据窗口：`ConfirmTTLParam`。

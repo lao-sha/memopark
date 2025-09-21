@@ -96,3 +96,53 @@ await signAndSendLocalFromKeystore(
 注意：
 - 隐藏/删除该媒体时，链上会自动清空主图并发 `PrimaryImageChanged(deceasedId, None)`，前端应回退展示。
 - 仅 Photo 可设为主图；如不满足约束，链上会报错。
+
+## 桥（报价保护）前端使用说明
+
+自 runtime v0.2 起，新增 `pallet-pricing` + `pallet-memo-bridge.lock_memo_with_protection`，支持：
+- 读取链上价格（明文）供界面展示；
+- 用户锁定时携带 `min_eth_out` 做滑点保护；
+- 事件中记录价格快照，便于审计与追溯。
+
+### 读取价格（展示/校验陈旧）
+
+```ts
+// 推荐在 hooks 中每 N 秒读取一次
+const price = await api.query.pricing.price();
+const params = await api.query.pricing.params();
+
+// 结构示例：
+// price: { priceNum, priceDen, lastUpdated }
+// params: { staleSeconds, maxJumpBps, paused }
+
+function isStale(nowSec: number) {
+  return nowSec - Number(price.lastUpdated.toString()) > Number(params.staleSeconds.toString());
+}
+
+// 预计可得 ETH（向下取整）
+function quoteEthOut(netAmount: bigint) {
+  const num = BigInt(price.priceNum.toString());
+  const den = BigInt(price.priceDen.toString());
+  if (den === 0n) return 0n;
+  return (netAmount * num) / den;
+}
+```
+
+### 锁定（携带最小可得 ETH 保护）
+
+```ts
+// amount: MEMO 原生单位（u128）；ethAddressBytes：ETH 地址字节
+// minEthOut: 由前端根据净额与链上价格估算后，给出用户可接受的最小值
+await signAndSendLocalFromKeystore(
+  'memoBridge',
+  'lockMemoWithProtection',
+  [amount, ethAddressBytes, minEthOut]
+);
+
+// 事件：memoBridge.MemoLockedWithQuote { priceNum, priceDen, quoteEthOut }
+```
+
+提示：
+- `ethAddressBytes` 可用 `ethers.utils.getAddress` 校验后，`ethers.utils.arrayify(address)` 转字节；
+- 若价格陈旧或暂停，建议禁用按钮并提示“价格已过期/功能暂停”；
+- `minEthOut` 建议支持用户可调滑点，默认按估算值的 98%～99%。

@@ -4,6 +4,7 @@ import { signAndSend } from '../../lib/polkadot'
 import { useWallet } from '../../providers/WalletProvider'
 import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
+import { usePricing } from '../../hooks/usePricing'
 
 /**
  * 函数级详细中文注释：吃单下单（移动端高保真）
@@ -15,6 +16,9 @@ const OpenOrderForm: React.FC = () => {
   const wallet = useWallet()
   const [form] = Form.useForm()
   const [consts, setConsts] = useState<{ openWindow?: number; openMax?: number; paidWindow?: number; paidMax?: number } | null>(null)
+  const { price, stale } = usePricing(10000)
+  const [spreadBps, setSpreadBps] = useState<number | null>(null)
+  const [estPrice, setEstPrice] = useState<bigint | null>(null)
 
   useEffect(() => {
     (async () => {
@@ -29,6 +33,35 @@ const OpenOrderForm: React.FC = () => {
     })()
   }, [])
 
+  // 当 listing_id 或链上价变化时，尝试读取该挂单的 spread_bps 并计算预计成交价
+  useEffect(() => {
+    const loadListing = async () => {
+      try {
+        const id = form.getFieldValue('listing_id')
+        if (id === undefined || id === null || id === '') return
+        const api = await getApi()
+        const listing: any = await (api.query as any).otcListing.listings(id)
+        const j = listing?.toJSON?.() as any
+        const bps = Number(j?.pricing_spread_bps ?? j?.pricingSpreadBps ?? 0)
+        setSpreadBps(Number.isFinite(bps) ? bps : null)
+      } catch { setSpreadBps(null) }
+    }
+    loadListing()
+  }, [form.getFieldValue('listing_id')])
+
+  useEffect(() => {
+    // 估算价格：base = floor(num/den)，exec = base * (1 + bps/10000)
+    try {
+      if (!price || !spreadBps && spreadBps !== 0) { setEstPrice(null); return }
+      const num = BigInt(price.num.toString())
+      const den = BigInt(price.den.toString() || '1')
+      if (den === 0n) { setEstPrice(null); return }
+      const base = num / den
+      const exec = base + (base * BigInt(spreadBps!)) / 10000n
+      setEstPrice(exec)
+    } catch { setEstPrice(null) }
+  }, [price, spreadBps])
+
   /**
    * 函数级详细中文注释：表单提交处理（占位）
    * - 未来：构造 RuntimeCall → MetaTx → forwarder.forward（平台代付）
@@ -42,6 +75,14 @@ const OpenOrderForm: React.FC = () => {
       // 基本前端校验：数量与金额正数
       if (Number(values.qty) <= 0) throw new Error('数量需大于 0')
       if (Number(values.amount) <= 0) throw new Error('总价需大于 0')
+      if (stale) throw new Error('链上价格已陈旧，请稍后重试')
+      // 滑点保护：若用户填写 min/max 可接受价，与预计价比较
+      if (estPrice !== null) {
+        const minAcc = values.min_accept_price !== undefined && values.min_accept_price !== null && values.min_accept_price !== '' ? BigInt(values.min_accept_price) : null
+        const maxAcc = values.max_accept_price !== undefined && values.max_accept_price !== null && values.max_accept_price !== '' ? BigInt(values.max_accept_price) : null
+        if (minAcc !== null && estPrice < minAcc) throw new Error(`预计成交价 ${estPrice.toString()} 低于你的最小可接受价 ${minAcc.toString()}`)
+        if (maxAcc !== null && estPrice > maxAcc) throw new Error(`预计成交价 ${estPrice.toString()} 高于你的最大可接受价 ${maxAcc.toString()}`)
+      }
       const args = [
         Number(values.listing_id),
         BigInt(values.price),
@@ -107,6 +148,27 @@ const OpenOrderForm: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+          {price && (
+            <Alert 
+              type={stale? 'warning':'info'} 
+              showIcon 
+              message={`链上价 ${price.num.toString()}/${price.den.toString()}（${stale?'已陈旧':'有效'}）`} 
+              description={spreadBps !== null && estPrice !== null ? `预计成交价（含 spread ${spreadBps}bps）：${estPrice.toString()}` : undefined}
+            />
+          )}
+
+          <Row gutter={8}>
+            <Col span={12}>
+              <Form.Item name="min_accept_price" label="最小可接受价(可选)">
+                <InputNumber min={0} style={{ width: '100%' }} size="large" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="max_accept_price" label="最大可接受价(可选)">
+                <InputNumber min={0} style={{ width: '100%' }} size="large" />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item name="amount" label="总价(amount)" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} size="large" />
@@ -122,7 +184,7 @@ const OpenOrderForm: React.FC = () => {
           <Form.Item noStyle>
             <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #eee', padding: '8px 12px 16px', zIndex: 1000 }}>
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Button type="primary" htmlType="submit" block size="large">直发提交</Button>
+                <Button type="primary" htmlType="submit" block size="large" disabled={stale}>直发提交</Button>
                 <Button onClick={()=>{
                   form.validateFields().then(async (values:any)=>{
                     const owner = values.owner?.trim() || wallet.current

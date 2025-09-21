@@ -14,6 +14,7 @@ pub mod pallet {
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     use frame_system::pallet_prelude::*;
     use crate::weights::WeightInfo;
+    use frame_support::traits::EnsureOrigin;
     // 基准模块在 pallet 外部声明；此处不在 proc-macro 输入中声明子模块，避免 E0658
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -43,6 +44,10 @@ pub mod pallet {
         type WeightInfo: weights::WeightInfo;
         /// 域路由：把仲裁请求路由到对应业务 pallet 的仲裁钩子
         type Router: ArbitrationRouter<Self::AccountId>;
+        /// 函数级中文注释：仲裁决策起源（治理）。
+        /// - 由 runtime 绑定为 Root 或 内容委员会 阈值（例如 2/3 通过）。
+        /// - 用于 `arbitrate` 裁决入口的权限校验，替代任意签名账户。
+        type DecisionOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     pub type BalanceOf<T> = <<T as pallet_escrow::pallet::Config>::Currency as frame_support::traits::Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -99,11 +104,14 @@ pub mod pallet {
             Self::deposit_event(Event::Disputed { domain, id });
             Ok(())
         }
-        /// 仲裁者裁决（白名单控制由 authorizer/forwarder 负责）
+        /// 仲裁者裁决（治理起源：Root/委员会）。
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::arbitrate())]
         pub fn arbitrate(origin: OriginFor<T>, domain: [u8; 8], id: u64, decision_code: u8, bps: Option<u16>) -> DispatchResult {
-            let _arb = ensure_signed(origin)?;
+            // 函数级详细中文注释：仲裁裁决入口
+            // - 安全：仅允许由治理起源触发（Root 或 内容委员会阈值），避免任意账户执行清算。
+            // - 通过 runtime 注入的 DecisionOrigin 校验 origin。
+            T::DecisionOrigin::ensure_origin(origin)?;
             ensure!(Disputed::<T>::get(domain, id).is_some(), Error::<T>::NotDisputed);
             // 通过 Router 将裁决应用到对应域的业务 pallet
             let decision = match (decision_code, bps) {

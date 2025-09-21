@@ -42,6 +42,7 @@ use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
 use frame_support::traits::{Contains, EnsureOrigin};
 use frame_support::PalletId;
+use pallet_pricing as _;
 // ===== memo-content-governance 运行时配置（占位骨架） =====
 impl pallet_memo_content_governance::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -866,6 +867,15 @@ impl pallet_memo_bridge::Config for Runtime {
     >;
     type MinLock = BridgeMinLock;
     type BridgePalletId = BridgePalletId;
+    /// 函数级中文注释：绑定价格源为 Pricing Pallet
+    type PriceFeed = pallet_pricing::Pallet<Runtime>;
+}
+
+// ===== pricing 配置 =====
+parameter_types! { pub const PricingMaxFeeders: u32 = 16; }
+impl pallet_pricing::pallet::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type MaxFeeders = PricingMaxFeeders;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -1171,6 +1181,10 @@ impl pallet_otc_listing::Config for Runtime {
     type ListingBond = OtcListingBond;
     /// 费用接收账户
     type FeeReceiver = OtcFeeReceiver;
+    /// 价格源：绑定 Pricing Pallet
+    type PriceFeed = pallet_pricing::Pallet<Runtime>;
+    /// 最大允许 spread（bps）
+    type MaxSpreadBps = frame_support::traits::ConstU16<5000>; // 50% 示例
 }
 parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
 impl pallet_otc_order::Config for Runtime {
@@ -1202,6 +1216,11 @@ impl pallet_arbitration::Config for Runtime {
     type Escrow = pallet_escrow::Pallet<Runtime>;
     type WeightInfo = pallet_arbitration::weights::SubstrateWeight<Runtime>;
     type Router = ArbitrationRouter;
+    /// 函数级中文注释：仲裁裁决起源绑定为 Root | 内容委员会阈值(2/3)
+    type DecisionOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
 }
 
 // 已移除：Karma 授权命名空间常量

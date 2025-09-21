@@ -8,7 +8,8 @@ pub mod pallet {
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     use sp_core::hashing::blake2_256;
     use pallet_otc_listing::pallet::Listings as ListingsMap;
-    use sp_runtime::traits::{Saturating, Zero};
+    use pallet_pricing::PriceProvider;
+    use sp_runtime::traits::{Saturating, Zero, SaturatedConversion};
     use sp_std::vec::Vec;
 
     // Balance aliases 将在 Config 定义之后重新声明
@@ -159,6 +160,7 @@ pub mod pallet {
         pub fn open_order(
             origin: OriginFor<T>,
             listing_id: u64,
+            // 价格由链上价 + spread 计算，前端可传入期望价用于链上比较（保留，但不信任）
             price: BalanceOf<T>,
             qty: BalanceOf<T>,
             amount: BalanceOf<T>,
@@ -176,14 +178,27 @@ pub mod pallet {
             let id = NextOrderId::<T>::mutate(|x| { let id=*x; *x = id.saturating_add(1); id });
             let now = <frame_system::Pallet<T>>::block_number();
             // 读取挂单，校验状态/价格/每单数量区间/是否允许部分成交/库存，并扣减 remaining
-            let maker_acc = ListingsMap::<T>::get(listing_id).ok_or(Error::<T>::NotFound)?.maker;
-            let price_b: BalanceOf<T> = price;
+            let l = ListingsMap::<T>::get(listing_id).ok_or(Error::<T>::NotFound)?;
+            let maker_acc = l.maker.clone();
+            let _price_b: BalanceOf<T> = price; // 前端传入的期望价仅用于链上校验/对比（当前未使用）
             let qty_b: BalanceOf<T> = qty;
             let amount_b: BalanceOf<T> = amount;
+            // 计算撮合价：读取价格源并校验陈旧
+            let now_secs = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6u64;
+            ensure!(!<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs), Error::<T>::BadState);
+            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price().ok_or(Error::<T>::BadState)?;
+            // base_price = floor(num/den)，amount 与 qty 的单位需保持业务一致（此处复用 Balance 类型）
+            // exec_price = base_price * (1 + spread_bps/10000)
+            let base_raw: u128 = num / den;
+            let base_price: BalanceOf<T> = base_raw.saturated_into::<BalanceOf<T>>();
+            let exec_price: BalanceOf<T> = base_price.saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
+
             ListingsMap::<T>::try_mutate(listing_id, |maybe| -> Result<(), DispatchError> {
                 let l = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(l.active, Error::<T>::BadState);
-                ensure!(price_b == l.price, Error::<T>::BadState);
+                let exec_p = exec_price;
+                if let Some(pmin) = l.price_min { ensure!(exec_p >= pmin, Error::<T>::BadState); }
+                if let Some(pmax) = l.price_max { ensure!(exec_p <= pmax, Error::<T>::BadState); }
                 // 每笔下单最小/最大数量约束
                 ensure!(qty_b >= l.min_qty && qty_b <= l.max_qty, Error::<T>::BadState);
                 // 不允许部分成交则本单必须吃完剩余
@@ -198,7 +213,7 @@ pub mod pallet {
                 listing_id,
                 maker: maker_acc.clone(),
                 taker: who.clone(),
-                price: price_b, qty: qty_b, amount: amount_b,
+                price: exec_price, qty: qty_b, amount: amount_b,
                 created_at: now,
                 expire_at: now.saturating_add(ConfirmTTLParam::<T>::get()),
                 evidence_until: now.saturating_add(ConfirmTTLParam::<T>::get()),
@@ -210,7 +225,7 @@ pub mod pallet {
             // 订单创建不再额外锁定买家资金，减少双向锁定复杂度；放行/退款仅操作 listing 托管或库存恢复。
             // 建立到期索引
             ExpiringAt::<T>::mutate(order.expire_at, |v| { let _ = v.try_push(id); });
-            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: maker_acc, taker: who, price: price_b, qty: qty_b, amount: amount_b, created_at: now, expire_at: order.expire_at });
+            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: maker_acc, taker: who, price: exec_price, qty: qty_b, amount: amount_b, created_at: now, expire_at: order.expire_at });
             Ok(())
         }
 
@@ -354,6 +369,89 @@ pub mod pallet {
             if let Some(v) = min_order_amount { MinOrderAmount::<T>::put(v); }
             if let Some(v) = confirm_ttl { ConfirmTTLParam::<T>::put(v); }
             Self::deposit_event(Event::OrderParamsUpdated);
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：吃单→创建订单（带滑点保护，去除前端价格与金额参数）
+        /// - 输入：`listing_id`、`qty`、`payment_commit`、`contact_commit`、可选 `min_accept_price`/`max_accept_price`
+        /// - 定价：读取 `pallet-pricing` 当前价并校验不陈旧；`exec_price = floor(num/den) * (1 + spread_bps/10000)`
+        /// - 保护：若提供 `min/max` 则确保 `min ≤ exec_price ≤ max`；并校验做市商价带 `price_min/max`
+        /// - 资金：库存托管模式仅扣减剩余库存；放行时从 listing 托管划转
+        #[pallet::call_index(8)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(4, 4))]
+        pub fn open_order_with_protection(
+            origin: OriginFor<T>,
+            listing_id: u64,
+            qty: BalanceOf<T>,
+            payment_commit: H256,
+            contact_commit: H256,
+            min_accept_price: Option<BalanceOf<T>>,
+            max_accept_price: Option<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 吃单限频：滑动窗口检查与更新
+            let (wstart, cnt) = OpenRate::<T>::get(&who);
+            let now = <frame_system::Pallet<T>>::block_number();
+            let window = OpenWindowParam::<T>::get();
+            let (wstart, cnt) = if now.saturating_sub(wstart) > window { (now, 0u32) } else { (wstart, cnt) };
+            ensure!(cnt < OpenMaxInWindowParam::<T>::get(), Error::<T>::BadState);
+            OpenRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
+
+            // 读取挂单与做市商
+            let l = ListingsMap::<T>::get(listing_id).ok_or(Error::<T>::NotFound)?;
+            let maker_acc = l.maker.clone();
+
+            // 计算撮合价并做保护校验
+            let now_secs = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6u64;
+            ensure!(!<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs), Error::<T>::BadState);
+            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price().ok_or(Error::<T>::BadState)?;
+            ensure!(den != 0, Error::<T>::BadState);
+            let base_raw: u128 = num / den;
+            let base_price: BalanceOf<T> = base_raw.saturated_into::<BalanceOf<T>>();
+            let exec_price: BalanceOf<T> = base_price.saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
+
+            // 价带保护：做市商设置的 min/max
+            if let Some(pmin) = l.price_min { ensure!(exec_price >= pmin, Error::<T>::BadState); }
+            if let Some(pmax) = l.price_max { ensure!(exec_price <= pmax, Error::<T>::BadState); }
+            // taker 滑点保护
+            if let Some(pmin) = min_accept_price { ensure!(exec_price >= pmin, Error::<T>::BadState); }
+            if let Some(pmax) = max_accept_price { ensure!(exec_price <= pmax, Error::<T>::BadState); }
+
+            // 校验数量边界与库存，并扣减库存
+            ListingsMap::<T>::try_mutate(listing_id, |maybe| -> Result<(), DispatchError> {
+                let l = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(l.active, Error::<T>::BadState);
+                ensure!(qty >= l.min_qty && qty <= l.max_qty, Error::<T>::BadState);
+                if !l.partial { ensure!(qty == l.remaining, Error::<T>::BadState); }
+                ensure!(l.remaining >= qty, Error::<T>::BadState);
+                l.remaining = l.remaining.saturating_sub(qty);
+                Ok(())
+            })?;
+
+            // 订单最小金额：按 exec_price * qty 估算
+            let amount = exec_price.saturating_mul(qty);
+            ensure!(amount >= MinOrderAmount::<T>::get(), Error::<T>::BadState);
+
+            // 创建订单
+            let id = NextOrderId::<T>::mutate(|x| { let id=*x; *x = id.saturating_add(1); id });
+            let order = Order::<_, _, _> {
+                listing_id,
+                maker: maker_acc.clone(),
+                taker: who.clone(),
+                price: exec_price,
+                qty,
+                amount,
+                created_at: now,
+                expire_at: now.saturating_add(ConfirmTTLParam::<T>::get()),
+                evidence_until: now.saturating_add(ConfirmTTLParam::<T>::get()),
+                payment_commit,
+                contact_commit,
+                state: OrderState::Created,
+            };
+            Orders::<T>::insert(id, &order);
+            ExpiringAt::<T>::mutate(order.expire_at, |v| { let _ = v.try_push(id); });
+            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: maker_acc, taker: who, price: exec_price, qty, amount, created_at: now, expire_at: order.expire_at });
             Ok(())
         }
     }

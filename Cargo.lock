@@ -5561,6 +5561,7 @@ dependencies = [
  "pallet-otc-listing",
  "pallet-otc-maker",
  "pallet-otc-order",
+ "pallet-pricing",
  "pallet-sudo",
  "pallet-template",
  "pallet-timestamp",
@@ -6526,6 +6527,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-balances",
+ "pallet-pricing",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
@@ -6718,6 +6720,7 @@ dependencies = [
  "pallet-balances",
  "pallet-escrow",
  "pallet-otc-maker",
+ "pallet-pricing",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6750,9 +6753,23 @@ dependencies = [
  "pallet-escrow",
  "pallet-evidence",
  "pallet-otc-listing",
+ "pallet-pricing",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-pricing"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
  "sp-runtime",
  "sp-std",
 ]

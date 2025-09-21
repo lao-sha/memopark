@@ -19,6 +19,7 @@ import MyGravesPage from './features/grave/MyGravesPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import CreateGraveForm from './features/grave/CreateGraveForm';
 import GraveDetailPage from './features/grave/GraveDetailPage';
+import GraveDetailNewPage from './features/grave/GraveDetailNewPage';
 import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';
 import DeceasedListPage from './features/deceased/DeceasedListPage';
 import CoverOptionsPage from './features/grave/CoverOptionsPage';
@@ -32,6 +33,9 @@ import GovTicketPage from './features/governance/GovTicketPage';
 import ContentCommitteePage from './features/governance/ContentCommitteePage';
 import SubmitAppealPage from './features/governance/SubmitAppealPage';
 import CommitteeTemplatesPage from './features/governance/CommitteeTemplatesPage';
+import BridgeLockPage from './features/bridge/BridgeLockPage';
+import AdminOtcSettingsPage from './features/otc/AdminOtcSettingsPage';
+import AdminArbitrationPage from './features/arbitration/AdminArbitrationPage';
 import './App.css';
 
 /**
@@ -65,6 +69,7 @@ const App: React.FC = () => {
               : hash === '#/offerings/by-who' ? <OfferingsByWho />
               : hash === '#/grave/create' ? <CreateGraveForm />
               : hash === '#/deceased/create' ? <CreateDeceasedForm />
+              : hash.startsWith('#/grave/detail-new') ? <GraveDetailNewPage />
               : hash.startsWith('#/grave/detail') ? <GraveDetailPage />
               : hash === '#/deceased/list' ? <DeceasedListPage />
               : hash === '#/grave/my' ? <MyGravesPage />
@@ -83,6 +88,9 @@ const App: React.FC = () => {
               : hash === '#/category/list' ? <CategoryListPage />
               : hash === '#/sacrifice/create' ? <CreateSacrificePage />
               : hash === '#/scene/create' ? <CreateScenePage />
+              : hash === '#/bridge/lock' ? <BridgeLockPage />
+              : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
+              : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
               : <AuthEntryPage />}
             <BottomNav />
           </WalletProvider>

@@ -12,6 +12,7 @@ pub mod pallet {
     use sp_runtime::traits::{Saturating, Zero};
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     use pallet_otc_maker::KycProvider;
+    use pallet_pricing::PriceProvider;
 
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -25,7 +26,12 @@ pub mod pallet {
         pub side: u8,
         pub base: u32,
         pub quote: u32,
-        pub price: Balance,
+        /// 函数级中文注释：基于链上价格的报价扩展（单位：bps，0-10000）
+        pub pricing_spread_bps: u16,
+        /// 函数级中文注释：做市商价带下限（可选，单位与撮合价一致）
+        pub price_min: Option<Balance>,
+        /// 函数级中文注释：做市商价带上限（可选）
+        pub price_max: Option<Balance>,
         pub min_qty: Balance,
         pub max_qty: Balance,
         pub total: Balance,
@@ -63,6 +69,11 @@ pub mod pallet {
         type ListingBond: Get<BalanceOf<Self>>;
         /// 函数级中文注释：上架费收款账户（建议由 PalletId 派生的稳定账户）
         type FeeReceiver: sp_core::Get<Self::AccountId>;
+        /// 函数级中文注释：价格源（仅读取 current_price/is_stale）
+        type PriceFeed: PriceProvider;
+        /// 函数级中文注释：允许的最大 spread（bps）
+        #[pallet::constant]
+        type MaxSpreadBps: Get<u16>;
     }
 
     #[pallet::pallet]
@@ -100,6 +111,9 @@ pub mod pallet {
     /// 最小挂单有效期（从当前块起至少 N 块）
     #[pallet::storage]
     pub type MinListingTtl<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultMinListingTtl<T>>;
+    /// 函数级中文注释：是否允许发布“买单”（默认 false，仅允许卖单）
+    #[pallet::storage]
+    pub type AllowBuyListings<T: Config> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
     pub type Listings<T: Config> = StorageMap<_, Blake2_128Concat, u64, Listing<<T as self::Config>::MaxCidLen, T::AccountId, BalanceOf<T>, BlockNumberFor<T>>, OptionQuery>;
@@ -125,7 +139,9 @@ pub mod pallet {
             side: u8,
             base: u32,
             quote: u32,
-            price: BalanceOf<T>,
+            pricing_spread_bps: u16,
+            price_min: Option<BalanceOf<T>>,
+            price_max: Option<BalanceOf<T>>,
             min_qty: BalanceOf<T>,
             max_qty: BalanceOf<T>,
             total: BalanceOf<T>,
@@ -135,10 +151,14 @@ pub mod pallet {
         },
         /// 占位（未来编辑事件）。
         ListingUpdated { id: u64 },
-        /// 函数级中文注释：取消挂单（含 id）。
-        ListingCanceled { id: u64 },
-        /// 函数级中文注释：挂单到期（自动下架并退款剩余库存）
-        ListingExpired { id: u64 },
+        /// 函数级中文注释：取消挂单（带托管余额快照，便于审计）。
+        /// - escrow_amount：本次取消时，挂单库存托管余额（id）快照。
+        /// - bond_amount：本次取消时，保证金托管余额（bond_id(id)）快照。
+        ListingCanceled { id: u64, escrow_amount: BalanceOf<T>, bond_amount: BalanceOf<T> },
+        /// 函数级中文注释：挂单到期（自动下架并退款剩余库存，带托管余额快照）。
+        /// - escrow_amount：到期处理时的库存托管余额快照。
+        /// - bond_amount：到期处理时的保证金托管余额快照。
+        ListingExpired { id: u64, escrow_amount: BalanceOf<T>, bond_amount: BalanceOf<T> },
         /// 函数级中文注释：风控参数已更新（治理）
         ListingParamsUpdated,
     }
@@ -168,12 +188,14 @@ pub mod pallet {
             side: u8,
             base: u32,
             quote: u32,
-            price: BalanceOf<T>,
+            pricing_spread_bps: u16,
             min_qty: BalanceOf<T>,
             max_qty: BalanceOf<T>,
             total: BalanceOf<T>,
             partial: bool,
             expire_at: BlockNumberFor<T>,
+            price_min: Option<BalanceOf<T>>,
+            price_max: Option<BalanceOf<T>>,
             terms_commit: Option<BoundedVec<u8, <T as self::Config>::MaxCidLen>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -194,6 +216,9 @@ pub mod pallet {
             ensure!(total >= MinListingTotal::<T>::get(), Error::<T>::BadState);
             let min_ttl = MinListingTtl::<T>::get();
             if min_ttl != Zero::zero() { ensure!(expire_at >= now.saturating_add(min_ttl), Error::<T>::BadState); }
+            // spread 上限校验
+            ensure!(pricing_spread_bps <= T::MaxSpreadBps::get(), Error::<T>::BadState);
+            if price_min.is_some() && price_max.is_some() { ensure!(price_min <= price_max, Error::<T>::BadState); }
             let id = NextListingId::<T>::mutate(|x| { let id=*x; *x=id.saturating_add(1); id });
             let listing = Listing::<
                 <T as self::Config>::MaxCidLen,
@@ -203,7 +228,10 @@ pub mod pallet {
             > {
                 maker: who,
                 side,
-                base, quote, price,
+                base, quote,
+                pricing_spread_bps,
+                price_min,
+                price_max,
                 min_qty, max_qty,
                 total, remaining: total,
                 partial,
@@ -211,6 +239,10 @@ pub mod pallet {
                 terms_commit,
                 active: true,
             };
+            // 仅允许卖单：side=1 表示 Sell；当 AllowBuyListings=false 时拒绝买单
+            if !AllowBuyListings::<T>::get() {
+                ensure!(listing.side == 1u8, Error::<T>::BadState);
+            }
             // 上架费：如启用则从 maker 划转至 FeeReceiver（默认 0 关闭）。
             let fee = ListingFeeParam::<T>::get();
             if !fee.is_zero() {
@@ -233,7 +265,9 @@ pub mod pallet {
                 side: listing.side,
                 base: listing.base,
                 quote: listing.quote,
-                price: listing.price,
+                pricing_spread_bps: listing.pricing_spread_bps,
+                price_min: listing.price_min,
+                price_max: listing.price_max,
                 min_qty: listing.min_qty,
                 max_qty: listing.max_qty,
                 total: listing.total,
@@ -250,6 +284,9 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn cancel_listing(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            // 函数级详细中文注释：取消前先读取托管余额快照，事件中输出，便于审计与索引校验；随后再退款。
+            let escrow_snapshot: BalanceOf<T> = <T as Config>::Escrow::amount_of(id);
+            let bond_snapshot: BalanceOf<T> = <T as Config>::Escrow::amount_of(Self::bond_id(id));
             Listings::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let v = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(who == v.maker, Error::<T>::BadState);
@@ -263,7 +300,7 @@ pub mod pallet {
             if !bond.is_zero() {
                 if let Some(v) = Listings::<T>::get(id) { let _ = <T as Config>::Escrow::refund_all(Self::bond_id(id), &v.maker); }
             }
-            Self::deposit_event(Event::ListingCanceled { id });
+            Self::deposit_event(Event::ListingCanceled { id, escrow_amount: escrow_snapshot, bond_amount: bond_snapshot });
             Ok(())
         }
 
@@ -279,6 +316,7 @@ pub mod pallet {
             listing_bond: Option<BalanceOf<T>>,
             min_listing_total: Option<BalanceOf<T>>,
             min_listing_ttl: Option<BlockNumberFor<T>>,
+            allow_buy_listings: Option<bool>,
         ) -> DispatchResult {
             ensure_root(origin)?;
             if let Some(v) = create_window { CreateWindowParam::<T>::put(v); }
@@ -287,6 +325,7 @@ pub mod pallet {
             if let Some(v) = listing_bond { ListingBondParam::<T>::put(v); }
             if let Some(v) = min_listing_total { MinListingTotal::<T>::put(v); }
             if let Some(v) = min_listing_ttl { MinListingTtl::<T>::put(v); }
+            if let Some(v) = allow_buy_listings { AllowBuyListings::<T>::put(v); }
             Self::deposit_event(Event::ListingParamsUpdated);
             Ok(())
         }
@@ -301,13 +340,16 @@ pub mod pallet {
             for id in ids.into_inner() {
                 if let Some(l) = Listings::<T>::get(id) {
                     if l.active {
+                        // 函数级详细中文注释：到期处理前记录托管余额与保证金余额快照，事件中输出，随后状态置 inactive 并退款。
+                        let escrow_snapshot: BalanceOf<T> = <T as Config>::Escrow::amount_of(id);
+                        let bond_snapshot: BalanceOf<T> = <T as Config>::Escrow::amount_of(Self::bond_id(id));
                         Listings::<T>::mutate(id, |m| if let Some(x)=m.as_mut(){ x.active=false; });
                         let _ = <T as Config>::Escrow::refund_all(id, &l.maker);
                         // 到期退还保证金
                         let bond = ListingBondParam::<T>::get();
                         if !bond.is_zero() { let _ = <T as Config>::Escrow::refund_all(Self::bond_id(id), &l.maker); }
                         // 触发到期事件，便于索引器记录生命周期
-                        Self::deposit_event(Event::ListingExpired { id });
+                        Self::deposit_event(Event::ListingExpired { id, escrow_amount: escrow_snapshot, bond_amount: bond_snapshot });
                     }
                 }
             }

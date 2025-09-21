@@ -350,4 +350,7 @@ mod runtime {
 
 	#[runtime::pallet_index(42)]
 	pub type MemoBridge = pallet_memo_bridge;
+
+	#[runtime::pallet_index(43)]
+	pub type Pricing = pallet_pricing;
 }

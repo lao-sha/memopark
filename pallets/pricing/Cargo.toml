@@ -1,5 +1,5 @@
 [package]
-name = "pallet-memo-bridge"
+name = "pallet-pricing"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -9,10 +9,9 @@ codec = { workspace = true, features = ["derive"] }
 scale-info = { workspace = true, features = ["derive"], default-features = false }
 sp-std = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
+sp-arithmetic = { workspace = true, default-features = false }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
-pallet-balances = { workspace = true, default-features = false }
-pallet-pricing = { path = "../pricing", default-features = false }
 
 [features]
 default = ["std"]
@@ -23,8 +22,6 @@ std = [
   "sp-runtime/std",
   "frame-support/std",
   "frame-system/std",
-  "pallet-balances/std",
-  "pallet-pricing/std",
 ]
 
 
