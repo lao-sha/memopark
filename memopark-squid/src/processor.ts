@@ -1,7 +1,7 @@
 // @ts-nocheck
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {SubstrateBatchProcessor} from '@subsquid/substrate-processor'
-import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, ReferralCode, OfferingPriceSnapshot, OfferingPauseEvent, OfferingParamsSnapshot, OfferingBySacrifice, OfferingSettlement, PinBillingEvent, GovCase, GovAction} from './model'
+import {Listing, ListingAction, Order, OrderAction, ArbitrationCase, ArbitrationAction, Notification, ArbDailyStat, Grave, GraveAction, Offering, GuestbookMessage, MediaItem, ReferralLink, ReferralCode, OfferingPriceSnapshot, OfferingPauseEvent, OfferingParamsSnapshot, OfferingBySacrifice, OfferingSettlement, PinBillingEvent, GovCase, GovAction, PinOverview} from './model'
 
 const processor = new SubstrateBatchProcessor()
   .setDataSource({
@@ -28,12 +28,13 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {id, maker, side, base, quote, price, min_qty, max_qty, total, remaining, partial, expire_at} = ev.args
         const createdAt = b.header.height
-        await ctx.store.save(new Listing({
-          id: id.toString(), maker: maker.toString(), side, base, quote,
-          price: BigInt(price), minQty: BigInt(min_qty), maxQty: BigInt(max_qty),
-          total: BigInt(total), remaining: BigInt(remaining), partial,
-          expireAt: Number(expire_at), active: true, createdAt,
-        }))
+        let rec = await ctx.store.findOneBy(Listing, { id: id.toString() })
+        if (!rec) rec = new Listing({ id: id.toString(), createdAt })
+        rec.maker = maker.toString(); rec.side = side; rec.base = base; rec.quote = quote
+        rec.price = BigInt(price); rec.minQty = BigInt(min_qty); rec.maxQty = BigInt(max_qty)
+        rec.total = BigInt(total); rec.remaining = BigInt(remaining); rec.partial = partial
+        rec.expireAt = Number(expire_at); rec.active = true
+        await ctx.store.save(rec)
         await ctx.store.save(new ListingAction({ id: `${id}-Created-${createdAt}`, listing: new Listing({id: id.toString()}), kind: 'Created', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'otc_listing', kind: 'ListingCreated', refId: id.toString(), actor: maker.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
@@ -44,7 +45,10 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {id, kind, owner, park_id} = ev.args
         const createdAt = b.header.height
-        await ctx.store.save(new Grave({ id: id.toString(), owner: owner.toString(), parkId: BigInt(park_id), kind: kind==0?'Person':'Event', primaryDeceasedId: null, slug: null, createdAt, active: true, offeringsCount: 0, offeringsAmount: 0n }))
+        let g = await ctx.store.findOneBy(Grave, { id: id.toString() })
+        if (!g) g = new Grave({ id: id.toString(), createdAt, actions: [] as any, offeringsCount: 0, offeringsAmount: 0n } as any)
+        g.owner = owner.toString(); g.parkId = BigInt(park_id); g.kind = kind==0?'Person':'Event'; g.active = true
+        await ctx.store.save(g)
         await ctx.store.save(new GraveAction({ id: `${id}-GraveCreated-${createdAt}`, grave: new Grave({ id: id.toString() }), kind: 'GraveCreated', block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_grave', kind: 'HallCreated', refId: id.toString(), actor: owner.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: null }))
         continue
@@ -74,7 +78,10 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const {id, target, who, amount, block} = ev.args
         const createdAt = b.header.height
         if (Number(target[0]) === 0) { // domain 0 代表 Grave
-          await ctx.store.save(new Offering({ id: id.toString(), hallId: BigInt(target[1]), who: who.toString(), amount: BigInt(amount||0), block: Number(block) }))
+          let rec = await ctx.store.findOneBy(Offering, { id: id.toString() })
+          if (!rec) rec = new Offering({ id: id.toString() })
+          rec.hallId = BigInt(target[1]); rec.who = who.toString(); rec.amount = BigInt(amount||0); rec.block = Number(block)
+          await ctx.store.save(rec)
           const grave = await ctx.store.findOneBy(Grave, { id: target[1].toString() })
           if (grave) { grave.offeringsCount += 1; grave.offeringsAmount = BigInt(grave.offeringsAmount) + BigInt(amount||0); await ctx.store.save(grave) }
           await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingCommitted', refId: id.toString(), actor: who.toString(), block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ target: target[1].toString() }) }))
@@ -86,34 +93,29 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {id, target, gross, shares, remainder} = ev.args
         const createdAt = b.header.height
-        // shares: Vec<(AccountId, u128)>
+        let rec = await ctx.store.findOneBy(OfferingSettlement, { id: id.toString() })
+        if (!rec) rec = new OfferingSettlement({ id: id.toString() })
+        rec.targetDomain = Number(target[0]); rec.targetId = BigInt(target[1])
+        rec.gross = BigInt(gross||0); rec.remainder = BigInt(remainder||0)
         let parsedShares: {account: string, amount: string}[] = []
-        try {
-          const arr = shares as any[]
-          parsedShares = (arr || []).map((x: any) => ({ account: x[0].toString(), amount: (x[1]||0).toString() }))
-        } catch {}
-        await ctx.store.save(new OfferingSettlement({
-          id: id.toString(),
-          targetDomain: Number(target[0]),
-          targetId: BigInt(target[1]),
-          gross: BigInt(gross||0),
-          remainder: BigInt(remainder||0),
-          shares: JSON.stringify(parsedShares),
-          block: createdAt,
-        }))
+        try { const arr = shares as any[]; parsedShares = (arr || []).map((x: any) => ({ account: x[0].toString(), amount: (x[1]||0).toString() })) } catch {}
+        rec.shares = JSON.stringify(parsedShares); rec.block = createdAt
+        await ctx.store.save(rec)
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_offerings', kind: 'OfferingRouted', refId: id.toString(), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ target: target[1].toString() }) }))
         continue
       }
 
-      // ===== memo_ipfs 计费生命周期事件 =====
+      // ===== memo_ipfs 计费生命周期事件（幂等 upsert）=====
       if (name?.endsWith('memo_ipfs.PinCharged')) {
         const ev: any = i.event
         const {arg0, arg1, arg2, arg3} = ev.args // cid_hash, amount, period_blocks, next_charge_at
-        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
-        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinCharged', amount: BigInt(arg1||0), periodBlocks: Number(arg2||0), nextChargeAt: Number(arg3||0), block: b.header.height }))
-        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinCharged', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
-        // 合并视图：累计费用与下一扣费/状态
         const cid = Buffer.from(arg0).toString('hex')
+        const id = `${cid}-${b.header.height}-${i.idx}`
+        let e = await ctx.store.findOneBy(PinBillingEvent, { id })
+        if (!e) e = new PinBillingEvent({ id })
+        e.cid = cid; e.kind = 'PinCharged'; e.amount = BigInt(arg1||0); e.periodBlocks = Number(arg2||0); e.nextChargeAt = Number(arg3||0); e.block = b.header.height
+        await ctx.store.save(e)
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinCharged', refId: cid, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
         if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Active' })
         ov.totalCharged = BigInt(ov.totalCharged) + BigInt(arg1||0)
@@ -125,10 +127,13 @@ processor.run(new TypeormDatabase(), async (ctx) => {
       if (name?.endsWith('memo_ipfs.PinGrace')) {
         const ev: any = i.event
         const {arg0} = ev.args // cid_hash
-        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
-        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinGrace', amount: null, periodBlocks: null, nextChargeAt: null, block: b.header.height }))
-        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinGrace', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         const cid = Buffer.from(arg0).toString('hex')
+        const id = `${cid}-${b.header.height}-${i.idx}`
+        let e = await ctx.store.findOneBy(PinBillingEvent, { id })
+        if (!e) e = new PinBillingEvent({ id })
+        e.cid = cid; e.kind = 'PinGrace'; e.amount = null; e.periodBlocks = null; e.nextChargeAt = null; e.block = b.header.height
+        await ctx.store.save(e)
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinGrace', refId: cid, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
         if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Grace' })
         ov.lastState = 'Grace'
@@ -138,10 +143,13 @@ processor.run(new TypeormDatabase(), async (ctx) => {
       if (name?.endsWith('memo_ipfs.PinExpired')) {
         const ev: any = i.event
         const {arg0} = ev.args // cid_hash
-        const id = `${Buffer.from(arg0).toString('hex')}-${b.header.height}-${i.idx}`
-        await ctx.store.save(new PinBillingEvent({ id, cid: Buffer.from(arg0).toString('hex'), kind: 'PinExpired', amount: null, periodBlocks: null, nextChargeAt: null, block: b.header.height }))
-        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinExpired', refId: Buffer.from(arg0).toString('hex'), actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         const cid = Buffer.from(arg0).toString('hex')
+        const id = `${cid}-${b.header.height}-${i.idx}`
+        let e = await ctx.store.findOneBy(PinBillingEvent, { id })
+        if (!e) e = new PinBillingEvent({ id })
+        e.cid = cid; e.kind = 'PinExpired'; e.amount = null; e.periodBlocks = null; e.nextChargeAt = null; e.block = b.header.height
+        await ctx.store.save(e)
+        await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'memo_ipfs', kind: 'PinExpired', refId: cid, actor: null, block: b.header.height, extrinsicHash: i.extrinsic?.hash, meta: null }))
         let ov = await ctx.store.findOneBy(PinOverview, { id: cid })
         if (!ov) ov = new PinOverview({ id: cid, firstSeen: b.header.height, owner: null, replicas: null, sizeBytes: null, totalCharged: 0n, lastNextChargeAt: null, lastState: 'Expired' })
         ov.lastState = 'Expired'
@@ -281,7 +289,10 @@ processor.run(new TypeormDatabase(), async (ctx) => {
         const ev: any = i.event
         const {arg0, arg1} = ev.args // MediaId, 容器ID（命名取决于元数据）
         const createdAt = b.header.height
-        await ctx.store.save(new MediaItem({ id: arg0.toString(), hallId: BigInt(0), kind: 'unknown', uri: '', block: createdAt }))
+        let rec = await ctx.store.findOneBy(MediaItem, { id: arg0.toString() })
+        if (!rec) rec = new MediaItem({ id: arg0.toString(), hallId: BigInt(0), kind: 'unknown', uri: '', block: createdAt })
+        rec.hallId = BigInt(0); rec.kind = name.endsWith('MediaAddedToVideoCollection')?'VideoCollection':'unknown'; rec.uri = ''; rec.block = createdAt
+        await ctx.store.save(rec)
         await ctx.store.save(new Notification({ id: `N-${b.header.height}-${i.idx}`, module: 'deceased_media', kind: name.endsWith('MediaAddedToVideoCollection')?'MediaAddedToVideoCollection':'MediaAdded', refId: arg0.toString(), actor: null, block: createdAt, extrinsicHash: i.extrinsic?.hash, meta: JSON.stringify({ containerId: arg1?.toString?.() }) }))
         continue
       }

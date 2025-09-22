@@ -2,6 +2,7 @@
 type Listing @entity {
   id: ID!
   maker: String!
+  
   side: Int!
   base: Int!
   quote: Int!
@@ -77,8 +78,8 @@ type ArbitrationAction @entity {
 # Notification（事件中心，统一时间线）
 type Notification @entity {
   id: ID!
-  module: String!
-  kind: String!
+  module: String! @index
+  kind: String! @index
   refId: String
   actor: String
   block: Int!
@@ -89,7 +90,7 @@ type Notification @entity {
 # Pin 生命周期与计费（从 memo_ipfs）
 type PinBillingEvent @entity {
   id: ID!           # "<cid>-<block>-<idx>"
-  cid: String!
+  cid: String! @index
   kind: String!     # PinCharged | PinGrace | PinExpired
   amount: BigInt
   periodBlocks: Int
@@ -134,7 +135,7 @@ type GraveAction @entity {
 
 type Offering @entity {
   id: ID!
-  hallId: BigInt!
+  hallId: BigInt! @index
   who: String!
   amount: BigInt!
   block: Int!
@@ -155,8 +156,8 @@ type OfferingBySacrifice @entity {
 # 供奉分账结算（由 OfferingRouted 事件产生，按 id 与 Offering 合并视图）
 type OfferingSettlement @entity {
   id: ID!              # offering id
-  targetDomain: Int!
-  targetId: BigInt!
+  targetDomain: Int! @index
+  targetId: BigInt! @index
   gross: BigInt!
   remainder: BigInt!
   shares: String       # JSON 字符串：[{account, amount}]
@@ -167,7 +168,7 @@ type OfferingSettlement @entity {
 type PinOverview @entity {
   id: ID!            # cid(hex)
   firstSeen: Int!
-  owner: String
+  owner: String @index
   replicas: Int
   sizeBytes: BigInt
   totalCharged: BigInt!
@@ -194,8 +195,8 @@ type MediaItem @entity {
 # 推荐关系
 type ReferralLink @entity {
   id: ID!
-  who: String!
-  sponsor: String!
+  who: String! @index
+  sponsor: String! @index
   block: Int!
 }
 
