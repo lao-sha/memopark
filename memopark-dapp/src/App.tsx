@@ -41,12 +41,16 @@ import ReferralBindPage from './features/referrals/ReferralBindPage';
 import RestoreDeceasedBuilder from './features/governance/RestoreDeceasedBuilder';
 import './App.css';
 import { initAutoPinOnce } from './lib/auto-pin';
+import SettingsButton from './components/nav/SettingsButton';
+import SettingsDrawer from './components/nav/SettingsDrawer';
+import { GovernanceUiProvider } from './providers/GovernanceUiProvider';
 
 /**
  * 函数级详细中文注释：应用主组件
  * - 提供中文语言环境配置
  * - 包装钱包提供者和认证页面
  * - 安装全局“自动 Pin”监听器，实现内容保存后的无感计费接入
+ * - 包裹 GovernanceUiProvider，提供专家/治理模式全局开关与齿轮入口
  */
 const App: React.FC = () => {
   console.log('🚀 App组件开始渲染');
@@ -66,44 +70,48 @@ const App: React.FC = () => {
     return (
       <ConfigProvider locale={zhCN}>
         <div className="App">
-          <WalletProvider>
-            {hash === '#/admin/pause' ? <AdminPause />
-              : hash === '#/admin/category' ? <AdminCategory />
-              : hash === '#/admin/effect' ? <AdminEffect />
-              : hash.startsWith('#/browse/category') ? <CategoryBrowse />
-              : hash === '#/orders' ? <MyOrders />
-              : hash === '#/timeline' ? <OfferingsTimeline />
-              : hash === '#/offerings/by-who' ? <OfferingsByWho />
-              : hash === '#/grave/create' ? <CreateGraveForm />
-              : hash === '#/deceased/create' ? <CreateDeceasedForm />
-              : hash.startsWith('#/grave/detail') ? <GraveDetailPage />
-              : hash === '#/deceased/list' ? <DeceasedListPage />
-              : hash === '#/grave/my' ? <MyGravesPage />
-              : hash === '#/treasury' ? <TreasuryPage />
-              : hash === '#/dashboard' ? <DashboardPage />
-              : hash === '#/gov/ticket' ? <GovTicketPage />
-              : hash === '#/gov/me' ? <MyGovernancePage />
-              : hash === '#/gov/content' ? <ContentCommitteePage />
-              : hash === '#/gov/appeal' ? <SubmitAppealPage />
-              : hash === '#/gov/templates' ? <CommitteeTemplatesPage />
-              : hash === '#/profile' ? <ProfilePage />
-              : hash === '#/covers' ? <CoverOptionsPage />
-              : hash === '#/covers/create' ? <CreateCoverOptionPage />
-              : hash === '#/category/create' ? <CreateCategoryPage />
-              : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
-              : hash === '#/category/list' ? <CategoryListPage />
-              : hash === '#/sacrifice/create' ? <CreateSacrificePage />
-              : hash === '#/scene/create' ? <CreateScenePage />
-              : hash === '#/bridge/lock' ? <BridgeLockPage />
-              : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
-              : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
-              : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
-              : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
-              : hash === '#/gov/restore-deceased' ? <RestoreDeceasedBuilder />
-              : hash.startsWith('#/ref') ? <ReferralBindPage />
-              : <AuthEntryPage />}
-            <BottomNav />
-          </WalletProvider>
+          <GovernanceUiProvider>
+            <WalletProvider>
+              {hash === '#/admin/pause' ? <AdminPause />
+                : hash === '#/admin/category' ? <AdminCategory />
+                : hash === '#/admin/effect' ? <AdminEffect />
+                : hash.startsWith('#/browse/category') ? <CategoryBrowse />
+                : hash === '#/orders' ? <MyOrders />
+                : hash === '#/timeline' ? <OfferingsTimeline />
+                : hash === '#/offerings/by-who' ? <OfferingsByWho />
+                : hash === '#/grave/create' ? <CreateGraveForm />
+                : hash === '#/deceased/create' ? <CreateDeceasedForm />
+                : hash.startsWith('#/grave/detail') ? <GraveDetailPage />
+                : hash === '#/deceased/list' ? <DeceasedListPage />
+                : hash === '#/grave/my' ? <MyGravesPage />
+                : hash === '#/treasury' ? <TreasuryPage />
+                : hash === '#/dashboard' ? <DashboardPage />
+                : hash === '#/gov/ticket' ? <GovTicketPage />
+                : hash === '#/gov/me' ? <MyGovernancePage />
+                : hash === '#/gov/content' ? <ContentCommitteePage />
+                : hash === '#/gov/appeal' ? <SubmitAppealPage />
+                : hash === '#/gov/templates' ? <CommitteeTemplatesPage />
+                : hash === '#/profile' ? <ProfilePage />
+                : hash === '#/covers' ? <CoverOptionsPage />
+                : hash === '#/covers/create' ? <CreateCoverOptionPage />
+                : hash === '#/category/create' ? <CreateCategoryPage />
+                : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
+                : hash === '#/category/list' ? <CategoryListPage />
+                : hash === '#/sacrifice/create' ? <CreateSacrificePage />
+                : hash === '#/scene/create' ? <CreateScenePage />
+                : hash === '#/bridge/lock' ? <BridgeLockPage />
+                : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
+                : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
+                : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
+                : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
+                : hash === '#/gov/restore-deceased' ? <RestoreDeceasedBuilder />
+                : hash.startsWith('#/ref') ? <ReferralBindPage />
+                : <AuthEntryPage />}
+              <BottomNav />
+              <SettingsButton />
+              <SettingsDrawer />
+            </WalletProvider>
+          </GovernanceUiProvider>
         </div>
       </ConfigProvider>
     );

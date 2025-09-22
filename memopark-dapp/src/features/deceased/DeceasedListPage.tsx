@@ -1,6 +1,7 @@
 import React from 'react'
 import { Card, List, Space, Typography, Tag, Input, Button, Alert } from 'antd'
 import { getApi } from '../../lib/polkadot-safe'
+import AppealEntry from '../../components/governance/AppealEntry'
 
 /**
  * 函数级详细中文注释：逝者列表页面
@@ -61,7 +62,8 @@ const DeceasedListPage: React.FC = () => {
           renderItem={(it:any)=> (
             <List.Item
               actions={[
-                <Button key="pin" size="small" onClick={()=> { try { window.location.hash = `#/ipfs/pin?subjectId=${it.id}` } catch {} }}>去存储(Pin)</Button>
+                <Button key="pin" size="small" onClick={()=> { try { window.location.hash = `#/ipfs/pin?subjectId=${it.id}` } catch {} }}>去存储(Pin)</Button>,
+                <AppealEntry key="appeal" domain={1} targetId={it.id} actionHint="restore_profile" referrer="deceased_list" />
               ]}
               onClick={()=> { if (it.graveId!=null) { try { localStorage.setItem('mp.grave.detailId', String(it.graveId)) } catch {}; window.location.hash = `#/grave/detail?gid=${it.graveId}`; window.dispatchEvent(new HashChangeEvent('hashchange')) } }}
               style={{ cursor: it.graveId!=null ? 'pointer' : 'default' }}
