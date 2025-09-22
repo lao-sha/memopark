@@ -1,6 +1,12 @@
-# pallet-deceased
+# Deceased Pallet
 
-本模块用于在单个墓位（grave）下维护多个逝者（deceased）记录，提供增删改迁移等操作。其与墓位模块保持低耦合：通过 `GraveInspector` Trait 抽象交互，不直接依赖具体实现。为保护隐私，链上仅存有限文本与链下外链，不涉及任何 MEMO 代币逻辑；所有文本/集合均使用有界长度限制以防止状态膨胀。
+- 设计说明：
+  - 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计，不参与权限与派生。
+  - 资金派生与计费：依赖 `(domain, subject_id)` 稳定派生（与 `creator/owner` 解耦）。
+
+- 迁移策略（开发阶段）：
+  - 当前主网未上线，采用“零迁移”策略：`on_runtime_upgrade` 仅写入 `STORAGE_VERSION`，不进行 translate。
+  - 如需结构调整，请清链/重启以应用最新结构；主网前再补充精确迁移逻辑。
 
 ## Config 示例
 
