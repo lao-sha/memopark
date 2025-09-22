@@ -26,6 +26,7 @@
 设计目标：上传与计费解耦；以链上请求为付费起点；从“主体派生资金账户”自动扣费，事件可审计、治理可控。
 
 - 主体资金账户：`subject_account = SubjectPalletId.into_sub_account_truncating((owner, subject_id))`（不可签名，仅托管/扣费）。
+ - 主体资金账户（更新）：推荐使用稳定派生：`subject_account = SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))`；逝者域 `domain=1`。
 - 两步法：用户先向主体资金账户充值；再调用 `request_pin_for_deceased(subject_id, ...)` 固化进入生命周期。
 - 周期扣费：按周（可配置）从主体账户扣 MEMO，失败进入宽限，超期过期。
 

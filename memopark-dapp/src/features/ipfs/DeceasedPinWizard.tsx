@@ -19,7 +19,6 @@ const DeceasedPinWizard: React.FC = () => {
   const [billing, setBilling] = React.useState<{ next: bigint, unit: bigint, state: number } | null>(null)
   const [estimateWeeks, setEstimateWeeks] = React.useState<number | null>(null)
   const [derivedAddr, setDerivedAddr] = React.useState<string>('')
-  const [ownerAddr, setOwnerAddr] = React.useState<string>('')
   const [computedAddr, setComputedAddr] = React.useState<string>('')
   const [topupAmount, setTopupAmount] = React.useState<string>('')
   const refreshTimer = React.useRef<any>(null)
@@ -81,28 +80,29 @@ const DeceasedPinWizard: React.FC = () => {
     } catch {}
   }, [form])
 
-  // 根据 subject_id 与 owner 计算派生地址（与链上 PalletId 一致）
+  // 根据 (domain=1, subject_id) 计算派生地址（与链上 PalletId 一致）
   React.useEffect(() => {
     (async () => {
       try {
         const api = await getApi()
         const subjectId = Number(form.getFieldValue('subject_id') || 0)
-        if (!ownerAddr || !subjectId) { setComputedAddr(''); return }
-        // 读取 PalletId（8字节）
-        const qroot: any = (api.consts as any)
-        const sec = ['memoIpfs','memo_ipfs','ipfs'].find(s => qroot[s]) || 'memoIpfs'
-        const pidHex = qroot[sec]?.subjectPalletId?.toString?.() || ''
+        if (!subjectId) { setComputedAddr(''); return }
+        // 读取 PalletId 与逝者域常量
+        const consts: any = (api.consts as any)
+        const sec = ['memoIpfs','memo_ipfs','ipfs'].find(s => consts[s]) || 'memoIpfs'
+        const pidHex = consts[sec]?.subjectPalletId?.toString?.() || ''
+        const domain = consts[sec]?.deceasedDomain?.toNumber?.() ?? 1
         const pidU8a = pidHex && pidHex.startsWith('0x') ? hexToU8a(pidHex) : new Uint8Array(8)
-        const ownerU8a = api.createType('AccountId', ownerAddr).toU8a()
+        const domU8a = api.createType('u8', domain).toU8a()
         const sidU8a = api.createType('u64', subjectId).toU8a()
-        const data = u8aConcat(stringToU8a('modl'), pidU8a, ownerU8a, sidU8a)
+        const data = u8aConcat(stringToU8a('modl'), pidU8a, domU8a, sidU8a)
         const hash = blake2AsU8a(data, 256)
         const ss58 = encodeAddress(hash, api.registry.chainSS58 || 42)
         setComputedAddr(ss58)
       } catch { setComputedAddr('') }
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerAddr, form.getFieldValue('subject_id')])
+  }, [form.getFieldValue('subject_id')])
 
   async function refreshBilling() {
     try {
@@ -176,8 +176,8 @@ const DeceasedPinWizard: React.FC = () => {
             message="请向派生的主题资金账户充值预算（建议 ≥ 存在性余额 ED）"
             description={
               <div style={{ fontSize: 12 }}>
-                <div>派生规则（说明）：subject_account = PalletId.into_sub_account((creator, subject_id))</div>
-                <div>说明：该地址可按需复算，无需链上存储。您也可以在下方输入派生地址以查询余额。</div>
+                <div>派生规则（说明）：subject_account = PalletId.into_sub_account((domain:u8, subject_id:u64))，逝者域 domain=1</div>
+                <div>说明：该地址与创建者/拥有者变更无关，稳定不变。您也可以在下方输入派生地址以查询余额。</div>
               </div>
             }
           />
@@ -185,9 +185,9 @@ const DeceasedPinWizard: React.FC = () => {
             <Input placeholder="粘贴派生资金账户地址" value={derivedAddr} onChange={(e) => setDerivedAddr(e.target.value.trim())} />
             <Button onClick={copyAddr} disabled={!derivedAddr}>复制</Button>
           </Space.Compact>
-          <div style={{ fontSize: 12, color: '#666' }}>或：输入 owner 地址 + subject_id，按链上 PalletId 规则计算派生地址</div>
+          <div style={{ fontSize: 12, color: '#666' }}>或：输入 subject_id 按链上 PalletId 规则计算派生地址（domain 固定为 1）</div>
           <Space.Compact style={{ width: '100%' }}>
-            <Input placeholder="Owner 地址" value={ownerAddr} onChange={(e) => setOwnerAddr(e.target.value.trim())} />
+            <InputNumber placeholder="subject_id" min={0} style={{ width: 200 }} value={form.getFieldValue('subject_id')} onChange={(v)=>form.setFieldsValue({ subject_id: v })} />
             <Input readOnly placeholder="自动计算的派生地址" value={computedAddr} />
             <Button onClick={() => { if (computedAddr) { setDerivedAddr(computedAddr); message.success('已套用自动计算地址') } }} disabled={!computedAddr}>套用</Button>
           </Space.Compact>

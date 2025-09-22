@@ -97,6 +97,10 @@ pub mod pallet {
         #[pallet::constant]
         type SubjectPalletId: Get<PalletId>;
 
+        /// 函数级中文注释：逝者域编码（用于 (domain, subject_id) 稳定派生）。
+        #[pallet::constant]
+        type DeceasedDomain: Get<u8>;
+
         /// 函数级中文注释：逝者所有者只读提供者（低耦合）。
         /// - 返回 `Some(owner)` 则视为 subject 存在；None 表示不存在。
         type OwnerProvider: OwnerProvider<Self::AccountId>;
@@ -295,12 +299,17 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：根据 owner 与主题ID（逝者ID）计算派生子账户
-        /// - 使用 `SubjectPalletId.into_sub_account_truncating((owner, subject_id))` 派生稳定地址
+        /// 函数级详细中文注释：根据 (domain, subject_id) 计算派生子账户（稳定派生，与创建者/拥有者解耦）
+        /// - 使用 `SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))` 派生稳定地址
         /// - 该账户无私钥，不可外发，仅用于托管与扣费
         #[inline]
-        pub fn subject_account(owner: &T::AccountId, subject_id: u64) -> T::AccountId {
-            T::SubjectPalletId::get().into_sub_account_truncating((owner, subject_id))
+        pub fn subject_account_for(domain: u8, subject_id: u64) -> T::AccountId {
+            T::SubjectPalletId::get().into_sub_account_truncating((domain, subject_id))
+        }
+        /// 函数级详细中文注释：逝者域便捷封装（domain=DeceasedDomain）
+        #[inline]
+        pub fn subject_account_for_deceased(subject_id: u64) -> T::AccountId {
+            Self::subject_account_for(T::DeceasedDomain::get(), subject_id)
         }
         /// 函数级详细中文注释：CID 解密/映射内部工具函数（非外部可调用）
         /// - 从 offchain local storage 读取 `/memo/ipfs/cid/<hash_hex>` 对应的明文 CID；
@@ -331,7 +340,7 @@ pub mod pallet {
             ensure!(amount != BalanceOf::<T>::default(), Error::<T>::BadParams);
             let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
             ensure!(owner == who, Error::<T>::BadStatus);
-            let to = Self::subject_account(&owner, subject_id);
+            let to = Self::subject_account_for_deceased(subject_id);
             <T as Config>::Currency::transfer(&who, &to, amount, frame_support::traits::ExistenceRequirement::KeepAlive)?;
             Self::deposit_event(Event::SubjectFunded(subject_id, who, to, amount));
             Ok(())
@@ -377,7 +386,7 @@ pub mod pallet {
             ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
             let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
             ensure!(owner == who, Error::<T>::BadStatus);
-            let payer = Self::subject_account(&owner, subject_id);
+            let payer = Self::subject_account_for_deceased(subject_id);
             T::Endowment::deposit_from_storage(&payer, price, cid_hash)?;
             PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
             let now = <frame_system::Pallet<T>>::block_number();
@@ -423,7 +432,7 @@ pub mod pallet {
                                 let units = (sz + gib - 1) / gib; // ceil
                                 let due_u128 = units.saturating_mul(replicas as u128).saturating_mul(unit_price);
                                 let due_bal: BalanceOf<T> = due_u128.saturated_into();
-                                let payer = Self::subject_account(&owner, subject_id);
+                                let payer = Self::subject_account_for_deceased(subject_id);
                                 let min_res = SubjectMinReserve::<T>::get();
                                 let free = <T as Config>::Currency::free_balance(&payer);
                                 if free.saturating_sub(due_bal) >= min_res {

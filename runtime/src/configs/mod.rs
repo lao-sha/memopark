@@ -1457,6 +1457,8 @@ impl pallet_memo_ipfs::Config for Runtime {
     type WeightInfo = ();
     /// 函数级中文注释：为“逝者主题资金账户”绑定 PalletId（可复用 escrow 的 PalletId 也可新设）
     type SubjectPalletId = EscrowPalletId;
+    /// 函数级中文注释：绑定逝者域常量（domain=1），用于 (domain, subject_id) 稳定派生。
+    type DeceasedDomain = ConstU8<1>;
     /// 函数级中文注释：OwnerProvider 适配器，将 subject_id→owner 从 pallet-deceased 读取
     type OwnerProvider = DeceasedOwnerAdapter;
 }
