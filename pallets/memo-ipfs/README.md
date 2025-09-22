@@ -53,6 +53,14 @@
 - `charge_due(limit)`【治理/白名单】：处理当前区块到期的 ≤limit 个 CID，完成扣费/宽限/过期处理，并事件记录。
 - `set_billing_params(price_per_gib_week?, period_blocks?, grace_blocks?, max_charge_per_block?, subject_min_reserve?, paused?)`：治理更新参数（可部分更新）。
 
+#### 只读查询（前端建议直读）
+- `PinBilling{cid_hash}` → `(next_charge_at, unit_price_snapshot, state)`：state=0 Active/1 Grace/2 Expired。
+- `PinSubjectOf{cid_hash}` → `(owner, subject_id)`：仅“主体扣费”场景存在。
+- `PinMeta{cid_hash}` → `(replicas, size_bytes, created, last_checked)`：用于估算单周成本。
+- `DueQueue{block}` → `Vec<cid_hash>`：仅供运维观测与调度，不建议前端依赖。
+
+> 参数防呆：`set_billing_params` 对 `price/period/grace/max_per_block` 做 `>0` 校验，避免设置为 0 造成停摆或无限宽限。
+
 ### 安全与治理
 - 仅允许 Pallet 内从“主体派生账户”扣款；金额依据链上参数与 CID 元数据计算；转账采用 `KeepAlive` 并校验 `free - amount ≥ SubjectMinReserve`。
 - 通过 `BillingPaused` 可暂停计费；参数可治理调整；白名单服务商可触发 `charge_due(limit)` 无权变更金额。

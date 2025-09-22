@@ -466,10 +466,23 @@ pub mod pallet {
             paused: Option<bool>,
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            if let Some(v) = price_per_gib_week { PricePerGiBWeek::<T>::put(v); }
-            if let Some(v) = period_blocks { BillingPeriodBlocks::<T>::put(v); }
-            if let Some(v) = grace_blocks { GraceBlocks::<T>::put(v); }
-            if let Some(v) = max_charge_per_block { MaxChargePerBlock::<T>::put(v); }
+            // 参数防呆校验：确保关键参数为正，避免导致停摆或无限宽限
+            if let Some(v) = price_per_gib_week {
+                ensure!(v > 0, Error::<T>::BadParams);
+                PricePerGiBWeek::<T>::put(v);
+            }
+            if let Some(v) = period_blocks {
+                ensure!(v > 0, Error::<T>::BadParams);
+                BillingPeriodBlocks::<T>::put(v);
+            }
+            if let Some(v) = grace_blocks {
+                ensure!(v > 0, Error::<T>::BadParams);
+                GraceBlocks::<T>::put(v);
+            }
+            if let Some(v) = max_charge_per_block {
+                ensure!(v > 0, Error::<T>::BadParams);
+                MaxChargePerBlock::<T>::put(v);
+            }
             if let Some(v) = subject_min_reserve { SubjectMinReserve::<T>::put(v); }
             if let Some(v) = paused { BillingPaused::<T>::put(v); }
             Ok(())
