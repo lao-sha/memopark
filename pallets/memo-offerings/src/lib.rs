@@ -341,6 +341,8 @@ pub mod pallet {
         NotAllowed,
         TooMany,
         NotFound,
+        /// 路由表项不合法（kind/account/permill）
+        BadRouteEntry,
         /// 模板被禁用
         OfferingDisabled,
         /// 当前模板不允许/不需要时长
@@ -588,7 +590,15 @@ pub mod pallet {
             for (kind, acc, ppm) in routes.into_iter() {
                 let pm = Permill::from_parts(ppm.min(1_000_000));
                 sum = sum.saturating_add(pm.deconstruct() as u32);
-                list.try_push(RouteEntry::<T> { kind, account: acc, share: pm }).map_err(|_| Error::<T>::TooMany)?;
+                // kind 校验：1=SpecificAccount 必须提供账户；0=SubjectFunding 忽略 account
+                match (kind, &acc) {
+                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),
+                    (0, _) | (1, Some(_)) => {}
+                    _ => return Err(Error::<T>::BadRouteEntry.into()),
+                }
+                list
+                    .try_push(RouteEntry::<T> { kind, account: acc, share: pm })
+                    .map_err(|_| Error::<T>::TooMany)?;
             }
             ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
             RouteTableGlobal::<T>::put(list);
@@ -607,7 +617,15 @@ pub mod pallet {
             for (kind, acc, ppm) in routes.into_iter() {
                 let pm = Permill::from_parts(ppm.min(1_000_000));
                 sum = sum.saturating_add(pm.deconstruct() as u32);
-                list.try_push(RouteEntry::<T> { kind, account: acc, share: pm }).map_err(|_| Error::<T>::TooMany)?;
+                // kind 校验：1=SpecificAccount 必须提供账户；0=SubjectFunding 忽略 account
+                match (kind, &acc) {
+                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),
+                    (0, _) | (1, Some(_)) => {}
+                    _ => return Err(Error::<T>::BadRouteEntry.into()),
+                }
+                list
+                    .try_push(RouteEntry::<T> { kind, account: acc, share: pm })
+                    .map_err(|_| Error::<T>::TooMany)?;
             }
             ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
             RouteTableByDomain::<T>::insert(domain, list);

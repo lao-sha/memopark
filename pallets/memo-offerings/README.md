@@ -40,6 +40,7 @@
 - `OfferingCommittedBySacrifice { id, target, sacrifice_id, who, amount, duration_weeks, block }`
 - `PausedGlobalSet { paused }` / `PausedDomainSet { domain, paused }`
 - `GovEvidenceNoted(scope: u8, key: u64, cid: BoundedVec<u8, MaxCidLen>)`（治理证据；scope：1=Params，2=Price，3=PauseG，4=PauseD）
+ - `RouteTableUpdated { scope, key }`：路由表更新（scope=0 全局；1=按域，key=domain）
 
 ## 路由码表（示例）
 - `(6,50)`：按域暂停（以常量域 1=grave 为例）
@@ -51,6 +52,8 @@
 - 叠加：`amount ≥ MinOfferAmount` 与 `OfferWindow/OfferMaxInWindow` 滑动窗口
 - 目标级限频：`OfferRateByTarget[(domain,id)]` 与账户级并行控制
 - 专属主体校验：当目录项 `exclusive_subjects: Vec<(domain,u64)>` 非空时，要求 `target==(domain,u64)` 命中其一；支持人类逝者域与宠物域
+ - 路由表校验：最多 5 条，`∑Permill ≤ 100%`，且 `kind=SpecificAccount(1)` 必须提供 `account`
+ - 兜底：按路由分配后剩余部分（含不足 100% 或舍入）根据 `RouteRemainderToDefault` 策略回退到默认收款账户
 
 ## 与 memo-sacrifice 的集成
 - 通过 `Config::Catalog` 读取目录定价与专属主体集合；
