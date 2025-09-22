@@ -1266,6 +1266,16 @@ impl pallet_escrow::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type EscrowPalletId = EscrowPalletId;
+    /// 函数级中文注释：授权外部入口的 Origin（Root | 内容委员会阈值）。
+    type AuthorizedOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
+    /// 函数级中文注释：管理员 Origin（同上）。
+    type AdminOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
 }
 
 parameter_types! { pub const ArbMaxEvidence: u32 = 16; pub const ArbMaxCidLen: u32 = 64; }

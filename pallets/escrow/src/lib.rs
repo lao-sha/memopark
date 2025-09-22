@@ -9,9 +9,11 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, traits::{Currency, ExistenceRequirement}, PalletId};
+    use frame_support::{pallet_prelude::*, traits::{Currency, ExistenceRequirement, EnsureOrigin}, PalletId};
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{AccountIdConversion, Saturating, Zero};
+    use sp_runtime::DispatchError;
+    use alloc::vec::Vec;
 
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -43,6 +45,13 @@ pub mod pallet {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type Currency: Currency<Self::AccountId>;
         type EscrowPalletId: Get<PalletId>;
+        /// 函数级中文注释：授权外部入口的 Origin（白名单 Origin）。
+        /// - 用于允许少数可信主体（如 Root/Collective/白名单 Pallet）调用外部 extrinsic；
+        /// - 常规业务应通过内部 trait 接口调用，避免扩大攻击面。
+        type AuthorizedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// 函数级中文注释：管理员 Origin（治理/应急）。
+        /// - 可设置全局暂停与参数；默认 Root 或内容委员会阈值。
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     #[pallet::pallet]
@@ -51,6 +60,21 @@ pub mod pallet {
     /// 简单托管：订单 -> 锁定余额
     #[pallet::storage]
     pub type Locked<T: Config> = StorageMap<_, Blake2_128Concat, u64, BalanceOf<T>, ValueQuery>;
+
+    /// 函数级中文注释：全局暂停开关（应急止血）。
+    /// - 为 true 时，除 AdminOrigin 外的变更性操作将被拒绝。
+    #[pallet::storage]
+    pub type Paused<T: Config> = StorageValue<_, bool, ValueQuery>;
+
+    /// 函数级中文注释：托管状态：0=Locked,1=Disputed,2=Resolved,3=Closed。
+    /// - Disputed 状态下仅允许仲裁决议接口处理；
+    /// - Closed 表示已全部结清，不再接受出金操作。
+    #[pallet::storage]
+    pub type LockStateOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u8, ValueQuery>;
+
+    /// 函数级中文注释：幂等 nonce：记录每个 id 的最新 nonce，避免重复 lock 被重放。
+    #[pallet::storage]
+    pub type LockNonces<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, ValueQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -63,6 +87,10 @@ pub mod pallet {
         Released { id: u64, to: T::AccountId, amount: BalanceOf<T> },
         /// 全额退款
         Refunded { id: u64, to: T::AccountId, amount: BalanceOf<T> },
+        /// 进入争议
+        Disputed { id: u64, reason: u16 },
+        /// 已应用仲裁决议（0=ReleaseAll,1=RefundAll,2=PartialBps）
+        DecisionApplied { id: u64, decision: u8 },
     }
 
     #[pallet::error]
@@ -70,6 +98,19 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> {
         fn account() -> T::AccountId { T::EscrowPalletId::get().into_account_truncating() }
+        /// 函数级中文注释：断言未暂停。
+        #[inline]
+        fn ensure_not_paused() -> DispatchResult {
+            ensure!(!Paused::<T>::get(), Error::<T>::NoLock); // 复用错误枚举以减少破坏性变更
+            Ok(())
+        }
+        /// 函数级中文注释：统一授权校验（AuthorizedOrigin | Root）。
+        #[inline]
+        fn ensure_auth(origin: T::RuntimeOrigin) -> Result<(), DispatchError> {
+            if frame_system::EnsureRoot::<T::AccountId>::try_origin(origin.clone()).is_ok() { return Ok(()) }
+            if <T as Config>::AuthorizedOrigin::try_origin(origin).is_ok() { return Ok(()) }
+            Err(DispatchError::BadOrigin)
+        }
     }
 
     impl<T: Config> Escrow<T::AccountId, BalanceOf<T>> for Pallet<T> {
@@ -127,8 +168,11 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn lock(origin: OriginFor<T>, id: u64, payer: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
-            // 函数级详细中文注释（安全变更）：仅允许 Root 调用外部锁定入口，防止任意账户冒用 payer 盗划资金。
-            ensure_root(origin)?;
+            // 函数级详细中文注释（安全）：仅允许 AuthorizedOrigin | Root 调用，防止冒用 payer 盗划资金；支持全局暂停。
+            Self::ensure_auth(origin)?;
+            Self::ensure_not_paused()?;
+            // 初始化状态为 Locked
+            if LockStateOf::<T>::get(id) == 0u8 { /* 已是 Locked */ } else { LockStateOf::<T>::insert(id, 0u8); }
             <Self as Escrow<T::AccountId, BalanceOf<T>>>::lock_from(&payer, id, amount)
         }
         /// 释放：将托管金额转给收款人
@@ -136,8 +180,10 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn release(origin: OriginFor<T>, id: u64, to: T::AccountId) -> DispatchResult {
-            // 函数级详细中文注释（安全变更）：仅允许 Root 调用外部释放入口；常规场景应由业务 Pallet 通过内部接口驱动。
-            ensure_root(origin)?;
+            // 函数级详细中文注释（安全）：仅 AuthorizedOrigin | Root；暂停时拒绝；争议状态下拒绝普通释放。
+            Self::ensure_auth(origin)?;
+            Self::ensure_not_paused()?;
+            ensure!(LockStateOf::<T>::get(id) != 1u8, Error::<T>::NoLock);
             <Self as Escrow<T::AccountId, BalanceOf<T>>>::release_all(id, &to)
         }
         /// 退款：退回付款人
@@ -145,9 +191,112 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn refund(origin: OriginFor<T>, id: u64, to: T::AccountId) -> DispatchResult {
-            // 函数级详细中文注释（安全变更）：仅允许 Root 调用外部退款入口；常规场景应由业务 Pallet 通过内部接口驱动。
-            ensure_root(origin)?;
+            // 函数级详细中文注释（安全）：仅 AuthorizedOrigin | Root；暂停时拒绝；争议状态下拒绝普通退款。
+            Self::ensure_auth(origin)?;
+            Self::ensure_not_paused()?;
+            ensure!(LockStateOf::<T>::get(id) != 1u8, Error::<T>::NoLock);
             <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(id, &to)
+        }
+
+        /// 函数级详细中文注释：幂等锁定（带 nonce）。相同 id 下 nonce 必须严格递增；否则忽略以防重放。
+        #[pallet::call_index(3)]
+        #[pallet::weight(10_000)]
+        pub fn lock_with_nonce(origin: OriginFor<T>, id: u64, payer: T::AccountId, amount: BalanceOf<T>, nonce: u64) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            Self::ensure_not_paused()?;
+            let last = LockNonces::<T>::get(id);
+            if nonce <= last { return Ok(()) } // 幂等：忽略重放
+            LockNonces::<T>::insert(id, nonce);
+            if LockStateOf::<T>::get(id) == 0u8 { /* 已是 Locked */ } else { LockStateOf::<T>::insert(id, 0u8); }
+            <Self as Escrow<T::AccountId, BalanceOf<T>>>::lock_from(&payer, id, amount)
+        }
+
+        /// 函数级详细中文注释：分账释放（原子）。校验合计不超过托管余额，逐笔转账，剩余为 0 则清键。
+        #[pallet::call_index(4)]
+        #[pallet::weight(10_000)]
+        pub fn release_split(origin: OriginFor<T>, id: u64, entries: Vec<(T::AccountId, BalanceOf<T>)>) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            Self::ensure_not_paused()?;
+            ensure!(LockStateOf::<T>::get(id) != 1u8, Error::<T>::NoLock);
+            let mut cur = Locked::<T>::get(id);
+            ensure!(!cur.is_zero(), Error::<T>::NoLock);
+            // 校验合计
+            let mut sum: BalanceOf<T> = Zero::zero();
+            for (_to, amt) in entries.iter() { sum = sum.saturating_add(*amt); }
+            ensure!(sum <= cur, Error::<T>::Insufficient);
+            // 逐笔转账
+            for (to, amt) in entries.into_iter() {
+                if amt.is_zero() { continue; }
+                cur = cur.saturating_sub(amt);
+                Locked::<T>::insert(id, cur);
+                let escrow = Self::account();
+                T::Currency::transfer(&escrow, &to, amt, ExistenceRequirement::KeepAlive).map_err(|_| Error::<T>::NoLock)?;
+                Self::deposit_event(Event::Transfered { id, to: to.clone(), amount: amt, remaining: cur });
+            }
+            if cur.is_zero() { Locked::<T>::remove(id); LockStateOf::<T>::insert(id, 3u8); }
+            Ok(())
+        }
+
+        /// 函数级中文注释：进入争议（仅授权/Root）。设置状态为 Disputed 并记录事件。
+        #[pallet::call_index(5)]
+        #[pallet::weight(10_000)]
+        pub fn dispute(origin: OriginFor<T>, id: u64, reason: u16) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            if Locked::<T>::get(id).is_zero() { return Err(Error::<T>::NoLock.into()); }
+            LockStateOf::<T>::insert(id, 1u8);
+            Self::deposit_event(Event::Disputed { id, reason });
+            Ok(())
+        }
+
+        /// 函数级中文注释：仲裁决议-全额释放。
+        #[pallet::call_index(6)]
+        #[pallet::weight(10_000)]
+        pub fn apply_decision_release_all(origin: OriginFor<T>, id: u64, to: T::AccountId) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            <Self as Escrow<T::AccountId, BalanceOf<T>>>::release_all(id, &to)?;
+            LockStateOf::<T>::insert(id, 2u8);
+            Self::deposit_event(Event::DecisionApplied { id, decision: 0 });
+            Ok(())
+        }
+
+        /// 函数级中文注释：仲裁决议-全额退款。
+        #[pallet::call_index(7)]
+        #[pallet::weight(10_000)]
+        pub fn apply_decision_refund_all(origin: OriginFor<T>, id: u64, to: T::AccountId) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(id, &to)?;
+            LockStateOf::<T>::insert(id, 2u8);
+            Self::deposit_event(Event::DecisionApplied { id, decision: 1 });
+            Ok(())
+        }
+
+        /// 函数级中文注释：仲裁决议-按 bps 部分释放，其余退款给 refund_to。
+        #[pallet::call_index(8)]
+        #[pallet::weight(10_000)]
+        pub fn apply_decision_partial_bps(origin: OriginFor<T>, id: u64, release_to: T::AccountId, refund_to: T::AccountId, bps: u16) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            ensure!(bps <= 10_000, Error::<T>::Insufficient);
+            let cur = Locked::<T>::get(id);
+            ensure!(!cur.is_zero(), Error::<T>::NoLock);
+            // 计算按 bps 的释放金额：floor(cur * bps / 10000)
+            let cur_u128: u128 = sp_runtime::traits::SaturatedConversion::saturated_into::<u128>(cur);
+            let rel_u128 = (cur_u128.saturating_mul(bps as u128)) / 10_000u128;
+            let rel_amt: BalanceOf<T> = sp_runtime::traits::SaturatedConversion::saturated_into::<BalanceOf<T>>(rel_u128);
+            if !rel_amt.is_zero() { <Self as Escrow<T::AccountId, BalanceOf<T>>>::transfer_from_escrow(id, &release_to, rel_amt)?; }
+            let after = Locked::<T>::get(id);
+            if !after.is_zero() { <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(id, &refund_to)?; }
+            LockStateOf::<T>::insert(id, 2u8);
+            Self::deposit_event(Event::DecisionApplied { id, decision: 2 });
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置全局暂停（Admin）。
+        #[pallet::call_index(9)]
+        #[pallet::weight(10_000)]
+        pub fn set_pause(origin: OriginFor<T>, paused: bool) -> DispatchResult {
+            T::AdminOrigin::ensure_origin(origin)?;
+            Paused::<T>::put(paused);
+            Ok(())
         }
     }
 }
