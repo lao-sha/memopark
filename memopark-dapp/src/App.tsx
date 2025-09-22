@@ -38,6 +38,7 @@ import AdminArbitrationPage from './features/arbitration/AdminArbitrationPage';
 import DeceasedPinWizard from './features/ipfs/DeceasedPinWizard';
 import AdminOfferRoutePage from './features/offerings/AdminOfferRoutePage';
 import ReferralBindPage from './features/referrals/ReferralBindPage';
+import RestoreDeceasedBuilder from './features/governance/RestoreDeceasedBuilder';
 import './App.css';
 import { initAutoPinOnce } from './lib/auto-pin';
 
@@ -98,6 +99,7 @@ const App: React.FC = () => {
               : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
               : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
               : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
+              : hash === '#/gov/restore-deceased' ? <RestoreDeceasedBuilder />
               : hash.startsWith('#/ref') ? <ReferralBindPage />
               : <AuthEntryPage />}
             <BottomNav />

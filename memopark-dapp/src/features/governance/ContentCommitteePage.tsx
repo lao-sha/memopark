@@ -8,6 +8,7 @@ import { Card, Button, Space, Alert, Typography } from 'antd'
  */
 const ContentCommitteePage: React.FC = () => {
   const goAppeal = () => { try { window.location.hash = '#/gov/appeal' } catch {} }
+  const goRestore = () => { try { window.location.hash = '#/gov/restore-deceased' } catch {} }
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
       <Space direction="vertical" style={{ width: '100%' }} size={12}>
@@ -16,6 +17,11 @@ const ContentCommitteePage: React.FC = () => {
         <Card title="提交申诉" size="small" extra={<Button type="primary" onClick={goAppeal}>去提交</Button>}>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             任何账户均可提交内容申诉（押金+公示期）。委员会通过后将按路由执行强制动作。
+          </Typography.Paragraph>
+        </Card>
+        <Card title="恢复逝者旧版本（治理）" size="small" extra={<Button type="primary" onClick={goRestore}>打开构建器</Button>}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            输入 DeceasedId 与旧版本字段，生成 batchAll 预映像，附证据 CID，由内容委员会发起并执行原子恢复。
           </Typography.Paragraph>
         </Card>
         <Card title="发起动议" size="small" extra={<Button type="primary" disabled>发起（占位）</Button>}>
