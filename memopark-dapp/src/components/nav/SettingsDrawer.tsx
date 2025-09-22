@@ -1,5 +1,5 @@
 import React from 'react'
-import { Drawer, Space, Switch, Typography } from 'antd'
+import { Drawer, Space, Switch, Typography, Button } from 'antd'
 import { useGovernanceUi } from '../../providers/GovernanceUiProvider'
 
 /**
@@ -29,6 +29,12 @@ const SettingsDrawer: React.FC = () => {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <Typography.Text>显示“恢复旧版本构建器”快捷入口</Typography.Text>
           <Switch checked={gov.showRestoreShortcut} onChange={gov.setShowRestoreShortcut} />
+        </div>
+        <div>
+          <Typography.Text>墓位背景音乐设置</Typography.Text>
+          <div style={{ marginTop: 6 }}>
+            <Button size="small" onClick={()=> { try { window.location.hash = '#/grave/audio' } catch {} }}>打开音频设置面板</Button>
+          </div>
         </div>
       </Space>
     </Drawer>

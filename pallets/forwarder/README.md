@@ -1,4 +1,4 @@
-# pallet-forwarder
+# pallet-forwarder（会话签名 + 代付）
 
 ## 概述
 - 实现“元交易转发 + 会话许可 + 赞助者代付”，允许用户线下签名，赞助者代为上链并付费。
@@ -12,11 +12,29 @@
 ## 关键设计
 - 为避免 `RuntimeCall` 类型循环与 `DecodeWithMemTracking` 约束，Extrinsic 参数使用 `BoundedVec<u8>` 承载 SCALE 编码后的 `SessionPermit` 与 `MetaTx`，在链上内部解码。
 - `Config`:
-  - `type RuntimeCall`、`type Authorizer`、`type ForbiddenCalls`、`type MaxMetaLen`、`type MaxPermitLen`。
+  - `type RuntimeCall`、`type Authorizer`、`type ForbiddenCalls`、`type MaxMetaLen`、`type MaxPermitLen`、`type RequireMetaSig`、`type MaxCallsPerSession`、`type MaxWeightPerSessionRefTime`、`type WeightInfo`。
 
 ## 主要 Extrinsic（示意）
 - `open_session(permit_bytes: BoundedVec<u8>)`
 - `forward(meta_bytes: BoundedVec<u8>, session_sig: Vec<u8>, owner: LookupSource)`
+- `close_session(ns, session_id)`
+- `purge_expired(ns, limit)`：批量清理 owner+ns 下已过期会话
+
+## 签名与安全
+- 运行时可设置 `RequireMetaSig=true`，将校验 `session_sig` 为 `Sessions[(owner,ns,session_id)].session_pubkey` 对以下消息的 sr25519 签名：
+  - `msg = scale(meta_bytes) || genesis_hash(block0) || "/mp/fwd/v1"`
+- 建议赞助者账户启用 `pallet-fee-guard`（仅手续费账户保护）。
+- 默认通过 `ForbiddenCalls` 拒绝高危调用（如 sudo/batch/dispatch_as/forwarder 自身等）。
+
+## 配额与预算
+- `MaxCallsPerSession`：每会话最大转发次数（失败也计数）。
+- `MaxWeightPerSessionRefTime`：每会话累计 `ref_time` 权重上限（`call_weight + extension_weight`）。
+
+## 事件
+- `SessionOpened { owner, ns, session_id }`
+- `SessionClosed { owner, ns, session_id }`
+- `Forwarded { owner, sponsor, ns, session_id }`
+- `ForwardFailed { owner, sponsor, ns, session_id, code }`（6=签名/会话无效；7=内层调用失败）
 
 ## 集成与白名单
 - 运行时 `AuthorizerAdapter` 策略：

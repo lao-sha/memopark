@@ -43,6 +43,56 @@ VITE_ALLOW_DEV_SESSION=1
 - 会话握手：开发环境使用本地签名与后端交互；可通过 `VITE_ALLOW_DEV_SESSION=1` 启用开发回退会话。
 - 数据查询：高变动/易膨胀查询建议下沉到 Subsquid（详见 `memopark-squid`）。
 
+### 墓位背景音乐（Grave Audio）
+
+- 播放：`GraveAudioPlayer` 读取 `memoGrave.audioCidOf(graveId)`，并尝试读取 `memoGrave.audioPlaylistOf(graveId)`；若播放列表存在，则优先使用列表并提供“上一首/下一首”。
+- 设置：`GraveAudioPicker` 页面 `#/grave/audio`
+  - 公共目录：读取 `memoGrave.audioOptions()`，墓主可从目录使用 `setAudioFromOption(id, index)`，非墓主会自动发起治理提案（`setAudioViaGovernance`）。
+  - 私有候选：仅墓主可维护 `addPrivateAudioOption/removePrivateAudioOption`，并可用 `setAudioFromPrivateOption` 设为背景音乐。
+  - 播放列表：编辑顺序后调用 `setAudioPlaylist(id, items)` 覆盖写入。
+  - 网关播放：`https://<gateway>/ipfs/<cid>`；默认 `VITE_IPFS_GATEWAY=https://ipfs.io`。
+  - 移动端：播放器底部悬浮控制条，显式点击播放；音量本地记忆 key：`mp.grave.audio.vol.<graveId>`。
+
+> 只读示例（使用 polkadot.js API）：
+```ts
+// 读取公共目录
+const opts = await api.query.memoGrave.audioOptions();
+const list: string[] = (opts.toJSON() as any[]).map(u8 => new TextDecoder().decode(new Uint8Array(u8)));
+
+// 读取某墓位选中 CID（Option<Bytes>）
+const v = await api.query.memoGrave.audioCidOf(graveId);
+const cid = v.isSome ? new TextDecoder().decode(v.unwrap().toU8a()) : '';
+
+// 读取某墓位播放列表
+const pl = await api.query.memoGrave.audioPlaylistOf(graveId);
+const playlist: string[] = (pl.toJSON() as any[]).map(u8 => new TextDecoder().decode(new Uint8Array(u8)));
+```
+
+### 与 pallet-evidence 集成（V1/V2 并存）
+
+- 默认走 V2：
+
+```ts
+// 按命名空间与主体提交承诺哈希（建议：对 明文CID + salt + ver + ns/subject 取 blake2b256）
+await signAndSendLocalFromKeystore('evidence', 'commitHash', [nsBytes, subjectId, commitHash, memoBytes]);
+
+// 链接已存在的证据（需命名空间一致）
+await signAndSendLocalFromKeystore('evidence', 'linkByNs', [nsBytes, subjectId, evidenceId]);
+```
+
+- 特殊场景使用 V1（公开 CID）：
+
+```ts
+await signAndSendLocalFromKeystore('evidence', 'commit', [domain, targetId, imgs, vids, docs, memoBytes]);
+await signAndSendLocalFromKeystore('evidence', 'link', [domain, targetId, evidenceId]);
+```
+
+错误码处理建议：
+- `NotAuthorized`：提示无权限或账户角色不匹配；
+- `InvalidCidFormat`/`DuplicateCid`/`TooMany*`：标注到对应输入控件；
+- `CommitAlreadyExists`：提示“该证据已登记”；
+- `NamespaceMismatch`：提示“命名空间不一致，请检查选择的空间/主体”。
+
 ## 申诉治理（无扩展/无链上私钥亦可）
 
 本 DApp 已从 OpenGov 公投迁移为“内容委员会(2/3) + 申诉治理”流程。用户与第三方可通过“提交申诉”发起内容治理请求，由内容委员会审批、公示并强制执行对应 `gov_*` 接口。

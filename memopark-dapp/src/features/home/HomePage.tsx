@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Typography, Alert, Button, Space, List, Avatar } from 'antd'
+import { Card, Typography, Alert, Button, Space, List, Avatar, Carousel } from 'antd'
+import { getApi } from '../../lib/polkadot-safe'
 import { UserOutlined } from '@ant-design/icons'
 import { sessionManager } from '../../lib/sessionManager'
 import AccountsOverview from '../../components/wallet/AccountsOverview'
@@ -12,6 +13,42 @@ import FeeGuardCard from './FeeGuardCard'
 const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
   const [session, setSession] = useState<SessionData | null>(null)
   const { isConnected, accounts, selectedAccount } = useWallet()
+  // 轮播：从 memoGrave.carousel() 读取并前端过滤时间窗
+  const [slides, setSlides] = useState<Array<{ img: string; title: string; link?: string; target?: { d: number; id: number } }>>([])
+  const [gw] = useState<string>(()=>{ try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' } })
+
+  useEffect(() => {
+    const loadCarousel = async () => {
+      try {
+        const api = await getApi()
+        const qroot: any = (api.query as any)
+        let q: any = qroot.memo_grave || qroot.memoGrave || qroot.grave
+        if (!q) { const fk = Object.keys(qroot).find(k => /memo[_-]?grave/i.test(k) || /^grave$/i.test(k)); if (fk) q = qroot[fk] }
+        if (!q?.carousel) return
+        const v = await q.carousel()
+        const now = await (api.query.system?.number?.() || { toNumber: ()=> 0 })
+        const nowBlock = Number((now as any).toNumber ? (now as any).toNumber() : 0)
+        const decoded: Array<{ img: string; title: string; link?: string; target?: { d: number; id: number }, start?: number|null, end?: number|null }> = []
+        try {
+          const vec: any[] = (v.toJSON?.() as any[]) || []
+          for (const item of vec) {
+            try {
+              const img = new TextDecoder().decode(new Uint8Array(item.img_cid || item.imgCid))
+              const title = new TextDecoder().decode(new Uint8Array(item.title))
+              let link: string | undefined
+              if (item.link) link = new TextDecoder().decode(new Uint8Array(item.link))
+              const target = item.target ? { d: Number(item.target[0] || item.target.d || 0), id: Number(item.target[1] || item.target.id || 0) } : undefined
+              const start = item.start_block != null ? Number(item.start_block) : (item.startBlock != null ? Number(item.startBlock) : null)
+              const end = item.end_block != null ? Number(item.end_block) : (item.endBlock != null ? Number(item.endBlock) : null)
+              if ((start == null || nowBlock >= start) && (end == null || nowBlock <= end)) decoded.push({ img, title, link, target, start, end })
+            } catch {}
+          }
+        } catch {}
+        setSlides(decoded)
+      } catch {}
+    }
+    loadCarousel()
+  }, [])
 
   useEffect(() => {
     const s = sessionManager.getCurrentSession() || sessionManager.init()
@@ -36,6 +73,30 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
   return (
     <div style={{ padding: 16, maxWidth: 820, margin: '0 auto' }}>
       <Card>
+        {/* 首页轮播图 */}
+        {slides.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Carousel autoplay dots style={{ borderRadius: 12, overflow: 'hidden' }}>
+              {slides.map((s, i)=> (
+                <div key={i} onClick={()=> {
+                  try {
+                    if (s.target) {
+                      if (s.target.d === 1) { window.location.hash = `#/grave/detail?id=${s.target.id}`; return }
+                      if (s.target.d === 2) { window.location.hash = `#/deceased/detail?id=${s.target.id}`; return }
+                      if (s.target.d === 3) { window.location.hash = `#/browse/category?domain=1&target=${s.target.id}`; return }
+                    }
+                    if (s.link) { window.location.href = s.link }
+                  } catch {}
+                }}>
+                  <div style={{ position:'relative', width:'100%', height: 180, background:'#000' }}>
+                    <img src={`${gw}/ipfs/${String(s.img).replace(/^ipfs:\/\//i,'')}`} alt={s.title} style={{ width:'100%', height:'100%', objectFit:'cover', opacity: 0.92 }} />
+                    <div style={{ position:'absolute', left: 8, bottom: 8, color:'#fff', textShadow:'0 1px 2px rgba(0,0,0,0.6)' }}>{s.title}</div>
+                  </div>
+                </div>
+              ))}
+            </Carousel>
+          </div>
+        )}
         <Typography.Title level={3} style={{ marginBottom: 16 }}>主页</Typography.Title>
 
         {!session ? (

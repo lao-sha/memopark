@@ -63,6 +63,15 @@ impl pallet_memo_content_governance::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     /// 执行路由占位实现
     type Router = ContentGovernanceRouter;
+    /// 审批起源：Root | 委员会阈值(2/3)
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+    >;
+    /// 每块最多执行 50 条（示例）
+    type MaxExecPerBlock = frame_support::traits::ConstU32<50>;
+    /// 权重实现（占位）
+    type WeightInfo = pallet_memo_content_governance::weights::SubstrateWeight<Runtime>;
 }
 // ====== 委员会（Council）运行时配置 ======
 parameter_types! {
@@ -404,6 +413,12 @@ impl pallet_forwarder::Config for Runtime {
 	/// 字节上限（根据业务情况调整）
 	type MaxMetaLen = frame_support::traits::ConstU32<8192>;
 	type MaxPermitLen = frame_support::traits::ConstU32<512>;
+    /// 函数级中文注释：强制校验 forward 的会话签名
+    type RequireMetaSig = frame_support::traits::ConstBool<true>;
+    /// 会话配额与预算上限（示例值）
+    type MaxCallsPerSession = frame_support::traits::ConstU32<100>;
+    type MaxWeightPerSessionRefTime = frame_support::traits::ConstU64<{ 2u64 * WEIGHT_REF_TIME_PER_SECOND }>; // 约2秒
+    type WeightInfo = ();
 }
 
 // 设备/挖矿/冥想相关配置已移除
@@ -485,6 +500,16 @@ impl pallet_memo_grave::Config for Runtime {
     >;
     /// 函数级中文注释：注入公共封面目录容量上限。
     type MaxCoverOptions = GraveMaxCoverOptions;
+    /// 函数级中文注释：注入公共音频目录容量上限（与封面目录同级）。
+    type MaxAudioOptions = GraveMaxCoverOptions;
+    /// 函数级中文注释：每墓位私有音频候选上限（示例沿用封面上限）。
+    type MaxPrivateAudioOptions = GraveMaxCoverOptions;
+    /// 函数级中文注释：每墓位播放列表长度上限（示例沿用封面上限）。
+    type MaxAudioPlaylistLen = GraveMaxCoverOptions;
+    /// 函数级中文注释：首页轮播上限/字段长度（示例值）。
+    type MaxCarouselItems = frame_support::traits::ConstU32<20>;
+    type MaxTitleLen = frame_support::traits::ConstU32<64>;
+    type MaxLinkLen = frame_support::traits::ConstU32<128>;
 }
 
 // ===== deceased 配置 =====
@@ -719,6 +744,8 @@ impl pallet_ledger::Config for Runtime {
     type Balance = Balance;
     /// 一周按 6s/块 × 60 × 60 × 24 × 7 = 100_800 块（可由治理升级调整）
     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
+    /// 函数级中文注释：绑定 ledger 手写占位权重（后续可替换为基准生成版）。
+    type WeightInfo = pallet_ledger::weights::SubstrateWeight<Runtime>;
 }
 
 
@@ -865,6 +892,7 @@ parameter_types! {
 }
 
 pub struct NativePaymaster;
+#[cfg(not(feature = "runtime-benchmarks"))]
 impl frame_support::traits::tokens::Pay for NativePaymaster {
     type Balance = Balance;
     type AssetKind = (); // 仅原生
@@ -877,11 +905,33 @@ impl frame_support::traits::tokens::Pay for NativePaymaster {
     }
     fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus { frame_support::traits::tokens::PaymentStatus::Success }
 }
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_support::traits::tokens::Pay for NativePaymaster {
+    type Balance = Balance;
+    type AssetKind = (); // 仅原生
+    type Beneficiary = AccountId;
+    type Id = ();
+    type Error = sp_runtime::DispatchError;
+    fn pay(who: &Self::Beneficiary, _asset_kind: Self::AssetKind, amount: Self::Balance) -> Result<Self::Id, Self::Error> {
+        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(&PlatformAccount::get(), who, amount, frame_support::traits::tokens::Preservation::Expendable)?;
+        Ok(())
+    }
+    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus { frame_support::traits::tokens::PaymentStatus::Success }
+    fn ensure_successful(_: &Self::Beneficiary, _: Self::AssetKind, _: Self::Balance) {}
+    fn ensure_concluded(_: Self::Id) {}
+}
 
 pub struct UnitBalanceConverter;
+#[cfg(not(feature = "runtime-benchmarks"))]
 impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance> for UnitBalanceConverter {
     type Error = sp_runtime::DispatchError;
     fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> { Ok(amount) }
+}
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance> for UnitBalanceConverter {
+    type Error = sp_runtime::DispatchError;
+    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> { Ok(amount) }
+    fn ensure_successful(_: ()) {}
 }
 
 impl pallet_treasury::Config for Runtime {
@@ -1009,14 +1059,18 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
             let amt: Option<Balance> = amount.map(|a| a as Balance);
-            // 1) 记录供奉流水
-            pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None);
+            // 1) 记录供奉流水（附带去重键）：
+            //    以 (domain, grave_id, who, block_number, amount, extrinsic_index) 为种子生成 H256
+            let now = <frame_system::Pallet<Runtime>>::block_number();
+            let ex_idx = <frame_system::Pallet<Runtime>>::extrinsic_index();
+            let seed = (target.0, target.1, who.clone(), now, amount, ex_idx);
+            let tx_key = Some(sp_core::H256::from(sp_core::blake2_256(&codec::Encode::encode(&seed))));
+            pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None, tx_key);
             // 2) 标记有效供奉周期：
             // - 若为 Timed（duration_weeks=Some），无论是否转账成功，均标记从当周起连续 w 周
             // - 若为 Instant（None），仅当存在金额落账时标记当周
             let should_mark = duration_weeks.is_some() || amount.is_some();
             if should_mark {
-                let now = <frame_system::Pallet<Runtime>>::block_number();
                 pallet_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
                 // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
                 if let Some(pay) = amt {
@@ -1074,6 +1128,8 @@ impl pallet_evidence::Config for Runtime {
     type EvidenceNsBytes = EvidenceNsBytes;
     // 无授权中心：占位实现，默认允许
     type Authorizer = AllowAllEvidenceAuthorizer; 
+    /// 函数级中文注释：绑定权重实现，当前为手写估算版；后续可替换为基准生成版
+    type WeightInfo = pallet_evidence::weights::SubstrateWeight<Runtime>;
 }
 impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for AllowAllEvidenceAuthorizer {
     fn is_authorized(_ns: [u8; 8], _who: &AccountId) -> bool { true }
@@ -1198,9 +1254,7 @@ impl pallet_identity::Config for Runtime {
     type MaxUsernameLength = IdentityMaxUsernameLength;
     /// 基准权重
     type WeightInfo = pallet_identity::weights::SubstrateWeight<Runtime>;
-    /// 基准工具（仅基准编译时需要）
-    #[cfg(feature = "runtime-benchmarks")]
-    type BenchmarkHelper = ();
+    // 新版 pallet-identity 已不需要 BenchmarkHelper 关联类型
 }
 
 // ===== memo-pet 配置（最小实现） =====
@@ -1435,21 +1489,7 @@ impl pallet_memo_referrals::Config for Runtime {
     type MaxReferralsPerAccount = RefMaxChildren;
 }
 
-// ===== memo-endowment（基金会）配置 =====
-parameter_types! {
-    pub const EndowmentPrincipalId: PalletId = PalletId(*b"endowpri");
-    pub const EndowmentYieldId: PalletId = PalletId(*b"endowyld");
-}
-impl pallet_memo_endowment::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type Balance = Balance;
-    type PrincipalPalletId = EndowmentPrincipalId;
-    type YieldPalletId = EndowmentYieldId;
-    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
-    type WeightInfo = ();
-    type Sla = SlaFromIpfs;
-}
+// （已下线）memo-endowment（基金会）配置块移除
 
 // ===== memo-ipfs（存储+OCW）配置 =====
 parameter_types! { pub const IpfsMaxCidHashLen: u32 = 64; }
@@ -1458,7 +1498,8 @@ impl pallet_memo_ipfs::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Balance = Balance;
-    type Endowment = pallet_memo_endowment::Pallet<Runtime>;
+    /// 函数级中文注释：Endowment 下线后，费用接收账户改为国库账户解析器。
+    type FeeCollector = TreasuryAccount;
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
     type MaxCidHashLen = IpfsMaxCidHashLen;
     type MaxPeerIdLen = frame_support::traits::ConstU32<128>;
@@ -1484,8 +1525,10 @@ impl pallet_memo_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
 
 /// 函数级中文注释：SLA 数据提供者，从 `pallet-memo-ipfs` 读取运营者统计
 pub struct SlaFromIpfs;
-impl pallet_memo_endowment::SlaProvider<AccountId, BlockNumber> for SlaFromIpfs {
-    fn visit<F: FnMut(&AccountId, u32, u32, BlockNumber)>(mut f: F) {
+// （已下线）SLA Provider 适配器不再实现 endowment 的 trait
+impl /*pallet_memo_endowment::*/ SlaFromIpfs {
+    /// 函数级中文注释：占位保留工具函数，可被迁移脚本或索引层复用（不依赖 endowment trait）。
+    pub fn foreach_active_operator<F: FnMut(&AccountId, u32, u32, BlockNumber)>(mut f: F) {
         use pallet_memo_ipfs::pallet::{OperatorSla as SlaMap, Operators as OpMap};
         for (op, s) in SlaMap::<Runtime>::iter() {
             if let Some(info) = OpMap::<Runtime>::get(&op) {
@@ -1593,4 +1636,18 @@ impl pallet_fee_guard::pallet::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
+    /// 函数级中文注释：允许标记策略——拒绝国库与平台账户，其余放行。
+    type AllowMarking = DenyTreasuryAndPlatform;
+    /// 函数级中文注释：权重实现（占位）。
+    type WeightInfo = ();
+}
+
+/// 函数级中文注释：默认允许标记的策略实现，始终返回 true。
+pub struct DenyTreasuryAndPlatform;
+impl pallet_fee_guard::AllowMarkingPolicy<AccountId> for DenyTreasuryAndPlatform {
+    /// 返回 false 表示禁止标记（国库/平台账户）；其余返回 true。
+    fn allow(who: &AccountId) -> bool {
+        who != &<TreasuryAccount as sp_core::Get<AccountId>>::get()
+            && who != &<PlatformAccount as sp_core::Get<AccountId>>::get()
+    }
 }

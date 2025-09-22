@@ -11,15 +11,25 @@ scale-info = { workspace = true, features = ["derive"], default-features = false
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
+sp-core = { workspace = true, default-features = false }
+frame-benchmarking = { workspace = true, default-features = false, optional = true }
 
 [features]
 default = ["std"]
+runtime-benchmarks = [
+  "frame-benchmarking",
+]
 std = [
   "codec/std",
   "scale-info/std",
   "frame-support/std",
   "frame-system/std",
   "sp-runtime/std",
+  "sp-core/std",
+  "frame-benchmarking/std",
 ]
+
+[dev-dependencies]
+sp-io = { workspace = true, default-features = false }
 
 

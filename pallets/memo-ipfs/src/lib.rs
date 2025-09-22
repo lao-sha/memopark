@@ -10,7 +10,7 @@ use frame_support::{
     BoundedVec,
 };
 use frame_system::pallet_prelude::*;
-use pallet_memo_endowment::EndowmentInterface;
+// （已下线）移除对 memo-endowment 的接口依赖
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{offchain::{http, StorageKind}, traits::AtLeast32BitUnsigned};
 use sp_std::{vec::Vec, str};
@@ -66,8 +66,8 @@ pub mod pallet {
         /// 余额类型
         type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
-        /// Endowment 接口（将一次性费用打入基金会）
-        type Endowment: EndowmentInterface<Self::AccountId, BalanceOf<Self>, Self::Hash>;
+        /// 资金接收账户解析器（例如 Treasury 或平台账户），用于收取一次性费用与周期扣费。
+        type FeeCollector: sp_core::Get<Self::AccountId>;
 
         /// 治理 Origin（用于参数/黑名单/配额）
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
@@ -360,7 +360,11 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
-            T::Endowment::deposit_from_storage(&who, price, cid_hash)?;
+            // 将一次性费用直接转入 FeeCollector（例如 Treasury）
+            {
+                let to = <T as Config>::FeeCollector::get();
+                <T as Config>::Currency::transfer(&who, &to, price, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+            }
             PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
             let now = <frame_system::Pallet<T>>::block_number();
             PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
@@ -387,7 +391,11 @@ pub mod pallet {
             let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
             ensure!(owner == who, Error::<T>::BadStatus);
             let payer = Self::subject_account_for_deceased(subject_id);
-            T::Endowment::deposit_from_storage(&payer, price, cid_hash)?;
+            // 主题扣费：从派生账户转入 FeeCollector
+            {
+                let to = <T as Config>::FeeCollector::get();
+                <T as Config>::Currency::transfer(&payer, &to, price, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+            }
             PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
             let now = <frame_system::Pallet<T>>::block_number();
             PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
@@ -436,8 +444,11 @@ pub mod pallet {
                                 let min_res = SubjectMinReserve::<T>::get();
                                 let free = <T as Config>::Currency::free_balance(&payer);
                                 if free.saturating_sub(due_bal) >= min_res {
-                                    // 扣费：打入基金会
-                                    T::Endowment::deposit_from_storage(&payer, due_bal, cid)?;
+                                    // 扣费：转入 FeeCollector（国库/平台）
+                                    {
+                                        let to = <T as Config>::FeeCollector::get();
+                                        <T as Config>::Currency::transfer(&payer, &to, due_bal, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+                                    }
                                     // 推进下一期并重新入队
                                     let period = BillingPeriodBlocks::<T>::get();
                                     let next = now.saturating_add(period.into());

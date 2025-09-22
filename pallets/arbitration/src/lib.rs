@@ -92,11 +92,11 @@ pub mod pallet {
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::dispute(_evidence.len() as u32))]
         pub fn dispute(origin: OriginFor<T>, domain: [u8; 8], id: u64, _evidence: alloc::vec::Vec<BoundedVec<u8, T::MaxCidLen>>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let _who = ensure_signed(origin)?;
             // 鉴权：由 Router 依据业务 pallet 规则判断是否允许发起（基准模式下跳过，便于构造场景）
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                ensure!(T::Router::can_dispute(domain, &who, id), Error::<T>::NotDisputed);
+                ensure!(T::Router::can_dispute(domain, &_who, id), Error::<T>::NotDisputed);
             }
             ensure!(Disputed::<T>::get(domain, id).is_none(), Error::<T>::AlreadyDisputed);
             Disputed::<T>::insert(domain, id, ());
@@ -140,10 +140,10 @@ pub mod pallet {
             id: u64,
             evidence_id: u64,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let _who = ensure_signed(origin)?;
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                ensure!(T::Router::can_dispute(domain, &who, id), Error::<T>::NotDisputed);
+                ensure!(T::Router::can_dispute(domain, &_who, id), Error::<T>::NotDisputed);
             }
             ensure!(Disputed::<T>::get(domain, id).is_none(), Error::<T>::AlreadyDisputed);
             Disputed::<T>::insert(domain, id, ());

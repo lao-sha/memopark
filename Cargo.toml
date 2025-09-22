@@ -28,7 +28,6 @@ members = [
     "pallets/memo-referrals",
     "pallets/memo-affiliate",
     "pallets/evidence",
-    "pallets/memo-endowment",
     "pallets/memo-ipfs",
     "pallets/memo-pet",
     "pallets/memo-bridge",

@@ -6,6 +6,9 @@ extern crate alloc;
 
 pub use pallet::*;
 
+// 函数级中文注释：权重模块导入，提供 WeightInfo 接口用于基于输入规模计算交易权重。
+pub mod weights;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -18,9 +21,11 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_core::sr25519;
-    use sp_runtime::{traits::{StaticLookup, Dispatchable}, RuntimeDebug};
+    use sp_runtime::{traits::{StaticLookup, Dispatchable, Zero}, RuntimeDebug};
     use frame_system::RawOrigin;
     use codec::Decode;
+    use sp_core::Pair;
+    use crate::weights::WeightInfo;
 
     /// Authorizer 适配接口：由 runtime 实现以对接 `pallet-authorizer`
     ///
@@ -83,6 +88,14 @@ pub mod pallet {
         type MaxMetaLen: Get<u32>;
         /// SessionPermit 字节上限
         type MaxPermitLen: Get<u32>;
+        /// 是否强制校验 forward 的会话签名（与存储中公钥一致）；默认由运行时配置
+        type RequireMetaSig: Get<bool>;
+        /// 每会话最多允许的转发次数（速率/配额控制）
+        type MaxCallsPerSession: Get<u32>;
+        /// 每会话累计允许的 ref_time 权重上限
+        type MaxWeightPerSessionRefTime: Get<u64>;
+        /// 权重信息接口
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -108,6 +121,16 @@ pub mod pallet {
         u64, ValueQuery
     >;
 
+    /// 函数级中文注释：会话统计（调用次数与累计 ref_time 权重），用于配额控制与风控。
+    #[pallet::storage]
+    pub type SessionStats<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat, (T::AccountId, [u8; 8]),
+        Blake2_128Concat, [u8; 16],
+        (u32, u64), // (calls, total_ref_time)
+        ValueQuery
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -117,6 +140,8 @@ pub mod pallet {
         SessionClosed { owner: T::AccountId, ns: [u8; 8], session_id: [u8; 16] },
         /// 成功转发
         Forwarded { owner: T::AccountId, sponsor: T::AccountId, ns: [u8; 8], session_id: [u8; 16] },
+        /// 失败转发（含错误码）
+        ForwardFailed { owner: T::AccountId, sponsor: T::AccountId, ns: [u8; 8], session_id: [u8; 16], code: u8 },
     }
 
     #[pallet::error]
@@ -143,7 +168,7 @@ pub mod pallet {
         /// 安全说明：生产环境应校验 SessionPermit 是由 `owner` 主钱包签名授权的。
         #[pallet::call_index(0)]
         #[allow(deprecated)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::open_session())]
         pub fn open_session(origin: OriginFor<T>, permit_bytes: BoundedVec<u8, T::MaxPermitLen>) -> DispatchResult {
             let sponsor = ensure_signed(origin)?;
             // 解码离线许可
@@ -156,6 +181,7 @@ pub mod pallet {
             ensure!(now <= permit.expires_at, Error::<T>::BadSession);
             Sessions::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, permit.clone());
             SessionNonce::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, 0u64);
+            SessionStats::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, (0u32, 0u64));
             Self::deposit_event(Event::SessionOpened { owner: permit.owner, ns: permit.ns, session_id: permit.session_id });
             Ok(())
         }
@@ -163,11 +189,12 @@ pub mod pallet {
         /// 关闭会话：由所有者主动撤销
         #[pallet::call_index(1)]
         #[allow(deprecated)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::close_session())]
         pub fn close_session(origin: OriginFor<T>, ns: [u8; 8], session_id: [u8; 16]) -> DispatchResult {
             let owner = ensure_signed(origin)?;
             Sessions::<T>::remove((owner.clone(), ns), session_id);
             SessionNonce::<T>::remove((owner.clone(), ns), session_id);
+            SessionStats::<T>::remove((owner.clone(), ns), session_id);
             Self::deposit_event(Event::SessionClosed { owner, ns, session_id });
             Ok(())
         }
@@ -177,11 +204,11 @@ pub mod pallet {
         /// 安全说明：生产环境应校验 `session_sig` 确实由 `session_pubkey` 对 `meta` 的 SCALE 编码签发。
         #[pallet::call_index(2)]
         #[allow(deprecated)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::forward())]
         pub fn forward(
             origin: OriginFor<T>,
             meta_bytes: BoundedVec<u8, T::MaxMetaLen>,
-            _session_sig: Vec<u8>,
+            session_sig: Vec<u8>,
             owner: <T::Lookup as StaticLookup>::Source,
         ) -> DispatchResultWithPostInfo {
             let sponsor = ensure_signed(origin)?;
@@ -199,11 +226,48 @@ pub mod pallet {
             let now = frame_system::Pallet::<T>::block_number();
             ensure!(now <= maybe.expires_at && now <= meta.valid_till, Error::<T>::BadSession);
 
+            // 会话签名校验（可选，运行时控制）
+            if T::RequireMetaSig::get() {
+                // 构造签名消息：scale(meta) + genesis_hash + domain
+                let mut msg = meta_bytes.to_vec();
+                // 绑定 genesis_hash 以防跨链复用
+                let gh = frame_system::Pallet::<T>::block_hash::<frame_system::pallet_prelude::BlockNumberFor<T>>(Zero::zero());
+                msg.extend_from_slice(gh.as_ref());
+                // 域分隔符
+                const DOMAIN: &[u8] = b"/mp/fwd/v1";
+                msg.extend_from_slice(DOMAIN);
+                // 解析签名
+                if session_sig.len() != 64 {
+                    // 失败事件
+                    Self::deposit_event(Event::ForwardFailed { owner: owner.clone(), sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id, code: 6 });
+                    return Err(Error::<T>::BadSession.into())
+                }
+                let mut sig_raw = [0u8; 64];
+                sig_raw.copy_from_slice(&session_sig[..]);
+                let sig = sp_core::sr25519::Signature::from_raw(sig_raw);
+                let ok = sr25519::Pair::verify(&sig, &msg, &maybe.session_pubkey);
+                if !ok {
+                    Self::deposit_event(Event::ForwardFailed { owner: owner.clone(), sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id, code: 6 });
+                    return Err(Error::<T>::BadSession.into())
+                }
+            }
+
             // 禁止的调用过滤
             ensure!(!T::ForbiddenCalls::contains(&meta.call), Error::<T>::ForbiddenCall);
 
             // 范围校验
             ensure!(T::Authorizer::is_call_allowed(meta.ns, &sponsor, &meta.call), Error::<T>::CallNotAllowed);
+
+            // 会话配额与预算校验
+            let info = meta.call.get_dispatch_info();
+            let (calls, total) = SessionStats::<T>::get((owner.clone(), meta.ns), meta.session_id);
+            ensure!(calls < T::MaxCallsPerSession::get(), Error::<T>::ForbiddenCall);
+            let next_total = total
+                .saturating_add(info.call_weight.ref_time())
+                .saturating_add(info.extension_weight.ref_time());
+            ensure!(next_total <= T::MaxWeightPerSessionRefTime::get(), Error::<T>::ForbiddenCall);
+            // 预计记账（失败也计数，避免重放薅费）
+            SessionStats::<T>::insert((owner.clone(), meta.ns), meta.session_id, (calls.saturating_add(1), next_total));
 
             // Nonce 检查：严格递增
             let next = SessionNonce::<T>::get((owner.clone(), meta.ns), meta.session_id);
@@ -216,9 +280,32 @@ pub mod pallet {
             // 事件（无论成功与否，外层费用由赞助者承担）
             if dispatch_result.is_ok() {
                 Self::deposit_event(Event::Forwarded { owner, sponsor, ns: meta.ns, session_id: meta.session_id });
+            } else {
+                Self::deposit_event(Event::ForwardFailed { owner, sponsor, ns: meta.ns, session_id: meta.session_id, code: 7 });
             }
 
             dispatch_result
+        }
+
+        /// 函数级中文注释：批量清理 owner+ns 下已过期会话（最多移除 limit 个）。
+        #[pallet::call_index(3)]
+        #[pallet::weight(T::WeightInfo::purge_expired())]
+        pub fn purge_expired(origin: OriginFor<T>, ns: [u8; 8], limit: u32) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+            let now = frame_system::Pallet::<T>::block_number();
+            let mut removed: u32 = 0;
+            for sid in Sessions::<T>::iter_key_prefix((owner.clone(), ns)) {
+                if removed >= limit { break; }
+                if let Some(p) = Sessions::<T>::get((owner.clone(), ns), sid) {
+                    if now > p.expires_at {
+                        Sessions::<T>::remove((owner.clone(), ns), sid);
+                        SessionNonce::<T>::remove((owner.clone(), ns), sid);
+                        SessionStats::<T>::remove((owner.clone(), ns), sid);
+                        removed = removed.saturating_add(1);
+                    }
+                }
+            }
+            Ok(())
         }
     }
 }

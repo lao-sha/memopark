@@ -26,12 +26,17 @@
 ### 新增（公共封面目录）
 - `CoverOptions: BoundedVec<CID, MaxCoverOptions>`：全局可选封面列表，仅治理可增删；任意墓地可选择其一作为封面。CID 明文保存（不加密）。
 
+### 新增（背景音乐）
+- `AudioCidOf: GraveId -> Option<CID>`：墓位背景音乐 CID（明文，不加密）。
+- `AudioOptions: BoundedVec<CID, MaxAudioOptions>`：全局可选音频列表，仅治理可增删；任意墓位可从目录选择其一作为背景音乐。
+
 ## 常量参数（由 runtime 注入）
 - `MaxCidLen`：CID 最大字节数（建议 64）。
 - `MaxPerPark`、`MaxIntermentsPerGrave`、`MaxIdsPerName`、`MaxComplaintsPerGrave`、`MaxAdminsPerGrave`、`SlugLen`、`MaxFollowers`。
 - `FollowCooldownBlocks`、`FollowDeposit`（关注相关，已停用）。
 - `CreateFee`/`FeeCollector`：创建费与收款账户。
 - 新增：`MaxCoverOptions`：公共封面目录容量上限（例如 256）。
+- 新增：`MaxAudioOptions`：公共音频目录容量上限（例如 256）。
 
 ## Extrinsics
 - `create_grave(park_id?: Option<ParkId>, name)`
@@ -58,6 +63,14 @@
   - `add_cover_option(cid)`：仅治理；若存在则 `CoverOptionExists`；事件 `CoverOptionAdded {}`。
   - `remove_cover_option(cid)`：仅治理；若不存在则 `CoverOptionNotFound`；事件 `CoverOptionRemoved {}`。
   - `set_cover_from_option(id, index)`：仅墓主；按索引选择目录项；越界报 `InvalidCoverIndex`；事件 `CoverSet { id }`。
+
+### 背景音乐相关
+- `set_audio(id, cid)` / `clear_audio(id)`：仅墓主；事件 `AudioSet/AudioCleared`。
+- `set_audio_via_governance(id, cid)` / `clear_audio_via_governance(id)`：治理路径。
+- 目录：
+  - `add_audio_option(cid)`：仅治理；若存在则 `AudioOptionExists`；事件 `AudioOptionAdded {}`。
+  - `remove_audio_option(cid)`：仅治理；若不存在则 `AudioOptionNotFound`；事件 `AudioOptionRemoved {}`。
+  - `set_audio_from_option(id, index)`：仅墓主；按索引选择目录项；越界报 `InvalidAudioIndex`；事件 `AudioSet { id }`。
 
 ## 事件
 - `CoverSet { id }`、`CoverCleared { id }`
@@ -88,6 +101,22 @@
   1) 自定义 CID：上传至 IPFS，获取 CID 后调用 `set_cover` 或治理版。
   2) 从公共目录选择：读取 `CoverOptions` 展示网格，选择后调用 `set_cover_from_option`。
 - Subsquid 建议订阅 `CoverOptionAdded/Removed` 与 `CoverSet/CoverCleared`，做缓存与审计。
+
+### 背景音乐（移动端优先）
+- 播放：`GraveAudioPlayer` 从 `AudioCidOf` 读取 CID，播放 `https://<gateway>/ipfs/<cid>`，移动端点击播放，失败降级静音。
+- 设置：`GraveAudioPicker` 从 `AudioOptions` 选择或自定义 CID；仅墓主可直设，非墓主走治理提案（内容委员会 2/3）。
+- 导航入口：Settings 齿轮 → “墓位背景音乐设置”，或 `#/grave/audio` 直达。
+
+### 首页轮播图（Carousel）
+- 存储：
+  - `CarouselItem { img_cid, title, link?, target?(domain,id), start_block?, end_block? }`
+  - `Carousel: BoundedVec<CarouselItem, MaxCarouselItems>`
+- 常量：`MaxCarouselItems`、`MaxTitleLen`、`MaxLinkLen`、复用 `MaxCidLen`
+- Extrinsics（治理）：`set_carousel(items)` 覆盖式设置；事件 `CarouselSet { len }`
+- 前端：
+  - 首页读取 `memoGrave.carousel()`，前端按当前区块过滤 `start/end`；
+  - 渲染 AntD Carousel；点击优先路由 `target(domain,id)`，否则使用 `link`；
+  - 图片 `https://<gateway>/ipfs/<img_cid>`，统一网关 `VITE_IPFS_GATEWAY`。
 
 ## 委员会阈值 + 申诉治理流程
 - 申诉：前端 `#/gov/appeal` 提交 `domain/action/target/reason_cid/evidence_cid`，链上冻结押金。

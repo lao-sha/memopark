@@ -3,14 +3,24 @@
 extern crate alloc;
 
 pub use pallet::*;
+pub mod weights;
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
 
 use frame_support::pallet_prelude::*;
 use frame_system::pallet_prelude::*;
 use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion, Saturating};
+use sp_core::H256;
+// 无需在此引入 Weight；权重接口通过 T::WeightInfo 使用
 
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
+    use crate::weights::WeightInfo;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -24,6 +34,8 @@ pub mod pallet {
 		/// 一周包含的区块数（用于“有效供奉周期”判定，按周粒度）
 		#[pallet::constant]
 		type BlocksPerWeek: Get<u32>;
+			/// 权重信息提供者
+			type WeightInfo: weights::WeightInfo;
 	}
 
 	#[pallet::pallet]
@@ -41,6 +53,11 @@ pub mod pallet {
 	/// 函数级中文注释：每墓位累计 MEMO 金额
 	pub type TotalMemoByGrave<T: Config> =
 		StorageMap<_, Blake2_128Concat, T::GraveId, T::Balance, ValueQuery>;
+
+	/// 函数级中文注释：去重键集合，避免同一供奉被重复累计。
+	/// - 维度：(grave_id, tx_key) → ()；仅当传入去重键时写入。
+	#[pallet::storage]
+	pub type DedupKeys<T: Config> = StorageMap<_, Blake2_128Concat, (T::GraveId, H256), (), OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn total_memo_by_deceased)]
@@ -66,6 +83,10 @@ pub mod pallet {
 		WeeklyActiveMarked(T::GraveId, T::AccountId, u64, u32),
 		/// 函数级中文注释：某逝者累计供奉金额已更新（delta 与新累计值）
 		DeceasedOfferingAccumulated(u64, T::Balance, T::Balance),
+		/// 函数级中文注释：某墓位累计供奉金额已更新（delta 与新累计值）
+		GraveOfferingAccumulated(T::GraveId, T::Balance, T::Balance),
+		/// 函数级中文注释：已清理某账户在某墓位的历史周活跃标记（before_week 之前，最多 limit 条）
+		WeeksPurged(T::GraveId, T::AccountId, u64, u32),
 	}
 
 	#[pallet::error]
@@ -82,10 +103,18 @@ pub mod pallet {
 			_kind_code: u8,
 			amount: Option<T::Balance>,
 			_memo: Option<alloc::vec::Vec<u8>>,
+			// 新增：可选去重键（如事件哈希/外部 tx id 的 blake2）
+			tx_key: Option<H256>,
 		) {
+			// 若提供了去重键，判断是否已处理
+			if let Some(k) = tx_key {
+				if DedupKeys::<T>::contains_key((grave_id, k)) { return }
+				DedupKeys::<T>::insert((grave_id, k), ());
+			}
 			TotalsByGrave::<T>::mutate(grave_id, |c| *c = c.saturating_add(1));
 			if let Some(amt) = amount {
-				TotalMemoByGrave::<T>::mutate(grave_id, |b| *b = b.saturating_add(amt));
+				let new_total = TotalMemoByGrave::<T>::mutate(grave_id, |b| { *b = b.saturating_add(amt); *b });
+				Self::deposit_event(Event::GraveOfferingAccumulated(grave_id, amt, new_total));
 			}
 		}
 
@@ -96,7 +125,7 @@ pub mod pallet {
 			kind_code: u8,
 			memo: Option<alloc::vec::Vec<u8>>,
 		) {
-			Self::record_from_hook_with_amount(grave_id, who, kind_code, None, memo)
+			Self::record_from_hook_with_amount(grave_id, who, kind_code, None, memo, None)
 		}
 
 		/// 函数级中文注释：为指定逝者累计供奉金额（仅累加正向 delta，不含押金）。
@@ -140,6 +169,102 @@ pub mod pallet {
 			let bpw = T::BlocksPerWeek::get() as u128;
 			let week_idx = (now.saturated_into::<u128>() / bpw) as u64;
 			Self::is_week_active(grave_id, who, week_idx)
+		}
+
+		/// 函数级中文注释：计算某区块号对应的周索引（floor(block_number / BlocksPerWeek)）。
+		pub fn week_index_of_block(block: BlockNumberFor<T>) -> u64 {
+			let bpw = T::BlocksPerWeek::get() as u128;
+			(block.saturated_into::<u128>() / bpw) as u64
+		}
+
+		/// 函数级中文注释：返回当前周索引（便于前端/索引层只读调用）。
+		pub fn current_week_index() -> u64 {
+			let now = <frame_system::Pallet<T>>::block_number();
+			Self::week_index_of_block(now)
+		}
+
+		/// 函数级中文注释：按位图返回从 `start_week` 起连续 `len` 周的活跃情况（bit=1 表示活跃）。
+		/// - 返回 Vec<u8>，低位在前；位序为 [start_week + 0, start_week + 1, ...]；
+		/// - len 最大 256 建议，避免链上过大内存；调用方应合理控制参数。
+		pub fn weeks_active_bitmap(
+			grave_id: T::GraveId,
+			who: &T::AccountId,
+			start_week: u64,
+			len: u32,
+		) -> alloc::vec::Vec<u8> {
+			let mut out: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+			let mut byte: u8 = 0;
+			let mut bit_idx: u32 = 0;
+			for i in 0..len {
+				let week = start_week.saturating_add(i as u64);
+				let active = WeeklyActive::<T>::contains_key((grave_id, who.clone(), week));
+				if active { byte |= 1 << (bit_idx % 8); }
+				bit_idx += 1;
+				if bit_idx % 8 == 0 { out.push(byte); byte = 0; }
+			}
+			if bit_idx % 8 != 0 { out.push(byte); }
+			out
+		}
+	}
+
+	#[pallet::call]
+	impl<T: Config> Pallet<T> {
+		/// 函数级中文注释：清理某账户在某墓位的历史周活跃标记
+		/// - 仅允许该账户本人调用；
+		/// - 将移除 `(grave_id, who, week)` 中 `week < before_week` 的键，最多 `limit` 条；
+		/// - 目的：控制 `WeeklyActive` 存储规模，便于长期运行；
+		/// - 注意：清理仅影响只读统计，不影响任何资金或权益。
+		#[pallet::call_index(0)]
+		#[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::purge_weeks(*limit))]
+		pub fn purge_weeks(
+			origin: OriginFor<T>,
+			grave_id: T::GraveId,
+			who: T::AccountId,
+			before_week: u64,
+			limit: u32,
+		) -> DispatchResult {
+			let caller = ensure_signed(origin)?;
+			ensure!(caller == who, sp_runtime::DispatchError::BadOrigin);
+			let mut removed: u32 = 0;
+			for (gid, acc, week) in WeeklyActive::<T>::iter_keys() {
+				if removed >= limit { break; }
+				if gid == grave_id && acc == who && week < before_week {
+					WeeklyActive::<T>::remove((gid, acc.clone(), week));
+					removed = removed.saturating_add(1);
+				}
+			}
+			Self::deposit_event(Event::WeeksPurged(grave_id, who, before_week, removed));
+			Ok(())
+		}
+
+		/// 函数级中文注释：按区间批量清理周活跃标记（含起，含止前）
+		/// - 仅允许该账户本人调用；
+		/// - 将移除 `(grave_id, who, week)` 中 `start_week <= week < end_week` 的键，最多 `limit` 条；
+		/// - 用于 TTL 压缩或周期性清理历史周数据。
+        #[pallet::call_index(1)]
+		#[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::purge_weeks_by_range(*limit))]
+		pub fn purge_weeks_by_range(
+			origin: OriginFor<T>,
+			grave_id: T::GraveId,
+			who: T::AccountId,
+			start_week: u64,
+			end_week: u64,
+			limit: u32,
+		) -> DispatchResult {
+			let caller = ensure_signed(origin)?;
+			ensure!(caller == who, sp_runtime::DispatchError::BadOrigin);
+			let mut removed: u32 = 0;
+			for (gid, acc, week) in WeeklyActive::<T>::iter_keys() {
+				if removed >= limit { break; }
+				if gid == grave_id && acc == who && week >= start_week && week < end_week {
+					WeeklyActive::<T>::remove((gid, acc.clone(), week));
+					removed = removed.saturating_add(1);
+				}
+			}
+			Self::deposit_event(Event::WeeksPurged(grave_id, who, end_week, removed));
+			Ok(())
 		}
 	}
 }

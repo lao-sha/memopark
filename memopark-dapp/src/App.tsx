@@ -23,6 +23,8 @@ import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';
 import DeceasedListPage from './features/deceased/DeceasedListPage';
 import CoverOptionsPage from './features/grave/CoverOptionsPage';
 import CreateCoverOptionPage from './features/grave/CreateCoverOptionPage';
+import GraveAudioPicker from './features/grave/GraveAudioPicker';
+import CarouselEditorPage from './features/grave/CarouselEditorPage';
 import CreateCategoryPage from './features/offerings/CreateCategoryPage';
 import CreatePrimaryCategoryPage from './features/offerings/CreatePrimaryCategoryPage';
 import CreateSacrificePage from './features/offerings/CreateSacrificePage';
@@ -94,6 +96,8 @@ const App: React.FC = () => {
                 : hash === '#/profile' ? <ProfilePage />
                 : hash === '#/covers' ? <CoverOptionsPage />
                 : hash === '#/covers/create' ? <CreateCoverOptionPage />
+                : hash === '#/grave/audio' ? <GraveAudioPicker />
+                : hash === '#/carousel/editor' ? <CarouselEditorPage />
                 : hash === '#/category/create' ? <CreateCategoryPage />
                 : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
                 : hash === '#/category/list' ? <CategoryListPage />

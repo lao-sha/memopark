@@ -44,7 +44,6 @@ pallet-memo-referrals = { path = "../pallets/memo-referrals", default-features =
 pallet-memo-affiliate = { path = "../pallets/memo-affiliate", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
-pallet-memo-endowment = { path = "../pallets/memo-endowment", default-features = false }
 pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
 pallet-memo-content-governance = { path = "../pallets/memo-content-governance", default-features = false }
 pallet-collective = { path = "../pallets/collective", default-features = false }
@@ -112,7 +111,6 @@ std = [
 	"pallet-memo-affiliate/std",
 	"pallet-evidence/std",
 	"pallet-identity/std",
-	"pallet-memo-endowment/std",
 	"pallet-memo-ipfs/std",
     "pallet-memo-content-governance/std",
 	"pallet-collective/std",
@@ -152,6 +150,7 @@ runtime-benchmarks = [
 	"frame-system-benchmarking/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
+	"pallet-collective/runtime-benchmarks",
 	"pallet-grandpa/runtime-benchmarks",
 	"pallet-sudo/runtime-benchmarks",
 	"pallet-template/runtime-benchmarks",

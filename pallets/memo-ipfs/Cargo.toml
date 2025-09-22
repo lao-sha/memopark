@@ -20,7 +20,8 @@ sp-io = { workspace = true }
 sp-offchain = { workspace = true }
 sp-application-crypto = { workspace = true }
 pallet-balances = { workspace = true }
-pallet-memo-endowment = { path = "../memo-endowment", default-features = false }
+## endowment 下线：移除依赖
+## pallet-memo-endowment = { path = "../memo-endowment", default-features = false }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
 # 在 no_std 环境下需要启用 alloc 特性以使用 `hex::encode` 等返回 String 的 API。
 # - 运行时（no_std）使用 alloc，无需 std；
@@ -41,7 +42,7 @@ std = [
     "sp-application-crypto/std",
     "sp-offchain/std",
     "pallet-balances/std",
-    "pallet-memo-endowment/std",
+    # endowment 下线：移除 std 特性
     "serde_json/std",
     "hex/std",
 ]

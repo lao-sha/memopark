@@ -5549,7 +5549,6 @@ dependencies = [
  "pallet-memo-affiliate",
  "pallet-memo-bridge",
  "pallet-memo-content-governance",
- "pallet-memo-endowment",
  "pallet-memo-grave",
  "pallet-memo-ipfs",
  "pallet-memo-offerings",
@@ -6411,6 +6410,7 @@ dependencies = [
 name = "pallet-evidence"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -6423,10 +6423,13 @@ dependencies = [
 name = "pallet-fee-guard"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "sp-io",
  "sp-runtime",
 ]
 
@@ -6434,11 +6437,13 @@ dependencies = [
 name = "pallet-forwarder"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-io",
  "sp-runtime",
 ]
 
@@ -6486,10 +6491,13 @@ dependencies = [
 name = "pallet-ledger"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
+ "sp-io",
  "sp-runtime",
 ]
 
@@ -6539,24 +6547,12 @@ dependencies = [
 name = "pallet-memo-content-governance"
 version = "0.1.0"
 dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-memo-endowment"
-version = "0.1.0"
-dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
- "sp-application-crypto",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -6596,7 +6592,6 @@ dependencies = [
  "frame-system",
  "hex",
  "pallet-balances",
- "pallet-memo-endowment",
  "parity-scale-codec",
  "scale-info",
  "serde_json",

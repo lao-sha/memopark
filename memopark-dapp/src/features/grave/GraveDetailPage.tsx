@@ -1,5 +1,6 @@
 import React from 'react'
 import { Alert, Button, Card, Divider, Input, InputNumber, List, Space, Tabs, Tag, Typography, message, Modal, Upload, Select } from 'antd'
+import GraveAudioPlayer from './GraveAudioPlayer'
 import { getApi } from '../../lib/polkadot-safe'
 import { useWallet } from '../../providers/WalletProvider'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
@@ -517,6 +518,8 @@ const GraveDetailPage: React.FC = () => {
           </Card>
         )}
 
+        {/* 背景音乐（底部悬浮控制条，移动端友好） */}
+        {graveId!=null && <GraveAudioPlayer graveId={Number(graveId)} sticky />}
         {/* 已按需求移除顶部英雄封面组件 */}
 
         <Divider style={{ margin: '12px 0' }} />

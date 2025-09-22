@@ -94,6 +94,29 @@ pub mod pallet {
         /// - 目录项的增删仅允许治理起源调用。
         #[pallet::constant]
         type MaxCoverOptions: Get<u32>;
+
+        /// 函数级中文注释：公共音频目录容量上限（用于限制 `AudioOptions` 列表长度，防止状态膨胀）。
+        /// - 目录仅存储明文 CID 字节，不存放音频本体；
+        /// - 任意墓位可从目录中选择其一作为背景音乐；
+        /// - 目录项的增删仅允许治理起源调用。
+        #[pallet::constant]
+        type MaxAudioOptions: Get<u32>;
+        #[pallet::constant]
+        /// 函数级中文注释：每墓位“私有音频候选”容量上限（仅墓主可维护）。
+        type MaxPrivateAudioOptions: Get<u32>;
+        #[pallet::constant]
+        /// 函数级中文注释：每墓位“播放列表”容量上限（按顺序存放若干 CID）。
+        type MaxAudioPlaylistLen: Get<u32>;
+
+        /// 函数级中文注释：首页轮播图容量上限（全局）。
+        #[pallet::constant]
+        type MaxCarouselItems: Get<u32>;
+        /// 轮播图标题最大长度。
+        #[pallet::constant]
+        type MaxTitleLen: Get<u32>;
+        /// 轮播图链接最大长度。
+        #[pallet::constant]
+        type MaxLinkLen: Get<u32>;
     }
 
     /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
@@ -234,10 +257,65 @@ pub mod pallet {
         ValueQuery
     >;
 
+    /// 函数级中文注释：墓地背景音乐 CID（仅存储明文 CID 字节，不落音频内容）。
+    /// - 默认不存在；创建后可由所有者直接设置；非所有者需通过治理接口设置。
+    #[pallet::storage]
+    pub type AudioCidOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
+
+    /// 函数级中文注释：公共音频目录（全局可选背景音乐 CID 列表）。
+    /// - 仅治理起源可增删目录项；任意墓位可从目录中选择其一作为背景音乐；
+    /// - 列表去重：相同 CID 不重复插入；删除按值匹配。
+    #[pallet::storage]
+    pub type AudioOptions<T: Config> = StorageValue<
+        _,
+        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioOptions>,
+        ValueQuery
+    >;
+
+    /// 函数级中文注释：每墓位“私有音频候选”目录（仅墓主可维护）。
+    #[pallet::storage]
+    pub type PrivateAudioOptionsOf<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxPrivateAudioOptions>,
+        ValueQuery
+    >;
+
+    /// 函数级中文注释：每墓位播放列表（顺序存放 CID）。
+    #[pallet::storage]
+    pub type AudioPlaylistOf<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioPlaylistLen>,
+        ValueQuery
+    >;
+
     /// 函数级中文注释：旧关注押金退款余额（方案B迁移专用）。
     /// - 在 on_runtime_upgrade(v9->v10) 中，为每个账户累计 FollowDeposit×关注次数；用户可调用退款接口解除保留押金。
     #[pallet::storage]
     pub type LegacyFollowRefunds<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, OptionQuery>;
+
+    /// 函数级中文注释：轮播图项结构体（全局首页）。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct CarouselItem<T: Config> {
+        pub img_cid: BoundedVec<u8, T::MaxCidLen>,
+        pub title: BoundedVec<u8, T::MaxTitleLen>,
+        pub link: Option<BoundedVec<u8, T::MaxLinkLen>>,
+        pub target: Option<(u8, u64)>,
+        pub start_block: Option<BlockNumberFor<T>>,
+        pub end_block: Option<BlockNumberFor<T>>,
+    }
+
+    /// 函数级中文注释：全局首页轮播图数据（按顺序渲染）。
+    #[pallet::storage]
+    pub type Carousel<T: Config> = StorageValue<
+        _,
+        BoundedVec<CarouselItem<T>, T::MaxCarouselItems>,
+        ValueQuery
+    >;
 
     /// 函数级中文注释：成员↔逝者亲属关系记录
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -315,8 +393,21 @@ pub mod pallet {
         /// 函数级中文注释：公共封面目录项增删（仅治理）
         CoverOptionAdded {},
         CoverOptionRemoved {},
+        /// 函数级中文注释：背景音乐 CID 已设置/清除
+        AudioSet { id: u64 },
+        AudioCleared { id: u64 },
+        /// 函数级中文注释：公共音频目录项增删（仅治理）
+        AudioOptionAdded {},
+        AudioOptionRemoved {},
+        /// 函数级中文注释：私有音频候选变更
+        PrivateAudioOptionAdded { id: u64 },
+        PrivateAudioOptionRemoved { id: u64 },
+        /// 函数级中文注释：播放列表变更
+        AudioPlaylistSet { id: u64, len: u32 },
         /// 函数级中文注释：治理证据已记录（scope, key, cid）。scope：1=Grave元/封面/所有权等
         GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
+        /// 函数级中文注释：轮播图刷新（覆盖式设置）
+        CarouselSet { len: u32 },
     }
 
     #[pallet::error]
@@ -359,6 +450,17 @@ pub mod pallet {
         CoverOptionNotFound,
         /// 目录索引非法
         InvalidCoverIndex,
+        /// 音频目录项已存在
+        AudioOptionExists,
+        /// 音频目录项不存在
+        AudioOptionNotFound,
+        /// 音频目录索引非法
+        InvalidAudioIndex,
+        /// 超出私有候选/播放列表容量
+        AudioListCapacityExceeded,
+        /// 轮播越界或时间窗非法
+        CarouselIndexOOB,
+        BadTimingWindow,
     }
 
     #[pallet::call]
@@ -550,6 +652,232 @@ pub mod pallet {
             let chosen = list[idx].clone();
             CoverCidOf::<T>::insert(id, chosen);
             Self::deposit_event(Event::CoverSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：设置墓地背景音乐（仅所有者可直接调用）。
+        /// - 输入：`cid` 为链下音频的 CID 字节（IPFS/HTTPS 等），长度受 `MaxCidLen` 约束。
+        /// - 权限：仅墓主；非所有者需通过 `set_audio_via_governance`。
+        /// - 事件：`AudioSet { id }`。
+        #[pallet::call_index(52)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_audio(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            AudioCidOf::<T>::insert(id, cid);
+            Self::deposit_event(Event::AudioSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：清除墓地背景音乐（仅所有者）。
+        /// - 事件：`AudioCleared { id }`。
+        #[pallet::call_index(53)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn clear_audio(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            AudioCidOf::<T>::remove(id);
+            Self::deposit_event(Event::AudioCleared { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：通过治理设置背景音乐（允许非所有者但需满足治理起源）。
+        /// - 由 Referenda/Root 等治理流程触发。
+        #[pallet::call_index(54)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_audio_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            AudioCidOf::<T>::insert(id, cid);
+            Self::deposit_event(Event::AudioSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：通过治理清除背景音乐。
+        #[pallet::call_index(55)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn clear_audio_via_governance(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
+            AudioCidOf::<T>::remove(id);
+            Self::deposit_event(Event::AudioCleared { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：新增公共音频目录项（仅治理）。
+        /// - 输入：`cid` 明文 CID 字节，长度受 `MaxCidLen` 约束；
+        /// - 行为：若已存在则返回 `AudioOptionExists`；否则追加到 `AudioOptions`（受 `MaxAudioOptions` 限制）。
+        /// - 事件：`AudioOptionAdded {}`。
+        #[pallet::call_index(56)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn add_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
+                if list.iter().any(|x| x == &cid) { return Err(Error::<T>::AudioOptionExists.into()); }
+                list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::AudioOptionAdded {});
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：移除公共音频目录项（仅治理）。
+        /// - 按值匹配移除第一处出现；若不存在返回 `AudioOptionNotFound`。
+        /// - 事件：`AudioOptionRemoved {}`。
+        #[pallet::call_index(57)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn remove_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
+                if let Some(pos) = list.iter().position(|x| x == &cid) {
+                    list.swap_remove(pos);
+                    Ok(())
+                } else {
+                    Err(Error::<T>::AudioOptionNotFound.into())
+                }
+            })?;
+            Self::deposit_event(Event::AudioOptionRemoved {});
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：从公共目录设置背景音乐（仅所有者直接设置；非所有者走治理接口）。
+        /// - 输入：`id` 墓地编号，`index` 目录索引（0..len-1）。
+        /// - 校验：存在性、所有权、索引边界。
+        /// - 事件：`AudioSet { id }`。
+        #[pallet::call_index(58)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_audio_from_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            let list = AudioOptions::<T>::get();
+            let idx = index as usize;
+            ensure!(idx < list.len(), Error::<T>::InvalidAudioIndex);
+            let chosen = list[idx].clone();
+            AudioCidOf::<T>::insert(id, chosen);
+            Self::deposit_event(Event::AudioSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：从“私有候选”设置背景音乐（仅墓主）。
+        #[pallet::call_index(59)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_audio_from_private_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            let list = PrivateAudioOptionsOf::<T>::get(id);
+            let idx = index as usize;
+            ensure!(idx < list.len(), Error::<T>::InvalidAudioIndex);
+            let chosen = list[idx].clone();
+            AudioCidOf::<T>::insert(id, chosen);
+            Self::deposit_event(Event::AudioSet { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：维护“私有音频候选”（仅墓主）：添加。
+        #[pallet::call_index(60)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn add_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            PrivateAudioOptionsOf::<T>::try_mutate(id, |list| -> DispatchResult {
+                list.try_push(cid).map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::PrivateAudioOptionAdded { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：维护“私有音频候选”（仅墓主）：移除（按值匹配）。
+        #[pallet::call_index(61)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn remove_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            PrivateAudioOptionsOf::<T>::try_mutate(id, |list| -> DispatchResult {
+                if let Some(pos) = list.iter().position(|x| x == &cid) { list.swap_remove(pos); Ok(()) } else { Err(Error::<T>::AudioOptionNotFound.into()) }
+            })?;
+            Self::deposit_event(Event::PrivateAudioOptionRemoved { id });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：设置播放列表（仅墓主）。
+        /// - 行为：覆盖式写入；长度不得超过 MaxAudioPlaylistLen。
+        #[pallet::call_index(62)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_audio_playlist(origin: OriginFor<T>, id: u64, items: Vec<Vec<u8>>) -> DispatchResult {
+            let who = ensure_signed(origin.clone())?;
+            Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
+                let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
+                ensure!(who == g.owner, Error::<T>::NotOwner);
+                Ok(())
+            })?;
+            let mut out: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioPlaylistLen> = BoundedVec::default();
+            for v in items.into_iter() {
+                let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?;
+                out.try_push(bv).map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
+            }
+            let len = out.len() as u32;
+            AudioPlaylistOf::<T>::insert(id, out);
+            Self::deposit_event(Event::AudioPlaylistSet { id, len });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：【治理】覆盖设置首页轮播图数据。
+        /// - 参数：items 为 (img_cid, title, link?, target?, start?, end?) 的字节向量原型；
+        /// - 校验：长度 ≤ MaxCarouselItems，且若设置时间窗则需 start ≤ end；
+        /// - 事件：CarouselSet { len }。
+        #[pallet::call_index(63)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_carousel(origin: OriginFor<T>, items: Vec<(Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<(u8,u64)>, Option<BlockNumberFor<T>>, Option<BlockNumberFor<T>>)>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            let mut out: BoundedVec<CarouselItem<T>, T::MaxCarouselItems> = BoundedVec::default();
+            for (img, title, link, target, start, end) in items.into_iter() {
+                if let (Some(s), Some(e)) = (start, end) { ensure!(s <= e, Error::<T>::BadTimingWindow); }
+                let img_bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(img).map_err(|_| Error::<T>::CapacityExceeded)?;
+                let title_bv: BoundedVec<u8, T::MaxTitleLen> = BoundedVec::try_from(title).map_err(|_| Error::<T>::CapacityExceeded)?;
+                let link_bv: Option<BoundedVec<u8, T::MaxLinkLen>> = match link { Some(v)=> Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?), None=> None };
+                let item = CarouselItem::<T> { img_cid: img_bv, title: title_bv, link: link_bv, target, start_block: start, end_block: end };
+                out.try_push(item).map_err(|_| Error::<T>::CarouselIndexOOB)?;
+            }
+            let len = out.len() as u32;
+            Carousel::<T>::put(out);
+            Self::deposit_event(Event::CarouselSet { len });
             Ok(())
         }
 
