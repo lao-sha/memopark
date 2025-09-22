@@ -39,6 +39,7 @@
 - `PinBilling{cid_hash -> (next_charge_at, unit_price_snapshot, state)}`：state=0 Active/1 Grace/2 Expired。
 - `PinSubjectOf{cid_hash -> (owner, subject_id)}`：仅“主体扣费”场景登记来源。
 - `DueQueue{block -> Vec<cid_hash>}`：到期队列（每块处理上限）。
+  - `DueEnqueueSpread: u32`：入队扩散窗口；将到期项在 `base..base+spread` 范围内寻找首个未满队列入队，以平滑负载。
 
 ### 新增事件
 - `PinCharged(cid_hash, amount, period_blocks, next_charge_at)`：成功扣费并推进下一期。

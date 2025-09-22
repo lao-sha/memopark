@@ -216,6 +216,12 @@ pub mod pallet {
     #[pallet::storage]
     pub type DueQueue<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<T::Hash, ConstU32<1024>>, ValueQuery>;
 
+    /// 函数级中文注释：入队扩散窗口（块）。将到期项在 `base..base+spread` 内寻找首个未满的队列入队，平滑负载。
+    #[pallet::type_value]
+    pub fn DefaultDueEnqueueSpread<T: Config>() -> u32 { 10 }
+    #[pallet::storage]
+    pub type DueEnqueueSpread<T: Config> = StorageValue<_, u32, ValueQuery, DefaultDueEnqueueSpread<T>>;
+
     /// 函数级中文注释：每个 CID 的计费状态：下一次扣费块高、单价快照、状态（0=Active,1=Grace,2=Expired）。
     #[pallet::storage]
     pub type PinBilling<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (BlockNumberFor<T>, u128, u8), OptionQuery>;
@@ -384,8 +390,8 @@ pub mod pallet {
             let unit = PricePerGiBWeek::<T>::get();
             let next = now.saturating_add(period.into());
             PinBilling::<T>::insert(&cid_hash, (next, unit, 0u8));
-            // 加入到期队列（若容量满，静默丢弃，后续可由治理修复/补处理）
-            DueQueue::<T>::mutate(next, |list| { let _ = list.try_push(cid_hash); });
+            // 加入到期队列（扩散入队，若全部满则静默丢弃；后续可由治理修复/补处理）
+            Self::enqueue_due(cid_hash, next);
             Ok(())
         }
 
@@ -427,7 +433,7 @@ pub mod pallet {
                                     let period = BillingPeriodBlocks::<T>::get();
                                     let next = now.saturating_add(period.into());
                                     PinBilling::<T>::insert(&cid, (next, unit_price, 0u8));
-                                    DueQueue::<T>::mutate(next, |lst| { let _ = lst.try_push(cid); });
+                                    Self::enqueue_due(cid, next);
                                     Self::deposit_event(Event::PinCharged(cid, due_bal, period, next));
                                 } else {
                                     // 余额不足：首次不足进入 Grace；已在 Grace 再次不足则过期
@@ -435,7 +441,7 @@ pub mod pallet {
                                         let g = GraceBlocks::<T>::get();
                                         let next = now.saturating_add(g.into());
                                         PinBilling::<T>::insert(&cid, (next, unit_price, 1u8));
-                                        DueQueue::<T>::mutate(next, |lst| { let _ = lst.try_push(cid); });
+                                        Self::enqueue_due(cid, next);
                                         Self::deposit_event(Event::PinGrace(cid));
                                     } else {
                                         PinBilling::<T>::insert(&cid, (now, unit_price, 2u8));
@@ -748,6 +754,19 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：扩散入队工具函数
+        /// - 在 base..base+spread 范围内寻找首个未满的队列入队；全部满则放弃（避免单点拥塞）。
+        #[inline]
+        fn enqueue_due(cid: T::Hash, base_next: BlockNumberFor<T>) {
+            let spread: u32 = DueEnqueueSpread::<T>::get();
+            let mut inserted = false;
+            for off in 0..=spread {
+                let key = base_next.saturating_add(off.into());
+                let mut v = DueQueue::<T>::get(key);
+                if v.try_push(cid).is_ok() { DueQueue::<T>::insert(key, v); inserted = true; break; }
+            }
+            if !inserted { /* 放弃，治理可通过扫描修复 */ }
+        }
         /// 函数级详细中文注释：GET 请求帮助函数，返回主体字节（2xx 才返回）
         fn http_get_bytes(endpoint: &str, token: &Option<String>, path: &str) -> Option<Vec<u8>> {
             let url = alloc::format!("{}{}", endpoint, path);
@@ -837,3 +856,5 @@ pub mod pallet {
 }
 
 
+#[cfg(test)]
+mod tests;
