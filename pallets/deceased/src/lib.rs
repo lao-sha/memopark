@@ -52,6 +52,10 @@ pub struct Deceased<T: Config> {
     pub grave_id: T::GraveId,
     /// 记录拥有者（通常等于墓位所有者或其授权人）
     pub owner: T::AccountId,
+    /// 函数级中文注释：创建者账户（不可变，只读审计字段）
+    /// - 语义：最初发起 `create_deceased` 的签名账户；用于审计/治理/画像；不参与权限与派生。
+    /// - 稳定性：创建后永久不可修改；迁移时对存量记录回填为 `owner`。
+    pub creator: T::AccountId,
     /// 姓名（限长，避免敏感信息超量上链）
     pub name: BoundedVec<u8, T::StringLimit>,
     /// 姓名拼音徽标（大写，不含空格与特殊字符）。
@@ -233,7 +237,7 @@ pub mod pallet {
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(5);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(6);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -431,6 +435,7 @@ pub mod pallet {
             let deceased = Deceased::<T> {
                 grave_id,
                 owner: who.clone(),
+                creator: who.clone(),
                 name: name_bv,
                 name_badge: name_badge_bv,
                 gender,
@@ -1060,7 +1065,8 @@ pub mod pallet {
                     let deceased_token = BoundedVec::<u8, T::TokenLimit>::try_from(token).unwrap_or_default();
                     Some(Deceased::<T> {
                         grave_id: old.grave_id,
-                        owner: old.owner,
+                        owner: old.owner.clone(),
+                        creator: old.owner,
                         name: old.name,
                         name_badge,
                         gender,
@@ -1102,7 +1108,8 @@ pub mod pallet {
                     migrated = migrated.saturating_add(1);
                     Some(Deceased::<T> {
                         grave_id: old.grave_id,
-                        owner: old.owner,
+                        owner: old.owner.clone(),
+                        creator: old.owner,
                         name: old.name,
                         name_badge: old.name_badge,
                         gender: old.gender,
@@ -1149,7 +1156,8 @@ pub mod pallet {
                     migrated = migrated.saturating_add(1);
                     Some(Deceased::<T> {
                         grave_id: old.grave_id,
-                        owner: old.owner,
+                        owner: old.owner.clone(),
+                        creator: old.owner,
                         name: old.name,
                         name_badge: old.name_badge,
                         gender: old.gender,
@@ -1164,6 +1172,49 @@ pub mod pallet {
                     })
                 });
                 StorageVersion::new(5).put::<Pallet<T>>();
+                weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(30_000) as u64, 0));
+            }
+            if current < 6 {
+                // v5 -> v6：新增 Deceased.creator 字段；对存量记录将 creator 回填为 owner
+                #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+                #[scale_info(skip_type_params(T))]
+                struct OldV5<TC: Config> {
+                    grave_id: TC::GraveId,
+                    owner: TC::AccountId,
+                    name: BoundedVec<u8, TC::StringLimit>,
+                    name_badge: BoundedVec<u8, TC::StringLimit>,
+                    gender: super::Gender,
+                    name_full_cid: Option<BoundedVec<u8, TC::TokenLimit>>,
+                    birth_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    death_ts: Option<BoundedVec<u8, TC::StringLimit>>,
+                    main_image_cid: Option<BoundedVec<u8, TC::TokenLimit>>,
+                    deceased_token: BoundedVec<u8, TC::TokenLimit>,
+                    links: BoundedVec<BoundedVec<u8, TC::StringLimit>, TC::MaxLinks>,
+                    created: BlockNumberFor<TC>,
+                    updated: BlockNumberFor<TC>,
+                }
+                let mut migrated: u64 = 0;
+                DeceasedOf::<T>::translate(|_key, old: OldV5<T>| {
+                    migrated = migrated.saturating_add(1);
+                    Some(Deceased::<T> {
+                        grave_id: old.grave_id,
+                        owner: old.owner.clone(),
+                        creator: old.owner,
+                        name: old.name,
+                        name_badge: old.name_badge,
+                        gender: old.gender,
+                        name_full_cid: old.name_full_cid,
+                        birth_ts: old.birth_ts,
+                        death_ts: old.death_ts,
+                        main_image_cid: old.main_image_cid,
+                        deceased_token: old.deceased_token,
+                        links: old.links,
+                        created: old.created,
+                        updated: old.updated,
+                    })
+                });
+                StorageVersion::new(6).put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(10_000, 0));
                 weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(30_000) as u64, 0));
             }
