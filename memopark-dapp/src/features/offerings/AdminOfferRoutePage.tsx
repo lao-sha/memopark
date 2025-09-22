@@ -67,9 +67,18 @@ const AdminOfferRoutePage: React.FC = () => {
   const save = async (toGlobal=false) => {
     try {
       if (sum > 1_000_000) return message.error('合计 bps 超过 1000000')
+      if (rows.length > 5) return message.error('最多 5 条路由')
+      for (const r of rows) {
+        if (r.kind === 1 && (!r.account || r.account.trim() === '')) {
+          return message.error('固定账户(Account) 行必须填写账户地址')
+        }
+      }
       const api = await getApi()
       const args = rows.map(r => [r.kind, r.kind===1 ? r.account : null, r.bps])
-      const hash = await signAndSendLocalFromKeystore('memoOfferings', toGlobal? 'setRouteTableGlobal' : 'setRouteTableByDomain', toGlobal? [args] : [domain, args])
+      // 动态解析 section 名称：memoOfferings/memo_offerings
+      const txRoot: any = api.tx as any
+      const sec = (txRoot.memoOfferings ? 'memoOfferings' : (txRoot.memo_offerings ? 'memo_offerings' : 'memoOfferings'))
+      const hash = await signAndSendLocalFromKeystore(sec, toGlobal? 'setRouteTableGlobal' : 'setRouteTableByDomain', toGlobal? [args] : [domain, args])
       message.success(`已提交：${hash}`)
     } catch (e:any) { message.error(e?.message || '提交失败') }
   }
