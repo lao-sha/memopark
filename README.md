@@ -265,6 +265,35 @@ build the Docker container with the Substrate Node Template binary.
 - 事件齐全，重查询建议使用索引器（如 SubQuery）。
 - 转账统一使用 `transfer_keep_alive`，避免误杀账户；结算与到期处理均支持分页。
 
+## 一页手册：计费 / 分账 / 推荐码 / 治理提案
+
+### 计费（memo-ipfs）
+- 两步法：向“主题资金账户”充值 → `request_pin_for_deceased(subject_id, ...)` 进入生命周期
+- 只读查询：`PinBilling(cid) -> (next_charge_at, unit_price, state)`；`PinSubjectOf(cid) -> (owner, subject_id)`
+- 参数治理：`set_billing_params(price?, period?, grace?, max_per_block?, min_reserve?, paused?)`，参数需 `>0` 防呆
+- 周期扣费：服务方/治理调用 `charge_due(limit)`，受 `MaxChargePerBlock` 与 `BillingPaused` 保护
+
+前端入口：`#/ipfs/pin`（余额/派生地址/复制/充值/下次扣费/状态）
+
+### 分账（memo-offerings）
+- 路由：优先 `RouteTableByDomain` → `RouteTableGlobal` → 兜底（Grave 域 SubjectBps）
+- 路由治理：`set_route_table_by_domain(domain, [(kind, account?, bps)])` / `set_route_table_global([...])`
+  - 校验：最多 5 条，`∑bps ≤ 1_000_000`，`kind=SpecificAccount(1)` 必须提供 `account`
+- 价格治理：`set_offering_price(kind_code, fixed?, unit?)` 与 `gov_set_offering_price(..., evidence_cid)`
+- 暂停：全局/按域暂停与对应治理接口；事件均会记录到审计时间线
+
+前端入口：`#/offerings/admin-route`（编辑/加载/保存路由表）
+
+### 推荐码与绑定（memo-referrals）
+- 一次性绑定推荐人：`bindSponsor(code)`（页面：`#/ref?code=XXXX`）
+- 默认码领取：`claim_default_code()`（需已有推荐人）；事件 `ReferralCodeAssigned`
+- 策略治理建议：码长/黑名单/一次性生成在 referrals 统一治理（affiliate 仅计算分配）
+
+### 治理提案与预映像
+- “内容委员会（Instance3，2/3）”负责内容域：目录创建、分账路由、供奉上下架/暂停等
+- 前端“发起提案”页提供预映像快速构建卡片（如：创建类目、设置分账路由），生成 hex 后提交提案
+- README 中已提供“历史改写后同步”与协作规范，避免 secrets 泄漏
+
 ## 历史改写后本地同步与协作指引（重要）
 
 由于先前提交中含有第三方测试私钥样本，仓库已进行历史改写并强制推送。为避免本地分支与远端 `main` 分歧，请协作者按以下方式同步。
