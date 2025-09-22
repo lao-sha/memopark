@@ -25,6 +25,7 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_genesis_builder::{self, PresetId};
 use sp_keyring::Sr25519Keyring;
+use sp_core::crypto::Ss58Codec;
 use sp_core::Get;
 
 // Returns the genesis config presets populated with given parameters.
@@ -40,7 +41,19 @@ fn testnet_genesis(
 	let burn_account = BurnAccount::get();
 	let ed: u128 = crate::EXISTENTIAL_DEPOSIT;
 
-	build_struct_json_patch!(RuntimeGenesisConfig {
+    // 函数级中文注释：将给定的 SS58 地址解析为 AccountId，供创世委员会成员列表使用。
+    fn parse_account(s: &str) -> AccountId {
+        sp_core::crypto::AccountId32::from_ss58check(s)
+            .map(|a| a.into())
+            .expect("invalid SS58 address in genesis committee members")
+    }
+    let committee_members: Vec<AccountId> = vec![
+        parse_account("5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4"),
+        parse_account("5CSepuULuCiDSBjeRqr9ZburDSdTwTk5ro9BgV5u1SbHiQh9"),
+        parse_account("5CotZ9gD2mLLBQ6sqL2b8gRS1Vxo6HfmRcQ2iu3T825DFgSq"),
+    ];
+
+    build_struct_json_patch!(RuntimeGenesisConfig {
 		balances: BalancesConfig {
 			balances: vec![
 				(root.clone(), total_issuance.saturating_sub(ed)),
@@ -53,30 +66,17 @@ fn testnet_genesis(
 		grandpa: pallet_grandpa::GenesisConfig {
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect::<Vec<_>>(),
 		},
-        // 函数级中文注释：初始化委员会（Council）成员，采用默认开发账户 Alice/Bob/Charlie。
-        // - 仅初始化成员列表，Prime 留空；后续可通过 Root 或委员会动议调整成员。
+        // 函数级中文注释：初始化各委员会（Instance1/2/3）成员为指定三地址；Prime 留空。
         council: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance1> {
-            members: vec![
-                Sr25519Keyring::Alice.to_account_id(),
-                Sr25519Keyring::Bob.to_account_id(),
-                Sr25519Keyring::Charlie.to_account_id(),
-            ],
+            members: committee_members.clone(),
             phantom: Default::default(),
         },
         technical_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance2> {
-            members: vec![
-                Sr25519Keyring::Dave.to_account_id(),
-                Sr25519Keyring::Eve.to_account_id(),
-                Sr25519Keyring::Ferdie.to_account_id(),
-            ],
+            members: committee_members.clone(),
             phantom: Default::default(),
         },
         content_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance3> {
-            members: vec![
-                Sr25519Keyring::Alice.to_account_id(),
-                Sr25519Keyring::Bob.to_account_id(),
-                Sr25519Keyring::Charlie.to_account_id(),
-            ],
+            members: committee_members.clone(),
             phantom: Default::default(),
         },
 		sudo: SudoConfig { key: Some(root) },
