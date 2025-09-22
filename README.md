@@ -264,3 +264,55 @@ build the Docker container with the Substrate Node Template binary.
 - 推荐关系去耦：仅在 `pallet-memo-referrals` 维护一次性绑定；联盟只读，不触碰资金。
 - 事件齐全，重查询建议使用索引器（如 SubQuery）。
 - 转账统一使用 `transfer_keep_alive`，避免误杀账户；结算与到期处理均支持分页。
+
+## 历史改写后本地同步与协作指引（重要）
+
+由于先前提交中含有第三方测试私钥样本，仓库已进行历史改写并强制推送。为避免本地分支与远端 `main` 分歧，请协作者按以下方式同步。
+
+### A. 无本地改动或允许丢弃改动
+
+```bash
+git fetch --all
+git checkout main
+git reset --hard origin/main
+# 可选：清理未跟踪文件
+git clean -xfd
+```
+
+### B. 有本地改动需要保留（推荐先备份）
+
+```bash
+# 先在当前基准上做一个备份分支
+git checkout -b backup/pre-rewrite-$(date +%Y%m%d)
+
+# 切回主分支并对齐远端
+git checkout main
+git fetch --all
+git reset --hard origin/main
+
+# 将备份分支中的提交按需 cherry-pick 到最新 main（或使用 rebase -i）
+# 示例：
+git cherry-pick <commit_a> <commit_b>
+```
+
+### C. 重新克隆（最稳妥）
+
+```bash
+git clone git@github.com:lao-sha/memopark.git
+```
+
+### 常见问题
+- 推送被拒绝（非 fast-forward）：请先按上文同步，再推送。
+- 旧提交哈希找不到：历史改写后属于预期；请以 `origin/main` 为新的基线。
+- Secret 扫描再次拦截：确保不要提交 `node_modules/`、`dist/`、日志或任何私钥/令牌；本仓库已启用 Gitleaks 与 GitHub Push Protection。
+
+### 团队协作建议
+- 提交前执行本地扫描（可选）：
+```bash
+# 安装 gitleaks（本地可选）
+curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(uname -s | tr '[:upper:]' '[:lower:]')_x64.tar.gz \
+  | tar -xz && sudo mv gitleaks /usr/local/bin/
+gitleaks detect --redact
+```
+- 不要将 `node_modules/`、`target/`、`dist/`、编辑器配置与大文件提交到仓库。
+- 历史改写后协作仓库/分叉请以 rebase 为主，避免再次生成分叉历史。
