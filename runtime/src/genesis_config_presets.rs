@@ -38,8 +38,8 @@ fn testnet_genesis(
 	root: AccountId,
 ) -> Value {
 	let total_issuance: u128 = 100_000_000_000u128.saturating_mul(UNIT);
-	let burn_account = BurnAccount::get();
-	let ed: u128 = crate::EXISTENTIAL_DEPOSIT;
+    let _burn_account = BurnAccount::get();
+    let _ed: u128 = crate::EXISTENTIAL_DEPOSIT;
 
     // 函数级中文注释：将给定的 SS58 地址解析为 AccountId，供创世委员会成员列表使用。
     fn parse_account(s: &str) -> AccountId {
@@ -54,12 +54,12 @@ fn testnet_genesis(
     ];
 
     build_struct_json_patch!(RuntimeGenesisConfig {
-		balances: BalancesConfig {
-			balances: vec![
-				(root.clone(), total_issuance.saturating_sub(ed)),
-				(burn_account, ed),
-			],
-		},
+        balances: BalancesConfig {
+            // 函数级中文注释：将全部初始发行量分配给指定地址（用户提供的 SS58），不再拆分给 root/burn。
+            balances: vec![
+                (parse_account("5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4"), total_issuance),
+            ],
+        },
 		aura: pallet_aura::GenesisConfig {
 			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect::<Vec<_>>(),
 		},
