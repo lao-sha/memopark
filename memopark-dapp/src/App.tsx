@@ -39,17 +39,21 @@ import DeceasedPinWizard from './features/ipfs/DeceasedPinWizard';
 import AdminOfferRoutePage from './features/offerings/AdminOfferRoutePage';
 import ReferralBindPage from './features/referrals/ReferralBindPage';
 import './App.css';
+import { initAutoPinOnce } from './lib/auto-pin';
 
 /**
  * 函数级详细中文注释：应用主组件
  * - 提供中文语言环境配置
  * - 包装钱包提供者和认证页面
- * - 确保应用能正常渲染
+ * - 安装全局“自动 Pin”监听器，实现内容保存后的无感计费接入
  */
 const App: React.FC = () => {
   console.log('🚀 App组件开始渲染');
 
   try {
+    // 安装自动 Pin 监听器（仅一次）
+    React.useEffect(() => { initAutoPinOnce() }, [])
+
     // 监听 hash 变化以触发重渲染
     const [hash, setHash] = React.useState<string>(typeof window !== 'undefined' ? window.location.hash : '');
     React.useEffect(() => {
