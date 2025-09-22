@@ -14,5 +14,25 @@ my-chain-state/
 key.md
 
 # ignore frontend legacy workspace dependencies
-memopark-front-end/node_modules
-memopark-front-end/dist
+memopark-front-end/
+
+# logs & dumps
+*.log
+*.log.*
+*.pid
+*.seed
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# build artifacts
+**/dist/
+**/build/
+**/.cache/
+**/node_modules/
