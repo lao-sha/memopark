@@ -748,7 +748,7 @@ impl pallet_memo_offerings::Config for Runtime {
     /// 函数级中文注释：管理员 Origin 改为 Root | 委员会阈值(2/3)。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
     >;
     /// 函数级中文注释：治理起源（Root | 委员会阈值），用于 gov* 接口证据化调整。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
