@@ -46,6 +46,8 @@ pub struct Album<T: Config> {
     pub primary_photo_id: Option<T::MediaId>,
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
+    /// 函数级中文注释：版本号（从 1 起），每次修改自增。
+    pub version: u32,
 }
 
 /// 函数级中文注释：视频集结构体（用于视频/音频聚合容器）。
@@ -61,6 +63,8 @@ pub struct VideoCollection<T: Config> {
     pub primary_video_id: Option<T::MediaId>,
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
+    /// 函数级中文注释：版本号（从 1 起）。
+    pub version: u32,
 }
 
 /// 函数级中文注释：媒体数据结构体（Photo/Video/Audio）。
@@ -83,6 +87,8 @@ pub struct Media<T: Config> {
     pub order_index: u32,
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
+    /// 函数级中文注释：版本号（从 1 起）。
+    pub version: u32,
 }
 
 #[frame_support::pallet]
@@ -176,6 +182,8 @@ pub mod pallet {
         MediaAdded(T::MediaId),
         MediaAddedToVideoCollection(T::MediaId, T::VideoCollectionId),
         MediaUpdated(T::MediaId),
+        /// 函数级中文注释：版本历史记录（kind:1=Album,2=Media,3=Video; id, version, editor）。
+        VersionRecorded(u8, u64, u32, T::AccountId),
         MediaRemoved(T::MediaId),
         AlbumDepositRefunded(T::AlbumId, T::AccountId, BalanceOf<T>),
         MediaDepositRefunded(T::MediaId, T::AccountId, BalanceOf<T>),
@@ -238,6 +246,16 @@ pub mod pallet {
             Self::deposit_event(Event::GovEvidenceNoted(scope, id, bv.clone()));
             Ok(bv)
         }
+
+        /// 函数级详细中文注释：治理起源统一校验入口。
+        /// - 目的：集中治理起源检查，统一未授权错误为本模块错误 `Error::<T>::NotAuthorized`；
+        /// - 行为：封装 `T::GovernanceOrigin::ensure_origin(origin)`，成功映射为 ()，失败映射为模块错误；
+        /// - 返回：Ok(()) 或 `DispatchError::Module`（NotAuthorized）。
+        fn ensure_gov(origin: OriginFor<T>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)
+                .map(|_| ())
+                .map_err(|_| Error::<T>::NotAuthorized.into())
+        }
     }
 
     #[pallet::call]
@@ -268,7 +286,7 @@ pub mod pallet {
             let vis = match visibility { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) };
             let now = <frame_system::Pallet<T>>::block_number();
             let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
-            let album = Album::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, primary_photo_id: None, created: now, updated: now };
+            let album = Album::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, primary_photo_id: None, created: now, updated: now, version: 1 };
             AlbumOf::<T>::insert(id, album);
             AlbumsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
 
@@ -314,7 +332,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_primary_image_for(origin: OriginFor<T>, deceased_id: T::DeceasedId, media_id: Option<T::MediaId>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(9u8, deceased_id.into(), evidence_cid)?;
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             if let Some(mid) = media_id {
@@ -350,6 +368,8 @@ pub mod pallet {
                     a.primary_photo_id = None;
                 }
                 a.updated = <frame_system::Pallet<T>>::block_number();
+                a.version = a.version.saturating_add(1);
+                Self::deposit_event(Event::VersionRecorded(1u8, album_id.into(), a.version, who));
                 Ok(())
             })?;
             Self::deposit_event(Event::AlbumPrimaryChanged(album_id, media));
@@ -361,7 +381,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_album_primary_photo(origin: OriginFor<T>, album_id: T::AlbumId, media: Option<T::MediaId>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             AlbumOf::<T>::try_mutate(album_id, |maybe| -> DispatchResult {
                 let a = maybe.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
@@ -420,7 +440,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_resolve_album_complaint(origin: OriginFor<T>, album_id: T::AlbumId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
             let key = (1u8, album_id.into());
@@ -462,7 +482,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_resolve_media_complaint(origin: OriginFor<T>, media_id: T::MediaId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
             let key = (2u8, media_id.into());
@@ -520,7 +540,7 @@ pub mod pallet {
 
             let now = <frame_system::Pallet<T>>::block_number();
             let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
-            let vs = VideoCollection::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, tags: tags_bv, primary_video_id: None, created: now, updated: now };
+            let vs = VideoCollection::<T> { deceased_id, deceased_token: token, owner: who.clone(), title: title_bv, desc: desc_bv, tags: tags_bv, primary_video_id: None, created: now, updated: now, version: 1 };
             VideoCollectionOf::<T>::insert(id, vs);
             VideoCollectionsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
 
@@ -555,7 +575,7 @@ pub mod pallet {
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { id, album_id: Some(aid), video_collection_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: MediaKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs: None, width, height, order_index: ord, created: now, updated: now };
+                    let media = Media::<T> { id, album_id: Some(aid), video_collection_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: who.clone(), kind: MediaKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs: None, width, height, order_index: ord, created: now, updated: now, version: 1 };
                     MediaOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
                     MediaByAlbum::<T>::insert(aid, list);
@@ -578,7 +598,7 @@ pub mod pallet {
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(vs.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { id, album_id: None, video_collection_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now };
+                    let media = Media::<T> { id, album_id: None, video_collection_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: who.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now, version: 1 };
                     MediaOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?;
                     MediaByVideoCollection::<T>::insert(vsid, list);
@@ -609,6 +629,8 @@ pub mod pallet {
                 if let Some(h) = height { if matches!(m.kind, MediaKind::Photo) { if let Some(x) = h { ensure!(x > 0u32, Error::<T>::BadInput); } } m.height = h; }
                 if let Some(ord) = order_index { m.order_index = ord; }
                 m.updated = <frame_system::Pallet<T>>::block_number();
+                m.version = m.version.saturating_add(1);
+                Self::deposit_event(Event::VersionRecorded(2u8, media_id.into(), m.version, who));
                 Ok(())
             })?;
             Self::deposit_event(Event::MediaUpdated(media_id));
@@ -638,7 +660,7 @@ pub mod pallet {
             }
             // 若为主视频则清空
             if matches!(m.kind, MediaKind::Video | MediaKind::Audio) {
-                if let Some(vsid) = m.video_collection_id { if let Some(mut v) = VideoCollectionOf::<T>::get(vsid) { if v.primary_video_id == Some(media_id) { v.primary_video_id = None; v.updated = <frame_system::Pallet<T>>::block_number(); VideoCollectionOf::<T>::insert(vsid, v); Self::deposit_event(Event::VideoCollectionPrimaryChanged(vsid, None)); } } }
+                if let Some(vsid) = m.video_collection_id { if let Some(mut v) = VideoCollectionOf::<T>::get(vsid) { if v.primary_video_id == Some(media_id) { v.primary_video_id = None; v.updated = <frame_system::Pallet<T>>::block_number(); v.version = v.version.saturating_add(1); VideoCollectionOf::<T>::insert(vsid, v); Self::deposit_event(Event::VideoCollectionPrimaryChanged(vsid, None)); } } }
             }
             let now = <frame_system::Pallet<T>>::block_number();
             MediaMaturity::<T>::insert(media_id, now + T::ComplaintPeriod::get());
@@ -687,7 +709,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_freeze_album(origin: OriginFor<T>, album_id: T::AlbumId, frozen: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, album_id.into(), evidence_cid)?;
             ensure!(AlbumOf::<T>::contains_key(album_id), Error::<T>::AlbumNotFound);
             AlbumFrozen::<T>::insert(album_id, frozen);
@@ -700,7 +722,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_media_hidden(origin: OriginFor<T>, media_id: T::MediaId, hidden: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             ensure!(MediaOf::<T>::contains_key(media_id) || MediaDeposits::<T>::contains_key(media_id), Error::<T>::MediaNotFound);
             MediaHidden::<T>::insert(media_id, hidden);
@@ -715,7 +737,7 @@ pub mod pallet {
                     }
                     // 视频集主视频联动
                     if matches!(m.kind, MediaKind::Video | MediaKind::Audio) {
-                        if let Some(vsid) = m.video_collection_id { if let Some(mut v) = VideoCollectionOf::<T>::get(vsid) { if v.primary_video_id == Some(media_id) { v.primary_video_id = None; v.updated = <frame_system::Pallet<T>>::block_number(); VideoCollectionOf::<T>::insert(vsid, v); Self::deposit_event(Event::VideoCollectionPrimaryChanged(vsid, None)); } } }
+                if let Some(vsid) = m.video_collection_id { if let Some(mut v) = VideoCollectionOf::<T>::get(vsid) { if v.primary_video_id == Some(media_id) { v.primary_video_id = None; v.updated = <frame_system::Pallet<T>>::block_number(); v.version = v.version.saturating_add(1); VideoCollectionOf::<T>::insert(vsid, v); Self::deposit_event(Event::VideoCollectionPrimaryChanged(vsid, None)); } } }
                     }
                 }
             }
@@ -728,7 +750,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_replace_media_uri(origin: OriginFor<T>, media_id: T::MediaId, new_uri: Vec<u8>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             MediaOf::<T>::try_mutate(media_id, |maybe| -> DispatchResult {
                 let m = maybe.as_mut().ok_or(Error::<T>::MediaNotFound)?;
@@ -745,7 +767,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_remove_media(origin: OriginFor<T>, media_id: T::MediaId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(2u8, media_id.into(), evidence_cid)?;
             let existed = MediaOf::<T>::take(media_id).ok_or(Error::<T>::MediaNotFound)?;
             if let Some(aid) = existed.album_id { MediaByAlbum::<T>::mutate(aid, |list| { if let Some(pos) = list.iter().position(|x| *x == media_id) { list.swap_remove(pos); } }); }
@@ -762,7 +784,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_freeze_video_collection(origin: OriginFor<T>, video_id: T::VideoCollectionId, frozen: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(3u8, video_id.into(), evidence_cid)?;
             ensure!(VideoCollectionOf::<T>::contains_key(video_id), Error::<T>::VideoCollectionNotFound);
             VideoCollectionFrozen::<T>::insert(video_id, frozen);
@@ -776,7 +798,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_create_album_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, title: Vec<u8>, desc: Vec<u8>, visibility: u8, tags: Vec<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             // 重用 create_album 逻辑（以 owner 身份扣费/押金）
             // 简化：直接内联实现，避免 cross-dispatch
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
@@ -791,7 +813,7 @@ pub mod pallet {
             let vis = match visibility { 0 => Visibility::Public, 1 => Visibility::Unlisted, 2 => Visibility::Private, _ => return Err(Error::<T>::BadInput.into()) };
             let now = <frame_system::Pallet<T>>::block_number();
             let token = T::DeceasedTokenProvider::token_of(deceased_id).unwrap_or_default();
-            let album = Album::<T> { deceased_id, deceased_token: token, owner: owner.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, primary_photo_id: None, created: now, updated: now };
+            let album = Album::<T> { deceased_id, deceased_token: token, owner: owner.clone(), title: title_bv, desc: desc_bv, visibility: vis, tags: tags_bv, primary_photo_id: None, created: now, updated: now, version: 1 };
             AlbumOf::<T>::insert(id, album);
             AlbumsByDeceased::<T>::try_mutate(deceased_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooMany))?;
             let dep = T::AlbumDeposit::get(); if !dep.is_zero() { T::Currency::reserve(&owner, dep).map_err(|_| Error::<T>::DepositFailed)?; AlbumDeposits::<T>::insert(id, (owner.clone(), dep)); AlbumMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
@@ -803,7 +825,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_add_media_for(origin: OriginFor<T>, owner: T::AccountId, container_kind: u8, container_id: u64, kind: u8, uri: Vec<u8>, thumbnail_uri: Option<Vec<u8>>, content_hash: Option<[u8;32]>, duration_secs: Option<u32>, width: Option<u32>, height: Option<u32>, order_index: Option<u32>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             // 直接重用 add_media 的核心逻辑，但以 owner 账户处理押金
             let kind_enum = match kind { 0 => MediaKind::Photo, 1 => MediaKind::Video, 2 => MediaKind::Audio, _ => return Err(Error::<T>::BadInput.into()) };
             let uri_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
@@ -822,7 +844,7 @@ pub mod pallet {
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(album.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { id, album_id: Some(aid), video_collection_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: owner.clone(), kind: MediaKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs: None, width, height, order_index: ord, created: now, updated: now };
+                    let media = Media::<T> { id, album_id: Some(aid), video_collection_id: None, deceased_id: album.deceased_id, deceased_token: token, owner: owner.clone(), kind: MediaKind::Photo, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs: None, width, height, order_index: ord, created: now, updated: now, version: 1 };
                     MediaOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?; MediaByAlbum::<T>::insert(aid, list);
                     let dep = T::MediaDeposit::get(); if !dep.is_zero() { T::Currency::reserve(&owner, dep).map_err(|_| Error::<T>::DepositFailed)?; MediaDeposits::<T>::insert(id, (owner.clone(), dep)); MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }
@@ -841,7 +863,7 @@ pub mod pallet {
                     let ord = order_index.unwrap_or(list.len() as u32);
                     let now = <frame_system::Pallet<T>>::block_number();
                     let token = T::DeceasedTokenProvider::token_of(vs.deceased_id).unwrap_or_default();
-                    let media = Media::<T> { id, album_id: None, video_collection_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: owner.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now };
+                    let media = Media::<T> { id, album_id: None, video_collection_id: Some(vsid), deceased_id: vs.deceased_id, deceased_token: token, owner: owner.clone(), kind: kind_enum, uri: uri_bv, thumbnail_uri: thumb_bv, content_hash, duration_secs, width: None, height: None, order_index: ord, created: now, updated: now, version: 1 };
                     MediaOf::<T>::insert(id, media);
                     list.try_push(id).map_err(|_| Error::<T>::TooMany)?; MediaByVideoCollection::<T>::insert(vsid, list);
                     let dep = T::MediaDeposit::get(); if !dep.is_zero() { T::Currency::reserve(&owner, dep).map_err(|_| Error::<T>::DepositFailed)?; MediaDeposits::<T>::insert(id, (owner.clone(), dep)); MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get()); }

@@ -20,6 +20,7 @@
 4) 回执上链：运营者成功/失败上报 `mark_pinned/mark_pin_failed`，写入 `PinSuccess`；达成 R 副本 → `PinState=Pinned`
 5) 巡检与修复：OCW 周期遍历 `PinState in {Pinning,Pinned}`，不足副本则再次 `POST /pins`（指数退避与全局锁防抖）；后续可细化 `ReplicaDegraded/ReplicaRepaired`
 6) SLA 统计：OCW 读 `/peers` 上报 `report_probe(ok)`；基金会按期 `close_epoch_and_pay(budget)` 依权重发放
+7) 轻量事件上报：在不提交链上写交易的前提下，OCW 统计 pinning/pinned/missing 样本并发出 `PinProbe` 事件，前端/索引可据此绘制健康度。
 
 ## 计费生命周期（新增）
 
@@ -46,6 +47,7 @@
 - `PinCharged(cid_hash, amount, period_blocks, next_charge_at)`：成功扣费并推进下一期。
 - `PinGrace(cid_hash)`：余额不足进入宽限。
 - `PinExpired(cid_hash)`：超出宽限仍不足，标记过期。
+- `PinProbe(sample, pinning, pinned, missing)`：OCW 巡检周期性只读上报，样本总数与各状态计数，用于监控与告警。
 
 ### 扣费计算
 `amount = ceil(size_bytes / GiB) * replicas * PricePerGiBWeek`。为避免小数，建议使用整数定价基数。
@@ -53,7 +55,11 @@
 ### 新增接口
 - `request_pin_for_deceased(subject_id, cid_hash, size_bytes, replicas, price)`：从主体资金账户一次性扣除请求价，并初始化计费（登记 `PinSubjectOf`、`PinBilling`、入队 `DueQueue`）。
 - `charge_due(limit)`【治理/白名单】：处理当前区块到期的 ≤limit 个 CID，完成扣费/宽限/过期处理，并事件记录。
-- `set_billing_params(price_per_gib_week?, period_blocks?, grace_blocks?, max_charge_per_block?, subject_min_reserve?, paused?)`：治理更新参数（可部分更新）。
+- `set_billing_params(price_per_gib_week?, period_blocks?, grace_blocks?, max_charge_per_block?, subject_min_reserve?, paused?, allow_direct_pin?)`：治理更新参数（可部分更新）。当 `allow_direct_pin=false` 时，`request_pin` 将被拒绝，仅允许主体聚合扣费路径。
+
+#### 只读视图函数（新增）
+- `derive_subject_account_for_deceased(subject_id: u64) -> AccountId`：返回稳定派生的逝者主题资金账户地址。
+- `derive_subject_account(domain: u8, subject_id: u64) -> AccountId`：返回任意 `(domain, subject_id)` 的主题资金账户地址。
 
 #### 只读查询（前端建议直读）
 - `PinBilling{cid_hash}` → `(next_charge_at, unit_price_snapshot, state)`：state=0 Active/1 Grace/2 Expired。

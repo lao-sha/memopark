@@ -55,9 +55,9 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 已标记为仅手续费账户（who, locked_amount）。
-        MarkedFeeOnly(T::AccountId, BalanceOf<T>),
+        MarkedFeeOnly(T::AccountId, BalanceOf<T>, u8, Option<BoundedVec<u8, ConstU32<128>>>),
         /// 已解除仅手续费标记（who）。
-        UnmarkedFeeOnly(T::AccountId),
+        UnmarkedFeeOnly(T::AccountId, u8, Option<BoundedVec<u8, ConstU32<128>>>),
     }
 
     #[pallet::error]
@@ -75,7 +75,7 @@ pub mod pallet {
         /// - 幂等：若账户已标记，则直接返回 Ok。
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::mark_fee_only())]
-        pub fn mark_fee_only(origin: OriginFor<T>, who: T::AccountId) -> DispatchResult {
+        pub fn mark_fee_only(origin: OriginFor<T>, who: T::AccountId, reason_code: u8, evidence_cid: Option<Vec<u8>>) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             ensure!(T::AllowMarking::allow(&who), Error::<T>::Forbidden);
             if FeeOnlyAccounts::<T>::get(&who).is_some() {
@@ -87,7 +87,8 @@ pub mod pallet {
             let deny_all_but_fee = WithdrawReasons::all().difference(WithdrawReasons::TRANSACTION_PAYMENT);
             <T as Config>::Currency::set_lock(FEE_GUARD_ID, &who, max, deny_all_but_fee);
             FeeOnlyAccounts::<T>::insert(&who, ());
-            Self::deposit_event(Event::MarkedFeeOnly(who, max));
+            let ev = evidence_cid.map(|v| BoundedVec::<u8, ConstU32<128>>::try_from(v).ok()).flatten();
+            Self::deposit_event(Event::MarkedFeeOnly(who, max, reason_code, ev));
             Ok(())
         }
 
@@ -97,7 +98,7 @@ pub mod pallet {
         /// - 幂等：若账户未标记，则直接返回 Ok。
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::unmark_fee_only())]
-        pub fn unmark_fee_only(origin: OriginFor<T>, who: T::AccountId) -> DispatchResult {
+        pub fn unmark_fee_only(origin: OriginFor<T>, who: T::AccountId, reason_code: u8, evidence_cid: Option<Vec<u8>>) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             if FeeOnlyAccounts::<T>::get(&who).is_none() {
                 // 未标记：幂等返回
@@ -105,7 +106,8 @@ pub mod pallet {
             }
             <T as Config>::Currency::remove_lock(FEE_GUARD_ID, &who);
             FeeOnlyAccounts::<T>::remove(&who);
-            Self::deposit_event(Event::UnmarkedFeeOnly(who));
+            let ev = evidence_cid.map(|v| BoundedVec::<u8, ConstU32<128>>::try_from(v).ok()).flatten();
+            Self::deposit_event(Event::UnmarkedFeeOnly(who, reason_code, ev));
             Ok(())
         }
     }

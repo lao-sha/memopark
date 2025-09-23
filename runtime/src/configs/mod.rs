@@ -57,8 +57,8 @@ impl pallet_memo_content_governance::Config for Runtime {
     type WindowBlocks = frame_support::traits::ConstU32<600>;
     /// 窗口内最多提交次数
     type MaxPerWindow = frame_support::traits::ConstU32<5>;
-    /// 默认公示期（块）
-    type NoticeDefaultBlocks = frame_support::traits::ConstU32<{ 7 * DAYS as u32 }>;
+    /// 默认公示期（块）≈ 30 天
+    type NoticeDefaultBlocks = frame_support::traits::ConstU32<{ 30 * DAYS as u32 }>;
     /// 国库账户（罚没接收）
     type TreasuryAccount = TreasuryAccount;
     /// 执行路由占位实现
@@ -70,8 +70,65 @@ impl pallet_memo_content_governance::Config for Runtime {
     >;
     /// 每块最多执行 50 条（示例）
     type MaxExecPerBlock = frame_support::traits::ConstU32<50>;
+    /// 函数级中文注释：只读分页返回上限（示例：512 条）。
+    type MaxListLen = frame_support::traits::ConstU32<512>;
+    /// 函数级中文注释：执行失败最大重试次数（示例：3 次）。
+    type MaxRetries = frame_support::traits::ConstU8<3>;
+    /// 函数级中文注释：失败重试基础退避区块数（示例：600 块 ≈ 1 小时@6s）。
+    type RetryBackoffBlocks = frame_support::traits::ConstU32<600>;
+    /// 函数级中文注释：动态押金策略实现：按 domain/action 给出基准押金倍数；没有匹配则回退固定押金。
+    type AppealDepositPolicy = ContentAppealDepositPolicy;
     /// 权重实现（占位）
     type WeightInfo = pallet_memo_content_governance::weights::SubstrateWeight<Runtime>;
+    /// 函数级中文注释：最近活跃度提供者（用于“应答自动否决”判断）。
+    type LastActiveProvider = ContentLastActiveProvider;
+    /// 函数级中文注释：CID 最小长度默认值（示例：10字节）。
+    type MinEvidenceCidLen = frame_support::traits::ConstU32<10>;
+    /// 函数级中文注释：理由 CID 最小长度默认值（示例：8字节）。
+    type MinReasonCidLen = frame_support::traits::ConstU32<8>;
+}
+
+/// 函数级中文注释：内容治理申诉的动态押金策略实现。
+/// - 规则示例（可后续治理升级）：
+///   - 逝者媒体域(4)：替换 URI(31)/冻结视频集(32) → 2× 基准；隐藏媒体(30) → 1× 基准
+///   - 逝者文本域(3)：删除类(20/21) → 1.5× 基准；编辑类(22/23) → 1× 基准
+///   - 逝者档案域(2)：主图/可见性调整(1/2/3) → 1× 基准
+///   - 其他 → None（回退固定押金）
+pub struct ContentAppealDepositPolicy;
+impl pallet_memo_content_governance::AppealDepositPolicy for ContentAppealDepositPolicy {
+    type AccountId = AccountId;
+    type Balance = Balance;
+    type BlockNumber = BlockNumber;
+    fn calc_deposit(_who: &Self::AccountId, domain: u8, _target: u64, action: u8) -> Option<Self::Balance> {
+        use frame_support::traits::Get as _;
+        let base: Balance = <Runtime as pallet_memo_content_governance::pallet::Config>::AppealDeposit::get();
+        let mult_bp: u16 = match (domain, action) {
+            (4, 31) | (4, 32) => 20000,  // 2.0x
+            (4, 30) => 10000,            // 1.0x
+            (3, 20) | (3, 21) => 15000,  // 1.5x
+            (3, 22) | (3, 23) => 10000,  // 1.0x
+            (2, 1) | (2, 2) | (2, 3) => 10000,
+            (2, 4) => 15000,            // 治理转移拥有者 ≥1.5x 基准
+            _ => return None,
+        };
+        // 以万分比计算：base * mult_bp / 10000
+        let mult = sp_runtime::Perbill::from_parts((mult_bp as u32) * 100); // 100bp = 1%
+        let dep = mult.mul_floor(base);
+        Some(dep)
+    }
+}
+
+/// 函数级详细中文注释：内容治理最近活跃度提供者实现。
+/// - 仅对 2=deceased 域返回最近活跃块高：读取 `pallet-deceased::LastActiveOf`；其他域返回 None。
+pub struct ContentLastActiveProvider;
+impl pallet_memo_content_governance::LastActiveProvider for ContentLastActiveProvider {
+    type BlockNumber = BlockNumber;
+    fn last_active_of(domain: u8, target: u64) -> Option<Self::BlockNumber> {
+        match domain {
+            2 => pallet_deceased::pallet::LastActiveOf::<Runtime>::get(target),
+            _ => None,
+        }
+    }
 }
 // ====== 委员会（Council）运行时配置 ======
 parameter_types! {
@@ -208,47 +265,26 @@ pub struct AuthorizerAdapter;
 impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
 	/// 函数级中文注释：校验赞助者是否在命名空间下被允许
 	/// - 当前仅允许平台账户代付，便于统一风控与审计；未来可扩展为授权中心。
-	fn is_sponsor_allowed(_ns: [u8; 8], sponsor: &AccountId) -> bool { sponsor == &PlatformAccount::get() }
+    fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool { true }
 
 	/// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
 	/// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
     fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
-		match (ns, call) {
-			// 设备/冥想相关调用已移除
-			// 仲裁域：允许提交争议与裁决（可叠加白名单控制仲裁者）
-			(n, RuntimeCall::Arbitration(inner)) if n == ArbitrationNsBytes::get() => matches!(
-				inner,
-				pallet_arbitration::Call::dispute { .. } | pallet_arbitration::Call::arbitrate { .. }
-			),
-			// 证据域：允许提交/链接/取消链接证据（V1/V2）
-			(n, RuntimeCall::Evidence(inner)) if n == EvidenceNsBytes::get() => matches!(
-				inner,
-				pallet_evidence::Call::commit { .. }
-				| pallet_evidence::Call::commit_hash { .. }
-				| pallet_evidence::Call::link { .. }
-				| pallet_evidence::Call::link_by_ns { .. }
-				| pallet_evidence::Call::unlink { .. }
-				| pallet_evidence::Call::unlink_by_ns { .. }
-			),
-			// OTC 吃单域：仅放行 open_order 代付
-			(n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
-				inner,
-				pallet_otc_order::Call::open_order { .. }
-			),
-			// OTC 挂单域：放行 create_listing 代付（side=Buy/Sell 由参数区分）
-			(n, RuntimeCall::OtcListing(inner)) if n == OtcListingNsBytes::get() => matches!(
-				inner,
-				pallet_otc_listing::Call::create_listing { .. }
-			),
-			// 纪念馆已拆分至 pallet-memo-hall：不再匹配旧 create_hall
-            (n, RuntimeCall::MemorialOfferings(inner)) if n == EvidenceNsBytes::get() => matches!(
-				inner,
-				pallet_memo_offerings::Call::offer { .. }
-			),
-            // OpenGov（referenda/conviction-voting）已移除：不再放行相关代付
-			_ => false,
-		}
-	}
+        match (ns, call) {
+            // 仅放行 OTC 买方侧方法（买方全流程免 GAS）
+            (n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
+                inner,
+                pallet_otc_order::Call::open_order { .. }
+                    | pallet_otc_order::Call::open_order_with_protection { .. }
+                    | pallet_otc_order::Call::mark_paid { .. }
+                    | pallet_otc_order::Call::reveal_payment { .. }
+                    | pallet_otc_order::Call::reveal_contact { .. }
+                    | pallet_otc_order::Call::mark_disputed { .. }
+            ),
+            // 明确不放行做市商/挂单侧与其他域方法
+            _ => false,
+        }
+    }
 }
 
 /// 禁止调用集合（MVP：空集）。可在后续版本中拒绝 utility::batch/dispatch_as 等逃逸方法。
@@ -413,12 +449,22 @@ impl pallet_forwarder::Config for Runtime {
 	/// 字节上限（根据业务情况调整）
 	type MaxMetaLen = frame_support::traits::ConstU32<8192>;
 	type MaxPermitLen = frame_support::traits::ConstU32<512>;
+    /// 函数级中文注释：强制校验 open_session 的所有者签名
+    type RequirePermitSig = frame_support::traits::ConstBool<true>;
     /// 函数级中文注释：强制校验 forward 的会话签名
     type RequireMetaSig = frame_support::traits::ConstBool<true>;
     /// 会话配额与预算上限（示例值）
     type MaxCallsPerSession = frame_support::traits::ConstU32<100>;
     type MaxWeightPerSessionRefTime = frame_support::traits::ConstU64<{ 2u64 * WEIGHT_REF_TIME_PER_SECOND }>; // 约2秒
+    /// 函数级中文注释：最小 meta TTL（示例：10 块）。
+    type MinMetaTxTTL = frame_support::traits::ConstU32<10>;
+    /// 每块代付上限与窗口统计
+    type MaxForwardedPerBlock = frame_support::traits::ConstU32<100>;
+    type ForwarderWindowBlocks = frame_support::traits::ConstU32<600>;
     type WeightInfo = ();
+    /// 函数级中文注释：开放会话许可签名类型与公钥类型（多签通用）。
+    type PermitSignature = sp_runtime::MultiSignature;
+    type PermitSigner = sp_runtime::MultiSigner;
 }
 
 // 设备/挖矿/冥想相关配置已移除
@@ -793,7 +839,7 @@ impl pallet_memo_offerings::Config for Runtime {
 }
 
 /// 函数级详细中文注释：供奉收款路由实现
-/// - 目标域为 Grave(=1) 时，将 SubjectBps 部分路由到“逝者主题资金账户”，其余走原 Resolver。
+/// - 目标域为 Grave(=1) 时，将 SubjectBps 部分路由到"逝者主题资金账户"，其余走原 Resolver。
 pub struct OfferDonationRouter;
 impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationRouter {
     fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)> {
@@ -870,7 +916,7 @@ impl pallet_memo_sacrifice::Config for Runtime {
     type UriLimit = SacUriLimit;
     type DescriptionLimit = SacDescLimit;
     // 管理员 Origin：Root | 内容委员会(Instance3，2/3)
-    // 函数级中文注释：将目录创建/更新的治理权限绑定到“内容委员会”，便于链上内容治理一体化。
+    // 函数级中文注释：将目录创建/更新的治理权限绑定到"内容委员会"，便于链上内容治理一体化。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
@@ -979,6 +1025,12 @@ impl pallet_memo_bridge::Config for Runtime {
     type BridgePalletId = BridgePalletId;
     /// 函数级中文注释：绑定价格源为 Pricing Pallet
     type PriceFeed = pallet_pricing::Pallet<Runtime>;
+    /// 函数级中文注释：价格最大允许陈旧秒数（示例：300秒）。
+    type MaxPriceAgeSecs = frame_support::traits::ConstU64<300>;
+    /// 函数级中文注释：以太坊地址最长 64 字节（hex/多格式冗余预留）。
+    type MaxEthAddrLen = frame_support::traits::ConstU32<64>;
+    /// 函数级中文注释：证据 CID 最大长度沿用全局 GraveMaxCidLen。
+    type MaxCidLen = GraveMaxCidLen;
 }
 
 // ===== pricing 配置 =====
@@ -1128,6 +1180,13 @@ impl pallet_evidence::Config for Runtime {
     type EvidenceNsBytes = EvidenceNsBytes;
     // 无授权中心：占位实现，默认允许
     type Authorizer = AllowAllEvidenceAuthorizer; 
+    /// 函数级中文注释：每主体证据与账号限频的示例默认值。
+    type MaxPerSubjectTarget = frame_support::traits::ConstU32<10_000>;
+    type MaxPerSubjectNs = frame_support::traits::ConstU32<10_000>;
+    type WindowBlocks = frame_support::traits::ConstU32<600>;
+    type MaxPerWindow = frame_support::traits::ConstU32<100>;
+    type EnableGlobalCidDedup = frame_support::traits::ConstBool<false>;
+    type MaxListLen = frame_support::traits::ConstU32<512>;
     /// 函数级中文注释：绑定权重实现，当前为手写估算版；后续可替换为基准生成版
     type WeightInfo = pallet_evidence::weights::SubstrateWeight<Runtime>;
 }
@@ -1330,6 +1389,18 @@ impl pallet_escrow::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
     >;
+    /// 函数级中文注释：每块最多处理的到期项（示例：200）。
+    type MaxExpiringPerBlock = frame_support::traits::ConstU32<200>;
+    /// 函数级中文注释：到期策略（示例：NoopPolicy）。
+    type ExpiryPolicy = NoopExpiryPolicy;
+}
+/// 函数级中文注释：到期策略占位实现——不做任何资金处理，仅用于演示。
+pub struct NoopExpiryPolicy;
+impl pallet_escrow::pallet::ExpiryPolicy<AccountId, BlockNumber> for NoopExpiryPolicy {
+    fn on_expire(_id: u64) -> Result<pallet_escrow::pallet::ExpiryAction<AccountId>, sp_runtime::DispatchError> {
+        Ok(pallet_escrow::pallet::ExpiryAction::Noop)
+    }
+    fn now() -> BlockNumber { <frame_system::Pallet<Runtime>>::block_number() }
 }
 
 parameter_types! { pub const ArbMaxEvidence: u32 = 16; pub const ArbMaxCidLen: u32 = 64; }
@@ -1416,6 +1487,13 @@ impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernan
             (2, 3) => {
                 // 占位：设置为默认头像（前端约定 CID），此处用 None 保持接口对齐
                 pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(RuntimeOrigin::root(), target as u64, None, vec![])
+            }
+            // 2=deceased：4=治理转移拥有者
+            (2, 4) => {
+                // 运行时通过治理 Pallet 的只读接口查找 new_owner
+                if let Some((_id, new_owner)) = pallet_memo_content_governance::pallet::Pallet::<Runtime>::find_owner_transfer_params(target) {
+                    pallet_deceased::pallet::Pallet::<Runtime>::gov_transfer_owner(RuntimeOrigin::root(), target as u64, new_owner, vec![])
+                } else { Err(sp_runtime::DispatchError::Other("MissingNewOwner")) }
             }
             // 3=deceased-text：20=移除悼词；21=强制删除文本（支持文章/留言）
             (3, 20) => {
@@ -1506,7 +1584,7 @@ impl pallet_memo_ipfs::Config for Runtime {
     type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
     type MinCapacityGiB = frame_support::traits::ConstU32<100>; // 至少 100 GiB 示例
     type WeightInfo = ();
-    /// 函数级中文注释：为“逝者主题资金账户”绑定 PalletId（可复用 escrow 的 PalletId 也可新设）
+    /// 函数级中文注释：为"逝者主题资金账户"绑定 PalletId（可复用 escrow 的 PalletId 也可新设）
     type SubjectPalletId = EscrowPalletId;
     /// 函数级中文注释：绑定逝者域常量（domain=1），用于 (domain, subject_id) 稳定派生。
     type DeceasedDomain = ConstU8<1>;

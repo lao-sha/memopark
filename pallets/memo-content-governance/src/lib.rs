@@ -60,8 +60,33 @@ pub mod pallet {
         /// 每块最大执行条数上限（DoS 防护）
         #[pallet::constant]
         type MaxExecPerBlock: Get<u32>;
+        /// 函数级中文注释：只读分页最大返回条数上限（防御性限制，避免返回过大向量）。
+        #[pallet::constant]
+        type MaxListLen: Get<u32>;
+        /// 函数级中文注释：执行失败最大重试次数（达到上限后不再自动重试）。
+        #[pallet::constant]
+        type MaxRetries: Get<u8>;
+        /// 函数级中文注释：失败重试的基础退避区块数（第 k 次重试延迟为 base * k）。
+        #[pallet::constant]
+        type RetryBackoffBlocks: Get<BlockNumberFor<Self>>;
+        /// 函数级中文注释：动态押金策略（根据 domain/action/目标规模/历史等返回押金）。
+        type AppealDepositPolicy: AppealDepositPolicy<
+            AccountId = Self::AccountId,
+            Balance = <Self::Currency as Currency<Self::AccountId>>::Balance,
+            BlockNumber = BlockNumberFor<Self>,
+        >;
+        /// 函数级中文注释：证据 CID 最小长度（字节数，下限防空串/异常值）。
+        #[pallet::constant]
+        type MinEvidenceCidLen: Get<u32>;
+        /// 函数级中文注释：理由 CID 最小长度（可选字段；若不为空则需达到该下限）。
+        #[pallet::constant]
+        type MinReasonCidLen: Get<u32>;
         /// 权重提供者（后续可用基准自动生成替换）
         type WeightInfo: weights::WeightInfo;
+        /// 函数级中文注释：最近活跃度提供者（跨模块只读接口）。
+        /// - 用于“应答自动否决”：若在 [approved_at, execute_at] 内目标主体 owner 出现成功签名写操作，则视为应答，自动否决执行。
+        /// - 返回最近一次活跃的块高；None 表示未知或不适用该 domain。
+        type LastActiveProvider: crate::LastActiveProvider<BlockNumber = BlockNumberFor<Self>>;
     }
 
     #[pallet::pallet]
@@ -77,8 +102,12 @@ pub mod pallet {
         pub reason_cid: BoundedVec<u8, ConstU32<128>>,
         pub evidence_cid: BoundedVec<u8, ConstU32<128>>,
         pub deposit: Balance,
-        pub status: u8, // 0=submitted,1=approved,2=rejected,3=withdrawn,4=executed
+        pub status: u8, // 0=submitted,1=approved,2=rejected,3=withdrawn,4=executed,5=retry_exhausted,6=auto_dismissed
         pub execute_at: Option<BlockNumber>, // 公示到期执行块
+        pub approved_at: Option<BlockNumber>, // 批准时间（用于“应答自动否决”判断）
+        /// 函数级中文注释：额外字段（当前用于 domain=2/action=4 的新 owner 透传）。
+        /// - 其他域/动作保持为 None。
+        pub new_owner: Option<AccountId>,
     }
 
     #[pallet::storage]
@@ -100,6 +129,19 @@ pub mod pallet {
     #[pallet::storage]
     pub type QueueByBlock<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<u64, T::MaxExecPerBlock>, OptionQuery>;
 
+    /// 函数级中文注释：同主体并发串行化占位：(domain, target) -> approved appeal id。
+    /// - 保障同一主体同一时刻仅存在一个处于已批准待执行的申诉，避免竞态。
+    #[pallet::storage]
+    pub type PendingBySubject<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), u64, OptionQuery>;
+
+    /// 函数级中文注释：失败重试计数：id -> 已重试次数。
+    #[pallet::storage]
+    pub type RetryCount<T: Config> = StorageMap<_, Blake2_128Concat, u64, u8, ValueQuery>;
+
+    /// 函数级中文注释：下次计划重试块高：id -> BlockNumber（仅用于只读观测）。
+    #[pallet::storage]
+    pub type NextRetryAt<T: Config> = StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -113,8 +155,16 @@ pub mod pallet {
         AppealRejected(u64, u16, <T::Currency as Currency<T::AccountId>>::Balance),
         /// 申诉已执行(id)
         AppealExecuted(u64),
-        /// 申诉执行失败（Router 返回错误，不改变状态）(id)
-        AppealExecuteFailed(u64),
+        /// 申诉执行失败（Router 返回错误，不改变状态）(id, code)
+        AppealExecuteFailed(u64, u16),
+        /// 函数级中文注释：已计划重试（id, attempt, at_block）。
+        AppealRetryScheduled(u64, u8, BlockNumberFor<T>),
+        /// 函数级中文注释：重试已达上限，放弃自动执行（id, attempts）。
+        AppealRetryExhausted(u64, u8),
+        /// 函数级中文注释：已清理历史申诉（start_id,end_id,removed_count）
+        AppealsPurged(u64, u64, u32),
+        /// 函数级中文注释：在公示期内目标主体 owner 已应答，自动否决执行（id）。
+        AppealAutoDismissed(u64),
     }
 
     #[pallet::error]
@@ -125,6 +175,14 @@ pub mod pallet {
         RateLimited,
         QueueFull,
         RouterFailed,
+        /// 同一主体已存在一个批准中的申诉
+        AlreadyPending,
+        /// 证据必填：evidence_cid 不允许为空
+        EvidenceRequired,
+        /// 证据过短：evidence_cid 长度不足
+        EvidenceTooShort,
+        /// 理由过短：reason_cid（若填写）长度不足
+        ReasonTooShort,
     }
 
     impl<T: Config> Pallet<T> {
@@ -154,8 +212,37 @@ pub mod pallet {
         }
 
         /// 函数级详细中文注释：尝试执行已批准且到期的申诉，调用路由器。
+        /// - 成功：状态→executed(4)，退还押金，释放 PendingBySubject；清理重试计数。
+        /// - 失败：若未达上限，按退避调度下一次重试；否则状态→retry_exhausted(5)，退还押金并释放占位。
         fn try_execute(id: u64) -> DispatchResult {
             let mut ok = false;
+            let mut err_code: u16 = 0;
+            // 执行前置：应答自动否决
+            if let Some(a) = Appeals::<T>::get(id) {
+                if a.status == 1 {
+                    if let (Some(ex_at), Some(ap_at)) = (a.execute_at, a.approved_at) {
+                        // 仅在治理转移等需要应答判定的域/动作开启（示例：2=deceased 域）
+                        if a.domain == 2u8 {
+                            if let Some(last) = T::LastActiveProvider::last_active_of(a.domain, a.target) {
+                                // 若在 (approved_at, execute_at] 内存在 owner 应答，则自动否决
+                                if last > ap_at && last <= ex_at {
+                                    Appeals::<T>::mutate(id, |m| {
+                                        if let Some(rec) = m.as_mut() {
+                                            rec.status = 6; // auto_dismissed
+                                        }
+                                    });
+                                    PendingBySubject::<T>::remove((a.domain, a.target));
+                                    RetryCount::<T>::remove(id);
+                                    NextRetryAt::<T>::remove(id);
+                                    let _ = T::Currency::unreserve(&a.who, a.deposit);
+                                    Self::deposit_event(Event::AppealAutoDismissed(id));
+                                    return Ok(())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Appeals::<T>::try_mutate(id, |m| -> DispatchResult {
                 let a = m.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(a.status == 1, Error::<T>::BadStatus);
@@ -167,10 +254,73 @@ pub mod pallet {
                         ok = true;
                         Ok(())
                     }
-                    Err(_) => Err(Error::<T>::RouterFailed.into()),
+                    Err(e) => {
+                        // 将 DispatchError 映射为 u16 错误码（Module/EVM/Token 等可统一折叠）
+                        err_code = match e {
+                            sp_runtime::DispatchError::Module(m) => ((m.index as u16) << 8) | (m.error.get(0).copied().unwrap_or(0) as u16),
+                            sp_runtime::DispatchError::Token(_) => 0xEE01,
+                            sp_runtime::DispatchError::Arithmetic(_) => 0xEE02,
+                            sp_runtime::DispatchError::ConsumerRemaining => 0xEE03,
+                            sp_runtime::DispatchError::NoProviders => 0xEE04,
+                            sp_runtime::DispatchError::TooManyConsumers => 0xEE05,
+                            sp_runtime::DispatchError::Corruption => 0xEE06,
+                            sp_runtime::DispatchError::Unavailable => 0xEE07,
+                            _ => 0xEE00,
+                        };
+                        Err(Error::<T>::RouterFailed.into())
+                    },
                 }
             })?;
-            if ok { Self::deposit_event(Event::AppealExecuted(id)); } else { Self::deposit_event(Event::AppealExecuteFailed(id)); }
+            if ok {
+                // 成功：释放并清理
+                if let Some(a) = Appeals::<T>::get(id) {
+                    PendingBySubject::<T>::remove((a.domain, a.target));
+                }
+                RetryCount::<T>::remove(id);
+                NextRetryAt::<T>::remove(id);
+                Self::deposit_event(Event::AppealExecuted(id));
+            } else {
+                // 失败：根据重试策略安排重试或放弃
+                Self::deposit_event(Event::AppealExecuteFailed(id, err_code));
+                let now = <frame_system::Pallet<T>>::block_number();
+                let attempts = RetryCount::<T>::get(id);
+                if attempts < T::MaxRetries::get() {
+                    let next_attempt = attempts.saturating_add(1);
+                    let delay = T::RetryBackoffBlocks::get();
+                    let at = now.saturating_add(delay.saturating_mul(next_attempt.into()));
+                    let pushed = QueueByBlock::<T>::mutate(at, |mq| {
+                        let mut v = mq.take().unwrap_or_default();
+                        let res = v.try_push(id).is_ok();
+                        *mq = Some(v);
+                        res
+                    });
+                    if pushed {
+                        RetryCount::<T>::insert(id, next_attempt);
+                        NextRetryAt::<T>::insert(id, at);
+                        Self::deposit_event(Event::AppealRetryScheduled(id, next_attempt, at));
+                    } else {
+                        // 队列满：视为达上限处理，释放占位并退押金
+                        if let Some(mut a) = Appeals::<T>::get(id) {
+                            PendingBySubject::<T>::remove((a.domain, a.target));
+                            a.status = 5; Appeals::<T>::insert(id, a.clone());
+                            let _ = T::Currency::unreserve(&a.who, a.deposit);
+                        }
+                        RetryCount::<T>::remove(id);
+                        NextRetryAt::<T>::remove(id);
+                        Self::deposit_event(Event::AppealRetryExhausted(id, attempts));
+                    }
+                } else {
+                    // 达到重试上限：放弃并退押金，标记为 retry_exhausted(5)
+                    if let Some(mut a) = Appeals::<T>::get(id) {
+                        PendingBySubject::<T>::remove((a.domain, a.target));
+                        a.status = 5; Appeals::<T>::insert(id, a.clone());
+                        let _ = T::Currency::unreserve(&a.who, a.deposit);
+                    }
+                    RetryCount::<T>::remove(id);
+                    NextRetryAt::<T>::remove(id);
+                    Self::deposit_event(Event::AppealRetryExhausted(id, attempts));
+                }
+            }
             Ok(())
         }
 
@@ -188,13 +338,14 @@ pub mod pallet {
         ) -> alloc::vec::Vec<u64> {
             let mut out: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
             let mut cnt: u32 = 0;
+            let cap = core::cmp::min(limit, T::MaxListLen::get());
             for (id, a) in Appeals::<T>::iter() {
                 if id < start_id { continue; }
                 if a.who != *who { continue; }
                 if let Some(s) = status { if a.status != s { continue; } }
                 out.push(id);
                 cnt = cnt.saturating_add(1);
-                if cnt >= limit { break; }
+                if cnt >= cap { break; }
             }
             out
         }
@@ -205,12 +356,13 @@ pub mod pallet {
             let hi = core::cmp::max(status_min, status_max);
             let mut out: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
             let mut cnt: u32 = 0;
+            let cap = core::cmp::min(limit, T::MaxListLen::get());
             for (id, a) in Appeals::<T>::iter() {
                 if id < start_id { continue; }
                 if a.status < lo || a.status > hi { continue; }
                 out.push(id);
                 cnt = cnt.saturating_add(1);
-                if cnt >= limit { break; }
+                if cnt >= cap { break; }
             }
             out
         }
@@ -220,13 +372,14 @@ pub mod pallet {
             let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
             let mut out: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
             let mut cnt: u32 = 0;
+            let cap = core::cmp::min(limit, T::MaxListLen::get());
             for (id, a) in Appeals::<T>::iter() {
                 if id < start_id { continue; }
                 if a.status != 1 { continue; }
                 if let Some(at) = a.execute_at { if at < lo || at > hi { continue; } } else { continue; }
                 out.push(id);
                 cnt = cnt.saturating_add(1);
-                if cnt >= limit { break; }
+                if cnt >= cap { break; }
             }
             out
         }
@@ -239,6 +392,19 @@ pub mod pallet {
         /// 函数级中文注释：只读-读取某块的到期执行 id（用于只读可视化，最多 MaxExecPerBlock）。
         pub fn due_at(block: BlockNumberFor<T>) -> alloc::vec::Vec<u64> {
             QueueByBlock::<T>::get(block).map(|v| v.into_inner()).unwrap_or_default()
+        }
+
+        /// 函数级详细中文注释：只读-查找“治理转移逝者 owner”所需参数（根据 target 定位占位中的申诉）。
+        /// - 输入：target=deceased_id（仅支持 domain=2）
+        /// - 行为：读取 PendingBySubject(2,target) → Appeal → 取 new_owner；要求状态=approved(1)、action=4。
+        /// - 返回：Some((appeal_id, new_owner)) 或 None。
+        pub fn find_owner_transfer_params(target: u64) -> Option<(u64, T::AccountId)> {
+            let id = PendingBySubject::<T>::get((2u8, target))?;
+            let a = Appeals::<T>::get(id)?;
+            if a.status == 1 && a.domain == 2u8 && a.action == 4 {
+                if let Some(no) = a.new_owner { return Some((id, no)); }
+            }
+            None
         }
     }
 
@@ -278,11 +444,18 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let now = <frame_system::Pallet<T>>::block_number();
             Self::touch_window(&who, now)?;
+            // 证据必填：避免空证据被滥用提交
+            ensure!(!evidence_cid.is_empty(), Error::<T>::EvidenceRequired);
+            // 最小长度约束
+            ensure!((evidence_cid.len() as u32) >= T::MinEvidenceCidLen::get(), Error::<T>::EvidenceTooShort);
+            if !reason_cid.is_empty() { ensure!((reason_cid.len() as u32) >= T::MinReasonCidLen::get(), Error::<T>::ReasonTooShort); }
             let id = NextId::<T>::mutate(|n| { let x=*n; *n = n.saturating_add(1); x });
-            let dep = T::AppealDeposit::get();
+            // 动态押金：优先按策略计算；若策略返回 None 则退化为固定押金
+            let dep = T::AppealDepositPolicy::calc_deposit(&who, domain, target, action)
+                .unwrap_or_else(|| T::AppealDeposit::get());
             // 占位：实际应使用 hold/reserve 逻辑
             T::Currency::reserve(&who, dep)?;
-            let rec = Appeal { who: who.clone(), domain, target, action, reason_cid, evidence_cid, deposit: dep, status: 0, execute_at: None };
+            let rec = Appeal { who: who.clone(), domain, target, action, reason_cid, evidence_cid, deposit: dep, status: 0, execute_at: None, approved_at: None, new_owner: None };
             Appeals::<T>::insert(id, rec);
             Self::deposit_event(Event::AppealSubmitted(id, who, domain, target, dep));
             Ok(())
@@ -312,6 +485,10 @@ pub mod pallet {
                 }
                 Ok(())
             })?;
+            // 释放主体占位与重试信息（若此前已批准后又被撤回的情况）
+            if let Some(a) = Appeals::<T>::get(id) { PendingBySubject::<T>::remove((a.domain, a.target)); }
+            RetryCount::<T>::remove(id);
+            NextRetryAt::<T>::remove(id);
             Self::deposit_event(Event::AppealWithdrawn(id, bps, slashed));
             Ok(())
         }
@@ -325,10 +502,13 @@ pub mod pallet {
             Appeals::<T>::try_mutate(id, |m| -> DispatchResult {
                 let a = m.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(a.status == 0, Error::<T>::BadStatus);
+                // 并发串行化：同一主体只能存在一个处于批准状态的申诉
+                ensure!(PendingBySubject::<T>::get((a.domain, a.target)).is_none(), Error::<T>::AlreadyPending);
                 a.status = 1;
                 let nb = notice_blocks.unwrap_or(T::NoticeDefaultBlocks::get());
                 let at = now.saturating_add(nb);
                 a.execute_at = Some(at);
+                a.approved_at = Some(now);
                 // 入队：按块维度插入待执行 id（超出容量则丢弃，后续可返回 QueueFull 错误）
                 let pushed = QueueByBlock::<T>::mutate(at, |mq| {
                     let mut v = mq.take().unwrap_or_default();
@@ -337,9 +517,41 @@ pub mod pallet {
                     res
                 });
                 ensure!(pushed, Error::<T>::QueueFull);
+                // 标记主体占位，初始化重试计数
+                PendingBySubject::<T>::insert((a.domain, a.target), id);
+                RetryCount::<T>::insert(id, 0u8);
                 Ok(())
             })?;
             Self::deposit_event(Event::AppealApproved(id, now.saturating_add(notice_blocks.unwrap_or(T::NoticeDefaultBlocks::get()))));
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：提交“治理转移逝者 owner”的专用申诉入口（domain=2, action=4）。
+        /// - 最小侵入：与通用入口并存；强制 evidence 非空；透传 new_owner 存入申诉记录。
+        /// - 动态押金：沿用策略（若 None 则回退固定押金）。
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::WeightInfo::submit_appeal())]
+        pub fn submit_owner_transfer_appeal(
+            origin: OriginFor<T>,
+            deceased_id: u64,
+            new_owner: T::AccountId,
+            evidence_cid: BoundedVec<u8, ConstU32<128>>,
+            reason_cid: BoundedVec<u8, ConstU32<128>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            Self::touch_window(&who, now)?;
+            ensure!(!evidence_cid.is_empty(), Error::<T>::EvidenceRequired);
+            ensure!((evidence_cid.len() as u32) >= T::MinEvidenceCidLen::get(), Error::<T>::EvidenceTooShort);
+            if !reason_cid.is_empty() { ensure!((reason_cid.len() as u32) >= T::MinReasonCidLen::get(), Error::<T>::ReasonTooShort); }
+            let id = NextId::<T>::mutate(|n| { let x=*n; *n = n.saturating_add(1); x });
+            let domain: u8 = 2; let action: u8 = 4; let target = deceased_id;
+            let dep = T::AppealDepositPolicy::calc_deposit(&who, domain, target, action)
+                .unwrap_or_else(|| T::AppealDeposit::get());
+            T::Currency::reserve(&who, dep)?;
+            let rec = Appeal { who: who.clone(), domain, target, action, reason_cid, evidence_cid, deposit: dep, status: 0, execute_at: None, approved_at: None, new_owner: Some(new_owner) };
+            Appeals::<T>::insert(id, rec);
+            Self::deposit_event(Event::AppealSubmitted(id, who, domain, target, dep));
             Ok(())
         }
 
@@ -365,6 +577,10 @@ pub mod pallet {
                 }
                 Ok(())
             })?;
+            // 释放主体占位与重试信息（若此前已批准后又被驳回的情况）
+            if let Some(a) = Appeals::<T>::get(id) { PendingBySubject::<T>::remove((a.domain, a.target)); }
+            RetryCount::<T>::remove(id);
+            NextRetryAt::<T>::remove(id);
             Self::deposit_event(Event::AppealRejected(id, bps, slashed));
             Ok(())
         }
@@ -382,13 +598,14 @@ pub mod pallet {
             for id in s..=e {
                 if removed >= limit { break; }
                 if let Some(a) = Appeals::<T>::get(id) {
-                    if matches!(a.status, 2 | 3 | 4) {
+                    if matches!(a.status, 2 | 3 | 4 | 5) {
                         Appeals::<T>::remove(id);
                         removed = removed.saturating_add(1);
                     }
                 }
             }
-            // 无事件，交由索引器通过缺失映射推断清理结果
+            // 发出清理事件，便于前端/索引层可观测
+            Self::deposit_event(Event::AppealsPurged(s, e, removed));
             Ok(())
         }
     }
@@ -398,6 +615,23 @@ pub mod pallet {
 pub trait AppealRouter<AccountId> {
     /// 根据决议执行目标动作（domain/target/action 自定义编码）。
     fn execute(who: &AccountId, domain: u8, target: u64, action: u8) -> DispatchResult;
+}
+
+/// 函数级详细中文注释：动态押金策略抽象。
+/// - 允许按主体、动作与历史为申诉设定押金，返回 None 表示使用固定押金回退。
+pub trait AppealDepositPolicy {
+    type AccountId;
+    type Balance;
+    type BlockNumber;
+    fn calc_deposit(who: &Self::AccountId, domain: u8, target: u64, action: u8) -> Option<Self::Balance>;
+}
+
+/// 函数级详细中文注释：最近活跃度提供者抽象。
+/// - 供治理在执行前判断“应答自动否决”：若在批准到执行之间，主体 owner 有成功签名写操作即视为应答。
+pub trait LastActiveProvider {
+    type BlockNumber;
+    /// 返回该 (domain, target) 的最近活跃块高；None 表示未知或不支持该 domain。
+    fn last_active_of(domain: u8, target: u64) -> Option<Self::BlockNumber>;
 }
 
 

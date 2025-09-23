@@ -169,6 +169,16 @@ pub mod pallet {
             Self::deposit_event(Event::GovEvidenceNoted(scope, id, bv.clone()));
             Ok(bv)
         }
+
+        /// 函数级详细中文注释：治理起源统一校验入口。
+        /// - 目的：集中治理起源检查，统一未授权错误为本模块错误 `Error::<T>::NotAuthorized`，便于前端与索引处理；
+        /// - 行为：封装 `T::GovernanceOrigin::ensure_origin(origin)`，失败映射为模块错误；
+        /// - 返回：Ok(()) 或 `DispatchError::Module`（NotAuthorized）。
+        fn ensure_gov(origin: OriginFor<T>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)
+                .map(|_| ())
+                .map_err(|_| Error::<T>::NotAuthorized.into())
+        }
     }
 
     #[pallet::call]
@@ -234,7 +244,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_resolve_life_complaint(origin: OriginFor<T>, deceased_id: T::DeceasedId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;
             ensure!(LifeOf::<T>::contains_key(deceased_id), Error::<T>::BadInput);
             let key = (3u8, deceased_id.into()); let mut case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
@@ -255,7 +265,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_resolve_eulogy_complaint(origin: OriginFor<T>, id: T::TextId, uphold: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
             ensure!(EulogyOf::<T>::contains_key(id) || EulogyDeposits::<T>::contains_key(id), Error::<T>::TextNotFound);
             let key = (4u8, id.into()); let case = ComplaintOf::<T>::get(key).ok_or(Error::<T>::BadInput)?;
@@ -331,7 +341,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_remove_text(origin: OriginFor<T>, id: T::TextId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(4u8, id.into(), evidence_cid);
             let rec = TextOf::<T>::take(id).ok_or(Error::<T>::TextNotFound)?;
             match rec.kind { TextKind::Message => {
@@ -351,7 +361,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_edit_text(origin: OriginFor<T>, id: T::TextId, cid: Option<Vec<u8>>, title: Option<Option<Vec<u8>>>, summary: Option<Option<Vec<u8>>>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
             TextOf::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let t = maybe.as_mut().ok_or(Error::<T>::TextNotFound)?;
@@ -371,7 +381,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_life(origin: OriginFor<T>, deceased_id: T::DeceasedId, cid: Vec<u8>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             let bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
@@ -495,7 +505,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_remove_eulogy(origin: OriginFor<T>, id: T::TextId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(4u8, id.into(), evidence_cid)?;
             let (did, _cid, _author) = EulogyOf::<T>::take(id).ok_or(Error::<T>::TextNotFound)?;
             EulogiesByDeceased::<T>::mutate(did, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
@@ -524,7 +534,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_article_for(origin: OriginFor<T>, owner: T::AccountId, deceased_id: T::DeceasedId, cid: Vec<u8>, title: Option<Vec<u8>>, summary: Option<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             ensure!(T::DeceasedProvider::deceased_exists(deceased_id), Error::<T>::DeceasedNotFound);
             ensure!(T::DeceasedProvider::can_manage(&owner, deceased_id), Error::<T>::NotAuthorized);
             let _ = Self::note_evidence(3u8, deceased_id.into(), evidence_cid)?;

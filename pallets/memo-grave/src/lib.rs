@@ -102,10 +102,10 @@ pub mod pallet {
         #[pallet::constant]
         type MaxAudioOptions: Get<u32>;
         #[pallet::constant]
-        /// 函数级中文注释：每墓位“私有音频候选”容量上限（仅墓主可维护）。
+        /// 函数级中文注释：每墓位"私有音频候选"容量上限（仅墓主可维护）。
         type MaxPrivateAudioOptions: Get<u32>;
         #[pallet::constant]
-        /// 函数级中文注释：每墓位“播放列表”容量上限（按顺序存放若干 CID）。
+        /// 函数级中文注释：每墓位"播放列表"容量上限（按顺序存放若干 CID）。
         type MaxAudioPlaylistLen: Get<u32>;
 
         /// 函数级中文注释：首页轮播图容量上限（全局）。
@@ -168,7 +168,7 @@ pub mod pallet {
     #[pallet::storage]
     pub type Interments<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<IntermentRecord<T>, T::MaxIntermentsPerGrave>, ValueQuery>;
 
-    /// 函数级中文注释：主逝者反向索引。记录每个墓位的“主逝者”ID，便于索引层或其他 Pallet 快速定位，避免线性扫描。
+    /// 函数级中文注释：主逝者反向索引。记录每个墓位的"主逝者"ID，便于索引层或其他 Pallet 快速定位，避免线性扫描。
     /// 维护策略：
     /// - 在首次安葬(`inter`)时若尚未设置，则将该逝者设为主逝者；
     /// - 在起掘(`exhume`)移除当前主逝者时，从剩余安葬记录中挑选一个作为新的主逝者（优先选择 slot 最小的记录）；
@@ -272,7 +272,7 @@ pub mod pallet {
         ValueQuery
     >;
 
-    /// 函数级中文注释：每墓位“私有音频候选”目录（仅墓主可维护）。
+    /// 函数级中文注释：每墓位"私有音频候选"目录（仅墓主可维护）。
     #[pallet::storage]
     pub type PrivateAudioOptionsOf<T: Config> = StorageMap<
         _,
@@ -574,7 +574,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn set_cover_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             CoverCidOf::<T>::insert(id, cid);
             Self::deposit_event(Event::CoverSet { id });
@@ -586,7 +586,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn clear_cover_via_governance(origin: OriginFor<T>, id: u64) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             CoverCidOf::<T>::remove(id);
             Self::deposit_event(Event::CoverCleared { id });
@@ -601,7 +601,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn add_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if list.iter().any(|x| x == &cid) { return Err(Error::<T>::CoverOptionExists.into()); }
                 list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
@@ -618,7 +618,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn remove_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if let Some(pos) = list.iter().position(|x| x == &cid) {
                     list.swap_remove(pos);
@@ -661,7 +661,7 @@ pub mod pallet {
         /// - 事件：`AudioSet { id }`。
         #[pallet::call_index(52)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_audio())]
         pub fn set_audio(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -678,7 +678,7 @@ pub mod pallet {
         /// - 事件：`AudioCleared { id }`。
         #[pallet::call_index(53)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::clear_audio())]
         pub fn clear_audio(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -695,9 +695,9 @@ pub mod pallet {
         /// - 由 Referenda/Root 等治理流程触发。
         #[pallet::call_index(54)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_audio_via_governance())]
         pub fn set_audio_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             AudioCidOf::<T>::insert(id, cid);
             Self::deposit_event(Event::AudioSet { id });
@@ -707,9 +707,9 @@ pub mod pallet {
         /// 函数级详细中文注释：通过治理清除背景音乐。
         #[pallet::call_index(55)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::clear_audio_via_governance())]
         pub fn clear_audio_via_governance(origin: OriginFor<T>, id: u64) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             AudioCidOf::<T>::remove(id);
             Self::deposit_event(Event::AudioCleared { id });
@@ -722,9 +722,9 @@ pub mod pallet {
         /// - 事件：`AudioOptionAdded {}`。
         #[pallet::call_index(56)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::add_audio_option())]
         pub fn add_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if list.iter().any(|x| x == &cid) { return Err(Error::<T>::AudioOptionExists.into()); }
                 list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
@@ -739,9 +739,9 @@ pub mod pallet {
         /// - 事件：`AudioOptionRemoved {}`。
         #[pallet::call_index(57)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::remove_audio_option())]
         pub fn remove_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if let Some(pos) = list.iter().position(|x| x == &cid) {
                     list.swap_remove(pos);
@@ -760,7 +760,7 @@ pub mod pallet {
         /// - 事件：`AudioSet { id }`。
         #[pallet::call_index(58)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_audio_from_option())]
         pub fn set_audio_from_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -777,10 +777,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：从“私有候选”设置背景音乐（仅墓主）。
+        /// 函数级详细中文注释：从"私有候选"设置背景音乐（仅墓主）。
         #[pallet::call_index(59)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_audio_from_private_option())]
         pub fn set_audio_from_private_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -797,10 +797,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：维护“私有音频候选”（仅墓主）：添加。
+        /// 函数级详细中文注释：维护"私有音频候选"（仅墓主）：添加。
         #[pallet::call_index(60)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::add_private_audio_option())]
         pub fn add_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -816,10 +816,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：维护“私有音频候选”（仅墓主）：移除（按值匹配）。
+        /// 函数级详细中文注释：维护"私有音频候选"（仅墓主）：移除（按值匹配）。
         #[pallet::call_index(61)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::remove_private_audio_option())]
         pub fn remove_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -838,7 +838,7 @@ pub mod pallet {
         /// - 行为：覆盖式写入；长度不得超过 MaxAudioPlaylistLen。
         #[pallet::call_index(62)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_audio_playlist(items.len() as u32))]
         pub fn set_audio_playlist(origin: OriginFor<T>, id: u64, items: Vec<Vec<u8>>) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -863,11 +863,17 @@ pub mod pallet {
         /// - 事件：CarouselSet { len }。
         #[pallet::call_index(63)]
         #[allow(deprecated)]
-        #[pallet::weight(T::WeightInfo::update_grave())]
+        #[pallet::weight(T::WeightInfo::set_carousel(items.len() as u32))]
         pub fn set_carousel(origin: OriginFor<T>, items: Vec<(Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<(u8,u64)>, Option<BlockNumberFor<T>>, Option<BlockNumberFor<T>>)>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let mut out: BoundedVec<CarouselItem<T>, T::MaxCarouselItems> = BoundedVec::default();
             for (img, title, link, target, start, end) in items.into_iter() {
+                // 互斥校验：目标与外链不可同时存在，且至少其一存在
+                let has_target = target.is_some();
+                let has_link = link.is_some();
+                ensure!(!(has_target && has_link), Error::<T>::InvalidKind);
+                ensure!(has_target || has_link, Error::<T>::InvalidKind);
+                // 时间窗：若设置则要求 start <= end
                 if let (Some(s), Some(e)) = (start, end) { ensure!(s <= e, Error::<T>::BadTimingWindow); }
                 let img_bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(img).map_err(|_| Error::<T>::CapacityExceeded)?;
                 let title_bv: BoundedVec<u8, T::MaxTitleLen> = BoundedVec::try_from(title).map_err(|_| Error::<T>::CapacityExceeded)?;
@@ -888,7 +894,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer_grave())]
         pub fn gov_transfer_grave(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
@@ -905,7 +911,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::restrict())]
         pub fn gov_set_restricted(origin: OriginFor<T>, id: u64, on: bool, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             ModerationOf::<T>::mutate(id, |m| { m.restricted = on; m.reason_code = reason_code; });
@@ -919,7 +925,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove())]
         pub fn gov_remove_grave(origin: OriginFor<T>, id: u64, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             ModerationOf::<T>::mutate(id, |m| { m.removed = true; m.restricted = true; m.reason_code = reason_code; });
@@ -933,7 +939,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::restrict())]
         pub fn gov_restore_grave(origin: OriginFor<T>, id: u64, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             ModerationOf::<T>::mutate(id, |m| { m.removed = false; m.restricted = false; m.reason_code = 0; });
@@ -1604,6 +1610,12 @@ pub mod pallet {
             let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
             Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
             Ok(bv)
+        }
+
+        /// 函数级中文注释：统一治理起源校验辅助，确保 BadOrigin 映射为模块级 NotAdmin 错误。
+        #[inline]
+        pub(crate) fn ensure_gov(origin: OriginFor<T>) -> Result<(), Error<T>> {
+            T::GovernanceOrigin::ensure_origin(origin).map(|_| ()).map_err(|_| Error::<T>::NotAdmin)
         }
     }
 }

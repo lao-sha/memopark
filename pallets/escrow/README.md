@@ -26,6 +26,8 @@
 - `type EscrowPalletId`：派生模块账户。
 - `type AuthorizedOrigin`：白名单 Origin（如 Root | 内容委员会阈值）。
 - `type AdminOrigin`：管理员 Origin（Root | 内容委员会阈值）。
+- `type MaxExpiringPerBlock`：每块最多处理到期项（可选）。
+- `type ExpiryPolicy`：到期处理策略（Release/Refund/Noop），由 runtime 注入（可选）。
 
 ## 用例
 - 订单履约结算：由订单或仲裁调用，释放给代办或退还买家。
@@ -36,3 +38,13 @@
 - 外部入口仅对 `AuthorizedOrigin | Root` 开放，常规推荐走内部 Trait。
 - 争议状态仅允许仲裁决议接口处理出金；所有出金路径统一透支校验。
 - 幂等 `nonce` 防重放；`Paused` 总开关可应急止血。
+
+## 到期调度（可选）
+- 存储：`ExpiryOf(id -> at)`。
+- Extrinsic：`schedule_expiry(id, at)` / `cancel_expiry(id)`（仅 `AuthorizedOrigin`）。
+- Hooks：`on_initialize(n)` 处理至多 `MaxExpiringPerBlock` 个到期项，调用 `ExpiryPolicy::on_expire(id)` 返回动作：
+  - `ReleaseAll(to)` → `release_all(id, to)` 并标记 Resolved；
+  - `RefundAll(to)` → `refund_all(id, to)` 并标记 Resolved；
+  - `Noop` → 仅记录事件，不做资金变更；
+- 事件：`ExpiryScheduled(id, at)` / `Expired(id, action)`；
+- 保护：`Disputed` 状态不触发到期处理；建议由业务在进入争议时取消到期调度。

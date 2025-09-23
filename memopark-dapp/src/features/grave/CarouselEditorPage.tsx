@@ -22,6 +22,24 @@ const CarouselEditorPage: React.FC = () => {
   const [error, setError] = React.useState('')
   const gw = (()=>{ try { return (import.meta as any)?.env?.VITE_IPFS_GATEWAY || 'https://ipfs.io' } catch { return 'https://ipfs.io' } })()
 
+  const MAX_TITLE = 64
+  const MAX_ITEMS = 20
+
+  const isCid = (s: string) => !!s && /^[a-z0-9]{46,}|^bafy/i.test(s.replace(/^ipfs:\/\//i,''))
+  const isHttp = (s: string) => /^https?:\/\//i.test(s)
+
+  const validateItem = (it: Item): string | null => {
+    if (!isCid(String(it.img||''))) return '图片 CID 非法（需为 IPFS CID）'
+    if (!it.title || it.title.length > MAX_TITLE) return '标题必填且不超过 64 字'
+    const hasTarget = it.domain!=null && it.targetId!=null
+    const hasLink = !!it.link
+    if (hasTarget && hasLink) return '目标与外链二选一，不可同时填写'
+    if (!hasTarget && !hasLink) return '需填写目标(domain,id) 或 外部链接(link)'
+    if (hasLink && !isHttp(String(it.link))) return '外链需以 http/https 开头'
+    if (it.start!=null && it.end!=null && Number(it.start) > Number(it.end)) return '开始块需小于等于结束块'
+    return null
+  }
+
   const load = React.useCallback(async ()=>{
     setError('')
     try {
@@ -52,12 +70,18 @@ const CarouselEditorPage: React.FC = () => {
   React.useEffect(()=> { load() }, [load])
 
   const add = () => {
-    if (!img || !title) { message.warning('请填写图片CID与标题'); return }
-    setItems(prev => prev.concat([{ img, title, link: link || undefined, domain, targetId, start, end }]))
+    const candidate: Item = { img, title, link: link || undefined, domain, targetId, start, end }
+    const msg = validateItem(candidate)
+    if (msg) { message.warning(msg); return }
+    if (items.length >= MAX_ITEMS) { message.warning('已达最大条目数 20'); return }
+    setItems(prev => prev.concat([candidate]))
     setImg(''); setTitle(''); setLink(''); setDomain(1); setTargetId(null); setStart(null); setEnd(null)
   }
 
   const submit = async () => {
+    // 提交前整体校验
+    for (const it of items) { const m = validateItem(it); if (m) { message.error(m); return } }
+    if (items.length === 0) { message.warning('列表为空'); return }
     try {
       const api = await getApi()
       const txRoot: any = (api.tx as any)

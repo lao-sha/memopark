@@ -41,11 +41,24 @@ import DeceasedPinWizard from './features/ipfs/DeceasedPinWizard';
 import AdminOfferRoutePage from './features/offerings/AdminOfferRoutePage';
 import ReferralBindPage from './features/referrals/ReferralBindPage';
 import RestoreDeceasedBuilder from './features/governance/RestoreDeceasedBuilder';
+import FeeGuardAdminPage from './features/fee-guard/FeeGuardAdminPage';
+import ForwarderSessionPage from './features/forwarder/ForwarderSessionPage';
+import BillingAdminPage from './features/ipfs/BillingAdminPage';
+import UsagePage from './features/ipfs/UsagePage';
 import './App.css';
 import { initAutoPinOnce } from './lib/auto-pin';
 import SettingsButton from './components/nav/SettingsButton';
 import SettingsDrawer from './components/nav/SettingsDrawer';
 import { GovernanceUiProvider } from './providers/GovernanceUiProvider';
+import ContentGovernanceReviewPage from './features/governance/ContentGovernanceReviewPage';
+import LedgerCleanupPage from './features/ledger/LedgerCleanupPage';
+import EvidenceLinkerPage from './features/evidence/EvidenceLinkerPage';
+import GraveGovernanceToolsPage from './features/grave/GraveGovernanceToolsPage';
+import ParkGovernanceToolsPage from './features/park/ParkGovernanceToolsPage';
+import IdentityViewerPage from './features/identity/IdentityViewerPage';
+import OriginRestrictionPage from './features/origin/OriginRestrictionPage';
+import RewardParamsPanel from './features/affiliate/RewardParamsPanel';
+import BridgeParamsPage from './features/bridge/BridgeParamsPage';
 
 /**
  * 函数级详细中文注释：应用主组件
@@ -91,6 +104,7 @@ const App: React.FC = () => {
                 : hash === '#/gov/ticket' ? <GovTicketPage />
                 : hash === '#/gov/me' ? <MyGovernancePage />
                 : hash === '#/gov/content' ? <ContentCommitteePage />
+                : hash === '#/gov/review' ? <ContentGovernanceReviewPage />
                 : hash === '#/gov/appeal' ? <SubmitAppealPage />
                 : hash === '#/gov/templates' ? <CommitteeTemplatesPage />
                 : hash === '#/profile' ? <ProfilePage />
@@ -99,15 +113,27 @@ const App: React.FC = () => {
                 : hash === '#/grave/audio' ? <GraveAudioPicker />
                 : hash === '#/carousel/editor' ? <CarouselEditorPage />
                 : hash === '#/category/create' ? <CreateCategoryPage />
+                : hash === '#/identity' ? <IdentityViewerPage />
+                : hash === '#/origin' ? <OriginRestrictionPage />
+                : hash === '#/affiliate/params' ? <RewardParamsPanel />
+                : hash === '#/bridge/params' ? <BridgeParamsPage />
                 : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
                 : hash === '#/category/list' ? <CategoryListPage />
                 : hash === '#/sacrifice/create' ? <CreateSacrificePage />
                 : hash === '#/scene/create' ? <CreateScenePage />
                 : hash === '#/bridge/lock' ? <BridgeLockPage />
+                : hash === '#/ledger/cleanup' ? <LedgerCleanupPage />
                 : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
                 : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
                 : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
                 : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
+                : hash === '#/ipfs/usage' ? <UsagePage />
+                : hash === '#/evidence/linker' ? <EvidenceLinkerPage />
+                : hash === '#/grave/gov' ? <GraveGovernanceToolsPage />
+                : hash === '#/park/gov' ? <ParkGovernanceToolsPage />
+                : hash === '#/fee-guard' ? <FeeGuardAdminPage />
+                : hash === '#/forwarder/session' ? <ForwarderSessionPage />
+                : hash === '#/ipfs/billing' ? <BillingAdminPage />
                 : hash === '#/gov/restore-deceased' ? <RestoreDeceasedBuilder />
                 : hash.startsWith('#/ref') ? <ReferralBindPage />
                 : <AuthEntryPage />}

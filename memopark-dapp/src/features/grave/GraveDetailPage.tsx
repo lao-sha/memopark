@@ -7,6 +7,8 @@ import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { buildCallPreimageHex, submitPreimage, submitProposal } from '../governance/lib/governance'
 import { uploadToIpfs } from '../../lib/ipfs'
 import { signAndSendLocalWithPassword as _s } from '../../lib/polkadot-safe'
+import OwnerChangeLogInline from './components/OwnerChangeLogInline'
+import { ApiPromise } from '@polkadot/api'
 
 /**
  * 函数级详细中文注释：墓地详情页（移动端）
@@ -420,6 +422,34 @@ const GraveDetailPage: React.FC = () => {
     throw new Error(`运行时未找到方法：${method}`)
   }, [])
 
+  /**
+   * 函数级中文注释：只读查询组件 - 显示逝者最近活跃块高（LastActiveOf）
+   * - 从 `pallet-deceased::LastActiveOf` 读取；若无记录则显示“-”。
+   */
+  const LastActiveInline: React.FC<{ deceasedId: number }> = ({ deceasedId }) => {
+    const [bn, setBn] = React.useState<number | null>(null)
+    React.useEffect(() => {
+      let mounted = true
+      const run = async () => {
+        try {
+          const api: ApiPromise = await getApi()
+          const q: any = (api.query as any).deceased
+          const v = await q.lastActiveOf(deceasedId)
+          if (!mounted) return
+          if (v && v.isSome) setBn(Number(v.unwrap().toString()))
+          else setBn(null)
+        } catch { if (mounted) setBn(null) }
+      }
+      run(); return ()=> { mounted = false }
+    }, [deceasedId])
+    return (
+      <div>
+        <Typography.Text type="secondary">最近活跃块高：</Typography.Text>
+        <Typography.Text code>{bn==null? '-' : bn}</Typography.Text>
+      </div>
+    )
+  }
+
   // 旧解析器（deceasedData）已废弃
 
   /**
@@ -535,6 +565,24 @@ const GraveDetailPage: React.FC = () => {
           <Space>
             <Button size="small" onClick={()=> { setMainOpen(true); setMainCidInput(''); setMainPwdInput(''); setMainErr(''); try { const d0 = deceased?.[0]?.id; setMainSelectedDid((selectedDid as any) ?? (d0!=null? Number(d0): null)) } catch {} }}>设置逝者主图</Button>
             <Button size="small" type="primary" onClick={()=> setEditorOpen(true)}>编辑</Button>
+            <Button size="small" type="dashed" onClick={()=> {
+              try {
+                if (!deceased || deceased.length===0) { message.warning('暂无逝者可提议'); return }
+                const first = Number(deceased[0].id)
+                Modal.confirm({
+                  title: '公众提议：治理转移逝者 owner',
+                  content: (
+                    <OwnerTransferAppealInline
+                      defaultDeceasedId={first}
+                      onSubmitted={async ()=> { try { if (graveId!=null) await loadAll(graveId) } catch {} }}
+                    />
+                  ),
+                  icon: null,
+                  okButtonProps: { style: { display: 'none' } },
+                  cancelText: '关闭'
+                })
+              } catch {}
+            }}>公众提议转移 owner</Button>
             <Button size="small" onClick={()=>{
               const tgt = Number(graveId||0)
               if (!Number.isFinite(tgt) || tgt<=0) return message.warning('无效的墓位ID')
@@ -658,6 +706,16 @@ const GraveDetailPage: React.FC = () => {
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
               生平详情由 `deceased-text` 模块提供（Life），当前展示逝者 token 与日期作为概览。
             </Typography.Paragraph>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message="公示与自动否决机制"
+              description={<div>
+                <div>若对逝者发起“治理转移 owner”申诉并被批准，将进入 ≥30 天公示期。</div>
+                <div>期间该逝者的 owner 只要有一次成功签名写操作，即视为“应答”，系统将自动否决该申诉的执行。</div>
+              </div>}
+            />
             {deceased.length === 0 ? (
               <Typography.Text type="secondary">暂无逝者</Typography.Text>
             ) : (
@@ -675,6 +733,10 @@ const GraveDetailPage: React.FC = () => {
                         {it.death && <span>离世：{it.death}</span>}
                       </div>
                       {it.token && <div><Typography.Text type="secondary">Token：</Typography.Text><Typography.Text code>{it.token}</Typography.Text></div>}
+                      {/* 最近活跃块高（只读）：显示来自 pallet-deceased::LastActiveOf */}
+                      <LastActiveInline deceasedId={Number(it.id)} />
+                      {/* 最近一次 owner 变更（读取 OwnerChangeLogOf） */}
+                      <OwnerChangeLogInline deceasedId={Number(it.id)} />
                     </Space>
                   </List.Item>
                 )}
@@ -1186,6 +1248,59 @@ const CreateMessageInline: React.FC<{
         } catch(e:any) { message.error(e?.message || '提交失败') } finally { setLoading(false) }
       }}>提交留言</Button>
     </Space>
+  )
+}
+
+/**
+ * 函数级详细中文注释：内联组件——提交“治理转移逝者 owner”的公众申诉
+ * - 使用专用入口 submit_owner_transfer_appeal(domain=2, action=4)
+ * - 必填：deceased_id、new_owner、evidence_cid；可选 reason_cid
+ */
+const OwnerTransferAppealInline: React.FC<{ defaultDeceasedId: number; onSubmitted?: ()=> void }> = ({ defaultDeceasedId, onSubmitted }) => {
+  const [did, setDid] = React.useState<number>(defaultDeceasedId)
+  const [newOwner, setNewOwner] = React.useState<string>('')
+  const [evidenceCid, setEvidenceCid] = React.useState<string>('')
+  const [reasonCid, setReasonCid] = React.useState<string>('')
+  const [pwd, setPwd] = React.useState<string>('')
+  const [loading, setLoading] = React.useState(false)
+
+  const strToBytes = React.useCallback((s: string): number[] => Array.from(new TextEncoder().encode(String(s||''))), [])
+
+  const resolveGovSection = React.useCallback(async (): Promise<string> => {
+    const api = await getApi(); const txRoot: any = (api.tx as any)
+    const cands = ['memoContentGovernance','memo_content_governance','contentGovernance', ...Object.keys(txRoot)]
+    for (const s of cands) { if (txRoot[s]?.submitOwnerTransferAppeal) return s }
+    throw new Error('未找到内容治理提交入口')
+  }, [])
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <Space direction="vertical" style={{ width: '100%' }} size={6}>
+        <InputNumber value={did as any} onChange={(v)=> setDid(Number(v))} style={{ width:'100%' }} placeholder="逝者ID" />
+        <Input placeholder="新 owner 地址（SS58）" value={newOwner} onChange={e=> setNewOwner(e.target.value)} />
+        <Input placeholder="证据 CID（必填）" value={evidenceCid} onChange={e=> setEvidenceCid(e.target.value)} />
+        <Input placeholder="理由 CID（可选，≥8字节）" value={reasonCid} onChange={e=> setReasonCid(e.target.value)} />
+        <Input.Password placeholder="签名密码（≥8位）" value={pwd} onChange={e=> setPwd(e.target.value)} />
+        <Button type="primary" loading={loading} onClick={async ()=>{
+          try {
+            if (!did || did<=0) return message.warning('无效的逝者ID')
+            if (!newOwner) return message.warning('请输入新 owner 地址')
+            if (!evidenceCid) return message.warning('请填写证据 CID')
+            if (!pwd || pwd.length<8) return message.warning('请输入至少 8 位签名密码')
+            setLoading(true)
+            const section = await resolveGovSection()
+            const api = await getApi(); const txRoot: any = (api.tx as any)
+            // 前端最小长度校验（与链端常量保持一致或更严格）
+            if ((evidenceCid||'').length < 10) throw new Error('证据 CID 过短（至少 10 字符）')
+            if (reasonCid && (reasonCid||'').length < 8) throw new Error('理由 CID 过短（至少 8 字符）')
+            const hash = await signAndSendLocalWithPassword(section, 'submitOwnerTransferAppeal', [Number(did), newOwner, strToBytes(evidenceCid), strToBytes(reasonCid||'')], pwd)
+            message.success('已提交公众申诉：'+hash)
+            onSubmitted && onSubmitted()
+          } catch(e:any) { message.error(e?.message || '提交失败') } finally { setLoading(false) }
+        }}>提交治理申诉</Button>
+        <Alert type="info" showIcon message="提示" description="提交后需经委员会 2/3 审核 + 30 天公示；期间 owner 有任意成功签名写操作将自动否决执行。" />
+      </Space>
+    </div>
   )
 }
 

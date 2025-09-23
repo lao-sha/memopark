@@ -33,14 +33,14 @@ const RestoreDeceasedBuilder: React.FC = () => {
       if (v.hide_first) calls.push(tx[secDeceased].govSetVisibility(id, false, ev))
       // 恢复基础信息（仅填的字段会生效）
       const name = v.name? Array.from(new TextEncoder().encode(String(v.name))): null
-      const badge = v.name_badge? Array.from(new TextEncoder().encode(String(v.name_badge))): null
+      const badge = null
       const nameCid = v.name_full_cid? Array.from(new TextEncoder().encode(String(v.name_full_cid))): null
       const birth = v.birth_ts? Array.from(new TextEncoder().encode(String(v.birth_ts))): null
       const death = v.death_ts? Array.from(new TextEncoder().encode(String(v.death_ts))): null
       const links: number[][] | null = v.links ? String(v.links).split('\n').map((s:string)=> Array.from(new TextEncoder().encode(s.trim()))).filter((a:number[])=>a.length>0) : null
       const gender = v.gender_code != null ? Number(v.gender_code) : null
-      if (name || badge || gender!=null || nameCid || birth || death || links) {
-        calls.push(tx[secDeceased].govUpdateProfile(id, name, badge, gender, nameCid? nameCid: null, birth? birth: null, death? death: null, links, ev))
+      if (name || gender!=null || nameCid || birth || death || links) {
+        calls.push(tx[secDeceased].govUpdateProfile(id, name, gender, nameCid? nameCid: null, birth? birth: null, death? death: null, links, ev))
       }
       // 主图
       if (v.main_image_cid != null && String(v.main_image_cid).trim() !== '') {
@@ -79,7 +79,7 @@ const RestoreDeceasedBuilder: React.FC = () => {
           </Form.Item>
           <Divider>基础信息（任填其一即可）</Divider>
           <Form.Item label="name" name="name"><Input /></Form.Item>
-          <Form.Item label="name_badge" name="name_badge"><Input /></Form.Item>
+          {/* name_badge 已移除 */}
           <Form.Item label="gender_code (0/1/2)" name="gender_code"><InputNumber min={0} max={2} style={{ width: '100%' }} /></Form.Item>
           <Form.Item label="name_full_cid" name="name_full_cid"><Input /></Form.Item>
           <Form.Item label="birth_ts (YYYYMMDD)" name="birth_ts"><Input maxLength={8} /></Form.Item>

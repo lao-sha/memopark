@@ -122,7 +122,7 @@ pub mod pallet {
 
     /// 函数级中文注释：在指定区块过期的挂单索引（便于 O(1) 扫描当前块过期项）
     #[pallet::storage]
-    pub type ExpiringAt<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<u64, T::MaxExpiringPerBlock>, ValueQuery>;
+    pub type ExpiringAt<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<u64, <T as self::Config>::MaxExpiringPerBlock>, ValueQuery>;
 
     /// 函数级中文注释：创建挂单的滑动窗口限频（账户 -> (窗口起点高度, 窗口内计数)）
     #[pallet::storage]

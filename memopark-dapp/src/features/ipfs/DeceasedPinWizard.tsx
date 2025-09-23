@@ -1,5 +1,6 @@
 import React from 'react'
 import { Alert, Button, Card, Divider, Form, Input, InputNumber, Space, Typography, message, Statistic } from 'antd'
+import SubjectAccountAddress from '../../components/SubjectAccountAddress'
 import { getApi, signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { blake2AsU8a, encodeAddress } from '@polkadot/util-crypto'
 import { u8aConcat, hexToU8a, stringToU8a } from '@polkadot/util'
@@ -168,6 +169,19 @@ const DeceasedPinWizard: React.FC = () => {
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
       <Typography.Title level={4} style={{ marginTop: 0 }}>逝者存储（Pin 向导）</Typography.Title>
+      {/* 函数级中文注释：顶部提示——展示当前链上模块与接口，给用户快速确认路径 */}
+      <Alert
+        type="success"
+        showIcon
+        message={<div>当前链上模块：<b>{section}</b>；调用接口：<b>{hasForDeceased? 'requestPinForDeceased(subject_id, cid_hash, size, replicas, price)':'requestPin(cid_hash, size, replicas, price)'}</b></div>}
+        description={<div style={{ fontSize: 12 }}>
+          <div>使用提示：</div>
+          <div>1) 优先使用“主题资金账户”两步法：先为派生账户充值，再提交 Pin（支持自动计算与一键套用地址）。</div>
+          <div>2) 若链上暂不支持主体扣费接口，将回退为从当前账户一次性扣费的 requestPin。</div>
+          <div>3) 链上仅存 cid_hash（明文 CID 不上链），OCW 负责与集群交互与巡检。</div>
+        </div>}
+        style={{ marginBottom: 12 }}
+      />
       <Card size="small" title="步骤一：资金准备（主题资金账户）">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Alert
@@ -185,12 +199,11 @@ const DeceasedPinWizard: React.FC = () => {
             <Input placeholder="粘贴派生资金账户地址" value={derivedAddr} onChange={(e) => setDerivedAddr(e.target.value.trim())} />
             <Button onClick={copyAddr} disabled={!derivedAddr}>复制</Button>
           </Space.Compact>
-          <div style={{ fontSize: 12, color: '#666' }}>或：输入 subject_id 按链上 PalletId 规则计算派生地址（domain 固定为 1）</div>
+          <div style={{ fontSize: 12, color: '#666' }}>或：输入 subject_id 后使用下方组件自动计算并一键套用</div>
           <Space.Compact style={{ width: '100%' }}>
             <InputNumber placeholder="subject_id" min={0} style={{ width: 200 }} value={form.getFieldValue('subject_id')} onChange={(v)=>form.setFieldsValue({ subject_id: v })} />
-            <Input readOnly placeholder="自动计算的派生地址" value={computedAddr} />
-            <Button onClick={() => { if (computedAddr) { setDerivedAddr(computedAddr); message.success('已套用自动计算地址') } }} disabled={!computedAddr}>套用</Button>
           </Space.Compact>
+          <SubjectAccountAddress subjectId={Number(form.getFieldValue('subject_id')||0)} onApply={(addr)=>{ setDerivedAddr(addr); message.success('已套用派生地址') }} />
           <Space wrap>
             <Button size="small" onClick={refreshBilling}>刷新</Button>
             {balance != null && <Statistic title="账户余额(最小单位)" value={balance.toString()} />}

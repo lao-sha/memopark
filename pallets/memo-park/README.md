@@ -24,6 +24,7 @@
 ## 强制接口（治理专用）
 - 起源：`GovernanceOrigin`（Root 或 内容委员会 2/3 阈值）。
 - 事件：所有强制操作需记录证据 CID（IPFS 明文，注意不加密）。
+- 统一治理校验：所有 `gov_*` 接口使用内部辅助 `ensure_gov(origin)`，未授权统一返回 `NotAdmin` 模块错误，便于前端与索引统一处理。
 - 列表：
   - `gov_update_park(id, region_code?, metadata_cid?, active?, evidence_cid)`：强制更新园区数据。
   - `gov_set_park_admin(id, admin_group?, evidence_cid)`：强制设置管理员标识。

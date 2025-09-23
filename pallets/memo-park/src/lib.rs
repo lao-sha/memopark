@@ -102,6 +102,16 @@ pub mod pallet {
             Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
             Ok(bv)
         }
+
+        /// 函数级详细中文注释：治理起源统一校验入口。
+        /// - 目的：集中治理起源检查，统一未授权错误为本模块错误 `Error::<T>::NotAdmin`；
+        /// - 行为：封装 `T::GovernanceOrigin::ensure_origin(origin)`，成功映射为 ()，失败映射为模块错误；
+        /// - 返回：Ok(()) 或 `DispatchError::Module`（NotAdmin）。
+        fn ensure_gov(origin: OriginFor<T>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)
+                .map(|_| ())
+                .map_err(|_| Error::<T>::NotAdmin.into())
+        }
     }
 
     #[allow(warnings)]
@@ -205,7 +215,7 @@ pub mod pallet {
             active: Option<bool>,
             evidence_cid: Vec<u8>,
         ) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
@@ -223,7 +233,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_park_admin(origin: OriginFor<T>, id: u64, admin_group: Option<u64>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
@@ -240,7 +250,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_set_park_cover(origin: OriginFor<T>, id: u64, cover_cid: Option<BoundedVec<u8, T::MaxCidLen>>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             ensure!(Parks::<T>::contains_key(id), Error::<T>::NotFound);
             // 事件化存证（不落存储，保持低耦合与轻状态）：is_set=true/false
@@ -254,7 +264,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_transfer_park(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;

@@ -12,7 +12,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use pallet_pricing::PriceProvider;
     use sp_runtime::{traits::{Saturating, Zero, AccountIdConversion, SaturatedConversion}, Perbill};
-    use sp_std::vec::Vec;
+    use frame_support::BoundedVec;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -33,6 +33,14 @@ pub mod pallet {
         type BridgePalletId: Get<PalletId>;
         /// 函数级中文注释：价格源接口（解耦到独立 pallet-pricing），仅用于风控与报价保护
         type PriceFeed: pallet_pricing::PriceProvider;
+        /// 函数级中文注释：价格最大允许陈旧秒数（风控）。若超过则拒绝带保护的锁定。
+        type MaxPriceAgeSecs: Get<u64>;
+        /// 函数级中文注释：以太坊地址最大长度（字节），用于限制外部输入大小，避免事件/内存膨胀。
+        #[pallet::constant]
+        type MaxEthAddrLen: Get<u32>;
+        /// 函数级中文注释：证据 CID 最大长度（字节），与全局 CID 长度对齐，防膨胀。
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
     }
 
     #[pallet::storage]
@@ -68,17 +76,19 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 函数级中文注释：锁定事件（链上 MEMO → 以太坊 ETH）
-        MemoLocked { who: T::AccountId, net_amount: BalanceOf<T>, fee: BalanceOf<T>, eth: Vec<u8> },
+        MemoLocked { who: T::AccountId, net_amount: BalanceOf<T>, fee: BalanceOf<T>, eth: BoundedVec<u8, T::MaxEthAddrLen> },
         /// 函数级中文注释：解锁事件（以太坊 ETH → 链上 MEMO），仅记录审计
-        MemoUnlocked { to: T::AccountId, amount: BalanceOf<T>, evidence: Vec<u8> },
+        MemoUnlocked { to: T::AccountId, amount: BalanceOf<T>, evidence: BoundedVec<u8, T::MaxCidLen> },
         /// 函数级中文注释：参数更新事件
         ParamsUpdated { single_max: BalanceOf<T>, daily_max: BalanceOf<T>, fee_bps: u16 },
         /// 函数级中文注释：暂停/恢复事件
         Paused { on: bool },
         /// 函数级中文注释：带价格快照与估算 ETH 的锁定事件（保护型）
-        MemoLockedWithQuote { who: T::AccountId, net_amount: BalanceOf<T>, fee: BalanceOf<T>, eth: Vec<u8>, price_num: u128, price_den: u128, quote_eth_out: u128 },
+        MemoLockedWithQuote { who: T::AccountId, net_amount: BalanceOf<T>, fee: BalanceOf<T>, eth: BoundedVec<u8, T::MaxEthAddrLen>, price_num: u128, price_den: u128, quote_eth_out: u128 },
         /// 函数级中文注释：价值限额更新事件
         ValueLimitsUpdated { single_value_max: u128, daily_value_max: u128 },
+        /// 函数级中文注释：每日使用更新（按账户与天粒度记录当前累计 used）
+        DailyUsageUpdated { who: T::AccountId, day: u32, used: BalanceOf<T> },
     }
 
     #[pallet::error]
@@ -106,7 +116,7 @@ pub mod pallet {
         #[pallet::call_index(0)]
         #[allow(deprecated)]
         #[pallet::weight({0})]
-        pub fn lock_memo(origin: OriginFor<T>, amount: BalanceOf<T>, eth_address: Vec<u8>) -> DispatchResult {
+        pub fn lock_memo(origin: OriginFor<T>, amount: BalanceOf<T>, eth_address: BoundedVec<u8, T::MaxEthAddrLen>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let p = Params::<T>::get();
             ensure!(!p.paused, Error::<T>::Paused);
@@ -131,7 +141,9 @@ pub mod pallet {
                 <T as Config>::Currency::transfer(&pallet_acc, &T::FeeCollector::get(), fee, ExistenceRequirement::KeepAlive)?;
             }
             DailyUsed::<T>::insert(&key, used.saturating_add(amount));
-            Self::deposit_event(Event::MemoLocked { who, net_amount: net, fee, eth: eth_address });
+            let new_used = DailyUsed::<T>::get(&key);
+            Self::deposit_event(Event::MemoLocked { who: who.clone(), net_amount: net, fee, eth: eth_address });
+            Self::deposit_event(Event::DailyUsageUpdated { who, day: day as u32, used: new_used });
             Ok(())
         }
 
@@ -141,7 +153,7 @@ pub mod pallet {
         #[pallet::call_index(1)]
         #[allow(deprecated)]
         #[pallet::weight({0})]
-        pub fn unlock_memo(origin: OriginFor<T>, to: T::AccountId, amount: BalanceOf<T>, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn unlock_memo(origin: OriginFor<T>, to: T::AccountId, amount: BalanceOf<T>, evidence_cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let pallet_acc = <Pallet<T>>::account_id();
             <T as Config>::Currency::transfer(&pallet_acc, &to, amount, ExistenceRequirement::AllowDeath)?;
@@ -196,7 +208,7 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight({0})]
-        pub fn lock_memo_with_protection(origin: OriginFor<T>, amount: BalanceOf<T>, eth_address: Vec<u8>, min_eth_out: u128) -> DispatchResult {
+        pub fn lock_memo_with_protection(origin: OriginFor<T>, amount: BalanceOf<T>, eth_address: BoundedVec<u8, T::MaxEthAddrLen>, min_eth_out: u128) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let p = Params::<T>::get();
             ensure!(!p.paused, Error::<T>::Paused);
@@ -207,6 +219,10 @@ pub mod pallet {
             let (num, den, ts) = T::PriceFeed::current_price().ok_or(sp_runtime::DispatchError::Other("NoPrice"))?;
             let now_secs = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6;
             ensure!(!T::PriceFeed::is_stale(now_secs), sp_runtime::DispatchError::Other("StalePrice"));
+            // 额外约束：价格时间戳与当前时间差不得超过 MaxPriceAgeSecs
+            let max_age = T::MaxPriceAgeSecs::get();
+            let age = now_secs.saturating_sub(ts);
+            ensure!(age <= max_age, sp_runtime::DispatchError::Other("PriceTooOld"));
 
             // 数量与价值限额
             let day = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() / 14_400;
@@ -239,7 +255,9 @@ pub mod pallet {
             }
             DailyUsed::<T>::insert(&key, used.saturating_add(amount));
             let _ = ts;
-            Self::deposit_event(Event::MemoLockedWithQuote { who, net_amount: net, fee, eth: eth_address, price_num: num, price_den: den, quote_eth_out });
+            let new_used = DailyUsed::<T>::get(&key);
+            Self::deposit_event(Event::MemoLockedWithQuote { who: who.clone(), net_amount: net, fee, eth: eth_address, price_num: num, price_den: den, quote_eth_out });
+            Self::deposit_event(Event::DailyUsageUpdated { who, day: day as u32, used: new_used });
             Ok(())
         }
     }

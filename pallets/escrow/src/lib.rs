@@ -14,6 +14,7 @@ pub mod pallet {
     use sp_runtime::traits::{AccountIdConversion, Saturating, Zero};
     use sp_runtime::DispatchError;
     use alloc::vec::Vec;
+    use frame_support::weights::Weight;
 
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -52,6 +53,11 @@ pub mod pallet {
         /// 函数级中文注释：管理员 Origin（治理/应急）。
         /// - 可设置全局暂停与参数；默认 Root 或内容委员会阈值。
         type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// 函数级中文注释：每块最多处理的到期项（防御性限制）。
+        #[pallet::constant]
+        type MaxExpiringPerBlock: Get<u32>;
+        /// 函数级中文注释：到期处理策略，由 runtime 注入；可按业务域决定 Release/Refund/Noop。
+        type ExpiryPolicy: ExpiryPolicy<Self::AccountId, BlockNumberFor<Self>>;
     }
 
     #[pallet::pallet]
@@ -76,6 +82,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type LockNonces<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, ValueQuery>;
 
+    /// 函数级中文注释：到期块存储：id -> at（仅当启用到期策略时写入）。
+    #[pallet::storage]
+    pub type ExpiryOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -91,10 +101,25 @@ pub mod pallet {
         Disputed { id: u64, reason: u16 },
         /// 已应用仲裁决议（0=ReleaseAll,1=RefundAll,2=PartialBps）
         DecisionApplied { id: u64, decision: u8 },
+        /// 函数级中文注释：已安排到期处理（id, at）。
+        ExpiryScheduled { id: u64, at: BlockNumberFor<T> },
+        /// 函数级中文注释：到期已处理（id, action: 0=Release,1=Refund,2=Noop）。
+        Expired { id: u64, action: u8 },
     }
 
     #[pallet::error]
     pub enum Error<T> { Insufficient, NoLock }
+
+    /// 函数级中文注释：到期处理策略接口（由 runtime 实现）。
+    pub trait ExpiryPolicy<AccountId, BlockNumber> {
+        /// 返回到期应执行的动作：ReleaseAll(to) | RefundAll(to) | Noop。
+        fn on_expire(id: u64) -> Result<ExpiryAction<AccountId>, sp_runtime::DispatchError>;
+        /// 返回当前块（用于调度比较）。
+        fn now() -> BlockNumber;
+    }
+
+    /// 函数级中文注释：到期动作枚举。
+    pub enum ExpiryAction<AccountId> { ReleaseAll(AccountId), RefundAll(AccountId), Noop }
 
     impl<T: Config> Pallet<T> {
         fn account() -> T::AccountId { T::EscrowPalletId::get().into_account_truncating() }
@@ -297,6 +322,57 @@ pub mod pallet {
             T::AdminOrigin::ensure_origin(origin)?;
             Paused::<T>::put(paused);
             Ok(())
+        }
+
+        /// 函数级中文注释：安排到期处理（仅 AuthorizedOrigin）。当处于 Disputed 时不生效。
+        #[pallet::call_index(10)]
+        #[pallet::weight(10_000)]
+        pub fn schedule_expiry(origin: OriginFor<T>, id: u64, at: BlockNumberFor<T>) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            if LockStateOf::<T>::get(id) == 1u8 { return Ok(()) }
+            ExpiryOf::<T>::insert(id, at);
+            Self::deposit_event(Event::ExpiryScheduled { id, at });
+            Ok(())
+        }
+
+        /// 函数级中文注释：取消到期处理（仅 AuthorizedOrigin）。
+        #[pallet::call_index(11)]
+        #[pallet::weight(10_000)]
+        pub fn cancel_expiry(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            Self::ensure_auth(origin)?;
+            ExpiryOf::<T>::remove(id);
+            Ok(())
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// 函数级中文注释：每块处理最多 MaxExpiringPerBlock 个到期项。
+        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
+            let mut handled: u32 = 0;
+            for (id, at) in ExpiryOf::<T>::iter() {
+                if handled >= T::MaxExpiringPerBlock::get() { break; }
+                if at != n { continue; }
+                if LockStateOf::<T>::get(id) == 1u8 { continue; }
+                match T::ExpiryPolicy::on_expire(id) {
+                    Ok(ExpiryAction::ReleaseAll(to)) => {
+                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::release_all(id, &to);
+                        LockStateOf::<T>::insert(id, 2u8);
+                        Self::deposit_event(Event::Expired { id, action: 0 });
+                    }
+                    Ok(ExpiryAction::RefundAll(to)) => {
+                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(id, &to);
+                        LockStateOf::<T>::insert(id, 2u8);
+                        Self::deposit_event(Event::Expired { id, action: 1 });
+                    }
+                    _ => {
+                        Self::deposit_event(Event::Expired { id, action: 2 });
+                    }
+                }
+                ExpiryOf::<T>::remove(id);
+                handled = handled.saturating_add(1);
+            }
+            Weight::from_parts(10_000u64.saturating_mul(handled as u64), 0)
         }
     }
 }

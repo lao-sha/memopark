@@ -28,6 +28,7 @@
 - 关联索引：`AlbumsByDeceased/VideoCollectionsByDeceased/MediaByAlbum/MediaByVideoCollection`
 - 押金与成熟：`AlbumDeposits/MediaDeposits` + `AlbumMaturity/MediaMaturity`
 - 风控：`AlbumFrozen/VideoCollectionFrozen/MediaHidden`
+- 版本：`Album/VideoCollection/Media` 结构新增 `version: u32` 字段
 
 ## 押金与成熟规则
 - 创建相册/视频集/媒体将保留押金（`AlbumDeposit/VideoCollectionDeposit/MediaDeposit`）。
@@ -37,6 +38,8 @@
 ## 权限
 - 用户操作要求 `DeceasedProvider.can_manage(who, deceased_id)` 为真（通常为墓主/管理员）。
 - 治理操作由 `GovernanceOrigin` 执行（Root/内容委员会阈值）。
+- 统一治理校验：自本次更新起，所有 `gov_*` 接口使用内部辅助 `ensure_gov(origin)` 校验治理起源；
+   未授权将统一返回模块内错误 `NotAuthorized`，便于前端与索引统一处理。
 
 ## 强制接口与路由码表（示例）
 - 内容治理路由 `domain/action`：
@@ -47,6 +50,8 @@
 ## 与前端的使用建议
 - 仅存 CID/URI 与尺寸/时长等元信息；原图/视频走 IPFS/外部对象存储。
 - 图片需校验宽高>0；视频/音频需校验时长>0。
+- 读取版本：更新后会触发事件 `VersionRecorded(kind, id, version, editor)` 用于审计与 UI 展示。
+- 主图联动：当删除/隐藏某媒体且该媒体为逝者主图/相册封面/视频集主视频时，模块会自动清空对应主图并自增容器版本。
 
 ## 委员会阈值 + 申诉治理流程（ContentCommittee 2/3）
 1. 申诉提交：任何账户在 `#/gov/appeal` 提交包含 `domain/action/target/reason_cid/evidence_cid` 的申诉；链上冻结 `AppealDeposit`。

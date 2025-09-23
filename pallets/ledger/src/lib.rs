@@ -193,9 +193,11 @@ pub mod pallet {
 			len: u32,
 		) -> alloc::vec::Vec<u8> {
 			let mut out: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+			// 防御性裁剪：最多返回 256 位（32 字节）
+			let cap: u32 = core::cmp::min(len, 256);
 			let mut byte: u8 = 0;
 			let mut bit_idx: u32 = 0;
-			for i in 0..len {
+			for i in 0..cap {
 				let week = start_week.saturating_add(i as u64);
 				let active = WeeklyActive::<T>::contains_key((grave_id, who.clone(), week));
 				if active { byte |= 1 << (bit_idx % 8); }

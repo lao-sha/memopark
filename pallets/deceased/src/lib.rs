@@ -10,6 +10,7 @@ use sp_std::vec::Vec;
 use sp_runtime::traits::AtLeast32BitUnsigned;
 use frame_support::weights::Weight;
 // use sp_runtime::Saturating;
+use sp_core::hashing::blake2_256;
 
 /// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
 /// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
@@ -58,8 +59,6 @@ pub struct Deceased<T: Config> {
     pub creator: T::AccountId,
     /// 姓名（限长，避免敏感信息超量上链）
     pub name: BoundedVec<u8, T::StringLimit>,
-    /// 姓名拼音徽标（大写，不含空格与特殊字符）。
-    pub name_badge: BoundedVec<u8, T::StringLimit>,
     /// 性别枚举：M/F/B。
     pub gender: Gender,
     /// 函数级中文注释：全名的链下指针 CID（IPFS/HTTPS 等），建议前端使用该字段展示完整姓名；
@@ -74,7 +73,7 @@ pub struct Deceased<T: Config> {
     /// - 安全：仅存 CID 字节；不涉及任何 MEMO 代币逻辑；长度受 TokenLimit 约束
     /// - 权限：owner 可直接设置/修改；非 owner 需通过 Root 治理设置
     pub main_image_cid: Option<BoundedVec<u8, T::TokenLimit>>,
-    /// 逝者令牌（在 pallet 内构造）：gender + birth + death + name_badge
+    /// 逝者令牌（在 pallet 内构造）：gender(大写) + birth(8字节) + death(8字节) + 姓名哈希(blake2_256)
     /// 例如：M1981122420250901LIUXIAODONG
     /// 长度上限单独由 `Config::TokenLimit` 约束，便于与外部引用保持一致。
     pub deceased_token: BoundedVec<u8, T::TokenLimit>,
@@ -83,6 +82,8 @@ pub struct Deceased<T: Config> {
     /// 创建与更新区块号
     pub created: BlockNumberFor<T>,
     pub updated: BlockNumberFor<T>,
+    /// 函数级中文注释：版本号（从 1 开始）。每次“资料修改”自增，用于审计与回滚依据。
+    pub version: u32,
 }
 
 #[frame_support::pallet]
@@ -90,6 +91,7 @@ pub mod pallet {
     use super::*;
     use frame_support::traits::StorageVersion;
     use sp_runtime::traits::SaturatedConversion;
+    use frame_support::traits::ConstU32;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -167,6 +169,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type DeceasedIdByToken<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::TokenLimit>, T::DeceasedId, OptionQuery>;
 
+    /// 函数级中文注释：最近活跃块高（owner 对该逝者的最近一次有效签名交互）。
+    #[pallet::storage]
+    pub type LastActiveOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BlockNumberFor<T>, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -194,6 +200,8 @@ pub mod pallet {
         GovEvidenceNoted(T::DeceasedId, BoundedVec<u8, T::TokenLimit>),
         /// 函数级中文注释：治理设置主图（Some 设置；None 清空）。
         GovMainImageSet(T::DeceasedId, bool),
+        /// 函数级中文注释：治理已转移拥有者（id, old_owner, new_owner）。
+        OwnerTransferred(T::DeceasedId, T::AccountId, T::AccountId),
     }
 
     #[pallet::error]
@@ -242,6 +250,20 @@ pub mod pallet {
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
+
+    /// 函数级中文注释：最近一次拥有者变更日志（用于前端展示与审计）。
+    /// - 写入于治理转移成功后；仅保留最近一次，历史可由事件索引层查询。
+    #[pallet::storage]
+    pub type OwnerChangeLogOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, (T::AccountId, T::AccountId, BlockNumberFor<T>, BoundedVec<u8, T::TokenLimit>), OptionQuery>;
+
+    /// 函数级中文注释：版本历史条目（version, editor, at）。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct VersionEntry<T: Config> { pub version: u32, pub editor: T::AccountId, pub at: BlockNumberFor<T> }
+
+    /// 函数级中文注释：逝者版本历史（最多 512 条，超出后停止追加）。
+    #[pallet::storage]
+    pub type DeceasedHistory<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<VersionEntry<T>, ConstU32<512>>, ValueQuery>;
 
     /// 函数级中文注释：逝者关系记录。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -340,11 +362,28 @@ pub mod pallet {
             } else { false }
         }
 
+        /// 函数级详细中文注释：治理起源统一校验入口。
+        /// - 目的：将所有治理专用 extrinsic 的起源校验统一在本函数，避免各处散落导致错误不一致；
+        /// - 行为：调用 `T::GovernanceOrigin::ensure_origin(origin)`；若失败，统一映射为本模块错误 `Error::<T>::NotAuthorized`；
+        /// - 返回：成功则 Ok(())，失败返回模块内错误，便于前端与索引侧统一处理。
+        fn ensure_gov(origin: OriginFor<T>) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)
+                .map(|_| ())
+                .map_err(|_| Error::<T>::NotAuthorized.into())
+        }
+
         /// 函数级中文注释（内部工具）：将证据 CID 记入事件，返回有界向量。
         pub(crate) fn note_evidence(id: T::DeceasedId, cid: Vec<u8>) -> Result<BoundedVec<u8, T::TokenLimit>, sp_runtime::DispatchError> {
             let bv: BoundedVec<u8, T::TokenLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             Self::deposit_event(Event::GovEvidenceNoted(id, bv.clone()));
             Ok(bv)
+        }
+
+        /// 函数级中文注释：更新“最近活跃时间”——在任何针对该逝者的签名写操作成功后调用。
+        #[inline]
+        pub(crate) fn touch_last_active(id: T::DeceasedId) {
+            let now = <frame_system::Pallet<T>>::block_number();
+            LastActiveOf::<T>::insert(id, now);
         }
     }
 
@@ -361,7 +400,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             grave_id: T::GraveId,
             name: Vec<u8>,
-            name_badge: Vec<u8>,
+            // name_badge 已移除
             gender_code: u8, // 0=M,1=F,2=B
             // bio 移除：简介/悼词请使用 deceased-data::Life（IPFS CID）
             name_full_cid: Option<Vec<u8>>, // 可选：完整姓名的链下 CID
@@ -382,15 +421,7 @@ pub mod pallet {
 
             // 校验与规范化字段
             let name_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
-            // name_badge：仅保留 [A-Z]，并转为大写
-            fn to_badge(input: Vec<u8>) -> Vec<u8> {
-                input.into_iter().filter_map(|b| {
-                    let up = if (b'a'..=b'z').contains(&b) { b - 32 } else { b };
-                    if (b'A'..=b'Z').contains(&up) { Some(up) } else { None }
-                }).collect::<Vec<u8>>()
-            }
-            let badge_vec = to_badge(name_badge);
-            let name_badge_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(badge_vec).map_err(|_| Error::<T>::BadInput)?;
+            // name_badge 相关逻辑已移除
             let gender: Gender = match gender_code { 0 => Gender::M, 1 => Gender::F, _ => Gender::B };
             // 校验日期：若提供则必须为 8 位数字
             fn is_yyyymmdd(v: &Vec<u8>) -> bool { v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b)) }
@@ -415,21 +446,49 @@ pub mod pallet {
             NextDeceasedId::<T>::put(next);
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
-            // 构造 token：GENDER + birth + death + name_badge
-            fn build_token<TC: Config>(g: &Gender, birth: &Option<BoundedVec<u8, TC::StringLimit>>, death: &Option<BoundedVec<u8, TC::StringLimit>>, badge: &BoundedVec<u8, TC::StringLimit>) -> BoundedVec<u8, TC::TokenLimit> {
-                let mut v: Vec<u8> = Vec::new();
+            // 构造 token：gender + birth(8) + death(8) + blake2_256(name_norm)
+            /// 函数级中文注释：构造逝者令牌：gender + birth(8) + death(8) + blake2_256(name_norm)
+            /// - name 规范化：去首尾空格、压缩连续空格为单个0x20、a-z→A-Z；非ASCII保持原样
+            /// - birth/death 缺省用 "00000000"（长度异常也回退到8个'0'）
+            fn build_token_from_fields<TC: Config>(g: &Gender, birth: &Option<BoundedVec<u8, TC::StringLimit>>, death: &Option<BoundedVec<u8, TC::StringLimit>>, name: &BoundedVec<u8, TC::StringLimit>) -> BoundedVec<u8, TC::TokenLimit> {
+                // 规范化姓名
+                let mut norm: Vec<u8> = Vec::with_capacity(name.len());
+                // 去首尾空格 & 压缩空格
+                let mut i = 0usize;
+                let bytes = name.as_slice();
+                while i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                let mut last_space = false;
+                while i < bytes.len() {
+                    let mut b = bytes[i];
+                    if b == b' ' {
+                        if !last_space { norm.push(b' '); last_space = true; }
+                    } else {
+                        // a-z → A-Z，仅ASCII字母；其他字节保持
+                        if (b'a'..=b'z').contains(&b) { b = b - 32; }
+                        norm.push(b);
+                        last_space = false;
+                    }
+                    i += 1;
+                }
+                // 去尾随空格
+                while norm.last().copied() == Some(b' ') { norm.pop(); }
+
+                // 计算姓名哈希
+                let name_hash = blake2_256(norm.as_slice());
+
+                // 组装 token
+                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
                 let c = match g { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
                 v.push(c);
-                if let Some(b) = birth { v.extend_from_slice(b.as_slice()); }
-                if let Some(d) = death { v.extend_from_slice(d.as_slice()); }
-                v.extend_from_slice(badge.as_slice());
-                // 若超长则按 TokenLimit 截断，优先保留前缀信息
-                let max = <TC as Config>::TokenLimit::get() as usize;
-                let mut out = v;
-                if out.len() > max { out.truncate(max); }
-                BoundedVec::<u8, TC::TokenLimit>::try_from(out).unwrap_or_default()
+                let zeros8: [u8;8] = *b"00000000";
+                let b8 = birth.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                let d8 = death.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                v.extend_from_slice(b8);
+                v.extend_from_slice(d8);
+                v.extend_from_slice(&name_hash);
+                BoundedVec::<u8, TC::TokenLimit>::try_from(v).unwrap_or_default()
             }
-            let deceased_token = build_token::<T>(&gender, &birth_bv, &death_bv, &name_badge_bv);
+            let deceased_token = build_token_from_fields::<T>(&gender, &birth_bv, &death_bv, &name_bv);
             // 唯一性检查：同 token 已存在则拒绝创建
             ensure!(DeceasedIdByToken::<T>::get(&deceased_token).is_none(), Error::<T>::DeceasedTokenExists);
             let deceased = Deceased::<T> {
@@ -437,7 +496,7 @@ pub mod pallet {
                 owner: who.clone(),
                 creator: who.clone(),
                 name: name_bv,
-                name_badge: name_badge_bv,
+                
                 gender,
                 // bio 已移除：请使用 deceased-data::Life（CID）
                 name_full_cid: name_full_cid_bv,
@@ -448,9 +507,14 @@ pub mod pallet {
                 links: links_bv,
                 created: now,
                 updated: now,
+                version: 1,
             };
 
             DeceasedOf::<T>::insert(id, deceased);
+            // 初始化版本历史
+            let mut hist: BoundedVec<VersionEntry<T>, ConstU32<512>> = Default::default();
+            let _ = hist.try_push(VersionEntry { version: 1, editor: who.clone(), at: now });
+            DeceasedHistory::<T>::insert(id, hist);
             DeceasedByGrave::<T>::try_mutate(grave_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
             // 默认公开
             VisibilityOf::<T>::insert(id, true);
@@ -460,6 +524,8 @@ pub mod pallet {
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
 
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
+            // 最近活跃：创建即记录
+            Self::touch_last_active(id);
             Ok(())
         }
 
@@ -474,7 +540,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             id: T::DeceasedId,
             name: Option<Vec<u8>>,
-            name_badge: Option<Vec<u8>>,
+            // name_badge: Option<Vec<u8>>, // 已移除
             gender_code: Option<u8>,
             // bio 已移除
             name_full_cid: Option<Option<Vec<u8>>>,
@@ -492,10 +558,7 @@ pub mod pallet {
                 let old_token = d.deceased_token.clone();
 
                 if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
-                if let Some(nb) = name_badge {
-                    let vec = nb.into_iter().filter_map(|b| { let up = if (b'a'..=b'z').contains(&b) { b-32 } else { b }; if (b'A'..=b'Z').contains(&up) { Some(up) } else { None } }).collect::<Vec<u8>>();
-                    d.name_badge = BoundedVec::try_from(vec).map_err(|_| Error::<T>::BadInput)?;
-                }
+                // name_badge 已移除
                 if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
                 // bio 已移除：改由 deceased-data::Life 维护
                 if let Some(cid_opt) = name_full_cid {
@@ -520,15 +583,28 @@ pub mod pallet {
                     d.links = links_bv;
                 }
                 d.updated = <frame_system::Pallet<T>>::block_number();
-                // 重新构造 token
-                let mut v: Vec<u8> = Vec::new();
-                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
-                v.push(c);
-                if let Some(ref b) = d.birth_ts { v.extend_from_slice(b.as_slice()); }
-                if let Some(ref de) = d.death_ts { v.extend_from_slice(de.as_slice()); }
-                v.extend_from_slice(d.name_badge.as_slice());
-                let max = <T as Config>::TokenLimit::get() as usize;
-                if v.len() > max { v.truncate(max); }
+                // 版本自增并记录历史
+                d.version = d.version.saturating_add(1);
+                let v = d.version;
+                let at = d.updated;
+                DeceasedHistory::<T>::mutate(id, |h| { let _ = h.try_push(VersionEntry { version: v, editor: who.clone(), at }); });
+                // 重新构造 token（gender + birth(8) + death(8) + blake2_256(name_norm)）
+                fn normalize_name(bytes: &[u8]) -> Vec<u8> {
+                    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+                    let mut i = 0usize; while i < bytes.len() && bytes[i]==b' ' { i+=1; }
+                    let mut last_space=false;
+                    while i<bytes.len() { let mut b=bytes[i]; if b==b' ' { if !last_space { out.push(b' '); last_space=true; } } else { if (b'a'..=b'z').contains(&b) { b=b-32; } out.push(b); last_space=false; } i+=1; }
+                    while out.last().copied()==Some(b' ') { out.pop(); }
+                    out
+                }
+                let name_norm = normalize_name(d.name.as_slice());
+                let name_hash = blake2_256(name_norm.as_slice());
+                let mut v: Vec<u8> = Vec::with_capacity(1+8+8+32);
+                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' }; v.push(c);
+                let zeros8: [u8;8] = *b"00000000";
+                let b8 = d.birth_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                let de8 = d.death_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                v.extend_from_slice(b8); v.extend_from_slice(de8); v.extend_from_slice(&name_hash);
                 let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
                 // 若 token 发生变化，需检查唯一性并更新索引
                 if new_token != old_token {
@@ -547,6 +623,7 @@ pub mod pallet {
             })?;
 
             Self::deposit_event(Event::DeceasedUpdated(id));
+            Self::touch_last_active(id);
             Ok(())
         }
 
@@ -590,6 +667,7 @@ pub mod pallet {
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
                 Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
+                Self::touch_last_active(id);
                 Ok(())
             })
         }
@@ -606,6 +684,7 @@ pub mod pallet {
             ensure!(Self::is_admin(id, &who), Error::<T>::NotAuthorized);
             VisibilityOf::<T>::insert(id, public);
             Self::deposit_event(Event::VisibilityChanged(id, public));
+            Self::touch_last_active(id);
             Ok(())
         }
 
@@ -632,6 +711,7 @@ pub mod pallet {
             // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
             // 事件维持，便于前端平滑过渡。
             Self::deposit_event(Event::MainImageUpdated(id, true));
+            Self::touch_last_active(id);
             Ok(())
         }
 
@@ -656,6 +736,7 @@ pub mod pallet {
             })?;
             // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
             Self::deposit_event(Event::MainImageUpdated(id, false));
+            Self::touch_last_active(id);
             Ok(())
         }
 
@@ -665,7 +746,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn gov_set_main_image(origin: OriginFor<T>, id: T::DeceasedId, cid: Option<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
             let is_some = cid.is_some();
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
@@ -675,10 +756,38 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::GovMainImageSet(id, is_some));
+            Self::touch_last_active(id);
             Ok(())
         }
 
         // =================== 治理专用接口（gov*） ===================
+        /// 函数级中文注释：治理转移拥有者（仅治理路径）。
+        /// - 起源：T::GovernanceOrigin；需携带证据 CID（明文，不加密）。
+        /// - 行为：写入证据事件；将 owner 设置为 new_owner；version+=1；写入 OwnerChangeLogOf；事件 OwnerTransferred。
+        #[pallet::call_index(46)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn gov_transfer_owner(origin: OriginFor<T>, id: T::DeceasedId, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+            Self::ensure_gov(origin)?;
+            let ev = Self::note_evidence(id, evidence_cid)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+            let mut old_owner: Option<T::AccountId> = None;
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                let old = d.owner.clone(); old_owner = Some(old.clone());
+                ensure!(old != new_owner, Error::<T>::BadInput);
+                d.owner = new_owner.clone();
+                d.updated = now;
+                d.version = d.version.saturating_add(1);
+                Ok(())
+            })?;
+            // 写入最近一次变更日志并发出事件
+            if let Some(old) = old_owner {
+                OwnerChangeLogOf::<T>::insert(id, (old.clone(), new_owner.clone(), now, ev));
+                Self::deposit_event(Event::OwnerTransferred(id, old, new_owner));
+            }
+            Ok(())
+        }
         /// 函数级中文注释：治理更新逝者信息（不变更 owner）。
         /// - 起源：T::GovernanceOrigin（内容治理轨道授权/委员会白名单/Root）。
         /// - 要求：必须携带证据 CID（IPFS 明文），仅长度校验，内容由前端/索引侧审计。
@@ -690,7 +799,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             id: T::DeceasedId,
             name: Option<Vec<u8>>,
-            name_badge: Option<Vec<u8>>,
+            // name_badge: Option<Vec<u8>>, // 已移除
             gender_code: Option<u8>,
             name_full_cid: Option<Option<Vec<u8>>>,
             birth_ts: Option<Option<Vec<u8>>>,
@@ -698,17 +807,14 @@ pub mod pallet {
             links: Option<Vec<Vec<u8>>>,
             evidence_cid: Vec<u8>,
         ) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 let original_owner = d.owner.clone();
                 let old_token = d.deceased_token.clone();
                 if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
-                if let Some(nb) = name_badge {
-                    let vec = nb.into_iter().filter_map(|b| { let up = if (b'a'..=b'z').contains(&b) { b-32 } else { b }; if (b'A'..=b'Z').contains(&up) { Some(up) } else { None } }).collect::<Vec<u8>>();
-                    d.name_badge = BoundedVec::try_from(vec).map_err(|_| Error::<T>::BadInput)?;
-                }
+                // name_badge 已移除
                 if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
                 if let Some(cid_opt) = name_full_cid {
                     d.name_full_cid = match cid_opt { Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
@@ -728,14 +834,27 @@ pub mod pallet {
                     d.links = links_bv;
                 }
                 d.updated = <frame_system::Pallet<T>>::block_number();
-                // 重建 token 并维护唯一索引
-                let mut v: Vec<u8> = Vec::new();
-                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
-                v.push(c);
-                if let Some(ref b) = d.birth_ts { v.extend_from_slice(b.as_slice()); }
-                if let Some(ref de) = d.death_ts { v.extend_from_slice(de.as_slice()); }
-                v.extend_from_slice(d.name_badge.as_slice());
-                let max = <T as Config>::TokenLimit::get() as usize; if v.len() > max { v.truncate(max); }
+                // 版本自增并记录历史（治理代表修改，编辑者记为当前 owner）
+                d.version = d.version.saturating_add(1);
+                let v = d.version; let at = d.updated; let editor = d.owner.clone();
+                DeceasedHistory::<T>::mutate(id, |h| { let _ = h.try_push(VersionEntry { version: v, editor, at }); });
+                // 重建 token 并维护唯一索引（gender + birth(8) + death(8) + blake2_256(name_norm)）
+                fn normalize_name2(bytes: &[u8]) -> Vec<u8> {
+                    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+                    let mut i = 0usize; while i < bytes.len() && bytes[i]==b' ' { i+=1; }
+                    let mut last_space=false;
+                    while i<bytes.len() { let mut b=bytes[i]; if b==b' ' { if !last_space { out.push(b' '); last_space=true; } } else { if (b'a'..=b'z').contains(&b) { b=b-32; } out.push(b); last_space=false; } i+=1; }
+                    while out.last().copied()==Some(b' ') { out.pop(); }
+                    out
+                }
+                let name_norm = normalize_name2(d.name.as_slice());
+                let name_hash = blake2_256(name_norm.as_slice());
+                let mut v: Vec<u8> = Vec::with_capacity(1+8+8+32);
+                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' }; v.push(c);
+                let zeros8: [u8;8] = *b"00000000";
+                let b8 = d.birth_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                let de8 = d.death_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                v.extend_from_slice(b8); v.extend_from_slice(de8); v.extend_from_slice(&name_hash);
                 let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
                 if new_token != old_token {
                     if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) { if existing_id != id { return Err(Error::<T>::DeceasedTokenExists.into()); } }
@@ -755,7 +874,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer())]
         pub fn gov_transfer_deceased(origin: OriginFor<T>, id: T::DeceasedId, new_grave: T::GraveId, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
             ensure!(T::GraveProvider::grave_exists(new_grave), Error::<T>::GraveNotFound);
             let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
@@ -770,6 +889,7 @@ pub mod pallet {
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
                 Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
+                Self::touch_last_active(id);
                 Ok(())
             })
         }
@@ -779,7 +899,7 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn gov_set_visibility(origin: OriginFor<T>, id: T::DeceasedId, public: bool, evidence_cid: Vec<u8>) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
             ensure!(DeceasedOf::<T>::contains_key(id), Error::<T>::DeceasedNotFound);
             VisibilityOf::<T>::insert(id, public);

@@ -214,6 +214,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type BillingPaused<T: Config> = StorageValue<_, bool, ValueQuery, DefaultBillingPaused<T>>;
 
+    /// 函数级中文注释：是否允许“直接从调用者账户扣费”的直扣费路径。
+    /// - 默认建议关闭（false），统一走“主题资金账户聚合计费”的 request_pin_for_deceased 路径。
+    /// - 可由治理通过 set_billing_params 动态调整。
+    #[pallet::type_value]
+    pub fn DefaultAllowDirectPin<T: Config>() -> bool { false }
+    #[pallet::storage]
+    pub type AllowDirectPin<T: Config> = StorageValue<_, bool, ValueQuery, DefaultAllowDirectPin<T>>;
+
     /// 函数级中文注释：到期队列容量上限（每个区块键对应的最大 CID 数）。
     #[pallet::type_value]
     pub fn DefaultDueListCap<T: Config>() -> u32 { 1024 }
@@ -270,6 +278,10 @@ pub mod pallet {
         PinGrace(T::Hash),
         /// 函数级中文注释：超出宽限期仍欠费，标记过期（cid_hash）。
         PinExpired(T::Hash),
+        /// 函数级中文注释：到期队列出入队统计（block, enqueued, dequeued, remaining）。
+        DueQueueStats(BlockNumberFor<T>, u32, u32, u32),
+        /// 函数级中文注释：OCW 巡检上报 Pin 状态汇总（样本数、pinning、pinned、missing）。
+        PinProbe(u32, u32, u32, u32),
     }
 
     #[pallet::error]
@@ -296,6 +308,8 @@ pub mod pallet {
         HasActiveAssignments,
         /// 调用方未被指派到该内容的副本分配中
         OperatorNotAssigned,
+        /// 直扣费路径已禁用，请使用 request_pin_for_deceased。
+        DirectPinDisabled,
     }
 
     impl<T: Config> Pallet<T> {
@@ -359,6 +373,8 @@ pub mod pallet {
             price: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            // 若直扣费关闭，则拒绝调用
+            ensure!(AllowDirectPin::<T>::get(), Error::<T>::DirectPinDisabled);
             ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
             // 将一次性费用直接转入 FeeCollector（例如 Treasury）
             {
@@ -416,7 +432,7 @@ pub mod pallet {
         /// - Origin：GovernanceOrigin（可扩展加入白名单服务商 Origin）
         /// - 行为：从到期队列中取出 ≤limit 个，到期的 CID 进行扣费；成功则推进下一次扣费并重新入队；余额不足则进入宽限或过期。
         #[pallet::call_index(11)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::charge_due(*limit))]
         pub fn charge_due(origin: OriginFor<T>, limit: u32) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             ensure!(!BillingPaused::<T>::get(), Error::<T>::BadStatus);
@@ -425,6 +441,7 @@ pub mod pallet {
             if left == 0 { return Ok(()); }
             // 取出本块到期列表
             let mut list = DueQueue::<T>::take(now);
+            let original_len = list.len() as u32;
             while left > 0 {
                 let Some(cid) = list.pop() else { break };
                 left = left.saturating_sub(1);
@@ -474,14 +491,17 @@ pub mod pallet {
                 }
             }
             // 剩余未处理的放回队列
-            if !list.is_empty() { DueQueue::<T>::insert(now, list); }
+            if !list.is_empty() { DueQueue::<T>::insert(now, list.clone()); }
+            let remaining = list.len() as u32;
+            let dequeued = original_len.saturating_sub(remaining);
+            Self::deposit_event(Event::DueQueueStats(now, original_len, dequeued, remaining));
             Ok(())
         }
 
         /// 函数级详细中文注释：治理设置/暂停计费参数。
         /// - 任何入参为 None 表示保持不变；部分更新。
         #[pallet::call_index(12)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::set_billing_params())]
         pub fn set_billing_params(
             origin: OriginFor<T>,
             price_per_gib_week: Option<u128>,
@@ -490,6 +510,7 @@ pub mod pallet {
             max_charge_per_block: Option<u32>,
             subject_min_reserve: Option<BalanceOf<T>>,
             paused: Option<bool>,
+            allow_direct_pin: Option<bool>,
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             // 参数防呆校验：确保关键参数为正，避免导致停摆或无限宽限
@@ -511,6 +532,7 @@ pub mod pallet {
             }
             if let Some(v) = subject_min_reserve { SubjectMinReserve::<T>::put(v); }
             if let Some(v) = paused { BillingPaused::<T>::put(v); }
+            if let Some(v) = allow_direct_pin { AllowDirectPin::<T>::put(v); }
             Ok(())
         }
 
@@ -719,11 +741,13 @@ pub mod pallet {
             // 探测自身是否在线：简化为本地统计，避免依赖 CreateSignedTransaction
             let _ = Self::http_get_bytes(&endpoint, &token, "/peers");
 
-            // 巡检：针对已 Pinned/Pinning 的对象，GET /pins/{cid} 矫正副本；若缺少则再 Pin
+            // 巡检：针对已 Pinned/Pinning 的对象，GET /pins/{cid} 矫正副本；若缺少则再 Pin；并统计上报
             // 注意：演示中未持有明文 CID，这里仅示意调用；生产需有 CID 解密/映射。
             // 逻辑：遍历 PinStateOf in {1=Pinning,2=Pinned}，若 assignments 存在，检查成功标记数；不足副本则再次发起 submit_pin_request。
+            let mut sample:u32=0; let mut pinning:u32=0; let mut pinned:u32=0; let mut missing:u32=0;
             for (cid_hash, state) in PinStateOf::<T>::iter() {
                 if state == 1u8 || state == 2u8 {
+                    sample = sample.saturating_add(1);
                     if let Some(assign) = PinAssignments::<T>::get(&cid_hash) {
                         let expect = PinMeta::<T>::get(&cid_hash).map(|m| m.0).unwrap_or(assign.len() as u32);
                         let mut ok_count: u32 = 0;
@@ -766,14 +790,39 @@ pub mod pallet {
                             let _ = Self::submit_pin_request(&endpoint, &token, cid_hash);
                             PinStateOf::<T>::insert(&cid_hash, 1u8);
                             Self::deposit_event(Event::PinStateChanged(cid_hash, 1));
+                            pinning = pinning.saturating_add(1);
+                        } else {
+                            pinned = pinned.saturating_add(1);
                         }
+                    } else {
+                        // 无分配但状态为 pinning/pinned，视作缺失
+                        missing = missing.saturating_add(1);
                     }
                 }
             }
+            // 事件上报（轻量只读）：不改变状态，仅供监控
+            if sample > 0 { Self::deposit_event(Event::PinProbe(sample, pinning, pinned, missing)); }
         }
     }
 
     impl<T: Config> Pallet<T> {
+        /// 函数级中文注释：只读统计 - 读取某块到期列表的长度（便于前端/索引层分页）。
+        pub fn due_at_count(block: BlockNumberFor<T>) -> u32 {
+            DueQueue::<T>::get(block).len() as u32
+        }
+        /// 函数级中文注释：只读 - 在闭区间 [from, to] 返回非空到期列表的块号与长度元组（最多 512 条）。
+        pub fn due_between(from: BlockNumberFor<T>, to: BlockNumberFor<T>) -> BoundedVec<(BlockNumberFor<T>, u32), ConstU32<512>> {
+            let mut out: BoundedVec<(BlockNumberFor<T>, u32), ConstU32<512>> = Default::default();
+            let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+            let mut n = lo;
+            while n <= hi {
+                let c = DueQueue::<T>::get(n).len() as u32;
+                if c > 0 { let _ = out.try_push((n, c)); }
+                if out.len() as u32 >= 512 { break; }
+                n = n.saturating_add(1u32.into());
+            }
+            out
+        }
         /// 函数级详细中文注释：扩散入队工具函数
         /// - 在 base..base+spread 范围内寻找首个未满的队列入队；全部满则放弃（避免单点拥塞）。
         #[inline]
@@ -862,16 +911,44 @@ pub mod pallet {
         }
     }
 
+    #[pallet::view_functions]
+    impl<T: Config> Pallet<T> {
+        /// 函数级中文注释：只读视图——派生“逝者主题资金账户”地址。
+        /// - 输入：`subject_id`（逝者 ID，u64）。
+        /// - 输出：由 `SubjectPalletId` 与 `(DeceasedDomain, subject_id)` 稳定派生的账户地址；无私钥、仅用于托管与扣费。
+        #[inline]
+        pub fn derive_subject_account_for_deceased(subject_id: u64) -> T::AccountId {
+            Self::subject_account_for_deceased(subject_id)
+        }
+
+        /// 函数级中文注释：只读视图——通用派生“主题资金账户”地址。
+        /// - 输入：`domain:u8` 与 `subject_id:u64`。
+        /// - 输出：稳定派生的账户地址，适用于多内容域统一计费场景。
+        #[inline]
+        pub fn derive_subject_account(domain: u8, subject_id: u64) -> T::AccountId {
+            Self::subject_account_for(domain, subject_id)
+        }
+    }
+
     /// 权重占位：后续通过 benchmarking 填充
     pub trait WeightInfo {
         fn request_pin() -> Weight;
         fn mark_pinned() -> Weight;
         fn mark_pin_failed() -> Weight;
+        /// 函数级中文注释：到期扣费，按 limit 线性增长（读写多项状态）。
+        fn charge_due(limit: u32) -> Weight;
+        /// 函数级中文注释：设置计费参数，常量级权重（少量读写）。
+        fn set_billing_params() -> Weight;
     }
     impl WeightInfo for () {
         fn request_pin() -> Weight { Weight::from_parts(10_000, 0) }
         fn mark_pinned() -> Weight { Weight::from_parts(10_000, 0) }
         fn mark_pin_failed() -> Weight { Weight::from_parts(10_000, 0) }
+        fn charge_due(limit: u32) -> Weight {
+            // 简化：基准前权重估算（常数项 + 每件线性项）
+            Weight::from_parts(20_000, 0).saturating_add(Weight::from_parts(5_000, 0).saturating_mul(limit.into()))
+        }
+        fn set_billing_params() -> Weight { Weight::from_parts(20_000, 0) }
     }
 }
 

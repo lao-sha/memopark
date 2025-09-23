@@ -30,21 +30,21 @@ impl pallet_deceased::Config for Runtime {
 
 ## Extrinsics
 
-- create_deceased(grave_id, name, name_badge, gender_code, bio, birth_ts, death_ts, links)
-  - 新增：name_full_cid?（可选，链下全名 CID）→ 实际签名接口为
-    `create_deceased(grave_id, name, name_badge, gender_code, bio, name_full_cid?, birth_ts, death_ts, links)`
+- create_deceased(grave_id, name, gender_code, birth_ts, death_ts, links, name_full_cid?)
   - 说明：
-    - name_badge：姓名拼音徽标（仅 A-Z，大写，去空格/符号）；
     - gender_code：0=M，1=F，2=B；
     - birth_ts/death_ts：字符串，格式 YYYYMMDD（如 19811224），必填；
-    - deceased_token：链上自动生成，不需作为参数传入，格式为 性别字母 + 出生 + 去世 + name_badge，例如 M1981122420250901LIUXIAODONG。
+    - deceased_token：链上自动生成，不需作为参数传入；格式（原始字节）为
+      `gender(1字节大写) + birth(8字节) + death(8字节) + blake2_256(name_norm)`，总长 49 字节。
+      - name_norm：去首尾空格、压缩连续空格为单个 0x20，a-z→A-Z，非 ASCII 字节原样保留。
+      - birth/death 缺省用 "00000000"。
     - 可见性：创建时默认将 `VisibilityOf(id)` 设为 `true`（公开）。
     - 去重规则：创建前将按 `deceased_token` 做唯一性校验，若已存在相同 token，则拒绝创建并返回错误 `DeceasedTokenExists`。
-- update_deceased(id, name?, name_badge?, gender_code?, bio?, birth_ts??, death_ts??, links?)
+- update_deceased(id, name?, gender_code?, name_full_cid??, birth_ts??, death_ts??, links?)
   - 新增：name_full_cid??（外层 Option 表示是否修改，内层 Option 表示设置/清空）
   - 说明：
     - birth_ts??/death_ts??：外层 Option 表示是否更新；内层 Option 表示设置为 Some(YYYYMMDD) 或 None（清空）。
-    - 令牌约束：上述字段变更会导致 `deceased_token` 重新生成；若新 token 与他人记录冲突，将拒绝更新并返回 `DeceasedTokenExists`，不会移除旧 token 或写入新 token。
+    - 令牌约束：上述字段变更会导致 `deceased_token` 重新生成（规则同上）；若新 token 与他人记录冲突，将拒绝更新并返回 `DeceasedTokenExists`，不会移除旧 token 或写入新 token。
     - 所有权：`owner` 为创建者且永久不可更换；任何试图变更所有者的行为将被拒绝（OwnerImmutable）。
 - remove_deceased(id)
   - 已禁用：为合规与审计保全，逝者创建后不可删除；本调用将始终返回 `DeletionForbidden`。
@@ -81,14 +81,14 @@ impl pallet_deceased::Config for Runtime {
 - DeceasedOf: DeceasedId -> Deceased
 - DeceasedByGrave: GraveId -> BoundedVec<DeceasedId>
 - VisibilityOf: DeceasedId -> bool（OptionQuery；None 视作 true）
+- DeceasedHistory: DeceasedId -> Vec<VersionEntry{version, editor, at}>, 最多 512 条
 
 ### Deceased 结构体
-- 增加字段：
-  - name_badge: BoundedVec<u8>（仅 A-Z 大写）
+- 字段：
   - gender: 枚举 M/F/B
   - birth_ts: Option<BoundedVec<u8>>（YYYYMMDD）
   - death_ts: Option<BoundedVec<u8>>（YYYYMMDD）
-  - deceased_token: BoundedVec<u8>（自动生成：gender+birth+death+name_badge）
+  - deceased_token: BoundedVec<u8>（自动生成：gender+birth(8)+death(8)+blake2_256(name_norm)）
   - name_full_cid: Option<BoundedVec<u8>>（完整姓名链下指针，建议前端通过该 CID 展示全名）
   - main_image_cid: Option<BoundedVec<u8>>（主图 CID；用于头像/主图展示）
 
@@ -102,6 +102,11 @@ impl pallet_deceased::Config for Runtime {
   - 从 v2 迁移至 v3：新增 `name_full_cid=None`，不改变既有字段含义。
 - StorageVersion = 5：
   - 从 v4 迁移至 v5：为 `Deceased` 新增 `main_image_cid=None` 字段。
+
+### 版本与事件（新增）
+- 结构 `Deceased` 新增字段 `version: u32`（从 1 起）。
+- 每次资料修改（`update_deceased`、`gov_update_profile`）将自增 `version`，并将 {version, editor, at} 追加到 `DeceasedHistory`。
+- 相关事件：沿用 `DeceasedUpdated(id)`；前端/索引可据此读取最新版本并查询历史。
 
 ## 逝者↔逝者关系（族谱）
 - 存储：

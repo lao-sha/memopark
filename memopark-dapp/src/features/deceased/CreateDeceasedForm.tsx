@@ -7,8 +7,8 @@ import { getApi } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：创建逝者表单（挂接到指定墓位）
- * - 对应后端 `pallet-deceased::create_deceased(grave_id, name, name_badge, gender_code, name_full_cid?, birth_ts, death_ts, links[])`
- * - name/name_badge/birth_ts/death_ts/links 等提交为字节数组（Array<number>），与链上 Vec<u8> 对齐
+ * - 对应后端 `pallet-deceased::create_deceased(grave_id, name, gender_code, name_full_cid?, birth_ts, death_ts, links[])`
+ * - name/birth_ts/death_ts/links 等提交为字节数组（Array<number>），与链上 Vec<u8> 对齐
  * - 性别：0=男，1=女，2=保密（默认）
  * - 出生与离世日期格式：YYYYMMDD（8位数字），前端进行强校验
  * - 错误处理：结合错误映射，提示无权限/墓位不存在/已达上限/输入不合法/重复 token 等
@@ -96,7 +96,7 @@ const CreateDeceasedForm: React.FC = () => {
   /**
    * 函数级中文注释：将徽标规范化为仅含 A-Z 的大写字母
    */
-  const toBadge = React.useCallback((s: string): string => String(s || '').toUpperCase().replace(/[^A-Z]/g, ''), [])
+  // name_badge 已移除
 
   /**
    * 函数级中文注释：校验 YYYYMMDD（8 位数字）
@@ -115,7 +115,6 @@ const CreateDeceasedForm: React.FC = () => {
       if (!gid && gid !== 0) { setSubmitting(false); return message.warning('请填写墓位ID') }
       const name = String(v.name || '').trim()
       if (!name) { setSubmitting(false); return message.warning('请填写姓名') }
-      const badge = toBadge(v.name_badge || name)
       const gender = Number(v.gender_code ?? 2)
       const birth = String(v.birth_ts || '')
       const death = String(v.death_ts || '')
@@ -126,7 +125,6 @@ const CreateDeceasedForm: React.FC = () => {
       const args: any[] = [
         gid,
         toBytes(name),
-        toBytes(badge),
         gender,
         v.name_full_cid ? toBytes(String(v.name_full_cid||'')) : null,
         toBytes(birth),
@@ -141,7 +139,7 @@ const CreateDeceasedForm: React.FC = () => {
     } finally {
       // 结束在确认密码流程统一处理 loading
     }
-  }, [toBadge, toBytes, isYYYYMMDD])
+  }, [toBytes, isYYYYMMDD])
 
   /**
    * 函数级中文注释：确认密码并提交交易
@@ -185,17 +183,7 @@ const CreateDeceasedForm: React.FC = () => {
     }
   }, [pwdVal, form])
 
-  // 根据姓名自动生成徽标，用户手动修改时不覆盖
-  const nameChangedRef = React.useRef(false)
-  const onNameChange = (e: any) => {
-    const v = String(e?.target?.value || '')
-    if (!nameChangedRef.current) {
-      const badge = toBadge(v)
-      if (form.getFieldValue('name_badge') == null || form.getFieldValue('name_badge') === '') {
-        form.setFieldsValue({ name_badge: badge })
-      }
-    }
-  }
+  const onNameChange = (_e: any) => {}
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'left', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
@@ -232,9 +220,7 @@ const CreateDeceasedForm: React.FC = () => {
           <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请填写姓名' }]}>
             <Input placeholder="请输入姓名" onChange={onNameChange} />
           </Form.Item>
-          <Form.Item label="姓名徽标（仅A-Z，自动生成可编辑）" name="name_badge">
-            <Input placeholder="例如：LIUXIAODONG" onChange={() => { nameChangedRef.current = true }} />
-          </Form.Item>
+          {/* name_badge 字段已移除 */}
           <Form.Item label="性别" name="gender_code" initialValue={2}>
             <Radio.Group>
               <Radio value={0}>男</Radio>
@@ -289,9 +275,8 @@ const CreateDeceasedForm: React.FC = () => {
         <Divider />
         <Typography.Title level={5} style={{ marginTop: 0 }}>使用说明</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-          1) 姓名徽标仅保留大写英文字母；2) 出生/离世日期需为 YYYYMMDD；
-          3) 完整姓名建议链下存储，填入 CID；4) 与墓位关联需具备墓主/管理员权限；
-          5) 若提示“已达上限”，请迁移至其他墓位或清理后再试。
+          1) 出生/离世日期需为 YYYYMMDD；2) 完整姓名建议链下存储，填入 CID；
+          3) 与墓位关联需具备墓主/管理员权限；4) 若提示“已达上限”，请迁移或清理后再试。
         </Typography.Paragraph>
       </div>
     </div>

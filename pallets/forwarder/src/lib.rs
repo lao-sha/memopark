@@ -21,7 +21,8 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_core::sr25519;
-    use sp_runtime::{traits::{StaticLookup, Dispatchable, Zero}, RuntimeDebug};
+    use sp_runtime::{traits::{StaticLookup, Dispatchable, Zero, Saturating}, RuntimeDebug};
+    use sp_runtime::traits::{Verify, IdentifyAccount};
     use frame_system::RawOrigin;
     use codec::Decode;
     use sp_core::Pair;
@@ -88,14 +89,31 @@ pub mod pallet {
         type MaxMetaLen: Get<u32>;
         /// SessionPermit 字节上限
         type MaxPermitLen: Get<u32>;
+        /// 是否强制校验 open_session 的所有者签名；默认由运行时配置
+        type RequirePermitSig: Get<bool>;
         /// 是否强制校验 forward 的会话签名（与存储中公钥一致）；默认由运行时配置
         type RequireMetaSig: Get<bool>;
         /// 每会话最多允许的转发次数（速率/配额控制）
         type MaxCallsPerSession: Get<u32>;
         /// 每会话累计允许的 ref_time 权重上限
         type MaxWeightPerSessionRefTime: Get<u64>;
+        /// 函数级中文注释：最小有效期 TTL（区块）。forward 的 meta.valid_till 至少需要大于当前块 + 该常量。
+        type MinMetaTxTTL: Get<BlockNumberFor<Self>>;
+        /// 函数级中文注释：每块最多允许的代付转发条数（全局节流）。
+        #[pallet::constant]
+        type MaxForwardedPerBlock: Get<u32>;
+        /// 函数级中文注释：赞助者×命名空间的统计窗口（块）。
+        #[pallet::constant]
+        type ForwarderWindowBlocks: Get<BlockNumberFor<Self>>;
         /// 权重信息接口
         type WeightInfo: WeightInfo;
+
+        /// 函数级中文注释：所有者签名与公钥类型（用于对 SessionPermit 做离线签名校验）。
+        /// - PermitSignature 一般绑定为 MultiSignature；PermitSigner 绑定为 MultiSigner；
+        /// - 这样即可兼容 sr25519/ed25519/ecdsa 多曲线；
+        /// - 校验时需携带 `owner_signer`（公钥多签封装），并验证其 into_account() == permit.owner。
+        type PermitSignature: Verify<Signer = Self::PermitSigner> + codec::Decode + codec::MaxEncodedLen + TypeInfo + Parameter;
+        type PermitSigner: IdentifyAccount<AccountId = Self::AccountId> + codec::Decode + TypeInfo + Parameter + Clone;
     }
 
     #[pallet::pallet]
@@ -110,6 +128,14 @@ pub mod pallet {
         Blake2_128Concat, [u8; 16],
         SessionPermit<T::AccountId, BlockNumberFor<T>>, OptionQuery
     >;
+
+    /// 函数级中文注释：每块代付转发条数统计（用于全局节流）。
+    #[pallet::storage]
+    pub type ForwardedPerBlock<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, u32, ValueQuery>;
+
+    /// 函数级中文注释：赞助者×命名空间的窗口统计 (window_start, calls, ref_time)。
+    #[pallet::storage]
+    pub type SponsorWindowStats<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::AccountId, Blake2_128Concat, [u8;8], (BlockNumberFor<T>, u32, u64), ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_nonce)]
@@ -156,6 +182,8 @@ pub mod pallet {
         BadNonce,
         /// 禁止的调用（如 batch/dispatch_as 等）
         ForbiddenCall,
+        /// 签名非法
+        BadSignature,
     }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
@@ -169,7 +197,12 @@ pub mod pallet {
         #[pallet::call_index(0)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::open_session())]
-        pub fn open_session(origin: OriginFor<T>, permit_bytes: BoundedVec<u8, T::MaxPermitLen>) -> DispatchResult {
+        pub fn open_session(
+            origin: OriginFor<T>,
+            permit_bytes: BoundedVec<u8, T::MaxPermitLen>,
+            owner_signer: T::PermitSigner,
+            owner_sig: Vec<u8>,
+        ) -> DispatchResult {
             let sponsor = ensure_signed(origin)?;
             // 解码离线许可
             let mut input = &permit_bytes[..];
@@ -179,6 +212,24 @@ pub mod pallet {
             ensure!(T::Authorizer::is_sponsor_allowed(permit.ns, &sponsor), Error::<T>::SponsorNotAllowed);
             let now = frame_system::Pallet::<T>::block_number();
             ensure!(now <= permit.expires_at, Error::<T>::BadSession);
+
+            // 所有者签名强校验（可由运行时开关控制）
+            if T::RequirePermitSig::get() {
+                // 1) 校验公钥与账户映射一致（owner_signer.into_account() == permit.owner）
+                let derived = owner_signer.clone().into_account();
+                ensure!(derived == permit.owner, Error::<T>::BadSession);
+                // 2) 构造签名消息：scale(permit_bytes) + genesis_hash + 域分隔符
+                let mut msg = permit_bytes.to_vec();
+                let gh = frame_system::Pallet::<T>::block_hash::<frame_system::pallet_prelude::BlockNumberFor<T>>(Zero::zero());
+                msg.extend_from_slice(gh.as_ref());
+                const DOMAIN_PERMIT: &[u8] = b"/mp/fwd/permit/v1";
+                msg.extend_from_slice(DOMAIN_PERMIT);
+                // 3) 解析并校验签名（要求为 SCALE 编码的 MultiSignature 变体）
+                let mut sig_input = &owner_sig[..];
+                let sig = <T as Config>::PermitSignature::decode(&mut sig_input).map_err(|_| Error::<T>::BadSignature)?;
+                ensure!(sig.verify(msg.as_slice(), &derived), Error::<T>::BadSignature);
+            }
+
             Sessions::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, permit.clone());
             SessionNonce::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, 0u64);
             SessionStats::<T>::insert((permit.owner.clone(), permit.ns), permit.session_id, (0u32, 0u64));
@@ -224,7 +275,15 @@ pub mod pallet {
             // 会话存在与未过期
             let maybe = Sessions::<T>::get((owner.clone(), meta.ns), meta.session_id).ok_or(Error::<T>::BadSession)?;
             let now = frame_system::Pallet::<T>::block_number();
-            ensure!(now <= maybe.expires_at && now <= meta.valid_till, Error::<T>::BadSession);
+            // 校验会话与 meta 的过期，同时要求 meta 至少满足最小 TTL
+            if !(now <= maybe.expires_at) {
+                Self::deposit_event(Event::ForwardFailed { owner: owner.clone(), sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id, code: 1 });
+                return Err(Error::<T>::BadSession.into())
+            }
+            if !(now <= meta.valid_till && meta.valid_till.saturating_sub(now) >= T::MinMetaTxTTL::get()) {
+                Self::deposit_event(Event::ForwardFailed { owner: owner.clone(), sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id, code: 2 });
+                return Err(Error::<T>::BadSession.into())
+            }
 
             // 会话签名校验（可选，运行时控制）
             if T::RequireMetaSig::get() {
@@ -274,15 +333,31 @@ pub mod pallet {
             ensure!(meta.nonce == next, Error::<T>::BadNonce);
             SessionNonce::<T>::insert((owner.clone(), meta.ns), meta.session_id, next.saturating_add(1));
 
+            // 全局节流：每块最多 MaxForwardedPerBlock
+            let per_blk = ForwardedPerBlock::<T>::get(now);
+            ensure!(per_blk < T::MaxForwardedPerBlock::get(), Error::<T>::ForbiddenCall);
+            ForwardedPerBlock::<T>::insert(now, per_blk.saturating_add(1));
+
             // 以用户身份执行真实调用
             let dispatch_result = meta.call.dispatch(RawOrigin::Signed(owner.clone()).into());
 
             // 事件（无论成功与否，外层费用由赞助者承担）
             if dispatch_result.is_ok() {
-                Self::deposit_event(Event::Forwarded { owner, sponsor, ns: meta.ns, session_id: meta.session_id });
+                Self::deposit_event(Event::Forwarded { owner, sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id });
             } else {
-                Self::deposit_event(Event::ForwardFailed { owner, sponsor, ns: meta.ns, session_id: meta.session_id, code: 7 });
+                Self::deposit_event(Event::ForwardFailed { owner, sponsor: sponsor.clone(), ns: meta.ns, session_id: meta.session_id, code: 7 });
             }
+
+            // 窗口统计：赞助者×ns
+            SponsorWindowStats::<T>::mutate(sponsor.clone(), meta.ns, |w| {
+                let wb = T::ForwarderWindowBlocks::get();
+                let now_blk = now;
+                if now_blk.saturating_sub(w.0) >= wb { w.0 = now_blk; w.1 = 0; w.2 = 0; }
+                w.1 = w.1.saturating_add(1);
+                w.2 = w.2
+                    .saturating_add(info.call_weight.ref_time())
+                    .saturating_add(info.extension_weight.ref_time());
+            });
 
             dispatch_result
         }
@@ -307,6 +382,14 @@ pub mod pallet {
             }
             Ok(())
         }
+    }
+
+    #[pallet::view_functions]
+    impl<T: Config> Pallet<T> {
+        /// 只读：读取指定区块的代付条数
+        pub fn forwarded_count_at(n: BlockNumberFor<T>) -> u32 { ForwardedPerBlock::<T>::get(n) }
+        /// 只读：读取赞助者×命名空间的统计窗口 (window_start, calls, ref_time)
+        pub fn sponsor_window_stats(sponsor: T::AccountId, ns: [u8;8]) -> (BlockNumberFor<T>, u32, u64) { SponsorWindowStats::<T>::get(sponsor, ns) }
     }
 }
 

@@ -26,3 +26,5 @@ alwaysApply: true
 19、前端页面编码前，先查看链上 对应pallet 的可调用接口名称，保证前端页面组件功能的完整性 
 20、禁止cursor修改memopark-front-end文件夹所有内容
 21、前端设计，要求组件化
+22、禁止修改官方pallet，仅修改自研pallet
+23、链端要给前端返回详细的错误信息

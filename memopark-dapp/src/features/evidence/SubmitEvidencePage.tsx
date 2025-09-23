@@ -24,6 +24,8 @@ const SubmitEvidencePage: React.FC = () => {
       const ns = NAMESPACES.evidence
       const nonce = Number(values.nonce || 0)
       const validTill = Number(values.valid_till || 0)
+      if (nonce < 0) throw new Error('nonce 必须为非负整数')
+      if (validTill <= 0) throw new Error('validTill 应为未来区块高度，避免过期')
       const call = {
         section: 'evidence',
         method: values.method,

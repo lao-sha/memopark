@@ -53,6 +53,24 @@ pub trait WeightInfo {
     fn add_cover_option() -> Weight;
     fn remove_cover_option() -> Weight;
     fn set_cover_from_option() -> Weight;
+    /// 函数级中文注释：设置/清除背景音乐（仅墓主）。
+    fn set_audio() -> Weight;
+    fn clear_audio() -> Weight;
+    /// 函数级中文注释：通过治理设置/清除背景音乐。
+    fn set_audio_via_governance() -> Weight;
+    fn clear_audio_via_governance() -> Weight;
+    /// 函数级中文注释：公共音频目录管理与选择。
+    fn add_audio_option() -> Weight;
+    fn remove_audio_option() -> Weight;
+    fn set_audio_from_option() -> Weight;
+    /// 函数级中文注释：私有音频候选维护与选择。
+    fn add_private_audio_option() -> Weight;
+    fn remove_private_audio_option() -> Weight;
+    fn set_audio_from_private_option() -> Weight;
+    /// 函数级中文注释：设置播放列表（线性依赖于 items 长度）。
+    fn set_audio_playlist(len: u32) -> Weight;
+    /// 函数级中文注释：设置首页轮播（线性依赖于 items 长度）。
+    fn set_carousel(len: u32) -> Weight;
 }
 
 /// 函数级中文注释：未基准化前的兜底实现，全部返回零权重。
@@ -89,6 +107,18 @@ impl WeightInfo for TestWeights {
     fn add_cover_option() -> Weight { Weight::zero() }
     fn remove_cover_option() -> Weight { Weight::zero() }
     fn set_cover_from_option() -> Weight { Weight::zero() }
+    fn set_audio() -> Weight { Weight::zero() }
+    fn clear_audio() -> Weight { Weight::zero() }
+    fn set_audio_via_governance() -> Weight { Weight::zero() }
+    fn clear_audio_via_governance() -> Weight { Weight::zero() }
+    fn add_audio_option() -> Weight { Weight::zero() }
+    fn remove_audio_option() -> Weight { Weight::zero() }
+    fn set_audio_from_option() -> Weight { Weight::zero() }
+    fn add_private_audio_option() -> Weight { Weight::zero() }
+    fn remove_private_audio_option() -> Weight { Weight::zero() }
+    fn set_audio_from_private_option() -> Weight { Weight::zero() }
+    fn set_audio_playlist(_len: u32) -> Weight { Weight::zero() }
+    fn set_carousel(_len: u32) -> Weight { Weight::zero() }
 }
 
 

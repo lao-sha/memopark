@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+use sp_core::Get;
 pub use pallet::*;
 
 // 函数级中文注释：权重模块导入，提供 WeightInfo 接口用于基于输入规模计算交易权重。
@@ -20,6 +21,8 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use alloc::vec::Vec;
 	use sp_core::H256;
+    use sp_core::blake2_256;
+	use sp_runtime::traits::Saturating;
 	use alloc::collections::BTreeSet;
 	use crate::weights::WeightInfo;
 
@@ -62,6 +65,24 @@ pub mod pallet {
 		#[pallet::constant] type EvidenceNsBytes: Get<[u8; 8]>;
 		/// 授权适配器：由 runtime 桥接到 pallet-authorizer，避免本 Pallet 直接依赖其 Config 约束
 		type Authorizer: EvidenceAuthorizer<Self::AccountId>;
+        /// 函数级中文注释：每 (domain,target_id) 允许的最大证据条数（提交维度，链接不计数）。
+        #[pallet::constant]
+        type MaxPerSubjectTarget: Get<u32>;
+        /// 函数级中文注释：每 (ns,subject_id) 允许的最大证据条数（commit_hash 维度）。
+        #[pallet::constant]
+        type MaxPerSubjectNs: Get<u32>;
+        /// 函数级中文注释：账号限频窗口大小（块）。
+        #[pallet::constant]
+        type WindowBlocks: Get<BlockNumberFor<Self>>;
+        /// 函数级中文注释：窗口内账号最多允许的提交次数。
+        #[pallet::constant]
+        type MaxPerWindow: Get<u32>;
+        /// 函数级中文注释：启用 Plain 模式全局 CID 去重（blake2_256）。
+        #[pallet::constant]
+        type EnableGlobalCidDedup: Get<bool>;
+        /// 函数级中文注释：只读分页返回上限（防御性限制）。
+        #[pallet::constant]
+        type MaxListLen: Get<u32>;
 		/// 权重信息接口：由 runtime 提供自动生成或手写的权重实现
 		type WeightInfo: WeightInfo;
 	}
@@ -86,7 +107,26 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type CommitIndex<T: Config> = StorageMap<_, Blake2_128Concat, H256, u64, OptionQuery>;
 
-	#[pallet::event]
+    /// 函数级中文注释：Plain 模式全局 CID 去重索引（可选）。
+    /// - key 为 blake2_256(cid)；value 为 EvidenceId（首次出现的记录）。
+    #[pallet::storage]
+    pub type CidHashIndex<T: Config> = StorageMap<_, Blake2_128Concat, H256, u64, OptionQuery>;
+
+    /// 函数级中文注释：每主体（domain,target）下的证据提交计数（链接操作不计数）。
+    #[pallet::storage]
+    pub type EvidenceCountByTarget<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), u32, ValueQuery>;
+
+    /// 函数级中文注释：每主体（ns,subject_id）下的证据提交计数（commit_hash 路径）。
+    #[pallet::storage]
+    pub type EvidenceCountByNs<T: Config> = StorageMap<_, Blake2_128Concat, ([u8; 8], u64), u32, ValueQuery>;
+
+    /// 函数级中文注释：账户限频窗口存储（窗口起点与计数）。
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
+    pub struct WindowInfo<BlockNumber> { pub window_start: BlockNumber, pub count: u32 }
+    #[pallet::storage]
+    pub type AccountWindows<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, WindowInfo<BlockNumberFor<T>>, ValueQuery>;
+
+    #[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		EvidenceCommitted { id: u64, domain: u8, target_id: u64, owner: T::AccountId },
@@ -96,6 +136,10 @@ pub mod pallet {
 		EvidenceCommittedV2 { id: u64, ns: [u8; 8], subject_id: u64, owner: T::AccountId },
 		EvidenceLinkedV2 { ns: [u8; 8], subject_id: u64, id: u64 },
 		EvidenceUnlinkedV2 { ns: [u8; 8], subject_id: u64, id: u64 },
+        /// 函数级中文注释：因限频或配额被限制（便于前端提示）。
+        EvidenceThrottled(T::AccountId, u8 /*reason_code: 1=RateLimited,2=Quota*/ ),
+        /// 函数级中文注释：达到主体配额上限。
+        EvidenceQuotaReached(u8 /*0=target,1=ns*/, u64 /*subject_id or target_id*/ ),
 	}
 
 	#[pallet::error]
@@ -118,11 +162,17 @@ pub mod pallet {
 		CommitAlreadyExists,
 		/// 证据命名空间与当前操作命名空间不匹配
 		NamespaceMismatch,
+        /// 账号在窗口内达到提交上限
+        RateLimited,
+        /// 该主体已达到最大证据条数
+        TooManyForSubject,
+        /// 全局 CID 去重命中（Plain 模式）
+        DuplicateCidGlobal,
 	}
 
-	#[allow(deprecated)]
-	#[pallet::call]
-	impl<T: Config> Pallet<T> {
+    #[allow(deprecated)]
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
 		/// 函数级中文注释：提交证据，生成 EvidenceId 并落库；仅授权账户可提交。
 		#[pallet::call_index(0)]
 		#[allow(deprecated)]
@@ -140,10 +190,17 @@ pub mod pallet {
 			// Authorizer 鉴权（通过适配器，解耦到 runtime）
 			let ns = T::EvidenceNsBytes::get();
 			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
+			// 限频与配额
+			let now = <frame_system::Pallet<T>>::block_number();
+			Self::touch_window(&who, now)?;
+			let cnt = EvidenceCountByTarget::<T>::get((domain, target_id));
+			ensure!(cnt < T::MaxPerSubjectTarget::get(), Error::<T>::TooManyForSubject);
 			// 校验 CID（长度/格式/重复）与数量上限
 			Self::validate_cid_vec(&imgs)?;
 			Self::validate_cid_vec(&vids)?;
 			Self::validate_cid_vec(&docs)?;
+			// 可选全局去重
+			Self::ensure_global_cid_unique([&imgs, &vids, &docs])?;
 			let imgs_bounded: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxImg> = imgs.try_into().map_err(|_| Error::<T>::TooManyImages)?;
 			let vids_bounded: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxVid> = vids.try_into().map_err(|_| Error::<T>::TooManyVideos)?;
 			let docs_bounded: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxDoc> = docs.try_into().map_err(|_| Error::<T>::TooManyDocs)?;
@@ -151,6 +208,15 @@ pub mod pallet {
 			let ev = Evidence { id, domain, target_id, owner: who.clone(), imgs: imgs_bounded, vids: vids_bounded, docs: docs_bounded, memo, commit: None, ns: Some(ns) };
 			Evidences::<T>::insert(id, &ev);
 			EvidenceByTarget::<T>::insert((domain, target_id), id, ());
+			// 计数 + 去重索引落库
+			EvidenceCountByTarget::<T>::insert((domain, target_id), cnt.saturating_add(1));
+			if T::EnableGlobalCidDedup::get() {
+				for cid in ev.imgs.iter() { let h = H256::from(blake2_256(&cid.clone().into_inner())); if CidHashIndex::<T>::get(h).is_none() { CidHashIndex::<T>::insert(h, id); } }
+				for cid in ev.vids.iter() { let h = H256::from(blake2_256(&cid.clone().into_inner())); if CidHashIndex::<T>::get(h).is_none() { CidHashIndex::<T>::insert(h, id); } }
+				for cid in ev.docs.iter() { let h = H256::from(blake2_256(&cid.clone().into_inner())); if CidHashIndex::<T>::get(h).is_none() { CidHashIndex::<T>::insert(h, id); } }
+			}
+
+	// 只读方法移至模块外部以避免 non_local_definitions 警告在 -D warnings 下被提升为错误。
 			Self::deposit_event(Event::EvidenceCommitted { id, domain, target_id, owner: who });
 			Ok(())
 		}
@@ -173,6 +239,11 @@ pub mod pallet {
 			ensure!(<T as Config>::Authorizer::is_authorized(ns, &who), Error::<T>::NotAuthorized);
 			// 防重：承诺哈希唯一
 			ensure!(CommitIndex::<T>::get(commit).is_none(), Error::<T>::CommitAlreadyExists);
+			// 限频与配额
+			let now = <frame_system::Pallet<T>>::block_number();
+			Self::touch_window(&who, now)?;
+			let cnt = EvidenceCountByNs::<T>::get((ns, subject_id));
+			ensure!(cnt < T::MaxPerSubjectNs::get(), Error::<T>::TooManyForSubject);
 			let id = NextEvidenceId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
 			let empty_imgs: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxImg> = Default::default();
 			let empty_vids: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxVid> = Default::default();
@@ -192,6 +263,7 @@ pub mod pallet {
 			Evidences::<T>::insert(id, &ev);
 			EvidenceByNs::<T>::insert((ns, subject_id), id, ());
 			CommitIndex::<T>::insert(commit, id);
+			EvidenceCountByNs::<T>::insert((ns, subject_id), cnt.saturating_add(1));
 			Self::deposit_event(Event::EvidenceCommittedV2 { id, ns, subject_id, owner: who });
 			Ok(())
 		}
@@ -253,6 +325,8 @@ pub mod pallet {
 			Self::deposit_event(Event::EvidenceUnlinkedV2 { ns, subject_id, id });
 			Ok(())
 		}
+
+		// 只读接口应放置在 inherent impl 中，而非 extrinsics 块。
 	}
 
 	/// 授权适配接口：由 runtime 实现并桥接到 `pallet-authorizer`，以保持低耦合。
@@ -268,6 +342,19 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
+        /// 函数级中文注释：限频检查并计数。
+        /// - 进入窗口：超过 WindowBlocks 自动滚动窗口并清零计数；严格小于最大次数方可提交。
+        fn touch_window(who: &T::AccountId, now: BlockNumberFor<T>) -> Result<(), Error<T>> {
+            AccountWindows::<T>::mutate(who, |w| {
+                let wb = T::WindowBlocks::get();
+                if now.saturating_sub(w.window_start) >= wb { w.window_start = now; w.count = 0; }
+            });
+            let info = AccountWindows::<T>::get(who);
+            ensure!(info.count < T::MaxPerWindow::get(), Error::<T>::RateLimited);
+            AccountWindows::<T>::mutate(who, |w| { w.count = w.count.saturating_add(1); });
+            Ok(())
+        }
+
 		/// 函数级中文注释：校验一组 CID 的格式与去重要求。
 		/// 规则：每个 CID 必须非空、全部为可见 ASCII（0x21..=0x7E）；组内不得重复。
 		fn validate_cid_vec(list: &Vec<BoundedVec<u8, T::MaxCidLen>>) -> Result<(), Error<T>> {
@@ -280,8 +367,56 @@ pub mod pallet {
 			}
 			Ok(())
 		}
+
+        /// 函数级中文注释：可选的全局 CID 去重检查（Plain 模式）。
+        /// - EnableGlobalCidDedup=true 时，逐个 CID 计算 blake2_256 并查重；首次出现时在提交成功后写入索引。
+        fn ensure_global_cid_unique(list_groups: [&Vec<BoundedVec<u8, T::MaxCidLen>>; 3]) -> Result<(), Error<T>> {
+            if !T::EnableGlobalCidDedup::get() { return Ok(()); }
+            for list in list_groups.into_iter() {
+                for cid in list.iter() {
+                    let h = H256::from(blake2_256(&cid.clone().into_inner()));
+                    if CidHashIndex::<T>::get(h).is_some() { return Err(Error::<T>::DuplicateCidGlobal); }
+                }
+            }
+            Ok(())
+        }
 	}
 
+}
+
+// ===== 只读方法（模块外部，避免 non_local_definitions）=====
+impl<T: pallet::Config> Pallet<T> {
+    /// 函数级中文注释：只读-按 (domain,target) 分页列出 evidence id（从 start_id 起，最多 MaxListLen 条）。
+    pub fn list_ids_by_target(domain: u8, target_id: u64, start_id: u64, limit: u32) -> alloc::vec::Vec<u64> {
+        let mut out: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
+        let mut cnt: u32 = 0;
+        let cap = core::cmp::min(limit, T::MaxListLen::get());
+        for id in pallet::EvidenceByTarget::<T>::iter_key_prefix((domain, target_id)) {
+            if id < start_id { continue; }
+            out.push(id);
+            cnt = cnt.saturating_add(1);
+            if cnt >= cap { break; }
+        }
+        out
+    }
+
+    /// 函数级中文注释：只读-按 (ns,subject_id) 分页列出 evidence id（从 start_id 起，最多 MaxListLen 条）。
+    pub fn list_ids_by_ns(ns: [u8; 8], subject_id: u64, start_id: u64, limit: u32) -> alloc::vec::Vec<u64> {
+        let mut out: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
+        let mut cnt: u32 = 0;
+        let cap = core::cmp::min(limit, T::MaxListLen::get());
+        for id in pallet::EvidenceByNs::<T>::iter_key_prefix((ns, subject_id)) {
+            if id < start_id { continue; }
+            out.push(id);
+            cnt = cnt.saturating_add(1);
+            if cnt >= cap { break; }
+        }
+        out
+    }
+
+    /// 函数级中文注释：只读-获取主体证据数量。
+    pub fn count_by_target(domain: u8, target_id: u64) -> u32 { pallet::EvidenceCountByTarget::<T>::get((domain, target_id)) }
+    pub fn count_by_ns(ns: [u8; 8], subject_id: u64) -> u32 { pallet::EvidenceCountByNs::<T>::get((ns, subject_id)) }
 }
 
 
