@@ -59,6 +59,9 @@ import IdentityViewerPage from './features/identity/IdentityViewerPage';
 import OriginRestrictionPage from './features/origin/OriginRestrictionPage';
 import RewardParamsPanel from './features/affiliate/RewardParamsPanel';
 import BridgeParamsPage from './features/bridge/BridgeParamsPage';
+import ClaimMemoForm from './features/otc/ClaimMemoForm';
+import CreateOrderPage from './features/otc/CreateOrderPage';
+import PayCreateTestPage from './features/otc/PayCreateTestPage';
 
 /**
  * 函数级详细中文注释：应用主组件
@@ -124,6 +127,9 @@ const App: React.FC = () => {
                 : hash === '#/bridge/lock' ? <BridgeLockPage />
                 : hash === '#/ledger/cleanup' ? <LedgerCleanupPage />
                 : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
+                : hash === '#/otc/order' ? <CreateOrderPage />
+                : hash === '#/otc/pay-test' ? <PayCreateTestPage />
+                : hash === '#/otc/claim' ? <ClaimMemoForm />
                 : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
                 : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
                 : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
