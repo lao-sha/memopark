@@ -1,7 +1,7 @@
 //! 函数级中文注释：pallet-ledger 权重信息定义与默认实现（基准占位）。
 //! - 后续可通过 frame-benchmarking 自动生成替换本实现。
 
-use frame_support::weights::{Weight, constants::RocksDbWeight};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 
 pub trait WeightInfo {
     /// 清理接口：按 before_week 清理，参数为 limit（影响迭代次数）
@@ -38,9 +38,15 @@ impl<T> WeightInfo for SubstrateWeight<T> {
 
     fn record_from_hook_with_amount(has_amount: bool, has_dedup: bool) -> Weight {
         let w = RocksDbWeight::get();
-        let mut base = Weight::from_parts(12_000, 0).saturating_add(w.reads(1)).saturating_add(w.writes(1));
-        if has_amount { base = base.saturating_add(w.reads_writes(1, 1)); }
-        if has_dedup { base = base.saturating_add(w.reads_writes(1, 1)); }
+        let mut base = Weight::from_parts(12_000, 0)
+            .saturating_add(w.reads(1))
+            .saturating_add(w.writes(1));
+        if has_amount {
+            base = base.saturating_add(w.reads_writes(1, 1));
+        }
+        if has_dedup {
+            base = base.saturating_add(w.reads_writes(1, 1));
+        }
         base
     }
 
@@ -57,5 +63,3 @@ impl<T> WeightInfo for SubstrateWeight<T> {
             .saturating_add(Weight::from_parts(2_000, 0).saturating_mul(weeks.into()))
     }
 }
-
-

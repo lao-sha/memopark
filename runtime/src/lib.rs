@@ -11,13 +11,13 @@ pub mod configs;
 
 extern crate alloc;
 use alloc::vec::Vec;
-use sp_runtime::{
-	generic, impl_opaque_keys,
-	traits::{BlakeTwo256, IdentifyAccount, Verify},
-	MultiAddress, MultiSignature,
-};
 use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::weights::Weight;
+use sp_runtime::{
+    generic, impl_opaque_keys,
+    traits::{BlakeTwo256, IdentifyAccount, Verify},
+    MultiAddress, MultiSignature,
+};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -36,62 +36,62 @@ pub mod genesis_config_presets;
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
 /// to even the core data structures.
 pub mod opaque {
-	use super::*;
-	use sp_runtime::{
-		generic,
-		traits::{BlakeTwo256, Hash as HashT},
-	};
+    use super::*;
+    use sp_runtime::{
+        generic,
+        traits::{BlakeTwo256, Hash as HashT},
+    };
 
-	pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
-	/// Opaque block header type.
-	pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-	/// Opaque block type.
-	pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-	/// Opaque block identifier type.
-	pub type BlockId = generic::BlockId<Block>;
-	/// Opaque block hash type.
-	pub type Hash = <BlakeTwo256 as HashT>::Output;
+    /// Opaque block header type.
+    pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
+    /// Opaque block type.
+    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+    /// Opaque block identifier type.
+    pub type BlockId = generic::BlockId<Block>;
+    /// Opaque block hash type.
+    pub type Hash = <BlakeTwo256 as HashT>::Output;
 }
 
 impl_opaque_keys! {
-	pub struct SessionKeys {
-		pub aura: Aura,
-		pub grandpa: Grandpa,
-	}
+    pub struct SessionKeys {
+        pub aura: Aura,
+        pub grandpa: Grandpa,
+    }
 }
 
 // To learn more about runtime versioning, see:
 // https://docs.substrate.io/main-docs/build/upgrade#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
-	impl_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
-	authoring_version: 1,
-	// The version of the runtime specification. A full node will not attempt to use its native
-	//   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
-	//   `spec_version`, and `authoring_version` are the same between Wasm and native.
-	// This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
-	//   the compatible custom types.
-	spec_version: 101,
-	impl_version: 1,
-	apis: apis::RUNTIME_API_VERSIONS,
-	transaction_version: 1,
-	system_version: 1,
+    spec_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
+    impl_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
+    authoring_version: 1,
+    // The version of the runtime specification. A full node will not attempt to use its native
+    //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
+    //   `spec_version`, and `authoring_version` are the same between Wasm and native.
+    // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
+    //   the compatible custom types.
+    spec_version: 101,
+    impl_version: 1,
+    apis: apis::RUNTIME_API_VERSIONS,
+    transaction_version: 1,
+    system_version: 1,
 };
 
 mod block_times {
-	/// This determines the average expected block time that we are targeting. Blocks will be
-	/// produced at a minimum duration defined by `SLOT_DURATION`. `SLOT_DURATION` is picked up by
-	/// `pallet_timestamp` which is in turn picked up by `pallet_aura` to implement `fn
-	/// slot_duration()`.
-	///
-	/// Change this to adjust the block time.
-	pub const MILLI_SECS_PER_BLOCK: u64 = 6000;
+    /// This determines the average expected block time that we are targeting. Blocks will be
+    /// produced at a minimum duration defined by `SLOT_DURATION`. `SLOT_DURATION` is picked up by
+    /// `pallet_timestamp` which is in turn picked up by `pallet_aura` to implement `fn
+    /// slot_duration()`.
+    ///
+    /// Change this to adjust the block time.
+    pub const MILLI_SECS_PER_BLOCK: u64 = 6000;
 
-	// NOTE: Currently it is not possible to change the slot duration after the chain has started.
-	// Attempting to do so will brick block production.
-	pub const SLOT_DURATION: u64 = MILLI_SECS_PER_BLOCK;
+    // NOTE: Currently it is not possible to change the slot duration after the chain has started.
+    // Attempting to do so will brick block production.
+    pub const SLOT_DURATION: u64 = MILLI_SECS_PER_BLOCK;
 }
 pub use block_times::*;
 
@@ -113,7 +113,10 @@ pub const EXISTENTIAL_DEPOSIT: Balance = MILLI_UNIT;
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
-	NativeVersion { runtime_version: VERSION, can_author_with: Default::default() }
+    NativeVersion {
+        runtime_version: VERSION,
+        can_author_with: Default::default(),
+    }
 }
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -157,21 +160,21 @@ pub type BlockId = generic::BlockId<Block>;
 
 /// The `TransactionExtension` to the basic transaction logic.
 pub type TxExtension = (
-	frame_system::CheckNonZeroSender<Runtime>,
-	frame_system::CheckSpecVersion<Runtime>,
-	frame_system::CheckTxVersion<Runtime>,
-	frame_system::CheckGenesis<Runtime>,
-	frame_system::CheckEra<Runtime>,
-	frame_system::CheckNonce<Runtime>,
-	frame_system::CheckWeight<Runtime>,
-	pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-	frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
-	frame_system::WeightReclaim<Runtime>,
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckEra<Runtime>,
+    frame_system::CheckNonce<Runtime>,
+    frame_system::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
+    frame_system::WeightReclaim<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
-	generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
+    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
 
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
@@ -207,149 +210,152 @@ impl OnRuntimeUpgrade for RenameDeceasedMediaToData {
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
-	Runtime,
-	Block,
-	frame_system::ChainContext<Runtime>,
-	Runtime,
-	AllPalletsWithSystem,
-	Migrations,
+    Runtime,
+    Block,
+    frame_system::ChainContext<Runtime>,
+    Runtime,
+    AllPalletsWithSystem,
+    Migrations,
 >;
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 #[frame_support::runtime]
-mod runtime {
-	#[runtime::runtime]
-	#[runtime::derive(
-		RuntimeCall,
-		RuntimeEvent,
-		RuntimeError,
-		RuntimeOrigin,
-		RuntimeFreezeReason,
-		RuntimeHoldReason,
-		RuntimeSlashReason,
-		RuntimeLockId,
-		RuntimeTask,
-		RuntimeViewFunction
-	)]
-	#[derive(Default)]
-	pub struct Runtime;
+pub mod runtime {
+    #[runtime::runtime]
+    #[runtime::derive(
+        RuntimeCall,
+        RuntimeEvent,
+        RuntimeError,
+        RuntimeOrigin,
+        RuntimeFreezeReason,
+        RuntimeHoldReason,
+        RuntimeSlashReason,
+        RuntimeLockId,
+        RuntimeTask,
+        RuntimeViewFunction
+    )]
+    #[derive(Default)]
+    pub struct Runtime;
 
-	#[runtime::pallet_index(0)]
-	pub type System = frame_system;
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system;
 
-	#[runtime::pallet_index(1)]
-	pub type Timestamp = pallet_timestamp;
+    #[runtime::pallet_index(1)]
+    pub type Timestamp = pallet_timestamp;
 
-	#[runtime::pallet_index(2)]
-	pub type Aura = pallet_aura;
+    #[runtime::pallet_index(2)]
+    pub type Aura = pallet_aura;
 
-	#[runtime::pallet_index(3)]
-	pub type Grandpa = pallet_grandpa;
+    #[runtime::pallet_index(3)]
+    pub type Grandpa = pallet_grandpa;
 
-	#[runtime::pallet_index(4)]
-	pub type Balances = pallet_balances;
+    #[runtime::pallet_index(4)]
+    pub type Balances = pallet_balances;
 
-	#[runtime::pallet_index(5)]
-	pub type TransactionPayment = pallet_transaction_payment;
+    #[runtime::pallet_index(5)]
+    pub type TransactionPayment = pallet_transaction_payment;
 
-	#[runtime::pallet_index(6)]
-	pub type Sudo = pallet_sudo;
+    #[runtime::pallet_index(6)]
+    pub type Sudo = pallet_sudo;
 
-	// Include the custom logic from the pallet-template in the runtime.
-	#[runtime::pallet_index(7)]
-	pub type Template = pallet_template;
+    // Include the custom logic from the pallet-template in the runtime.
+    #[runtime::pallet_index(7)]
+    pub type Template = pallet_template;
 
-	#[runtime::pallet_index(8)]
-	pub type Forwarder = pallet_forwarder;
+    #[runtime::pallet_index(8)]
+    pub type Forwarder = pallet_forwarder;
 
-	#[runtime::pallet_index(9)]
-	pub type OtcMaker = pallet_otc_maker;
+    #[runtime::pallet_index(9)]
+    pub type OtcMaker = pallet_otc_maker;
 
-	#[runtime::pallet_index(10)]
-	pub type OtcListing = pallet_otc_listing;
+    #[runtime::pallet_index(10)]
+    pub type OtcListing = pallet_otc_listing;
 
-	#[runtime::pallet_index(11)]
-	pub type OtcOrder = pallet_otc_order;
+    #[runtime::pallet_index(11)]
+    pub type OtcOrder = pallet_otc_order;
 
-	#[runtime::pallet_index(12)]
-	pub type Escrow = pallet_escrow;
+    #[runtime::pallet_index(12)]
+    pub type Escrow = pallet_escrow;
 
-	#[runtime::pallet_index(13)]
-	pub type Arbitration = pallet_arbitration;
+    #[runtime::pallet_index(13)]
+    pub type Arbitration = pallet_arbitration;
 
-	#[runtime::pallet_index(14)]
-	pub type MemorialPark = pallet_memo_park;
+    #[runtime::pallet_index(14)]
+    pub type MemorialPark = pallet_memo_park;
 
-	#[runtime::pallet_index(15)]
-	pub type Grave = pallet_memo_grave;
+    #[runtime::pallet_index(15)]
+    pub type Grave = pallet_memo_grave;
 
-	#[runtime::pallet_index(16)]
-	pub type MemorialOfferings = pallet_memo_offerings;
+    #[runtime::pallet_index(16)]
+    pub type MemorialOfferings = pallet_memo_offerings;
 
-	#[runtime::pallet_index(17)]
-	pub type Evidence = pallet_evidence;
+    #[runtime::pallet_index(17)]
+    pub type Evidence = pallet_evidence;
 
-	#[runtime::pallet_index(18)]
-	pub type Identity = pallet_identity;
+    #[runtime::pallet_index(18)]
+    pub type Identity = pallet_identity;
 
-	#[runtime::pallet_index(19)]
-	pub type Deceased = pallet_deceased;
+    #[runtime::pallet_index(19)]
+    pub type Deceased = pallet_deceased;
 
-	#[runtime::pallet_index(36)]
-	pub type DeceasedMedia = pallet_deceased_media;
+    #[runtime::pallet_index(36)]
+    pub type DeceasedMedia = pallet_deceased_media;
 
-	#[runtime::pallet_index(37)]
-	pub type DeceasedText = pallet_deceased_text;
+    #[runtime::pallet_index(37)]
+    pub type DeceasedText = pallet_deceased_text;
 
-	#[runtime::pallet_index(21)]
-	pub type GraveLedger = pallet_ledger;
+    #[runtime::pallet_index(21)]
+    pub type GraveLedger = pallet_ledger;
 
-	#[runtime::pallet_index(22)]
-	pub type Referrals = pallet_memo_referrals;
+    #[runtime::pallet_index(22)]
+    pub type Referrals = pallet_memo_referrals;
 
-	#[runtime::pallet_index(24)]
-	pub type Affiliate = pallet_memo_affiliate;
+    #[runtime::pallet_index(24)]
+    pub type Affiliate = pallet_memo_affiliate;
 
     // #[runtime::pallet_index(25)] // memo-endowment 已下线
     // pub type MemoEndowment = pallet_memo_endowment;
 
-	#[runtime::pallet_index(26)]
-	pub type MemoIpfs = pallet_memo_ipfs;
+    #[runtime::pallet_index(26)]
+    pub type MemoIpfs = pallet_memo_ipfs;
 
-	#[runtime::pallet_index(29)]
-	pub type Treasury = pallet_treasury;
+    #[runtime::pallet_index(29)]
+    pub type Treasury = pallet_treasury;
 
-	// OpenGov pallets
-	#[runtime::pallet_index(32)]
-	pub type OriginRestriction = pallet_origin_restriction;
+    // OpenGov pallets
+    #[runtime::pallet_index(32)]
+    pub type OriginRestriction = pallet_origin_restriction;
 
-	#[runtime::pallet_index(33)]
-	pub type FeeGuard = pallet_fee_guard;
+    #[runtime::pallet_index(33)]
+    pub type FeeGuard = pallet_fee_guard;
 
-	#[runtime::pallet_index(34)]
-	pub type MemoSacrifice = pallet_memo_sacrifice;
+    #[runtime::pallet_index(34)]
+    pub type MemoSacrifice = pallet_memo_sacrifice;
 
-	#[runtime::pallet_index(35)]
-	pub type MemoPet = pallet_memo_pet;
+    #[runtime::pallet_index(35)]
+    pub type MemoPet = pallet_memo_pet;
 
-	// 委员会（Council）
-	#[runtime::pallet_index(38)]
-	pub type Council = pallet_collective<Instance1>;
+    // 委员会（Council）
+    #[runtime::pallet_index(38)]
+    pub type Council = pallet_collective<Instance1>;
 
-	// 技术与安全委员会（Technical Committee）
-	#[runtime::pallet_index(39)]
-	pub type TechnicalCommittee = pallet_collective<Instance2>;
+    // 技术与安全委员会（Technical Committee）
+    #[runtime::pallet_index(39)]
+    pub type TechnicalCommittee = pallet_collective<Instance2>;
 
-	// 内容委员会（Content Committee）
-	#[runtime::pallet_index(40)]
-	pub type ContentCommittee = pallet_collective<Instance3>;
+    // 内容委员会（Content Committee）
+    #[runtime::pallet_index(40)]
+    pub type ContentCommittee = pallet_collective<Instance3>;
 
-	#[runtime::pallet_index(41)]
-	pub type ContentGovernance = pallet_memo_content_governance;
+    #[runtime::pallet_index(41)]
+    pub type ContentGovernance = pallet_memo_content_governance;
 
-	#[runtime::pallet_index(42)]
-	pub type MemoBridge = pallet_memo_bridge;
+    #[runtime::pallet_index(42)]
+    pub type MemoBridge = pallet_memo_bridge;
 
-	#[runtime::pallet_index(43)]
-	pub type Pricing = pallet_pricing;
+    #[runtime::pallet_index(43)]
+    pub type Pricing = pallet_pricing;
+
+    #[runtime::pallet_index(44)]
+    pub type OtcClaim = pallet_otc_claim;
 }

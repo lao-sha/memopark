@@ -8,13 +8,10 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use frame_support::{
-        pallet_prelude::*,
-        traits::StorageVersion,
-    };
-    use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
     use frame_support::traits::ConstU32;
+    use frame_support::{pallet_prelude::*, traits::StorageVersion};
+    use frame_system::pallet_prelude::*;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
@@ -46,11 +43,18 @@ pub mod pallet {
 
     /// 函数级中文注释：反向索引：推荐人 -> 其直接下级集合（BoundedVec，上限由 MaxReferralsPerAccount 决定）。
     #[pallet::storage]
-    pub type ReferralsOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<T::AccountId, <T as Config>::MaxReferralsPerAccount>, ValueQuery>;
+    pub type ReferralsOf<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<T::AccountId, <T as Config>::MaxReferralsPerAccount>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：封禁推荐人集合（仅影响计酬归集，不改变 SponsorOf 图）。
     #[pallet::storage]
-    pub type BannedSponsors<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+    pub type BannedSponsors<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     /// 函数级中文注释：治理暂停位。为 true 时禁止新绑定，已绑定关系不受影响。
     #[pallet::storage]
@@ -59,24 +63,32 @@ pub mod pallet {
 
     /// 函数级中文注释：账户主推荐码（一次性领取，不可重复）。
     #[pallet::storage]
-    pub type CodeOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
+    pub type CodeOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
 
     /// 函数级中文注释：推荐码归属索引（规范化码 → 账户）。
     #[pallet::storage]
-    pub type OwnerOfCode<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
+    pub type OwnerOfCode<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 新的推荐关系被绑定（who → sponsor）。
-        SponsorBound { who: T::AccountId, sponsor: T::AccountId },
+        SponsorBound {
+            who: T::AccountId,
+            sponsor: T::AccountId,
+        },
         /// 暂停/恢复状态已更新。
         PausedSet { value: bool },
         /// 已更新封禁推荐人状态（仅治理）。
         SponsorBannedSet { who: T::AccountId, banned: bool },
         /// 函数级中文注释：已为账户分配唯一默认推荐码。
         /// - code 为 8 位大写十六进制（ASCII），仅包含 [0-9A-F]。
-        ReferralCodeAssigned { who: T::AccountId, code: BoundedVec<u8, ConstU32<16>> },
+        ReferralCodeAssigned {
+            who: T::AccountId,
+            code: BoundedVec<u8, ConstU32<16>>,
+        },
     }
 
     #[pallet::error]
@@ -116,14 +128,19 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             ensure!(!Self::paused(), Error::<T>::Paused);
             ensure!(who != sponsor, Error::<T>::SelfSponsor);
-            ensure!(!SponsorOf::<T>::contains_key(&who), Error::<T>::AlreadyBound);
+            ensure!(
+                !SponsorOf::<T>::contains_key(&who),
+                Error::<T>::AlreadyBound
+            );
 
             // 环检测：向上遍历 sponsor 链，最多 MaxHops 步，若命中 who 则拒绝。
             let mut cursor = Some(sponsor.clone());
             let mut hops: u32 = 0;
             while let Some(cur) = cursor {
                 ensure!(cur != who, Error::<T>::CycleDetected);
-                if hops >= T::MaxHops::get() { break; }
+                if hops >= T::MaxHops::get() {
+                    break;
+                }
                 cursor = SponsorOf::<T>::get(&cur);
                 hops = hops.saturating_add(1);
             }
@@ -131,7 +148,9 @@ pub mod pallet {
             SponsorOf::<T>::insert(&who, &sponsor);
             BoundAt::<T>::insert(&who, <frame_system::Pallet<T>>::block_number());
             // 维护反向索引：若超上限则拒绝（保障状态量）
-            ReferralsOf::<T>::try_mutate(&sponsor, |v| v.try_push(who.clone()).map_err(|_| Error::<T>::Paused))?; // 复用 Paused 作为容量错误替身，避免新增错误
+            ReferralsOf::<T>::try_mutate(&sponsor, |v| {
+                v.try_push(who.clone()).map_err(|_| Error::<T>::Paused)
+            })?; // 复用 Paused 作为容量错误替身，避免新增错误
             Self::deposit_event(Event::SponsorBound { who, sponsor });
             Ok(())
         }
@@ -153,7 +172,11 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn set_banned(origin: OriginFor<T>, who: T::AccountId, banned: bool) -> DispatchResult {
             ensure_root(origin)?;
-            if banned { BannedSponsors::<T>::insert(&who, ()); } else { BannedSponsors::<T>::remove(&who); }
+            if banned {
+                BannedSponsors::<T>::insert(&who, ());
+            } else {
+                BannedSponsors::<T>::remove(&who);
+            }
             Self::deposit_event(Event::SponsorBannedSet { who, banned });
             Ok(())
         }
@@ -177,10 +200,11 @@ pub mod pallet {
                 let mut code_bytes: [u8; 8] = [0u8; 8];
                 for i in 0..4 {
                     let b = hash[i];
-                    code_bytes[i*2] = Self::hex_upper(b >> 4);
-                    code_bytes[i*2+1] = Self::hex_upper(b & 0x0F);
+                    code_bytes[i * 2] = Self::hex_upper(b >> 4);
+                    code_bytes[i * 2 + 1] = Self::hex_upper(b & 0x0F);
                 }
-                let bv: BoundedVec<u8, ConstU32<16>> = BoundedVec::try_from(code_bytes.to_vec()).map_err(|_| Error::<T>::CodeCollision)?;
+                let bv: BoundedVec<u8, ConstU32<16>> = BoundedVec::try_from(code_bytes.to_vec())
+                    .map_err(|_| Error::<T>::CodeCollision)?;
                 if !OwnerOfCode::<T>::contains_key(&bv) {
                     CodeOf::<T>::insert(&who, &bv);
                     OwnerOfCode::<T>::insert(&bv, who.clone());
@@ -190,7 +214,10 @@ pub mod pallet {
                 salt = salt.saturating_add(1);
             }
             ensure!(assigned.is_some(), Error::<T>::CodeCollision);
-            Self::deposit_event(Event::ReferralCodeAssigned { who, code: assigned.unwrap() });
+            Self::deposit_event(Event::ReferralCodeAssigned {
+                who,
+                code: assigned.unwrap(),
+            });
             Ok(())
         }
     }
@@ -208,7 +235,9 @@ pub mod pallet {
             let mut hops: u32 = 0;
             while let Some(cur) = cursor {
                 out.push(cur.clone());
-                if hops >= max_hops { break; }
+                if hops >= max_hops {
+                    break;
+                }
                 cursor = SponsorOf::<T>::get(&cur);
                 hops = hops.saturating_add(1);
             }
@@ -217,7 +246,13 @@ pub mod pallet {
 
         /// 函数级中文注释：十六进制编码（大写），输入低 4 比特返回 ASCII 字节。
         #[inline]
-        fn hex_upper(n: u8) -> u8 { match n { 0..=9 => b'0'+n, 10..=15 => b'A'+(n-10), _ => b'0' } }
+        fn hex_upper(n: u8) -> u8 {
+            match n {
+                0..=9 => b'0' + n,
+                10..=15 => b'A' + (n - 10),
+                _ => b'0',
+            }
+        }
     }
 }
 
@@ -243,5 +278,3 @@ impl<T: pallet::Config> ReferralProvider<T::AccountId> for Pallet<T> {
         <pallet::BannedSponsors<T>>::contains_key(who)
     }
 }
-
-

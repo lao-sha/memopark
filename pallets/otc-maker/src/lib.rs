@@ -34,7 +34,8 @@ pub mod pallet {
     /// 函数级详细中文注释：做市商资料
     /// - payment_cid_commit: 支付方式/联系方式等链下加密 CID 的承诺哈希
     /// - active: 启用/停牌
-    pub type Makers<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (H256, bool), OptionQuery>;
+    pub type Makers<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (H256, bool), OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -77,7 +78,9 @@ pub mod pallet {
             Makers::<T>::try_mutate(&who, |maybe| -> Result<(), DispatchError> {
                 let v = maybe.as_mut().ok_or(Error::<T>::NotMaker)?;
                 // 启用前仍校验 KYC 状态
-                if active { ensure!(<T as Config>::Kyc::is_verified(&who), Error::<T>::NotMaker); }
+                if active {
+                    ensure!(<T as Config>::Kyc::is_verified(&who), Error::<T>::NotMaker);
+                }
                 v.1 = active;
                 Ok(())
             })?;
@@ -86,5 +89,3 @@ pub mod pallet {
         }
     }
 }
-
-

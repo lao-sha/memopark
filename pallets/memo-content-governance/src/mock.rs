@@ -5,7 +5,10 @@
 use crate as pallet_memo_content_governance;
 use frame_support::{parameter_types, traits::Everything};
 use sp_core::H256;
-use sp_runtime::{traits::{BlakeTwo256, IdentityLookup}, BuildStorage};
+use sp_runtime::{
+    traits::{BlakeTwo256, IdentityLookup},
+    BuildStorage,
+};
 
 #[allow(dead_code)]
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -70,7 +73,14 @@ parameter_types! {
 
 pub struct NoopRouter;
 impl crate::AppealRouter<u64> for NoopRouter {
-    fn execute(_who: &u64, _domain: u8, _target: u64, _action: u8) -> frame_support::dispatch::DispatchResult { Ok(()) }
+    fn execute(
+        _who: &u64,
+        _domain: u8,
+        _target: u64,
+        _action: u8,
+    ) -> frame_support::dispatch::DispatchResult {
+        Ok(())
+    }
 }
 
 impl pallet_memo_content_governance::pallet::Config for Test {
@@ -107,11 +117,16 @@ impl pallet_balances::Config for Test {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
-    pallet_balances::GenesisConfig::<Test> { balances: vec![(1, 1_000), (2, 1_000)], dev_accounts: None }.assimilate_storage(&mut t).unwrap();
+    let mut t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![(1, 1_000), (2, 1_000)],
+        dev_accounts: None,
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext
 }
-
-

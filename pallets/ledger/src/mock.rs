@@ -3,13 +3,15 @@
 //! 具体字段以实际依赖为准，测试内构造最基础环境。
 
 #![allow(deprecated)]
-
 #![cfg(test)]
 
 use crate as pallet_ledger;
 use frame_support::{parameter_types, traits::Everything};
 use sp_core::H256;
-use sp_runtime::{traits::{BlakeTwo256, IdentityLookup}, BuildStorage};
+use sp_runtime::{
+    traits::{BlakeTwo256, IdentityLookup},
+    BuildStorage,
+};
 
 #[allow(dead_code)]
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -74,10 +76,10 @@ impl pallet_ledger::pallet::Config for Test {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
+    let t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext
 }
-
-

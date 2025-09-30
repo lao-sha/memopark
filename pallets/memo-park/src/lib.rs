@@ -9,9 +9,9 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use alloc::vec::Vec;
     use frame_support::{pallet_prelude::*, BoundedVec};
-    use frame_system::pallet_prelude::*;
-    use alloc::vec::Vec; // 函数级中文注释：在 no_std 环境下显式引入 Vec
+    use frame_system::pallet_prelude::*; // 函数级中文注释：在 no_std 环境下显式引入 Vec
 
     /// 函数级中文注释：用于校验某个 RuntimeOrigin 是否具备指定陵园的管理员权限。
     /// 设计目的：
@@ -28,9 +28,12 @@ pub mod pallet {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 国家地区编码与元数据等字段的长度上限
-        #[pallet::constant] type MaxRegionLen: Get<u32>;
-        #[pallet::constant] type MaxCidLen: Get<u32>;
-        #[pallet::constant] type MaxParksPerCountry: Get<u32>;
+        #[pallet::constant]
+        type MaxRegionLen: Get<u32>;
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
+        #[pallet::constant]
+        type MaxParksPerCountry: Get<u32>;
         /// 运行时注入的陵园管理员权限校验器（桥接官方治理/多签）
         type ParkAdmin: ParkAdminOrigin<Self::RuntimeOrigin>;
         /// 函数级中文注释：治理起源（Root / 内容治理签名账户等），用于 gov* 接口与证据记录。
@@ -63,22 +66,44 @@ pub mod pallet {
     pub type Parks<T: Config> = StorageMap<_, Blake2_128Concat, u64, Park<T>, OptionQuery>;
 
     #[pallet::storage]
-    pub type ParksByCountry<T: Config> = StorageMap<_, Blake2_128Concat, [u8; 2], BoundedVec<u64, T::MaxParksPerCountry>, ValueQuery>;
+    pub type ParksByCountry<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        [u8; 2],
+        BoundedVec<u64, T::MaxParksPerCountry>,
+        ValueQuery,
+    >;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 创建陵园
-        ParkCreated { id: u64, owner: T::AccountId, country: [u8;2] },
+        ParkCreated {
+            id: u64,
+            owner: T::AccountId,
+            country: [u8; 2],
+        },
         /// 更新陵园元数据或状态
-        ParkUpdated { id: u64 },
+        ParkUpdated {
+            id: u64,
+        },
         /// 设置/清空管理员
-        AdminSet { id: u64, admin_group: Option<u64> },
+        AdminSet {
+            id: u64,
+            admin_group: Option<u64>,
+        },
         /// 转让所有权
-        ParkTransferred { id: u64, new_owner: T::AccountId },
+        ParkTransferred {
+            id: u64,
+            new_owner: T::AccountId,
+        },
         /// 状态变更
-        ParkActivated { id: u64 },
-        ParkDeactivated { id: u64 },
+        ParkActivated {
+            id: u64,
+        },
+        ParkDeactivated {
+            id: u64,
+        },
         /// 函数级中文注释：治理证据记录（scope, key, cid）。scope：1=Update/SetAdmin/Transfer/Activate 等；key=id。
         GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
         /// 函数级中文注释：治理设置园区封面（Some 设置；None 清空）。
@@ -97,8 +122,13 @@ pub mod pallet {
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
-        fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
-            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+        fn note_evidence(
+            scope: u8,
+            key: u64,
+            cid: Vec<u8>,
+        ) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> =
+                BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
             Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
             Ok(bv)
         }
@@ -132,12 +162,29 @@ pub mod pallet {
             metadata_cid: BoundedVec<u8, T::MaxCidLen>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(country_iso2 != [0,0], Error::<T>::BadCountry);
-            let id = NextParkId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
-            let park = Park::<T> { owner: who.clone(), admin_group: None, country_iso2, region_code, metadata_cid, active: true };
+            ensure!(country_iso2 != [0, 0], Error::<T>::BadCountry);
+            let id = NextParkId::<T>::mutate(|n| {
+                let id = *n;
+                *n = n.saturating_add(1);
+                id
+            });
+            let park = Park::<T> {
+                owner: who.clone(),
+                admin_group: None,
+                country_iso2,
+                region_code,
+                metadata_cid,
+                active: true,
+            };
             Parks::<T>::insert(id, &park);
-            ParksByCountry::<T>::try_mutate(country_iso2, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
-            Self::deposit_event(Event::ParkCreated { id, owner: who, country: country_iso2 });
+            ParksByCountry::<T>::try_mutate(country_iso2, |v| {
+                v.try_push(id).map_err(|_| Error::<T>::TooMany)
+            })?;
+            Self::deposit_event(Event::ParkCreated {
+                id,
+                owner: who,
+                country: country_iso2,
+            });
             Ok(())
         }
 
@@ -148,7 +195,8 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn update_park(
-            origin: OriginFor<T>, id: u64,
+            origin: OriginFor<T>,
+            id: u64,
             region_code: Option<BoundedVec<u8, T::MaxRegionLen>>,
             metadata_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
             active: Option<bool>,
@@ -160,9 +208,15 @@ pub mod pallet {
                     // 非所有者则要求具备管理员权限
                     T::ParkAdmin::ensure(id, origin.clone())?;
                 }
-                if let Some(rc) = region_code { park.region_code = rc; }
-                if let Some(cid) = metadata_cid { park.metadata_cid = cid; }
-                if let Some(a) = active { park.active = a; }
+                if let Some(rc) = region_code {
+                    park.region_code = rc;
+                }
+                if let Some(cid) = metadata_cid {
+                    park.metadata_cid = cid;
+                }
+                if let Some(a) = active {
+                    park.active = a;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::ParkUpdated { id });
@@ -174,11 +228,17 @@ pub mod pallet {
         #[pallet::call_index(2)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn set_park_admin(origin: OriginFor<T>, id: u64, admin_group: Option<u64>) -> DispatchResult {
+        pub fn set_park_admin(
+            origin: OriginFor<T>,
+            id: u64,
+            admin_group: Option<u64>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
-                if who != park.owner { T::ParkAdmin::ensure(id, origin.clone())?; }
+                if who != park.owner {
+                    T::ParkAdmin::ensure(id, origin.clone())?;
+                }
                 park.admin_group = admin_group;
                 Ok(())
             })?;
@@ -191,7 +251,11 @@ pub mod pallet {
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn transfer_park(origin: OriginFor<T>, id: u64, new_owner: T::AccountId) -> DispatchResult {
+        pub fn transfer_park(
+            origin: OriginFor<T>,
+            id: u64,
+            new_owner: T::AccountId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
@@ -209,7 +273,8 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn gov_update_park(
-            origin: OriginFor<T>, id: u64,
+            origin: OriginFor<T>,
+            id: u64,
             region_code: Option<BoundedVec<u8, T::MaxRegionLen>>,
             metadata_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
             active: Option<bool>,
@@ -219,9 +284,15 @@ pub mod pallet {
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let park = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
-                if let Some(rc) = region_code { park.region_code = rc; }
-                if let Some(cid) = metadata_cid { park.metadata_cid = cid; }
-                if let Some(a) = active { park.active = a; }
+                if let Some(rc) = region_code {
+                    park.region_code = rc;
+                }
+                if let Some(cid) = metadata_cid {
+                    park.metadata_cid = cid;
+                }
+                if let Some(a) = active {
+                    park.active = a;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::ParkUpdated { id });
@@ -232,7 +303,12 @@ pub mod pallet {
         #[pallet::call_index(11)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_park_admin(origin: OriginFor<T>, id: u64, admin_group: Option<u64>, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_park_admin(
+            origin: OriginFor<T>,
+            id: u64,
+            admin_group: Option<u64>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -249,7 +325,12 @@ pub mod pallet {
         #[pallet::call_index(13)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_park_cover(origin: OriginFor<T>, id: u64, cover_cid: Option<BoundedVec<u8, T::MaxCidLen>>, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_park_cover(
+            origin: OriginFor<T>,
+            id: u64,
+            cover_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             ensure!(Parks::<T>::contains_key(id), Error::<T>::NotFound);
@@ -263,7 +344,12 @@ pub mod pallet {
         #[pallet::call_index(12)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_transfer_park(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_transfer_park(
+            origin: OriginFor<T>,
+            id: u64,
+            new_owner: T::AccountId,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid)?;
             Parks::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -276,5 +362,3 @@ pub mod pallet {
         }
     }
 }
-
-

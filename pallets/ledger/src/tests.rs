@@ -4,10 +4,10 @@
 #![cfg(test)]
 
 use crate::{pallet::Event as LedgerEvent, Pallet as Ledger};
-use frame_support::{assert_ok};
+use frame_support::assert_ok;
 use sp_core::H256;
 
-use crate::mock::{new_test_ext, System, Test, RuntimeOrigin, RuntimeEvent};
+use crate::mock::{new_test_ext, RuntimeEvent, RuntimeOrigin, System, Test};
 
 #[test]
 fn week_index_calculation() {
@@ -51,14 +51,21 @@ fn mark_and_purge_range_and_event() {
         let start = System::block_number();
         Ledger::<Test>::mark_weekly_active(gid, who, start, Some(5));
         // 清理一个区间 [1,4) 不应报错
-        assert_ok!(Ledger::<Test>::purge_weeks_by_range(RuntimeOrigin::signed(who), gid, who, 1, 4, 10));
-        // 事件至少发出一次 WeeksPurged
-        let ev = System::events().into_iter().find(|e| matches!(
-            e.event,
-            RuntimeEvent::Ledger(LedgerEvent::WeeksPurged(_, _, _, _))
+        assert_ok!(Ledger::<Test>::purge_weeks_by_range(
+            RuntimeOrigin::signed(who),
+            gid,
+            who,
+            1,
+            4,
+            10
         ));
+        // 事件至少发出一次 WeeksPurged
+        let ev = System::events().into_iter().find(|e| {
+            matches!(
+                e.event,
+                RuntimeEvent::Ledger(LedgerEvent::WeeksPurged(_, _, _, _))
+            )
+        });
         assert!(ev.is_some());
     });
 }
-
-

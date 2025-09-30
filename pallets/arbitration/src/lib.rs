@@ -10,15 +10,19 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec};
-    use pallet_escrow::pallet::Escrow as EscrowTrait;
-    use frame_system::pallet_prelude::*;
     use crate::weights::WeightInfo;
     use frame_support::traits::EnsureOrigin;
+    use frame_support::{pallet_prelude::*, BoundedVec};
+    use frame_system::pallet_prelude::*;
+    use pallet_escrow::pallet::Escrow as EscrowTrait;
     // 基准模块在 pallet 外部声明；此处不在 proc-macro 输入中声明子模块，避免 E0658
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-    pub enum Decision { Release, Refund, Partial(u16) } // bps
+    pub enum Decision {
+        Release,
+        Refund,
+        Partial(u16),
+    } // bps
 
     /// 仲裁域路由接口：由 runtime 实现，根据域将仲裁请求路由到对应业务 pallet
     ///
@@ -50,28 +54,29 @@ pub mod pallet {
         type DecisionOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
-    pub type BalanceOf<T> = <<T as pallet_escrow::pallet::Config>::Currency as frame_support::traits::Currency<<T as frame_system::Config>::AccountId>>::Balance;
-    
+    pub type BalanceOf<T> =
+        <<T as pallet_escrow::pallet::Config>::Currency as frame_support::traits::Currency<
+            <T as frame_system::Config>::AccountId,
+        >>::Balance;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     /// 争议登记：(domain, object_id) => ()
     #[pallet::storage]
-    pub type Disputed<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat, [u8; 8],
-        Blake2_128Concat, u64,
-        (), OptionQuery
-    >;
+    pub type Disputed<T: Config> =
+        StorageDoubleMap<_, Blake2_128Concat, [u8; 8], Blake2_128Concat, u64, (), OptionQuery>;
 
     /// 函数级中文注释：每个仲裁案件引用的 evidence_id 列表（证据本体由 pallet-evidence 存储）。
     #[pallet::storage]
     pub type EvidenceIds<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, [u8; 8],
-        Blake2_128Concat, u64,
-        BoundedVec<u64, T::MaxEvidence>, ValueQuery
+        Blake2_128Concat,
+        [u8; 8],
+        Blake2_128Concat,
+        u64,
+        BoundedVec<u64, T::MaxEvidence>,
+        ValueQuery,
     >;
 
     #[pallet::event]
@@ -80,25 +85,44 @@ pub mod pallet {
         /// 发起争议事件（含域）
         Disputed { domain: [u8; 8], id: u64 },
         /// 完成裁决事件（含域）
-        Arbitrated { domain: [u8; 8], id: u64, decision: u8, bps: Option<u16> },
+        Arbitrated {
+            domain: [u8; 8],
+            id: u64,
+            decision: u8,
+            bps: Option<u16>,
+        },
     }
 
     #[pallet::error]
-    pub enum Error<T> { AlreadyDisputed, NotDisputed }
+    pub enum Error<T> {
+        AlreadyDisputed,
+        NotDisputed,
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 发起仲裁：记录争议，证据 CID 存链（仅登记摘要/CID，不碰业务存储）
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::dispute(_evidence.len() as u32))]
-        pub fn dispute(origin: OriginFor<T>, domain: [u8; 8], id: u64, _evidence: alloc::vec::Vec<BoundedVec<u8, T::MaxCidLen>>) -> DispatchResult {
+        pub fn dispute(
+            origin: OriginFor<T>,
+            domain: [u8; 8],
+            id: u64,
+            _evidence: alloc::vec::Vec<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
             // 鉴权：由 Router 依据业务 pallet 规则判断是否允许发起（基准模式下跳过，便于构造场景）
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                ensure!(T::Router::can_dispute(domain, &_who, id), Error::<T>::NotDisputed);
+                ensure!(
+                    T::Router::can_dispute(domain, &_who, id),
+                    Error::<T>::NotDisputed
+                );
             }
-            ensure!(Disputed::<T>::get(domain, id).is_none(), Error::<T>::AlreadyDisputed);
+            ensure!(
+                Disputed::<T>::get(domain, id).is_none(),
+                Error::<T>::AlreadyDisputed
+            );
             Disputed::<T>::insert(domain, id, ());
             // 证据仅留 CID；如需可扩展附加存储（MVP 省略内容）
             Self::deposit_event(Event::Disputed { domain, id });
@@ -107,12 +131,21 @@ pub mod pallet {
         /// 仲裁者裁决（治理起源：Root/委员会）。
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::arbitrate())]
-        pub fn arbitrate(origin: OriginFor<T>, domain: [u8; 8], id: u64, decision_code: u8, bps: Option<u16>) -> DispatchResult {
+        pub fn arbitrate(
+            origin: OriginFor<T>,
+            domain: [u8; 8],
+            id: u64,
+            decision_code: u8,
+            bps: Option<u16>,
+        ) -> DispatchResult {
             // 函数级详细中文注释：仲裁裁决入口
             // - 安全：仅允许由治理起源触发（Root 或 内容委员会阈值），避免任意账户执行清算。
             // - 通过 runtime 注入的 DecisionOrigin 校验 origin。
             T::DecisionOrigin::ensure_origin(origin)?;
-            ensure!(Disputed::<T>::get(domain, id).is_some(), Error::<T>::NotDisputed);
+            ensure!(
+                Disputed::<T>::get(domain, id).is_some(),
+                Error::<T>::NotDisputed
+            );
             // 通过 Router 将裁决应用到对应域的业务 pallet
             let decision = match (decision_code, bps) {
                 (0, _) => Decision::Release,
@@ -121,8 +154,17 @@ pub mod pallet {
                 _ => Decision::Refund,
             };
             T::Router::apply_decision(domain, id, decision.clone())?;
-            let out = match decision { Decision::Release => (0, None), Decision::Refund => (1, None), Decision::Partial(p) => (2, Some(p)) };
-            Self::deposit_event(Event::Arbitrated { domain, id, decision: out.0, bps: out.1 });
+            let out = match decision {
+                Decision::Release => (0, None),
+                Decision::Refund => (1, None),
+                Decision::Partial(p) => (2, Some(p)),
+            };
+            Self::deposit_event(Event::Arbitrated {
+                domain,
+                id,
+                decision: out.0,
+                bps: out.1,
+            });
             Ok(())
         }
 
@@ -143,12 +185,19 @@ pub mod pallet {
             let _who = ensure_signed(origin)?;
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                ensure!(T::Router::can_dispute(domain, &_who, id), Error::<T>::NotDisputed);
+                ensure!(
+                    T::Router::can_dispute(domain, &_who, id),
+                    Error::<T>::NotDisputed
+                );
             }
-            ensure!(Disputed::<T>::get(domain, id).is_none(), Error::<T>::AlreadyDisputed);
+            ensure!(
+                Disputed::<T>::get(domain, id).is_none(),
+                Error::<T>::AlreadyDisputed
+            );
             Disputed::<T>::insert(domain, id, ());
             EvidenceIds::<T>::try_mutate(domain, id, |v| -> Result<(), Error<T>> {
-                v.try_push(evidence_id).map_err(|_| Error::<T>::AlreadyDisputed)?; // 复用错误占位，避免新增错误枚举
+                v.try_push(evidence_id)
+                    .map_err(|_| Error::<T>::AlreadyDisputed)?; // 复用错误占位，避免新增错误枚举
                 Ok(())
             })?;
             Self::deposit_event(Event::Disputed { domain, id });
@@ -168,14 +217,16 @@ pub mod pallet {
             evidence_id: u64,
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
-            ensure!(Disputed::<T>::get(domain, id).is_some(), Error::<T>::NotDisputed);
+            ensure!(
+                Disputed::<T>::get(domain, id).is_some(),
+                Error::<T>::NotDisputed
+            );
             EvidenceIds::<T>::try_mutate(domain, id, |v| -> Result<(), Error<T>> {
-                v.try_push(evidence_id).map_err(|_| Error::<T>::AlreadyDisputed)?;
+                v.try_push(evidence_id)
+                    .map_err(|_| Error::<T>::AlreadyDisputed)?;
                 Ok(())
             })?;
             Ok(())
         }
     }
 }
-
-

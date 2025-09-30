@@ -3,9 +3,12 @@
 #![cfg(test)]
 
 use super::*;
-use frame_support::{construct_runtime, parameter_types, traits::{ConstU32, Everything}};
-use sp_core::H256;
+use frame_support::{
+    construct_runtime, parameter_types,
+    traits::{ConstU32, Everything},
+};
 use frame_system as system;
+use sp_core::H256;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -44,7 +47,10 @@ impl system::Config for Test {
     type AccountData = pallet_balances::AccountData<u64>;
     type OnNewAccount = ();
     type OnKilledAccount = FeeGuard; // 关键：触发清理
-    type SystemWeightInfo = (); type SS58Prefix = (); type OnSetCode = (); type MaxConsumers = ConstU32<16>;
+    type SystemWeightInfo = ();
+    type SS58Prefix = ();
+    type OnSetCode = ();
+    type MaxConsumers = ConstU32<16>;
 }
 
 impl pallet_balances::Config for Test {
@@ -53,13 +59,24 @@ impl pallet_balances::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type WeightInfo = (); type MaxLocks = ConstU32<50>; type MaxReserves = ConstU32<0>; type ReserveIdentifier = [u8; 8];
-    type FreezeIdentifier = (); type MaxHolds = ConstU32<0>; type MaxFreezes = ConstU32<0>; type RuntimeHoldReason = (); type RuntimeFreezeReason = ();
+    type WeightInfo = ();
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ConstU32<0>;
+    type ReserveIdentifier = [u8; 8];
+    type FreezeIdentifier = ();
+    type MaxHolds = ConstU32<0>;
+    type MaxFreezes = ConstU32<0>;
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
     type DoneSlashHandler = ();
 }
 
 pub struct AllowAll;
-impl AllowMarkingPolicy<u64> for AllowAll { fn allow(_: &u64) -> bool { true } }
+impl AllowMarkingPolicy<u64> for AllowAll {
+    fn allow(_: &u64) -> bool {
+        true
+    }
+}
 
 impl crate::pallet::Config for Test {
     type RuntimeEvent = RuntimeEvent;
@@ -70,9 +87,13 @@ impl crate::pallet::Config for Test {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-    pallet_balances::GenesisConfig::<Test> { balances: vec![(1, 100), (2, 100)] }.assimilate_storage(&mut t).unwrap();
+    let mut t = frame_system::GenesisConfig::default()
+        .build_storage::<Test>()
+        .unwrap();
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![(1, 100), (2, 100)],
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
     t.into()
 }
-
-

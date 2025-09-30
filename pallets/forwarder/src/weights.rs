@@ -12,12 +12,10 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn open_session() -> Weight {
-        Weight::from_parts(8_000_000, 0)
-            .saturating_add(RocksDbWeight::get().writes(3))
+        Weight::from_parts(8_000_000, 0).saturating_add(RocksDbWeight::get().writes(3))
     }
     fn close_session() -> Weight {
-        Weight::from_parts(6_000_000, 0)
-            .saturating_add(RocksDbWeight::get().writes(3))
+        Weight::from_parts(6_000_000, 0).saturating_add(RocksDbWeight::get().writes(3))
     }
     fn forward() -> Weight {
         Weight::from_parts(12_000_000, 0)
@@ -31,5 +29,3 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().writes(3))
     }
 }
-
-

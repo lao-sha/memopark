@@ -19,11 +19,11 @@ use sp_io::hashing::twox_128;
 
 use super::super::LOG_TARGET;
 use frame_support::{
-	traits::{
-		Get, GetStorageVersion, PalletInfoAccess, StorageVersion,
-		STORAGE_VERSION_STORAGE_KEY_POSTFIX,
-	},
-	weights::Weight,
+    traits::{
+        Get, GetStorageVersion, PalletInfoAccess, StorageVersion,
+        STORAGE_VERSION_STORAGE_KEY_POSTFIX,
+    },
+    weights::Weight,
 };
 
 /// Migrate the entire storage of this pallet to a new prefix.
@@ -36,43 +36,43 @@ use frame_support::{
 /// to date storage. Thus the on chain storage version must be less than 4 in order to trigger the
 /// migration.
 pub fn migrate<T: frame_system::Config, P: GetStorageVersion + PalletInfoAccess, N: AsRef<str>>(
-	old_pallet_name: N,
+    old_pallet_name: N,
 ) -> Weight {
-	let old_pallet_name = old_pallet_name.as_ref();
-	let new_pallet_name = <P as PalletInfoAccess>::name();
+    let old_pallet_name = old_pallet_name.as_ref();
+    let new_pallet_name = <P as PalletInfoAccess>::name();
 
-	if new_pallet_name == old_pallet_name {
-		log::info!(
-			target: LOG_TARGET,
-			"New pallet name is equal to the old pallet name. No migration needs to be done.",
-		);
-		return Weight::zero()
-	}
+    if new_pallet_name == old_pallet_name {
+        log::info!(
+            target: LOG_TARGET,
+            "New pallet name is equal to the old pallet name. No migration needs to be done.",
+        );
+        return Weight::zero();
+    }
 
-	let on_chain_storage_version = <P as GetStorageVersion>::on_chain_storage_version();
-	log::info!(
-		target: LOG_TARGET,
-		"Running migration to v4 for collective with storage version {:?}",
-		on_chain_storage_version,
-	);
+    let on_chain_storage_version = <P as GetStorageVersion>::on_chain_storage_version();
+    log::info!(
+        target: LOG_TARGET,
+        "Running migration to v4 for collective with storage version {:?}",
+        on_chain_storage_version,
+    );
 
-	if on_chain_storage_version < 4 {
-		frame_support::storage::migration::move_pallet(
-			old_pallet_name.as_bytes(),
-			new_pallet_name.as_bytes(),
-		);
-		log_migration("migration", old_pallet_name, new_pallet_name);
+    if on_chain_storage_version < 4 {
+        frame_support::storage::migration::move_pallet(
+            old_pallet_name.as_bytes(),
+            new_pallet_name.as_bytes(),
+        );
+        log_migration("migration", old_pallet_name, new_pallet_name);
 
-		StorageVersion::new(4).put::<P>();
-		<T as frame_system::Config>::BlockWeights::get().max_block
-	} else {
-		log::warn!(
-			target: LOG_TARGET,
-			"Attempted to apply migration to v4 but failed because storage version is {:?}",
-			on_chain_storage_version,
-		);
-		Weight::zero()
-	}
+        StorageVersion::new(4).put::<P>();
+        <T as frame_system::Config>::BlockWeights::get().max_block
+    } else {
+        log::warn!(
+            target: LOG_TARGET,
+            "Attempted to apply migration to v4 but failed because storage version is {:?}",
+            on_chain_storage_version,
+        );
+        Weight::zero()
+    }
 }
 
 /// Some checks prior to migration. This can be linked to
@@ -80,27 +80,27 @@ pub fn migrate<T: frame_system::Config, P: GetStorageVersion + PalletInfoAccess,
 ///
 /// Panics if anything goes wrong.
 pub fn pre_migrate<P: GetStorageVersion + PalletInfoAccess, N: AsRef<str>>(old_pallet_name: N) {
-	let old_pallet_name = old_pallet_name.as_ref();
-	let new_pallet_name = <P as PalletInfoAccess>::name();
-	log_migration("pre-migration", old_pallet_name, new_pallet_name);
+    let old_pallet_name = old_pallet_name.as_ref();
+    let new_pallet_name = <P as PalletInfoAccess>::name();
+    log_migration("pre-migration", old_pallet_name, new_pallet_name);
 
-	if new_pallet_name == old_pallet_name {
-		return
-	}
+    if new_pallet_name == old_pallet_name {
+        return;
+    }
 
-	let new_pallet_prefix = twox_128(new_pallet_name.as_bytes());
-	let storage_version_key = twox_128(STORAGE_VERSION_STORAGE_KEY_POSTFIX);
+    let new_pallet_prefix = twox_128(new_pallet_name.as_bytes());
+    let storage_version_key = twox_128(STORAGE_VERSION_STORAGE_KEY_POSTFIX);
 
-	let mut new_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
-		new_pallet_prefix.to_vec(),
-		new_pallet_prefix.to_vec(),
-		|key| Ok(key.to_vec()),
-	);
+    let mut new_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
+        new_pallet_prefix.to_vec(),
+        new_pallet_prefix.to_vec(),
+        |key| Ok(key.to_vec()),
+    );
 
-	// Ensure nothing except the storage_version_key is stored in the new prefix.
-	assert!(new_pallet_prefix_iter.all(|key| key == storage_version_key));
+    // Ensure nothing except the storage_version_key is stored in the new prefix.
+    assert!(new_pallet_prefix_iter.all(|key| key == storage_version_key));
 
-	assert!(<P as GetStorageVersion>::on_chain_storage_version() < 4);
+    assert!(<P as GetStorageVersion>::on_chain_storage_version() < 4);
 }
 
 /// Some checks for after migration. This can be linked to
@@ -108,41 +108,41 @@ pub fn pre_migrate<P: GetStorageVersion + PalletInfoAccess, N: AsRef<str>>(old_p
 ///
 /// Panics if anything goes wrong.
 pub fn post_migrate<P: GetStorageVersion + PalletInfoAccess, N: AsRef<str>>(old_pallet_name: N) {
-	let old_pallet_name = old_pallet_name.as_ref();
-	let new_pallet_name = <P as PalletInfoAccess>::name();
-	log_migration("post-migration", old_pallet_name, new_pallet_name);
+    let old_pallet_name = old_pallet_name.as_ref();
+    let new_pallet_name = <P as PalletInfoAccess>::name();
+    log_migration("post-migration", old_pallet_name, new_pallet_name);
 
-	if new_pallet_name == old_pallet_name {
-		return
-	}
+    if new_pallet_name == old_pallet_name {
+        return;
+    }
 
-	// Assert that nothing remains at the old prefix.
-	let old_pallet_prefix = twox_128(old_pallet_name.as_bytes());
-	let old_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
-		old_pallet_prefix.to_vec(),
-		old_pallet_prefix.to_vec(),
-		|_| Ok(()),
-	);
-	assert_eq!(old_pallet_prefix_iter.count(), 0);
+    // Assert that nothing remains at the old prefix.
+    let old_pallet_prefix = twox_128(old_pallet_name.as_bytes());
+    let old_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
+        old_pallet_prefix.to_vec(),
+        old_pallet_prefix.to_vec(),
+        |_| Ok(()),
+    );
+    assert_eq!(old_pallet_prefix_iter.count(), 0);
 
-	// NOTE: storage_version_key is already in the new prefix.
-	let new_pallet_prefix = twox_128(new_pallet_name.as_bytes());
-	let new_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
-		new_pallet_prefix.to_vec(),
-		new_pallet_prefix.to_vec(),
-		|_| Ok(()),
-	);
-	assert!(new_pallet_prefix_iter.count() >= 1);
+    // NOTE: storage_version_key is already in the new prefix.
+    let new_pallet_prefix = twox_128(new_pallet_name.as_bytes());
+    let new_pallet_prefix_iter = frame_support::storage::KeyPrefixIterator::new(
+        new_pallet_prefix.to_vec(),
+        new_pallet_prefix.to_vec(),
+        |_| Ok(()),
+    );
+    assert!(new_pallet_prefix_iter.count() >= 1);
 
-	assert_eq!(<P as GetStorageVersion>::on_chain_storage_version(), 4);
+    assert_eq!(<P as GetStorageVersion>::on_chain_storage_version(), 4);
 }
 
 fn log_migration(stage: &str, old_pallet_name: &str, new_pallet_name: &str) {
-	log::info!(
-		target: LOG_TARGET,
-		"{}, prefix: '{}' ==> '{}'",
-		stage,
-		old_pallet_name,
-		new_pallet_name,
-	);
+    log::info!(
+        target: LOG_TARGET,
+        "{}, prefix: '{}' ==> '{}'",
+        stage,
+        old_pallet_name,
+        new_pallet_name,
+    );
 }

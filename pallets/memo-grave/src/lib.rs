@@ -2,22 +2,28 @@
 
 extern crate alloc;
 
-pub use pallet::*;
-
 // 模块引入：权重接口定义
 pub mod weights;
+
+// 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
+// 作用：便于 runtime 以 `pallet_memo_grave::Call` 等路径引用，同时满足集成宏的默认部件查找。
+pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec, traits::{StorageVersion, Currency, ReservableCurrency}};
-    use frame_support::weights::Weight;
     use crate::weights::WeightInfo;
-    use frame_system::pallet_prelude::*;
-    use sp_runtime::{SaturatedConversion, Saturating};
+    use alloc::collections::BTreeMap;
     use alloc::vec::Vec;
     use frame_support::traits::tokens::ExistenceRequirement;
-    use alloc::collections::BTreeMap;
+    use frame_support::weights::Weight;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{Currency, ReservableCurrency, StorageVersion},
+        BoundedVec,
+    };
+    use frame_system::pallet_prelude::*;
+    use sp_runtime::{SaturatedConversion, Saturating};
     // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
@@ -39,25 +45,37 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：KYC 提供者抽象（由 runtime 实现，例如基于 pallet-identity 的判定）。
-    pub trait KycProvider<AccountId> { fn is_verified(who: &AccountId) -> bool; }
+    pub trait KycProvider<AccountId> {
+        fn is_verified(who: &AccountId) -> bool;
+    }
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        /// 函数级中文注释：事件类型别名，兼容 FRAME v2 RuntimeEvent 设计，保证本 Pallet 事件能够发送到全局事件枚举。
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 函数级中文注释：权重信息，由 runtime 提供实现（未基准前可在 runtime 设为 `TestWeights`）。
         type WeightInfo: WeightInfo;
-        #[pallet::constant] type MaxCidLen: Get<u32>;
-        #[pallet::constant] type MaxPerPark: Get<u32>;
-        #[pallet::constant] type MaxIntermentsPerGrave: Get<u32>;
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
+        #[pallet::constant]
+        type MaxPerPark: Get<u32>;
+        #[pallet::constant]
+        type MaxIntermentsPerGrave: Get<u32>;
         type OnInterment: OnIntermentCommitted;
         type ParkAdmin: ParkAdminOrigin<Self::RuntimeOrigin>;
-        #[pallet::constant] type MaxIdsPerName: Get<u32>;
-        #[pallet::constant] type MaxComplaintsPerGrave: Get<u32>;
+        #[pallet::constant]
+        type MaxIdsPerName: Get<u32>;
+        #[pallet::constant]
+        type MaxComplaintsPerGrave: Get<u32>;
         /// 函数级中文注释：每个墓位最多可绑定的管理员账户数（不含墓主）。
-        #[pallet::constant] type MaxAdminsPerGrave: Get<u32>;
+        #[pallet::constant]
+        type MaxAdminsPerGrave: Get<u32>;
         /// 函数级中文注释：人类可读 ID（Slug）长度（固定 10 位数字）。
-        #[pallet::constant] type SlugLen: Get<u32>;
+        #[pallet::constant]
+        type SlugLen: Get<u32>;
         /// 函数级中文注释：关注者上限
-        #[pallet::constant] type MaxFollowers: Get<u32>;
+        #[pallet::constant]
+        type MaxFollowers: Get<u32>;
 
         /// 函数级中文注释：治理起源（允许非所有者通过治理修改部分只读元数据，如封面CID）。
         /// - 运行时可绑定 Root 或内容治理签名账户等多通道。
@@ -120,7 +138,8 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// 函数级中文注释：墓地信息结构。仅存储加密 CID，不落明文。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -163,10 +182,17 @@ pub mod pallet {
     pub type Graves<T: Config> = StorageMap<_, Blake2_128Concat, u64, Grave<T>, OptionQuery>;
 
     #[pallet::storage]
-    pub type GravesByPark<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u64, T::MaxPerPark>, ValueQuery>;
+    pub type GravesByPark<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BoundedVec<u64, T::MaxPerPark>, ValueQuery>;
 
     #[pallet::storage]
-    pub type Interments<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<IntermentRecord<T>, T::MaxIntermentsPerGrave>, ValueQuery>;
+    pub type Interments<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<IntermentRecord<T>, T::MaxIntermentsPerGrave>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：主逝者反向索引。记录每个墓位的"主逝者"ID，便于索引层或其他 Pallet 快速定位，避免线性扫描。
     /// 维护策略：
@@ -177,38 +203,64 @@ pub mod pallet {
     pub type PrimaryDeceasedOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
-    pub struct GraveMeta { pub categories: u32, pub religion: u8 }
+    pub struct GraveMeta {
+        pub categories: u32,
+        pub religion: u8,
+    }
 
     #[pallet::storage]
     pub type GraveMetaOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, GraveMeta, ValueQuery>;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
-    pub struct Moderation { pub restricted: bool, pub removed: bool, pub reason_code: u8 }
+    pub struct Moderation {
+        pub restricted: bool,
+        pub removed: bool,
+        pub reason_code: u8,
+    }
 
     #[pallet::storage]
     pub type ModerationOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, Moderation, ValueQuery>;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
-    pub struct Complaint<T: Config> { pub who: T::AccountId, pub cid: BoundedVec<u8, T::MaxCidLen>, pub time: BlockNumberFor<T> }
+    pub struct Complaint<T: Config> {
+        pub who: T::AccountId,
+        pub cid: BoundedVec<u8, T::MaxCidLen>,
+        pub time: BlockNumberFor<T>,
+    }
 
     #[pallet::storage]
-    pub type ComplaintsByGrave<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<Complaint<T>, T::MaxComplaintsPerGrave>, ValueQuery>;
+    pub type ComplaintsByGrave<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<Complaint<T>, T::MaxComplaintsPerGrave>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
-    pub type NameIndex<T: Config> = StorageMap<_, Blake2_128Concat, [u8;32], BoundedVec<u64, T::MaxIdsPerName>, ValueQuery>;
+    pub type NameIndex<T: Config> =
+        StorageMap<_, Blake2_128Concat, [u8; 32], BoundedVec<u64, T::MaxIdsPerName>, ValueQuery>;
 
     /// 函数级中文注释：墓位管理员列表（不含墓主），统一授权源供子模块（如 deceased）只读引用。
     #[pallet::storage]
-    pub type GraveAdmins<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxAdminsPerGrave>, ValueQuery>;
+    pub type GraveAdmins<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<T::AccountId, T::MaxAdminsPerGrave>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：人类可读 ID（Slug），长度固定为 10 位数字。
     #[pallet::storage]
-    pub type SlugOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::SlugLen>, OptionQuery>;
+    pub type SlugOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::SlugLen>, OptionQuery>;
 
     /// 函数级中文注释：Slug -> GraveId 映射，便于通过 Slug 解析 Grave。
     #[pallet::storage]
-    pub type GraveBySlug<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::SlugLen>, u64, OptionQuery>;
+    pub type GraveBySlug<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::SlugLen>, u64, OptionQuery>;
 
     /// 函数级中文注释：加入策略：0=Open,1=Whitelist。
     #[pallet::storage]
@@ -216,34 +268,55 @@ pub mod pallet {
 
     /// 函数级中文注释：成员集合（通过后可留言/供奉）。
     #[pallet::storage]
-    pub type Members<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+    pub type Members<T: Config> =
+        StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     /// 函数级中文注释：待审批的加入申请（私有模式）。
     #[pallet::storage]
-    pub type PendingApplications<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
+    pub type PendingApplications<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        Blake2_128Concat,
+        T::AccountId,
+        BlockNumberFor<T>,
+        OptionQuery,
+    >;
 
     // 已取消 VisibilityPolicy 策略，改由 `is_public` 简化控制。
 
     /// 关注者列表
     #[pallet::storage]
-    pub type FollowersOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxFollowers>, ValueQuery>;
+    pub type FollowersOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BoundedVec<T::AccountId, T::MaxFollowers>, ValueQuery>;
 
     /// 函数级中文注释：去重与快速授权映射，判定某账户是否关注了某墓地。
     #[pallet::storage]
-    pub type IsFollower<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+    pub type IsFollower<T: Config> =
+        StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     /// 函数级中文注释：关注冷却计时：记录 (grave_id, who) 最近一次 follow/unfollow 操作的块号。
     #[pallet::storage]
-    pub type LastFollowAction<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
+    pub type LastFollowAction<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        Blake2_128Concat,
+        T::AccountId,
+        BlockNumberFor<T>,
+        OptionQuery,
+    >;
 
     /// 函数级中文注释：黑名单：被列入者无法关注该墓地。
     #[pallet::storage]
-    pub type BannedFollowers<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
+    pub type BannedFollowers<T: Config> =
+        StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     /// 函数级中文注释：墓地封面图片 CID（仅存储 CID 字节，不落图片）。
     /// - 默认不存在；创建后可由所有者直接设置；非所有者需通过治理接口设置。
     #[pallet::storage]
-    pub type CoverCidOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
+    pub type CoverCidOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
 
     /// 函数级中文注释：公共封面目录（全局可选封面 CID 列表）。
     /// - 仅存储明文 CID（不加密），供前端/索引层渲染；
@@ -251,26 +324,21 @@ pub mod pallet {
     /// - 任意墓地可通过 `set_cover_from_option` 选择其中一项作为封面；
     /// - 列表去重：相同 CID 不重复插入；删除按值匹配。
     #[pallet::storage]
-    pub type CoverOptions<T: Config> = StorageValue<
-        _,
-        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxCoverOptions>,
-        ValueQuery
-    >;
+    pub type CoverOptions<T: Config> =
+        StorageValue<_, BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxCoverOptions>, ValueQuery>;
 
     /// 函数级中文注释：墓地背景音乐 CID（仅存储明文 CID 字节，不落音频内容）。
     /// - 默认不存在；创建后可由所有者直接设置；非所有者需通过治理接口设置。
     #[pallet::storage]
-    pub type AudioCidOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
+    pub type AudioCidOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BoundedVec<u8, T::MaxCidLen>, OptionQuery>;
 
     /// 函数级中文注释：公共音频目录（全局可选背景音乐 CID 列表）。
     /// - 仅治理起源可增删目录项；任意墓位可从目录中选择其一作为背景音乐；
     /// - 列表去重：相同 CID 不重复插入；删除按值匹配。
     #[pallet::storage]
-    pub type AudioOptions<T: Config> = StorageValue<
-        _,
-        BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioOptions>,
-        ValueQuery
-    >;
+    pub type AudioOptions<T: Config> =
+        StorageValue<_, BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioOptions>, ValueQuery>;
 
     /// 函数级中文注释：每墓位"私有音频候选"目录（仅墓主可维护）。
     #[pallet::storage]
@@ -279,7 +347,7 @@ pub mod pallet {
         Blake2_128Concat,
         u64,
         BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxPrivateAudioOptions>,
-        ValueQuery
+        ValueQuery,
     >;
 
     /// 函数级中文注释：每墓位播放列表（顺序存放 CID）。
@@ -289,13 +357,14 @@ pub mod pallet {
         Blake2_128Concat,
         u64,
         BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioPlaylistLen>,
-        ValueQuery
+        ValueQuery,
     >;
 
     /// 函数级中文注释：旧关注押金退款余额（方案B迁移专用）。
     /// - 在 on_runtime_upgrade(v9->v10) 中，为每个账户累计 FollowDeposit×关注次数；用户可调用退款接口解除保留押金。
     #[pallet::storage]
-    pub type LegacyFollowRefunds<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, OptionQuery>;
+    pub type LegacyFollowRefunds<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, OptionQuery>;
 
     /// 函数级中文注释：轮播图项结构体（全局首页）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -311,11 +380,8 @@ pub mod pallet {
 
     /// 函数级中文注释：全局首页轮播图数据（按顺序渲染）。
     #[pallet::storage]
-    pub type Carousel<T: Config> = StorageValue<
-        _,
-        BoundedVec<CarouselItem<T>, T::MaxCarouselItems>,
-        ValueQuery
-    >;
+    pub type Carousel<T: Config> =
+        StorageValue<_, BoundedVec<CarouselItem<T>, T::MaxCarouselItems>, ValueQuery>;
 
     /// 函数级中文注释：成员↔逝者亲属关系记录
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -329,11 +395,27 @@ pub mod pallet {
 
     /// 函数级中文注释：成员在某墓位下声明与某逝者的亲属关系。
     #[pallet::storage]
-    pub type KinshipOf<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u64, Blake2_128Concat, (u64, T::AccountId), KinshipRecord<T>, OptionQuery>;
+    pub type KinshipOf<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        Blake2_128Concat,
+        (u64, T::AccountId),
+        KinshipRecord<T>,
+        OptionQuery,
+    >;
 
     /// 函数级中文注释：成员在某墓位下的关系索引，便于前端快速拉取。
     #[pallet::storage]
-    pub type KinshipIndexByMember<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::AccountId, Blake2_128Concat, u64, BoundedVec<(u64, u8), ConstU32<64>>, ValueQuery>;
+    pub type KinshipIndexByMember<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<(u64, u8), ConstU32<64>>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：亲属关系声明策略：0=Auto（自动通过），1=Approve（需管理员审核）。
     #[pallet::storage]
@@ -347,67 +429,179 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        GraveCreated { id: u64, park_id: Option<u64>, owner: T::AccountId },
-        GraveUpdated { id: u64 },
-        GraveTransferred { id: u64, new_owner: T::AccountId },
-        Interred { id: u64, deceased_id: u64 },
-        Exhumed { id: u64, deceased_id: u64 },
-        GraveActivated { id: u64 },
-        GraveDeactivated { id: u64 },
-        MetaUpdated { id: u64 },
-        ComplainSubmitted { id: u64, who: T::AccountId },
-        Restricted { id: u64, on: bool, reason_code: u8 },
-        Removed { id: u64, reason_code: u8 },
-        NameHashSet { id: u64, name_hash: [u8;32] },
-        NameHashCleared { id: u64, name_hash: [u8;32] },
+        GraveCreated {
+            id: u64,
+            park_id: Option<u64>,
+            owner: T::AccountId,
+        },
+        GraveUpdated {
+            id: u64,
+        },
+        GraveTransferred {
+            id: u64,
+            new_owner: T::AccountId,
+        },
+        Interred {
+            id: u64,
+            deceased_id: u64,
+        },
+        Exhumed {
+            id: u64,
+            deceased_id: u64,
+        },
+        GraveActivated {
+            id: u64,
+        },
+        GraveDeactivated {
+            id: u64,
+        },
+        MetaUpdated {
+            id: u64,
+        },
+        ComplainSubmitted {
+            id: u64,
+            who: T::AccountId,
+        },
+        Restricted {
+            id: u64,
+            on: bool,
+            reason_code: u8,
+        },
+        Removed {
+            id: u64,
+            reason_code: u8,
+        },
+        NameHashSet {
+            id: u64,
+            name_hash: [u8; 32],
+        },
+        NameHashCleared {
+            id: u64,
+            name_hash: [u8; 32],
+        },
         /// 已添加墓位管理员
-        AdminAdded { id: u64, who: T::AccountId },
+        AdminAdded {
+            id: u64,
+            who: T::AccountId,
+        },
         /// 已移除墓位管理员
-        AdminRemoved { id: u64, who: T::AccountId },
+        AdminRemoved {
+            id: u64,
+            who: T::AccountId,
+        },
         /// 已分配人类可读 ID（Slug）
-        SlugAssigned { id: u64, slug: BoundedVec<u8, T::SlugLen> },
+        SlugAssigned {
+            id: u64,
+            slug: BoundedVec<u8, T::SlugLen>,
+        },
         /// 加入策略已变更（0=Open,1=Whitelist）
-        PolicyChanged { id: u64, policy: u8 },
+        PolicyChanged {
+            id: u64,
+            policy: u8,
+        },
         /// 成员申请/批准/拒绝/加入
-        MemberApplied { id: u64, who: T::AccountId },
-        MemberApproved { id: u64, who: T::AccountId },
-        MemberRejected { id: u64, who: T::AccountId },
-        MemberJoined { id: u64, who: T::AccountId },
+        MemberApplied {
+            id: u64,
+            who: T::AccountId,
+        },
+        MemberApproved {
+            id: u64,
+            who: T::AccountId,
+        },
+        MemberRejected {
+            id: u64,
+            who: T::AccountId,
+        },
+        MemberJoined {
+            id: u64,
+            who: T::AccountId,
+        },
         /// 成员↔逝者亲属关系相关事件
-        KinshipDeclared { id: u64, deceased_id: u64, who: T::AccountId, code: u8 },
-        KinshipApproved { id: u64, deceased_id: u64, who: T::AccountId },
-        KinshipRejected { id: u64, deceased_id: u64, who: T::AccountId },
-        KinshipUpdated { id: u64, deceased_id: u64, who: T::AccountId, code: u8 },
-        KinshipRemoved { id: u64, deceased_id: u64, who: T::AccountId },
-        KinshipPolicyChanged { id: u64, policy: u8 },
+        KinshipDeclared {
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+            code: u8,
+        },
+        KinshipApproved {
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        },
+        KinshipRejected {
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        },
+        KinshipUpdated {
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+            code: u8,
+        },
+        KinshipRemoved {
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        },
+        KinshipPolicyChanged {
+            id: u64,
+            policy: u8,
+        },
         /// 可见性策略变更
         // 取消 VisibilityPolicy 后移除此事件
         /// 关注/取消关注
-        Followed { id: u64, who: T::AccountId },
-        Unfollowed { id: u64, who: T::AccountId },
+        Followed {
+            id: u64,
+            who: T::AccountId,
+        },
+        Unfollowed {
+            id: u64,
+            who: T::AccountId,
+        },
         /// 设置墓位所属园区
-        GraveSetPark { id: u64, park_id: Option<u64> },
+        GraveSetPark {
+            id: u64,
+            park_id: Option<u64>,
+        },
         /// 函数级中文注释：封面图片 CID 已设置/清除
-        CoverSet { id: u64 },
-        CoverCleared { id: u64 },
+        CoverSet {
+            id: u64,
+        },
+        CoverCleared {
+            id: u64,
+        },
         /// 函数级中文注释：公共封面目录项增删（仅治理）
         CoverOptionAdded {},
         CoverOptionRemoved {},
         /// 函数级中文注释：背景音乐 CID 已设置/清除
-        AudioSet { id: u64 },
-        AudioCleared { id: u64 },
+        AudioSet {
+            id: u64,
+        },
+        AudioCleared {
+            id: u64,
+        },
         /// 函数级中文注释：公共音频目录项增删（仅治理）
         AudioOptionAdded {},
         AudioOptionRemoved {},
         /// 函数级中文注释：私有音频候选变更
-        PrivateAudioOptionAdded { id: u64 },
-        PrivateAudioOptionRemoved { id: u64 },
+        PrivateAudioOptionAdded {
+            id: u64,
+        },
+        PrivateAudioOptionRemoved {
+            id: u64,
+        },
         /// 函数级中文注释：播放列表变更
-        AudioPlaylistSet { id: u64, len: u32 },
+        AudioPlaylistSet {
+            id: u64,
+            len: u32,
+        },
         /// 函数级中文注释：治理证据已记录（scope, key, cid）。scope：1=Grave元/封面/所有权等
         GovEvidenceNoted(u8, u64, BoundedVec<u8, T::MaxCidLen>),
         /// 函数级中文注释：轮播图刷新（覆盖式设置）
-        CarouselSet { len: u32 },
+        CarouselSet {
+            len: u32,
+        },
     }
 
     #[pallet::error]
@@ -485,17 +679,37 @@ pub mod pallet {
                 T::Currency::transfer(&who, &collector, fee, ExistenceRequirement::KeepAlive)
                     .map_err(|_| Error::<T>::FeePaymentFailed)?;
             }
-            let id = NextGraveId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
-            let grave = Grave::<T> { park_id, owner: who.clone(), admin_group: None, name, deceased_tokens: BoundedVec::default(), is_public: true, active: true };
+            let id = NextGraveId::<T>::mutate(|n| {
+                let id = *n;
+                *n = n.saturating_add(1);
+                id
+            });
+            let grave = Grave::<T> {
+                park_id,
+                owner: who.clone(),
+                admin_group: None,
+                name,
+                deceased_tokens: BoundedVec::default(),
+                is_public: true,
+                active: true,
+            };
             Graves::<T>::insert(id, &grave);
-            if let Some(pid) = grave.park_id { GravesByPark::<T>::try_mutate(pid, |v| v.try_push(id).map_err(|_| Error::<T>::CapacityExceeded))?; }
+            if let Some(pid) = grave.park_id {
+                GravesByPark::<T>::try_mutate(pid, |v| {
+                    v.try_push(id).map_err(|_| Error::<T>::CapacityExceeded)
+                })?;
+            }
             // 生成 10 位数字 Slug（基于 id 与创建者），确保唯一
             let slug = Self::gen_unique_slug(id, &who)?;
             GraveBySlug::<T>::insert(&slug, id);
             SlugOf::<T>::insert(id, &slug);
             // 默认策略：Open
             JoinPolicyOf::<T>::insert(id, 0u8);
-            Self::deposit_event(Event::GraveCreated { id, park_id, owner: who });
+            Self::deposit_event(Event::GraveCreated {
+                id,
+                park_id,
+                owner: who,
+            });
             Self::deposit_event(Event::SlugAssigned { id, slug });
             Ok(())
         }
@@ -513,17 +727,27 @@ pub mod pallet {
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 if who != g.owner {
-                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
+                    if let Some(pid) = g.park_id {
+                        T::ParkAdmin::ensure(pid, origin.clone())?;
+                    } else {
+                        return Err(Error::<T>::NotAdmin.into());
+                    }
                 }
                 if g.park_id != park_id {
                     // 从旧园区索引移除
                     if let Some(old) = g.park_id {
                         let mut lst = GravesByPark::<T>::get(old);
-                        if let Some(pos) = lst.iter().position(|x| *x == id) { lst.swap_remove(pos); }
+                        if let Some(pos) = lst.iter().position(|x| *x == id) {
+                            lst.swap_remove(pos);
+                        }
                         GravesByPark::<T>::insert(old, lst);
                     }
                     // 加入新园区索引（若有）
-                    if let Some(new_pid) = park_id { GravesByPark::<T>::mutate(new_pid, |v| { let _ = v.try_push(id); }); }
+                    if let Some(new_pid) = park_id {
+                        GravesByPark::<T>::mutate(new_pid, |v| {
+                            let _ = v.try_push(id);
+                        });
+                    }
                     g.park_id = park_id;
                 }
                 Ok(())
@@ -539,7 +763,11 @@ pub mod pallet {
         #[pallet::call_index(41)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
-        pub fn set_cover(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn set_cover(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
@@ -573,7 +801,11 @@ pub mod pallet {
         #[pallet::call_index(43)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
-        pub fn set_cover_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn set_cover_via_governance(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             CoverCidOf::<T>::insert(id, cid);
@@ -600,11 +832,17 @@ pub mod pallet {
         #[pallet::call_index(45)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
-        pub fn add_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn add_cover_option(
+            origin: OriginFor<T>,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
-                if list.iter().any(|x| x == &cid) { return Err(Error::<T>::CoverOptionExists.into()); }
-                list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
+                if list.iter().any(|x| x == &cid) {
+                    return Err(Error::<T>::CoverOptionExists.into());
+                }
+                list.try_push(cid)
+                    .map_err(|_| Error::<T>::CapacityExceeded)?;
                 Ok(())
             })?;
             Self::deposit_event(Event::CoverOptionAdded {});
@@ -617,7 +855,10 @@ pub mod pallet {
         #[pallet::call_index(46)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
-        pub fn remove_cover_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn remove_cover_option(
+            origin: OriginFor<T>,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             CoverOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if let Some(pos) = list.iter().position(|x| x == &cid) {
@@ -662,7 +903,11 @@ pub mod pallet {
         #[pallet::call_index(52)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_audio())]
-        pub fn set_audio(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn set_audio(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
@@ -696,7 +941,11 @@ pub mod pallet {
         #[pallet::call_index(54)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_audio_via_governance())]
-        pub fn set_audio_via_governance(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn set_audio_via_governance(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             AudioCidOf::<T>::insert(id, cid);
@@ -723,11 +972,17 @@ pub mod pallet {
         #[pallet::call_index(56)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::add_audio_option())]
-        pub fn add_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn add_audio_option(
+            origin: OriginFor<T>,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
-                if list.iter().any(|x| x == &cid) { return Err(Error::<T>::AudioOptionExists.into()); }
-                list.try_push(cid).map_err(|_| Error::<T>::CapacityExceeded)?;
+                if list.iter().any(|x| x == &cid) {
+                    return Err(Error::<T>::AudioOptionExists.into());
+                }
+                list.try_push(cid)
+                    .map_err(|_| Error::<T>::CapacityExceeded)?;
                 Ok(())
             })?;
             Self::deposit_event(Event::AudioOptionAdded {});
@@ -740,7 +995,10 @@ pub mod pallet {
         #[pallet::call_index(57)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove_audio_option())]
-        pub fn remove_audio_option(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn remove_audio_option(
+            origin: OriginFor<T>,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             AudioOptions::<T>::try_mutate(|list| -> DispatchResult {
                 if let Some(pos) = list.iter().position(|x| x == &cid) {
@@ -781,7 +1039,11 @@ pub mod pallet {
         #[pallet::call_index(59)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_audio_from_private_option())]
-        pub fn set_audio_from_private_option(origin: OriginFor<T>, id: u64, index: u32) -> DispatchResult {
+        pub fn set_audio_from_private_option(
+            origin: OriginFor<T>,
+            id: u64,
+            index: u32,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
@@ -801,7 +1063,11 @@ pub mod pallet {
         #[pallet::call_index(60)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::add_private_audio_option())]
-        pub fn add_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn add_private_audio_option(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
@@ -809,7 +1075,8 @@ pub mod pallet {
                 Ok(())
             })?;
             PrivateAudioOptionsOf::<T>::try_mutate(id, |list| -> DispatchResult {
-                list.try_push(cid).map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
+                list.try_push(cid)
+                    .map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
                 Ok(())
             })?;
             Self::deposit_event(Event::PrivateAudioOptionAdded { id });
@@ -820,7 +1087,11 @@ pub mod pallet {
         #[pallet::call_index(61)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove_private_audio_option())]
-        pub fn remove_private_audio_option(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn remove_private_audio_option(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
@@ -828,7 +1099,12 @@ pub mod pallet {
                 Ok(())
             })?;
             PrivateAudioOptionsOf::<T>::try_mutate(id, |list| -> DispatchResult {
-                if let Some(pos) = list.iter().position(|x| x == &cid) { list.swap_remove(pos); Ok(()) } else { Err(Error::<T>::AudioOptionNotFound.into()) }
+                if let Some(pos) = list.iter().position(|x| x == &cid) {
+                    list.swap_remove(pos);
+                    Ok(())
+                } else {
+                    Err(Error::<T>::AudioOptionNotFound.into())
+                }
             })?;
             Self::deposit_event(Event::PrivateAudioOptionRemoved { id });
             Ok(())
@@ -839,17 +1115,24 @@ pub mod pallet {
         #[pallet::call_index(62)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_audio_playlist(items.len() as u32))]
-        pub fn set_audio_playlist(origin: OriginFor<T>, id: u64, items: Vec<Vec<u8>>) -> DispatchResult {
+        pub fn set_audio_playlist(
+            origin: OriginFor<T>,
+            id: u64,
+            items: Vec<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_ref().ok_or(Error::<T>::NotFound)?;
                 ensure!(who == g.owner, Error::<T>::NotOwner);
                 Ok(())
             })?;
-            let mut out: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioPlaylistLen> = BoundedVec::default();
+            let mut out: BoundedVec<BoundedVec<u8, T::MaxCidLen>, T::MaxAudioPlaylistLen> =
+                BoundedVec::default();
             for v in items.into_iter() {
-                let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?;
-                out.try_push(bv).map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
+                let bv: BoundedVec<u8, T::MaxCidLen> =
+                    BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?;
+                out.try_push(bv)
+                    .map_err(|_| Error::<T>::AudioListCapacityExceeded)?;
             }
             let len = out.len() as u32;
             AudioPlaylistOf::<T>::insert(id, out);
@@ -864,7 +1147,17 @@ pub mod pallet {
         #[pallet::call_index(63)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_carousel(items.len() as u32))]
-        pub fn set_carousel(origin: OriginFor<T>, items: Vec<(Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<(u8,u64)>, Option<BlockNumberFor<T>>, Option<BlockNumberFor<T>>)>) -> DispatchResult {
+        pub fn set_carousel(
+            origin: OriginFor<T>,
+            items: Vec<(
+                Vec<u8>,
+                Vec<u8>,
+                Option<Vec<u8>>,
+                Option<(u8, u64)>,
+                Option<BlockNumberFor<T>>,
+                Option<BlockNumberFor<T>>,
+            )>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let mut out: BoundedVec<CarouselItem<T>, T::MaxCarouselItems> = BoundedVec::default();
             for (img, title, link, target, start, end) in items.into_iter() {
@@ -874,12 +1167,29 @@ pub mod pallet {
                 ensure!(!(has_target && has_link), Error::<T>::InvalidKind);
                 ensure!(has_target || has_link, Error::<T>::InvalidKind);
                 // 时间窗：若设置则要求 start <= end
-                if let (Some(s), Some(e)) = (start, end) { ensure!(s <= e, Error::<T>::BadTimingWindow); }
-                let img_bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(img).map_err(|_| Error::<T>::CapacityExceeded)?;
-                let title_bv: BoundedVec<u8, T::MaxTitleLen> = BoundedVec::try_from(title).map_err(|_| Error::<T>::CapacityExceeded)?;
-                let link_bv: Option<BoundedVec<u8, T::MaxLinkLen>> = match link { Some(v)=> Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?), None=> None };
-                let item = CarouselItem::<T> { img_cid: img_bv, title: title_bv, link: link_bv, target, start_block: start, end_block: end };
-                out.try_push(item).map_err(|_| Error::<T>::CarouselIndexOOB)?;
+                if let (Some(s), Some(e)) = (start, end) {
+                    ensure!(s <= e, Error::<T>::BadTimingWindow);
+                }
+                let img_bv: BoundedVec<u8, T::MaxCidLen> =
+                    BoundedVec::try_from(img).map_err(|_| Error::<T>::CapacityExceeded)?;
+                let title_bv: BoundedVec<u8, T::MaxTitleLen> =
+                    BoundedVec::try_from(title).map_err(|_| Error::<T>::CapacityExceeded)?;
+                let link_bv: Option<BoundedVec<u8, T::MaxLinkLen>> = match link {
+                    Some(v) => {
+                        Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?)
+                    }
+                    None => None,
+                };
+                let item = CarouselItem::<T> {
+                    img_cid: img_bv,
+                    title: title_bv,
+                    link: link_bv,
+                    target,
+                    start_block: start,
+                    end_block: end,
+                };
+                out.try_push(item)
+                    .map_err(|_| Error::<T>::CarouselIndexOOB)?;
             }
             let len = out.len() as u32;
             Carousel::<T>::put(out);
@@ -893,7 +1203,12 @@ pub mod pallet {
         #[pallet::call_index(48)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer_grave())]
-        pub fn gov_transfer_grave(origin: OriginFor<T>, id: u64, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_transfer_grave(
+            origin: OriginFor<T>,
+            id: u64,
+            new_owner: T::AccountId,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -910,12 +1225,25 @@ pub mod pallet {
         #[pallet::call_index(49)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::restrict())]
-        pub fn gov_set_restricted(origin: OriginFor<T>, id: u64, on: bool, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_restricted(
+            origin: OriginFor<T>,
+            id: u64,
+            on: bool,
+            reason_code: u8,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ModerationOf::<T>::mutate(id, |m| { m.restricted = on; m.reason_code = reason_code; });
-            Self::deposit_event(Event::Restricted { id, on, reason_code });
+            ModerationOf::<T>::mutate(id, |m| {
+                m.restricted = on;
+                m.reason_code = reason_code;
+            });
+            Self::deposit_event(Event::Restricted {
+                id,
+                on,
+                reason_code,
+            });
             Ok(())
         }
 
@@ -924,11 +1252,20 @@ pub mod pallet {
         #[pallet::call_index(50)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove())]
-        pub fn gov_remove_grave(origin: OriginFor<T>, id: u64, reason_code: u8, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_remove_grave(
+            origin: OriginFor<T>,
+            id: u64,
+            reason_code: u8,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ModerationOf::<T>::mutate(id, |m| { m.removed = true; m.restricted = true; m.reason_code = reason_code; });
+            ModerationOf::<T>::mutate(id, |m| {
+                m.removed = true;
+                m.restricted = true;
+                m.reason_code = reason_code;
+            });
             Self::deposit_event(Event::Removed { id, reason_code });
             Ok(())
         }
@@ -938,12 +1275,24 @@ pub mod pallet {
         #[pallet::call_index(51)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::restrict())]
-        pub fn gov_restore_grave(origin: OriginFor<T>, id: u64, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_restore_grave(
+            origin: OriginFor<T>,
+            id: u64,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(1u8, id, evidence_cid);
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ModerationOf::<T>::mutate(id, |m| { m.removed = false; m.restricted = false; m.reason_code = 0; });
-            Self::deposit_event(Event::Restricted { id, on: false, reason_code: 0 });
+            ModerationOf::<T>::mutate(id, |m| {
+                m.removed = false;
+                m.restricted = false;
+                m.reason_code = 0;
+            });
+            Self::deposit_event(Event::Restricted {
+                id,
+                on: false,
+                reason_code: 0,
+            });
             Ok(())
         }
 
@@ -954,7 +1303,8 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_grave())]
         pub fn update_grave(
-            origin: OriginFor<T>, id: u64,
+            origin: OriginFor<T>,
+            id: u64,
             name: Option<BoundedVec<u8, T::MaxCidLen>>,
             active: Option<bool>,
             is_public: Option<bool>,
@@ -963,11 +1313,21 @@ pub mod pallet {
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 if who != g.owner {
-                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
+                    if let Some(pid) = g.park_id {
+                        T::ParkAdmin::ensure(pid, origin.clone())?;
+                    } else {
+                        return Err(Error::<T>::NotAdmin.into());
+                    }
                 }
-                if let Some(n) = name { g.name = n; }
-                if let Some(a) = active { g.active = a; }
-                if let Some(p) = is_public { g.is_public = p; }
+                if let Some(n) = name {
+                    g.name = n;
+                }
+                if let Some(a) = active {
+                    g.active = a;
+                }
+                if let Some(p) = is_public {
+                    g.is_public = p;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::GraveUpdated { id });
@@ -978,7 +1338,11 @@ pub mod pallet {
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer_grave())]
-        pub fn transfer_grave(origin: OriginFor<T>, id: u64, new_owner: T::AccountId) -> DispatchResult {
+        pub fn transfer_grave(
+            origin: OriginFor<T>,
+            id: u64,
+            new_owner: T::AccountId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
@@ -996,18 +1360,35 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::inter())]
-        pub fn inter(origin: OriginFor<T>, id: u64, deceased_id: u64, slot: Option<u16>, note_cid: Option<BoundedVec<u8, T::MaxCidLen>>) -> DispatchResult {
+        pub fn inter(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            slot: Option<u16>,
+            note_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let now = <frame_system::Pallet<T>>::block_number();
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 if who != g.owner {
-                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
+                    if let Some(pid) = g.park_id {
+                        T::ParkAdmin::ensure(pid, origin.clone())?;
+                    } else {
+                        return Err(Error::<T>::NotAdmin.into());
+                    }
                 }
                 let mut records = Interments::<T>::get(id);
                 let use_slot = slot.unwrap_or(records.len() as u16);
                 // 简化：不做重复槽校验，记录层面由上层约束（可扩展）
-                records.try_push(IntermentRecord::<T> { deceased_id, slot: use_slot, time: now, note_cid }).map_err(|_| Error::<T>::CapacityExceeded)?;
+                records
+                    .try_push(IntermentRecord::<T> {
+                        deceased_id,
+                        slot: use_slot,
+                        time: now,
+                        note_cid,
+                    })
+                    .map_err(|_| Error::<T>::CapacityExceeded)?;
                 Interments::<T>::insert(id, records);
                 // 维护主逝者：若尚未设置，则将本次安葬设为主逝者
                 if !PrimaryDeceasedOf::<T>::contains_key(id) {
@@ -1017,7 +1398,9 @@ pub mod pallet {
                 if let Some(mut g) = Graves::<T>::get(id) {
                     if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
                         let mut lst = g.deceased_tokens.clone();
-                        if lst.len() as u32 >= 6 { let _ = lst.remove(0); }
+                        if lst.len() as u32 >= 6 {
+                            let _ = lst.remove(0);
+                        }
                         let _ = lst.try_push(tok);
                         g.deceased_tokens = lst;
                         Graves::<T>::insert(id, g);
@@ -1039,7 +1422,11 @@ pub mod pallet {
             Graves::<T>::try_mutate_exists(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 if who != g.owner {
-                    if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin.clone())?; } else { return Err(Error::<T>::NotAdmin.into()); }
+                    if let Some(pid) = g.park_id {
+                        T::ParkAdmin::ensure(pid, origin.clone())?;
+                    } else {
+                        return Err(Error::<T>::NotAdmin.into());
+                    }
                 }
                 let mut records = Interments::<T>::get(id);
                 if let Some(pos) = records.iter().position(|r| r.deceased_id == deceased_id) {
@@ -1055,7 +1442,10 @@ pub mod pallet {
                             let mut best = recs[0].deceased_id;
                             let mut best_slot = recs[0].slot;
                             for r in recs.iter() {
-                                if r.slot < best_slot { best = r.deceased_id; best_slot = r.slot; }
+                                if r.slot < best_slot {
+                                    best = r.deceased_id;
+                                    best_slot = r.slot;
+                                }
                             }
                             PrimaryDeceasedOf::<T>::insert(id, best);
                         }
@@ -1072,7 +1462,9 @@ pub mod pallet {
                 if let Some(tok) = maybe_tok {
                     g.deceased_tokens.retain(|t| t != &tok);
                 } else {
-                    if !g.deceased_tokens.is_empty() { let _ = g.deceased_tokens.remove(0); }
+                    if !g.deceased_tokens.is_empty() {
+                        let _ = g.deceased_tokens.remove(0);
+                    }
                 }
                 Graves::<T>::insert(id, g);
             }
@@ -1084,15 +1476,34 @@ pub mod pallet {
         #[pallet::call_index(6)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_meta())]
-        pub fn set_meta(origin: OriginFor<T>, id: u64, categories: Option<u32>, religion: Option<u8>) -> DispatchResult {
+        pub fn set_meta(
+            origin: OriginFor<T>,
+            id: u64,
+            categories: Option<u32>,
+            religion: Option<u8>,
+        ) -> DispatchResult {
             // 墓主或管理员
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(w) = ensure_signed(o.clone()) {
+                    if w != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             GraveMetaOf::<T>::mutate(id, |m| {
-                if let Some(c) = categories { m.categories = c; }
-                if let Some(r) = religion { m.religion = r; }
+                if let Some(c) = categories {
+                    m.categories = c;
+                }
+                if let Some(r) = religion {
+                    m.religion = r;
+                }
             });
             Self::deposit_event(Event::MetaUpdated { id });
             Ok(())
@@ -1102,12 +1513,26 @@ pub mod pallet {
         #[pallet::call_index(7)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::complain())]
-        pub fn complain(origin: OriginFor<T>, id: u64, cid: BoundedVec<u8, T::MaxCidLen>) -> DispatchResult {
+        pub fn complain(
+            origin: OriginFor<T>,
+            id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ensure!(!ModerationOf::<T>::get(id).removed, Error::<T>::AlreadyRemoved);
+            ensure!(
+                !ModerationOf::<T>::get(id).removed,
+                Error::<T>::AlreadyRemoved
+            );
             let now = <frame_system::Pallet<T>>::block_number();
-            ComplaintsByGrave::<T>::try_mutate(id, |list| list.try_push(Complaint::<T>{ who: who.clone(), cid, time: now }).map_err(|_| Error::<T>::CapacityExceeded))?;
+            ComplaintsByGrave::<T>::try_mutate(id, |list| {
+                list.try_push(Complaint::<T> {
+                    who: who.clone(),
+                    cid,
+                    time: now,
+                })
+                .map_err(|_| Error::<T>::CapacityExceeded)
+            })?;
             Self::deposit_event(Event::ComplainSubmitted { id, who });
             Ok(())
         }
@@ -1116,10 +1541,30 @@ pub mod pallet {
         #[pallet::call_index(8)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::restrict())]
-        pub fn restrict(origin: OriginFor<T>, id: u64, on: bool, reason_code: u8) -> DispatchResult {
-            if let Some(g) = Graves::<T>::get(id) { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } else { return Err(Error::<T>::NotFound.into()); }
-            ModerationOf::<T>::mutate(id, |m| { m.restricted = on; m.reason_code = reason_code; });
-            Self::deposit_event(Event::Restricted { id, on, reason_code });
+        pub fn restrict(
+            origin: OriginFor<T>,
+            id: u64,
+            on: bool,
+            reason_code: u8,
+        ) -> DispatchResult {
+            if let Some(g) = Graves::<T>::get(id) {
+                if let Some(pid) = g.park_id {
+                    T::ParkAdmin::ensure(pid, origin)?;
+                } else {
+                    return Err(Error::<T>::NotAdmin.into());
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            ModerationOf::<T>::mutate(id, |m| {
+                m.restricted = on;
+                m.reason_code = reason_code;
+            });
+            Self::deposit_event(Event::Restricted {
+                id,
+                on,
+                reason_code,
+            });
             Ok(())
         }
 
@@ -1128,8 +1573,20 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove())]
         pub fn remove(origin: OriginFor<T>, id: u64, reason_code: u8) -> DispatchResult {
-            if let Some(g) = Graves::<T>::get(id) { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } else { return Err(Error::<T>::NotFound.into()); }
-            ModerationOf::<T>::mutate(id, |m| { m.removed = true; m.restricted = true; m.reason_code = reason_code; });
+            if let Some(g) = Graves::<T>::get(id) {
+                if let Some(pid) = g.park_id {
+                    T::ParkAdmin::ensure(pid, origin)?;
+                } else {
+                    return Err(Error::<T>::NotAdmin.into());
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            ModerationOf::<T>::mutate(id, |m| {
+                m.removed = true;
+                m.restricted = true;
+                m.reason_code = reason_code;
+            });
             Self::deposit_event(Event::Removed { id, reason_code });
             Ok(())
         }
@@ -1138,13 +1595,26 @@ pub mod pallet {
         #[pallet::call_index(10)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_name_hash())]
-        pub fn set_name_hash(origin: OriginFor<T>, id: u64, name_hash: [u8;32]) -> DispatchResult {
+        pub fn set_name_hash(origin: OriginFor<T>, id: u64, name_hash: [u8; 32]) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(w) = ensure_signed(o.clone()) {
+                    if w != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             NameIndex::<T>::try_mutate(name_hash, |list| -> Result<(), Error<T>> {
-                if !list.iter().any(|x| *x == id) { list.try_push(id).map_err(|_| Error::<T>::CapacityExceeded)?; }
+                if !list.iter().any(|x| *x == id) {
+                    list.try_push(id)
+                        .map_err(|_| Error::<T>::CapacityExceeded)?;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::NameHashSet { id, name_hash });
@@ -1155,12 +1625,30 @@ pub mod pallet {
         #[pallet::call_index(11)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::clear_name_hash())]
-        pub fn clear_name_hash(origin: OriginFor<T>, id: u64, name_hash: [u8;32]) -> DispatchResult {
+        pub fn clear_name_hash(
+            origin: OriginFor<T>,
+            id: u64,
+            name_hash: [u8; 32],
+        ) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(w) = ensure_signed(o.clone()) { if w != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            NameIndex::<T>::mutate(name_hash, |list| { if let Some(pos) = list.iter().position(|x| *x == id) { list.swap_remove(pos); } });
+                if let Ok(w) = ensure_signed(o.clone()) {
+                    if w != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            NameIndex::<T>::mutate(name_hash, |list| {
+                if let Some(pos) = list.iter().position(|x| *x == id) {
+                    list.swap_remove(pos);
+                }
+            });
             Self::deposit_event(Event::NameHashCleared { id, name_hash });
             Ok(())
         }
@@ -1172,10 +1660,23 @@ pub mod pallet {
         pub fn add_admin(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             GraveAdmins::<T>::try_mutate(id, |list| -> Result<(), Error<T>> {
-                if !list.iter().any(|x| x == &who) { list.try_push(who.clone()).map_err(|_| Error::<T>::CapacityExceeded)?; }
+                if !list.iter().any(|x| x == &who) {
+                    list.try_push(who.clone())
+                        .map_err(|_| Error::<T>::CapacityExceeded)?;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::AdminAdded { id, who });
@@ -1189,10 +1690,22 @@ pub mod pallet {
         pub fn remove_admin(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             GraveAdmins::<T>::mutate(id, |list| {
-                if let Some(pos) = list.iter().position(|x| *x == who) { list.swap_remove(pos); }
+                if let Some(pos) = list.iter().position(|x| *x == who) {
+                    list.swap_remove(pos);
+                }
             });
             Self::deposit_event(Event::AdminRemoved { id, who });
             Ok(())
@@ -1205,8 +1718,18 @@ pub mod pallet {
         pub fn set_policy(origin: OriginFor<T>, id: u64, policy: u8) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             ensure!(policy == 0 || policy == 1, Error::<T>::PolicyViolation);
             JoinPolicyOf::<T>::insert(id, policy);
             Self::deposit_event(Event::PolicyChanged { id, policy });
@@ -1220,8 +1743,14 @@ pub mod pallet {
         pub fn join_open(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ensure!(JoinPolicyOf::<T>::get(id) == 0u8, Error::<T>::PolicyViolation);
-            ensure!(!Members::<T>::contains_key(id, &who), Error::<T>::AlreadyMember);
+            ensure!(
+                JoinPolicyOf::<T>::get(id) == 0u8,
+                Error::<T>::PolicyViolation
+            );
+            ensure!(
+                !Members::<T>::contains_key(id, &who),
+                Error::<T>::AlreadyMember
+            );
             Members::<T>::insert(id, &who, ());
             Self::deposit_event(Event::MemberJoined { id, who });
             Ok(())
@@ -1234,9 +1763,18 @@ pub mod pallet {
         pub fn apply_join(origin: OriginFor<T>, id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
-            ensure!(JoinPolicyOf::<T>::get(id) == 1u8, Error::<T>::PolicyViolation);
-            ensure!(!Members::<T>::contains_key(id, &who), Error::<T>::AlreadyMember);
-            ensure!(!PendingApplications::<T>::contains_key(id, &who), Error::<T>::AlreadyApplied);
+            ensure!(
+                JoinPolicyOf::<T>::get(id) == 1u8,
+                Error::<T>::PolicyViolation
+            );
+            ensure!(
+                !Members::<T>::contains_key(id, &who),
+                Error::<T>::AlreadyMember
+            );
+            ensure!(
+                !PendingApplications::<T>::contains_key(id, &who),
+                Error::<T>::AlreadyApplied
+            );
             let now = <frame_system::Pallet<T>>::block_number();
             PendingApplications::<T>::insert(id, &who, now);
             Self::deposit_event(Event::MemberApplied { id, who });
@@ -1250,12 +1788,28 @@ pub mod pallet {
         pub fn approve_member(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            ensure!(PendingApplications::<T>::contains_key(id, &who), Error::<T>::NotApplied);
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            ensure!(
+                PendingApplications::<T>::contains_key(id, &who),
+                Error::<T>::NotApplied
+            );
             PendingApplications::<T>::remove(id, &who);
             Members::<T>::insert(id, &who, ());
-            Self::deposit_event(Event::MemberApproved { id, who: who.clone() });
+            Self::deposit_event(Event::MemberApproved {
+                id,
+                who: who.clone(),
+            });
             Self::deposit_event(Event::MemberJoined { id, who });
             Ok(())
         }
@@ -1267,9 +1821,22 @@ pub mod pallet {
         pub fn reject_member(origin: OriginFor<T>, id: u64, who: T::AccountId) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            ensure!(PendingApplications::<T>::contains_key(id, &who), Error::<T>::NotApplied);
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            ensure!(
+                PendingApplications::<T>::contains_key(id, &who),
+                Error::<T>::NotApplied
+            );
             PendingApplications::<T>::remove(id, &who);
             Self::deposit_event(Event::MemberRejected { id, who });
             Ok(())
@@ -1279,7 +1846,16 @@ pub mod pallet {
         #[pallet::call_index(19)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::set_visibility())]
-        pub fn set_visibility(_origin: OriginFor<T>, _id: u64, _public_offering: bool, _public_guestbook: bool, _public_sweep: bool, _public_follow: bool) -> DispatchResult { Err(Error::<T>::PolicyViolation.into()) }
+        pub fn set_visibility(
+            _origin: OriginFor<T>,
+            _id: u64,
+            _public_offering: bool,
+            _public_guestbook: bool,
+            _public_sweep: bool,
+            _public_follow: bool,
+        ) -> DispatchResult {
+            Err(Error::<T>::PolicyViolation.into())
+        }
 
         /// 函数级详细中文注释：关注墓位（已停用）。
         /// - 方案B：亲友/关注统一回归逝者维度；墓位不再承载关注功能。
@@ -1288,14 +1864,20 @@ pub mod pallet {
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::follow())]
         pub fn follow(origin: OriginFor<T>, id: u64) -> DispatchResult {
-            let _ = ensure_signed(origin)?; let _ = id; Err(Error::<T>::PolicyViolation.into())
+            let _ = ensure_signed(origin)?;
+            let _ = id;
+            Err(Error::<T>::PolicyViolation.into())
         }
 
         /// 函数级详细中文注释：取消关注（已停用）。
         #[pallet::call_index(21)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::unfollow())]
-        pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult { let _ = ensure_signed(origin)?; let _ = id; Err(Error::<T>::PolicyViolation.into()) }
+        pub fn unfollow(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let _ = ensure_signed(origin)?;
+            let _ = id;
+            Err(Error::<T>::PolicyViolation.into())
+        }
 
         /// 函数级中文注释：领取旧关注押金（方案B迁移退款口）。
         /// - 若账户在迁移时被统计到了旧关注押金余额，则可在此一次性解除保留押金；领取后记录被删除。
@@ -1305,9 +1887,13 @@ pub mod pallet {
         pub fn claim_legacy_follow_refund(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             if let Some(amt) = LegacyFollowRefunds::<T>::take(&who) {
-                if !amt.is_zero() { T::Currency::unreserve(&who, amt); }
+                if !amt.is_zero() {
+                    T::Currency::unreserve(&who, amt);
+                }
                 Ok(())
-            } else { Err(Error::<T>::NotApplied.into()) }
+            } else {
+                Err(Error::<T>::NotApplied.into())
+            }
         }
 
         /// 函数级中文注释：设置亲属关系策略（0=Auto,1=Approve）。
@@ -1317,8 +1903,18 @@ pub mod pallet {
         pub fn set_kinship_policy(origin: OriginFor<T>, id: u64, policy: u8) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
             ensure!(policy == 0 || policy == 1, Error::<T>::PolicyViolation);
             KinshipPolicyOf::<T>::insert(id, policy);
             Self::deposit_event(Event::KinshipPolicyChanged { id, policy });
@@ -1330,21 +1926,48 @@ pub mod pallet {
         #[pallet::call_index(23)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::declare_kinship())]
-        pub fn declare_kinship(origin: OriginFor<T>, id: u64, deceased_id: u64, code: u8, note: Option<Vec<u8>>) -> DispatchResult {
+        pub fn declare_kinship(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            code: u8,
+            note: Option<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(Members::<T>::contains_key(id, &who), Error::<T>::NotMember);
             // 校验逝者属于该墓位（读取 Interments 记录）
-            let in_this_grave = Interments::<T>::get(id).iter().any(|r| r.deceased_id == deceased_id);
+            let in_this_grave = Interments::<T>::get(id)
+                .iter()
+                .any(|r| r.deceased_id == deceased_id);
             ensure!(in_this_grave, Error::<T>::NotFound);
-            ensure!(!KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())), Error::<T>::KinshipExists);
-            let nv: BoundedVec<_, T::MaxCidLen> = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?, None => Default::default() };
+            ensure!(
+                !KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())),
+                Error::<T>::KinshipExists
+            );
+            let nv: BoundedVec<_, T::MaxCidLen> = match note {
+                Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::CapacityExceeded)?,
+                None => Default::default(),
+            };
             let now = <frame_system::Pallet<T>>::block_number();
             let policy = KinshipPolicyOf::<T>::get(id);
-            let rec = KinshipRecord::<T> { code, note: nv, verified: policy == 0, time: now };
+            let rec = KinshipRecord::<T> {
+                code,
+                note: nv,
+                verified: policy == 0,
+                time: now,
+            };
             KinshipOf::<T>::insert(id, (deceased_id, who.clone()), rec);
             // 索引
-            KinshipIndexByMember::<T>::try_mutate(who.clone(), id, |list| list.try_push((deceased_id, code)).map_err(|_| Error::<T>::CapacityExceeded))?;
-            Self::deposit_event(Event::KinshipDeclared { id, deceased_id, who, code });
+            KinshipIndexByMember::<T>::try_mutate(who.clone(), id, |list| {
+                list.try_push((deceased_id, code))
+                    .map_err(|_| Error::<T>::CapacityExceeded)
+            })?;
+            Self::deposit_event(Event::KinshipDeclared {
+                id,
+                deceased_id,
+                who,
+                code,
+            });
             Ok(())
         }
 
@@ -1352,16 +1975,40 @@ pub mod pallet {
         #[pallet::call_index(24)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::approve_kinship())]
-        pub fn approve_kinship(origin: OriginFor<T>, id: u64, deceased_id: u64, who: T::AccountId) -> DispatchResult {
+        pub fn approve_kinship(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        ) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            KinshipOf::<T>::try_mutate(id, (deceased_id, who.clone()), |maybe| -> DispatchResult {
-                let r = maybe.as_mut().ok_or(Error::<T>::KinshipNotFound)?;
-                r.verified = true; Ok(())
-            })?;
-            Self::deposit_event(Event::KinshipApproved { id, deceased_id, who });
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            KinshipOf::<T>::try_mutate(
+                id,
+                (deceased_id, who.clone()),
+                |maybe| -> DispatchResult {
+                    let r = maybe.as_mut().ok_or(Error::<T>::KinshipNotFound)?;
+                    r.verified = true;
+                    Ok(())
+                },
+            )?;
+            Self::deposit_event(Event::KinshipApproved {
+                id,
+                deceased_id,
+                who,
+            });
             Ok(())
         }
 
@@ -1369,16 +2016,42 @@ pub mod pallet {
         #[pallet::call_index(25)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::reject_kinship())]
-        pub fn reject_kinship(origin: OriginFor<T>, id: u64, deceased_id: u64, who: T::AccountId) -> DispatchResult {
+        pub fn reject_kinship(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        ) -> DispatchResult {
             if let Some(g) = Graves::<T>::get(id) {
                 let o = origin.clone();
-                if let Ok(sender) = ensure_signed(o) { if sender != g.owner { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin)?; } else { return Err(Error::<T>::NotAdmin.into()); } } }
-            } else { return Err(Error::<T>::NotFound.into()); }
-            ensure!(KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())), Error::<T>::KinshipNotFound);
+                if let Ok(sender) = ensure_signed(o) {
+                    if sender != g.owner {
+                        if let Some(pid) = g.park_id {
+                            T::ParkAdmin::ensure(pid, origin)?;
+                        } else {
+                            return Err(Error::<T>::NotAdmin.into());
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::<T>::NotFound.into());
+            }
+            ensure!(
+                KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())),
+                Error::<T>::KinshipNotFound
+            );
             KinshipOf::<T>::remove(id, (deceased_id, who.clone()));
             // 索引同步删除
-            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| { if let Some(p) = list.iter().position(|(d, _)| *d == deceased_id) { list.swap_remove(p); } });
-            Self::deposit_event(Event::KinshipRejected { id, deceased_id, who });
+            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| {
+                if let Some(p) = list.iter().position(|(d, _)| *d == deceased_id) {
+                    list.swap_remove(p);
+                }
+            });
+            Self::deposit_event(Event::KinshipRejected {
+                id,
+                deceased_id,
+                who,
+            });
             Ok(())
         }
 
@@ -1386,20 +2059,44 @@ pub mod pallet {
         #[pallet::call_index(26)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update_kinship())]
-        pub fn update_kinship(origin: OriginFor<T>, id: u64, deceased_id: u64, code: Option<u8>, note: Option<Vec<u8>>) -> DispatchResult {
+        pub fn update_kinship(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            code: Option<u8>,
+            note: Option<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            KinshipOf::<T>::try_mutate(id, (deceased_id, who.clone()), |maybe| -> DispatchResult {
-                let r = maybe.as_mut().ok_or(Error::<T>::KinshipNotFound)?;
-                if let Some(c) = code { r.code = c; }
-                if let Some(nv) = note { r.note = BoundedVec::try_from(nv).map_err(|_| Error::<T>::CapacityExceeded)?; }
-                // 重置审核
-                let policy = KinshipPolicyOf::<T>::get(id);
-                r.verified = policy == 0;
-                Ok(())
-            })?;
+            KinshipOf::<T>::try_mutate(
+                id,
+                (deceased_id, who.clone()),
+                |maybe| -> DispatchResult {
+                    let r = maybe.as_mut().ok_or(Error::<T>::KinshipNotFound)?;
+                    if let Some(c) = code {
+                        r.code = c;
+                    }
+                    if let Some(nv) = note {
+                        r.note =
+                            BoundedVec::try_from(nv).map_err(|_| Error::<T>::CapacityExceeded)?;
+                    }
+                    // 重置审核
+                    let policy = KinshipPolicyOf::<T>::get(id);
+                    r.verified = policy == 0;
+                    Ok(())
+                },
+            )?;
             // 更新成员索引中的 code
-            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| { if let Some(p) = list.iter_mut().position(|(d, _)| *d == deceased_id) { list[p].1 = code.unwrap_or(list[p].1); } });
-            Self::deposit_event(Event::KinshipUpdated { id, deceased_id, who, code: code.unwrap_or_default() });
+            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| {
+                if let Some(p) = list.iter_mut().position(|(d, _)| *d == deceased_id) {
+                    list[p].1 = code.unwrap_or(list[p].1);
+                }
+            });
+            Self::deposit_event(Event::KinshipUpdated {
+                id,
+                deceased_id,
+                who,
+                code: code.unwrap_or_default(),
+            });
             Ok(())
         }
 
@@ -1407,16 +2104,42 @@ pub mod pallet {
         #[pallet::call_index(27)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::remove_kinship())]
-        pub fn remove_kinship(origin: OriginFor<T>, id: u64, deceased_id: u64, who: T::AccountId) -> DispatchResult {
+        pub fn remove_kinship(
+            origin: OriginFor<T>,
+            id: u64,
+            deceased_id: u64,
+            who: T::AccountId,
+        ) -> DispatchResult {
             let sender = ensure_signed(origin.clone())?;
             let can_admin = if let Some(g) = Graves::<T>::get(id) {
-                if sender == g.owner { true } else { if let Some(pid) = g.park_id { T::ParkAdmin::ensure(pid, origin).is_ok() } else { false } }
-            } else { false };
+                if sender == g.owner {
+                    true
+                } else {
+                    if let Some(pid) = g.park_id {
+                        T::ParkAdmin::ensure(pid, origin).is_ok()
+                    } else {
+                        false
+                    }
+                }
+            } else {
+                false
+            };
             ensure!(sender == who || can_admin, Error::<T>::NotAdmin);
-            ensure!(KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())), Error::<T>::KinshipNotFound);
+            ensure!(
+                KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())),
+                Error::<T>::KinshipNotFound
+            );
             KinshipOf::<T>::remove(id, (deceased_id, who.clone()));
-            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| { if let Some(p) = list.iter().position(|(d, _)| *d == deceased_id) { list.swap_remove(p); } });
-            Self::deposit_event(Event::KinshipRemoved { id, deceased_id, who });
+            KinshipIndexByMember::<T>::mutate(who.clone(), id, |list| {
+                if let Some(p) = list.iter().position(|(d, _)| *d == deceased_id) {
+                    list.swap_remove(p);
+                }
+            });
+            Self::deposit_event(Event::KinshipRemoved {
+                id,
+                deceased_id,
+                who,
+            });
             Ok(())
         }
     }
@@ -1463,7 +2186,10 @@ pub mod pallet {
                 STORAGE_VERSION.put::<Pallet<T>>();
                 // 简化：估算权重 = 常数 + 每条迁移成本（此处返回迁移项数）
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
-                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+                weight = weight.saturating_add(Weight::from_parts(
+                    migrated.saturating_mul(10_000) as u64,
+                    0,
+                ));
             }
             // v4 -> v5：删除 kind_code/capacity，新增 name 字段，默认置空
             if current < 5 {
@@ -1493,7 +2219,10 @@ pub mod pallet {
                 });
                 STORAGE_VERSION.put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
-                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+                weight = weight.saturating_add(Weight::from_parts(
+                    migrated.saturating_mul(10_000) as u64,
+                    0,
+                ));
             }
             if current < 6 {
                 // v5 -> v6：移除 metadata_cid 字段
@@ -1522,7 +2251,10 @@ pub mod pallet {
                 });
                 STORAGE_VERSION.put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
-                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+                weight = weight.saturating_add(Weight::from_parts(
+                    migrated.saturating_mul(10_000) as u64,
+                    0,
+                ));
             }
             if current < 8 {
                 // v7 -> v8：新增 is_public 字段，默认 true
@@ -1551,7 +2283,10 @@ pub mod pallet {
                 });
                 STORAGE_VERSION.put::<Pallet<T>>();
                 weight = weight.saturating_add(Weight::from_parts(1_000, 0));
-                weight = weight.saturating_add(Weight::from_parts(migrated.saturating_mul(10_000) as u64, 0));
+                weight = weight.saturating_add(Weight::from_parts(
+                    migrated.saturating_mul(10_000) as u64,
+                    0,
+                ));
             }
             // v9 -> v10：方案B迁移——统计旧关注押金余额
             if current < 10 {
@@ -1565,8 +2300,13 @@ pub mod pallet {
                     });
                     for (who, n) in acc.into_iter() {
                         let mut amt = dep;
-                        for _ in 0..n { amt = amt.saturating_add(dep); }
-                        if amt > Zero::zero() { LegacyFollowRefunds::<T>::insert(&who, amt); sum = sum.saturating_add(amt); }
+                        for _ in 0..n {
+                            amt = amt.saturating_add(dep);
+                        }
+                        if amt > Zero::zero() {
+                            LegacyFollowRefunds::<T>::insert(&who, amt);
+                            sum = sum.saturating_add(amt);
+                        }
                     }
                 }
                 STORAGE_VERSION.put::<Pallet<T>>();
@@ -1580,7 +2320,10 @@ pub mod pallet {
         /// 函数级中文注释：生成唯一的 10 位数字 Slug。
         /// - 基于 (id, who, block_number) 的 blake2 哈希映射为 10 位数字；
         /// - 若冲突则尝试多次（最多 10 次），最终回退为 id 左填充 0 的 10 位。
-        pub fn gen_unique_slug(id: u64, who: &T::AccountId) -> Result<BoundedVec<u8, T::SlugLen>, Error<T>> {
+        pub fn gen_unique_slug(
+            id: u64,
+            who: &T::AccountId,
+        ) -> Result<BoundedVec<u8, T::SlugLen>, Error<T>> {
             let mut try_idx: u8 = 0;
             while try_idx < 10 {
                 let now = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>();
@@ -1588,26 +2331,40 @@ pub mod pallet {
                 let enc = (id, who, now, try_idx);
                 seed.copy_from_slice(&sp_core::blake2_256(&enc.encode()));
                 let mut digits: [u8; 10] = [0; 10];
-                for i in 0..10 { digits[i] = b'0' + (seed[i] % 10); }
+                for i in 0..10 {
+                    digits[i] = b'0' + (seed[i] % 10);
+                }
                 let v: Vec<u8> = digits.to_vec();
                 if let Ok(bv) = BoundedVec::<u8, T::SlugLen>::try_from(v.clone()) {
-                    if !GraveBySlug::<T>::contains_key(&bv) { return Ok(bv); }
+                    if !GraveBySlug::<T>::contains_key(&bv) {
+                        return Ok(bv);
+                    }
                 }
                 try_idx = try_idx.saturating_add(1);
             }
             // 回退：id 左填充 0 至 10 位
             let s = alloc::format!("{:010}", id);
-            let bv = BoundedVec::<u8, T::SlugLen>::try_from(s.into_bytes()).map_err(|_| Error::<T>::InvalidSlug)?;
-            if GraveBySlug::<T>::contains_key(&bv) { return Err(Error::<T>::SlugExists); }
+            let bv = BoundedVec::<u8, T::SlugLen>::try_from(s.into_bytes())
+                .map_err(|_| Error::<T>::InvalidSlug)?;
+            if GraveBySlug::<T>::contains_key(&bv) {
+                return Err(Error::<T>::SlugExists);
+            }
             Ok(bv)
         }
 
         /// 函数级详细中文注释：检查某账户是否为成员。
-        pub fn is_member(id: u64, who: &T::AccountId) -> bool { Members::<T>::contains_key(id, who) }
+        pub fn is_member(id: u64, who: &T::AccountId) -> bool {
+            Members::<T>::contains_key(id, who)
+        }
 
         /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
-        pub(crate) fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
-            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+        pub(crate) fn note_evidence(
+            scope: u8,
+            key: u64,
+            cid: Vec<u8>,
+        ) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> =
+                BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
             Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
             Ok(bv)
         }
@@ -1615,9 +2372,9 @@ pub mod pallet {
         /// 函数级中文注释：统一治理起源校验辅助，确保 BadOrigin 映射为模块级 NotAdmin 错误。
         #[inline]
         pub(crate) fn ensure_gov(origin: OriginFor<T>) -> Result<(), Error<T>> {
-            T::GovernanceOrigin::ensure_origin(origin).map(|_| ()).map_err(|_| Error::<T>::NotAdmin)
+            T::GovernanceOrigin::ensure_origin(origin)
+                .map(|_| ())
+                .map_err(|_| Error::<T>::NotAdmin)
         }
     }
 }
-
-

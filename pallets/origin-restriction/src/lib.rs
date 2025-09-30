@@ -26,7 +26,9 @@ pub mod pallet {
 
     /// 函数级中文注释：Storage 默认值设为 true（放行全部）。
     #[pallet::type_value]
-    pub fn DefaultAllow<T: Config>() -> bool { true }
+    pub fn DefaultAllow<T: Config>() -> bool {
+        true
+    }
 
     /// 函数级中文注释：全局放行开关，true=放行全部；false=占位仍放行（后续细化）。
     #[pallet::storage]
@@ -35,7 +37,9 @@ pub mod pallet {
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event<T: Config> { PolicyUpdated(bool) }
+    pub enum Event<T: Config> {
+        PolicyUpdated(bool),
+    }
 
     #[pallet::error]
     pub enum Error<T> {}
@@ -56,5 +60,3 @@ pub mod pallet {
         }
     }
 }
-
-

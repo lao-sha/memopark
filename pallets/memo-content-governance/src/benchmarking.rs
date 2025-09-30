@@ -41,5 +41,3 @@ benchmarks! {
         let _ = MCG::<T>::purge_appeals(frame_system::RawOrigin::Root.into(), 0, 100, 10);
     }
 }
-
-

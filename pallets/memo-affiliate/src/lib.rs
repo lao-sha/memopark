@@ -15,30 +15,44 @@ pub trait ConsumptionReporter<AccountId, Balance, BlockNumber> {
     /// - meta: 业务域元组（可选）
     /// - now: 当前区块高度（用于换算周）
     /// - duration_weeks: 若有时长，标记活跃期
-    fn report(who: &AccountId, amount: Balance, meta: Option<(u8, u64)>, now: BlockNumber, duration_weeks: Option<u32>);
+    fn report(
+        who: &AccountId,
+        amount: Balance,
+        meta: Option<(u8, u64)>,
+        now: BlockNumber,
+        duration_weeks: Option<u32>,
+    );
 }
 
 #[frame_support::pallet]
 pub mod pallet {
-    use frame_support::{
-        pallet_prelude::*,
-        traits::{Currency, ExistenceRequirement::KeepAlive, StorageVersion, Get, ConstU32},
-    };
-    use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
     use core::convert::TryInto;
     use frame_support::sp_runtime::traits::{AccountIdConversion, Saturating};
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{ConstU32, Currency, ExistenceRequirement::KeepAlive, Get, StorageVersion},
+    };
+    use frame_system::pallet_prelude::*;
     use pallet_memo_referrals::ReferralProvider;
 
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
     pub type BlockNumberFor<T> = frame_system::pallet_prelude::BlockNumberFor<T>;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
     /// 结算模式
     #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, TypeInfo, MaxEncodedLen, RuntimeDebug)]
-    pub enum SettlementMode { Escrow, Immediate }
-    impl Default for SettlementMode { fn default() -> Self { SettlementMode::Escrow } }
+    pub enum SettlementMode {
+        Escrow,
+        Immediate,
+    }
+    impl Default for SettlementMode {
+        fn default() -> Self {
+            SettlementMode::Escrow
+        }
+    }
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -86,49 +100,84 @@ pub mod pallet {
 
     // ====== 可治理参数（以存储为准；常量/默认由 runtime 注入） ======
     #[pallet::type_value]
-    pub fn DefaultBudgetSourceAccount<T: Config>() -> T::AccountId { T::EscrowPalletId::get().into_account_truncating() }
+    pub fn DefaultBudgetSourceAccount<T: Config>() -> T::AccountId {
+        T::EscrowPalletId::get().into_account_truncating()
+    }
     #[pallet::type_value]
-    pub fn DefaultBudgetCapPerCycle<T: Config>() -> BalanceOf<T> { 0u32.into() }
+    pub fn DefaultBudgetCapPerCycle<T: Config>() -> BalanceOf<T> {
+        0u32.into()
+    }
     #[pallet::type_value]
-    pub fn DefaultMinStakeForReward<T: Config>() -> BalanceOf<T> { 0u32.into() }
+    pub fn DefaultMinStakeForReward<T: Config>() -> BalanceOf<T> {
+        0u32.into()
+    }
     #[pallet::type_value]
-    pub fn DefaultMinQualActions<T: Config>() -> u32 { 0u32 }
+    pub fn DefaultMinQualActions<T: Config>() -> u32 {
+        0u32
+    }
 
     /// 支付预算来源账户（默认为 PalletId 派生的托管账户）。
     #[pallet::storage]
-    pub type BudgetSourceAccount<T: Config> = StorageValue<_, T::AccountId, ValueQuery, DefaultBudgetSourceAccount<T>>;
+    pub type BudgetSourceAccount<T: Config> =
+        StorageValue<_, T::AccountId, ValueQuery, DefaultBudgetSourceAccount<T>>;
     /// 每周期（周）奖励上限（仅对发放给上级的份额生效，基础销毁/国库不计入此上限）。0 表示不限制。
     #[pallet::storage]
-    pub type BudgetCapPerCycle<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultBudgetCapPerCycle<T>>;
+    pub type BudgetCapPerCycle<T: Config> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, DefaultBudgetCapPerCycle<T>>;
     /// 周期内已累计用于发放上级奖励的金额（记账），用于上限控制。
     #[pallet::storage]
-    pub type CycleRewardUsed<T: Config> = StorageMap<_, Blake2_128Concat, u32, BalanceOf<T>, ValueQuery>;
+    pub type CycleRewardUsed<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, BalanceOf<T>, ValueQuery>;
     /// 最小参与门槛：上级需持有至少该余额方可获得奖励（0 表示不限制）。
     #[pallet::storage]
-    pub type MinStakeForReward<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinStakeForReward<T>>;
+    pub type MinStakeForReward<T: Config> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinStakeForReward<T>>;
     /// 最小有效行为次数（占位，默认 0，联动外部行为统计后启用）。
     #[pallet::storage]
-    pub type MinQualifyingAction<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMinQualActions<T>>;
+    pub type MinQualifyingAction<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultMinQualActions<T>>;
 
     /// 函数级中文注释：账户活跃截至周（含）。
     #[pallet::storage]
-    pub type ActiveUntilWeek<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
+    pub type ActiveUntilWeek<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     /// 函数级中文注释：账户当前“直推有效”人数（随到期/续期动态变化）。
     #[pallet::storage]
-    pub type DirectActiveCount<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
+    pub type DirectActiveCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     /// 函数级中文注释：在某一周到期的账户清单（供 OnInitialize 扫描回退直推计数）。
     #[pallet::storage]
-    pub type ExpiringAt<T: Config> = StorageMap<_, Blake2_128Concat, u32, BoundedVec<T::AccountId, ConstU32<100_000>>, ValueQuery>;
+    pub type ExpiringAt<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,
+        BoundedVec<T::AccountId, ConstU32<100_000>>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：本周应得佣金累计（记账，待结算）。
     #[pallet::storage]
-    pub type Entitlement<T: Config> = StorageDoubleMap<_, Blake2_128Concat, u32, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
+    pub type Entitlement<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u32,
+        Blake2_128Concat,
+        T::AccountId,
+        BalanceOf<T>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：本周有应得的账户索引（用于分页结算）。
     #[pallet::storage]
-    pub type EntitledAccounts<T: Config> = StorageMap<_, Blake2_128Concat, u32, BoundedVec<T::AccountId, ConstU32<200_000>>, ValueQuery>;
+    pub type EntitledAccounts<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,
+        BoundedVec<T::AccountId, ConstU32<200_000>>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：本周累计销毁金额（记账）。
     #[pallet::storage]
@@ -144,19 +193,29 @@ pub mod pallet {
 
     /// 函数级中文注释：账户主推荐码（一次性领取，不可重复）。
     #[pallet::storage]
-    pub type CodeOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
+    pub type CodeOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
 
     /// 函数级中文注释：推荐码归属索引（规范化码 → 账户）。
     #[pallet::storage]
-    pub type OwnerOfCode<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
+    pub type OwnerOfCode<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 消费已入托管并记账。
-        EscrowRecorded { cycle: u32, who: T::AccountId, base: BalanceOf<T> },
+        EscrowRecorded {
+            cycle: u32,
+            who: T::AccountId,
+            base: BalanceOf<T>,
+        },
         /// 已为账户累计应得金额（记账阶段）。
-        Entitled { cycle: u32, to: T::AccountId, amount: BalanceOf<T> },
+        Entitled {
+            cycle: u32,
+            to: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// 完成一批结算。
         Settled { cycle: u32, paid: u32 },
         /// 活跃期已标记。
@@ -164,12 +223,19 @@ pub mod pallet {
         /// 结算模式变更。
         ModeChanged { mode_code: u8 },
         /// 已支付给账户的奖励。
-        RewardClaimed { cycle: u32, to: T::AccountId, amount: BalanceOf<T> },
+        RewardClaimed {
+            cycle: u32,
+            to: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// 参数更新（预算来源/上限/门槛）。
         RewardParamsUpdated,
         /// 函数级中文注释：已为账户分配唯一推荐码（默认码）。
         /// - code 采用规范化（大写十六进制）编码，仅包含 [0-9A-F]，长度固定 8。
-        ReferralCodeAssigned { who: T::AccountId, code: BoundedVec<u8, ConstU32<16>> },
+        ReferralCodeAssigned {
+            who: T::AccountId,
+            code: BoundedVec<u8, ConstU32<16>>,
+        },
     }
 
     #[pallet::error]
@@ -195,7 +261,9 @@ pub mod pallet {
             let now = <frame_system::Pallet<T>>::block_number();
             let week = Self::week_of(now);
             let list = ExpiringAt::<T>::get(week);
-            if list.is_empty() { return Weight::from_parts(0, 0); }
+            if list.is_empty() {
+                return Weight::from_parts(0, 0);
+            }
             for acc in list.into_inner() {
                 let until = ActiveUntilWeek::<T>::get(&acc);
                 if until < week {
@@ -216,7 +284,11 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn set_mode(origin: OriginFor<T>, mode_code: u8) -> DispatchResult {
             ensure_root(origin)?;
-            let mode = match mode_code { 0 => SettlementMode::Escrow, 1 => SettlementMode::Immediate, _ => SettlementMode::Escrow };
+            let mode = match mode_code {
+                0 => SettlementMode::Escrow,
+                1 => SettlementMode::Immediate,
+                _ => SettlementMode::Escrow,
+            };
             Mode::<T>::put(mode);
             Self::deposit_event(Event::ModeChanged { mode_code });
             Ok(())
@@ -230,7 +302,12 @@ pub mod pallet {
         pub fn settle(origin: OriginFor<T>, cycle: u32, max_pay: u32) -> DispatchResult {
             let _ = ensure_signed(origin)?; // 允许任何人触发结算
             let list = EntitledAccounts::<T>::get(cycle).into_inner();
-            ensure!(!list.is_empty() || BurnAccrued::<T>::get().0 == cycle || TreasuryAccrued::<T>::get().0 == cycle, Error::<T>::NothingToSettle);
+            ensure!(
+                !list.is_empty()
+                    || BurnAccrued::<T>::get().0 == cycle
+                    || TreasuryAccrued::<T>::get().0 == cycle,
+                Error::<T>::NothingToSettle
+            );
 
             let mut cursor = SettleCursor::<T>::get(cycle);
             let src = BudgetSourceAccount::<T>::get();
@@ -240,7 +317,11 @@ pub mod pallet {
                 let amt = Entitlement::<T>::take(cycle, who);
                 if !amt.is_zero() {
                     let _ = T::Currency::transfer(&src, who, amt, KeepAlive);
-                    Self::deposit_event(Event::RewardClaimed { cycle, to: who.clone(), amount: amt });
+                    Self::deposit_event(Event::RewardClaimed {
+                        cycle,
+                        to: who.clone(),
+                        amount: amt,
+                    });
                     paid = paid.saturating_add(1);
                 }
                 cursor = cursor.saturating_add(1);
@@ -251,11 +332,17 @@ pub mod pallet {
             if (cursor as usize) >= list.len() {
                 let (_, burn_amt) = BurnAccrued::<T>::take();
                 if !burn_amt.is_zero() {
-                    let _ = T::Currency::transfer(&src, &T::BurnAccount::get(), burn_amt, KeepAlive);
+                    let _ =
+                        T::Currency::transfer(&src, &T::BurnAccount::get(), burn_amt, KeepAlive);
                 }
                 let (_, trea_amt) = TreasuryAccrued::<T>::take();
                 if !trea_amt.is_zero() {
-                    let _ = T::Currency::transfer(&src, &T::TreasuryAccount::get(), trea_amt, KeepAlive);
+                    let _ = T::Currency::transfer(
+                        &src,
+                        &T::TreasuryAccount::get(),
+                        trea_amt,
+                        KeepAlive,
+                    );
                 }
                 EntitledAccounts::<T>::remove(cycle);
                 SettleCursor::<T>::remove(cycle);
@@ -279,10 +366,18 @@ pub mod pallet {
             min_qual_actions: Option<u32>,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            if let Some(acc) = budget_source { BudgetSourceAccount::<T>::put(acc); }
-            if let Some(cap) = budget_cap_per_cycle { BudgetCapPerCycle::<T>::put(cap); }
-            if let Some(ms) = min_stake_for_reward { MinStakeForReward::<T>::put(ms); }
-            if let Some(mq) = min_qual_actions { MinQualifyingAction::<T>::put(mq); }
+            if let Some(acc) = budget_source {
+                BudgetSourceAccount::<T>::put(acc);
+            }
+            if let Some(cap) = budget_cap_per_cycle {
+                BudgetCapPerCycle::<T>::put(cap);
+            }
+            if let Some(ms) = min_stake_for_reward {
+                MinStakeForReward::<T>::put(ms);
+            }
+            if let Some(mq) = min_qual_actions {
+                MinQualifyingAction::<T>::put(mq);
+            }
             Self::deposit_event(Event::RewardParamsUpdated);
             Ok(())
         }
@@ -295,7 +390,10 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn claim_default_code(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(<Self as ReferralView<T>>::sponsor_of(&who).is_some(), Error::<T>::NotEligible);
+            ensure!(
+                <Self as ReferralView<T>>::sponsor_of(&who).is_some(),
+                Error::<T>::NotEligible
+            );
             ensure!(!CodeOf::<T>::contains_key(&who), Error::<T>::AlreadyHasCode);
 
             let mut salt: u8 = 0;
@@ -308,11 +406,13 @@ pub mod pallet {
                 let mut code_bytes: [u8; 8] = [0u8; 8];
                 for i in 0..4 {
                     let b = hash[i];
-                    code_bytes[i*2] = Self::hex_upper(b >> 4);
-                    code_bytes[i*2+1] = Self::hex_upper(b & 0x0F);
+                    code_bytes[i * 2] = Self::hex_upper(b >> 4);
+                    code_bytes[i * 2 + 1] = Self::hex_upper(b & 0x0F);
                 }
                 let vec_code = code_bytes.to_vec();
-                let bv_key: BoundedVec<u8, ConstU32<16>> = BoundedVec::try_from(vec_code.clone()).map_err(|_| Error::<T>::CodeCollision)?;
+                let bv_key: BoundedVec<u8, ConstU32<16>> =
+                    BoundedVec::try_from(vec_code.clone())
+                        .map_err(|_| Error::<T>::CodeCollision)?;
                 if !OwnerOfCode::<T>::contains_key(&bv_key) {
                     let bv: BoundedVec<u8, ConstU32<16>> = bv_key.clone();
                     CodeOf::<T>::insert(&who, &bv);
@@ -323,7 +423,10 @@ pub mod pallet {
                 salt = salt.saturating_add(1);
             }
             ensure!(assigned.is_some(), Error::<T>::CodeCollision);
-            Self::deposit_event(Event::ReferralCodeAssigned { who, code: assigned.unwrap() });
+            Self::deposit_event(Event::ReferralCodeAssigned {
+                who,
+                code: assigned.unwrap(),
+            });
             Ok(())
         }
     }
@@ -334,12 +437,18 @@ pub mod pallet {
             // 简单换算：floor(now / BlocksPerWeek)
             let bpw = T::BlocksPerWeek::get();
             let n: u32 = TryInto::<u32>::try_into(now).ok().unwrap_or(0);
-            if bpw == 0 { return 0; }
+            if bpw == 0 {
+                return 0;
+            }
             n / bpw
         }
 
         /// 函数级中文注释：标记账户活跃期（供 offering Hook 调用）。
-        pub fn mark_active(who: &T::AccountId, now: BlockNumberFor<T>, duration_weeks: Option<u32>) {
+        pub fn mark_active(
+            who: &T::AccountId,
+            now: BlockNumberFor<T>,
+            duration_weeks: Option<u32>,
+        ) {
             let cur_week = Self::week_of(now);
             let extend = duration_weeks.unwrap_or(1).max(1);
             let new_until = cur_week.saturating_add(extend);
@@ -360,12 +469,19 @@ pub mod pallet {
                         DirectActiveCount::<T>::mutate(up, |c| *c = c.saturating_add(1));
                     }
                 }
-                Self::deposit_event(Event::ActiveMarked { who: who.clone(), until_week: new_until });
+                Self::deposit_event(Event::ActiveMarked {
+                    who: who.clone(),
+                    until_week: new_until,
+                });
             }
         }
 
         /// 函数级中文注释：托管/即时模式统一入口：记录分配（即时模式也先记账，再直接划拨）。
-        pub fn record_distribution(who: &T::AccountId, amount: BalanceOf<T>, now: BlockNumberFor<T>) {
+        pub fn record_distribution(
+            who: &T::AccountId,
+            amount: BalanceOf<T>,
+            now: BlockNumberFor<T>,
+        ) {
             let cur_week = Self::week_of(now);
             let max_levels = T::MaxLevels::get();
             let per_need = T::PerLevelNeed::get();
@@ -380,7 +496,8 @@ pub mod pallet {
             let mut up_opt = <Self as ReferralView<T>>::sponsor_of(who);
             for layer in 1..=max_levels {
                 let rate_bps: u32 = rates.get((layer - 1) as usize).copied().unwrap_or(0) as u32;
-                if rate_bps == 0 { // 未配置的层视为 0
+                if rate_bps == 0 {
+                    // 未配置的层视为 0
                     // 继续上溯一层以推进 up_opt，避免卡住
                     up_opt = up_opt.and_then(|u| <Self as ReferralView<T>>::sponsor_of(&u));
                     continue;
@@ -394,7 +511,11 @@ pub mod pallet {
                         let banned = <T as Config>::Referrals::is_banned(up);
                         let stake_ok = {
                             let min_stake = MinStakeForReward::<T>::get();
-                            if min_stake == 0u32.into() { true } else { T::Currency::free_balance(up) >= min_stake }
+                            if min_stake == 0u32.into() {
+                                true
+                            } else {
+                                T::Currency::free_balance(up) >= min_stake
+                            }
                         };
                         if active && can_take && stake_ok && !banned {
                             // 预算上限控制
@@ -402,8 +523,15 @@ pub mod pallet {
                             if cap.is_zero() {
                                 Entitlement::<T>::mutate(cur_week, up, |v| *v += share);
                                 let mut idx = EntitledAccounts::<T>::get(cur_week);
-                                if !idx.iter().any(|x| x == up) { let _ = idx.try_push(up.clone()); EntitledAccounts::<T>::insert(cur_week, idx); }
-                                Self::deposit_event(Event::Entitled { cycle: cur_week, to: up.clone(), amount: share });
+                                if !idx.iter().any(|x| x == up) {
+                                    let _ = idx.try_push(up.clone());
+                                    EntitledAccounts::<T>::insert(cur_week, idx);
+                                }
+                                Self::deposit_event(Event::Entitled {
+                                    cycle: cur_week,
+                                    to: up.clone(),
+                                    amount: share,
+                                });
                             } else {
                                 let used = CycleRewardUsed::<T>::get(cur_week);
                                 let allowed = cap.saturating_sub(used);
@@ -414,11 +542,23 @@ pub mod pallet {
                                     if !alloc.is_zero() {
                                         Entitlement::<T>::mutate(cur_week, up, |v| *v += alloc);
                                         let mut idx = EntitledAccounts::<T>::get(cur_week);
-                                        if !idx.iter().any(|x| x == up) { let _ = idx.try_push(up.clone()); EntitledAccounts::<T>::insert(cur_week, idx); }
-                                        CycleRewardUsed::<T>::insert(cur_week, used.saturating_add(alloc));
-                                        Self::deposit_event(Event::Entitled { cycle: cur_week, to: up.clone(), amount: alloc });
+                                        if !idx.iter().any(|x| x == up) {
+                                            let _ = idx.try_push(up.clone());
+                                            EntitledAccounts::<T>::insert(cur_week, idx);
+                                        }
+                                        CycleRewardUsed::<T>::insert(
+                                            cur_week,
+                                            used.saturating_add(alloc),
+                                        );
+                                        Self::deposit_event(Event::Entitled {
+                                            cycle: cur_week,
+                                            to: up.clone(),
+                                            amount: alloc,
+                                        });
                                     }
-                                    if share > allowed { treasury_extra += share - allowed; }
+                                    if share > allowed {
+                                        treasury_extra += share - allowed;
+                                    }
                                 }
                             }
                         } else {
@@ -437,40 +577,78 @@ pub mod pallet {
             let burn = base / 10_000u32.into() * (burn_bps as u32).into();
             let mut trea = base / 10_000u32.into() * (tres_bps as u32).into();
             trea += treasury_extra;
-            BurnAccrued::<T>::mutate(|x| { x.0 = cur_week; x.1 += burn; });
-            TreasuryAccrued::<T>::mutate(|x| { x.0 = cur_week; x.1 += trea; });
+            BurnAccrued::<T>::mutate(|x| {
+                x.0 = cur_week;
+                x.1 += burn;
+            });
+            TreasuryAccrued::<T>::mutate(|x| {
+                x.0 = cur_week;
+                x.1 += trea;
+            });
 
             // 托管：上游应已将金额转入统一托管账户；此处仅记录事件
-            Self::deposit_event(Event::EscrowRecorded { cycle: cur_week, who: who.clone(), base });
+            Self::deposit_event(Event::EscrowRecorded {
+                cycle: cur_week,
+                who: who.clone(),
+                base,
+            });
         }
 
         /// 函数级中文注释：包装静态 trait 方法，便于 runtime 通过 `Pallet::<Runtime>::report(...)` 直接调用。
-        pub fn report(who: &T::AccountId, amount: BalanceOf<T>, meta: Option<(u8, u64)>, now: BlockNumberFor<T>, duration_weeks: Option<u32>) {
-            <Self as crate::ConsumptionReporter<_, _, _>>::report(who, amount, meta, now, duration_weeks)
+        pub fn report(
+            who: &T::AccountId,
+            amount: BalanceOf<T>,
+            meta: Option<(u8, u64)>,
+            now: BlockNumberFor<T>,
+            duration_weeks: Option<u32>,
+        ) {
+            <Self as crate::ConsumptionReporter<_, _, _>>::report(
+                who,
+                amount,
+                meta,
+                now,
+                duration_weeks,
+            )
         }
 
         /// 函数级中文注释：十六进制编码辅助（大写）。输入低 4 比特，返回 ASCII 字节。
         #[inline]
-        fn hex_upper(n: u8) -> u8 { match n { 0..=9 => b'0'+n, 10..=15 => b'A'+(n-10), _ => b'0' } }
+        fn hex_upper(n: u8) -> u8 {
+            match n {
+                0..=9 => b'0' + n,
+                10..=15 => b'A' + (n - 10),
+                _ => b'0',
+            }
+        }
     }
-
-    
 
     /// 函数级中文注释：只读推荐关系视图（复用 referrals Pallet）。
     pub trait ReferralView<T: Config> {
         fn sponsor_of(who: &T::AccountId) -> Option<T::AccountId>;
     }
     impl<T: Config> ReferralView<T> for Pallet<T> {
-        fn sponsor_of(who: &T::AccountId) -> Option<T::AccountId> { <T as Config>::Referrals::sponsor_of(who) }
+        fn sponsor_of(who: &T::AccountId) -> Option<T::AccountId> {
+            <T as Config>::Referrals::sponsor_of(who)
+        }
     }
 }
 
-impl<T: pallet::Config> ConsumptionReporter<<T as frame_system::Config>::AccountId, pallet::BalanceOf<T>, pallet::BlockNumberFor<T>> for pallet::Pallet<T> {
+impl<T: pallet::Config>
+    ConsumptionReporter<
+        <T as frame_system::Config>::AccountId,
+        pallet::BalanceOf<T>,
+        pallet::BlockNumberFor<T>,
+    > for pallet::Pallet<T>
+{
     /// 函数级中文注释：供奉来源调用：标记活跃 + 记账式 15 层压缩分配；即时模式下仍优先记账，再由治理触发批量支付。
-    fn report(who: &T::AccountId, amount: BalanceOf<T>, _meta: Option<(u8, u64)>, now: BlockNumberFor<T>, duration_weeks: Option<u32>) {
+    fn report(
+        who: &T::AccountId,
+        amount: BalanceOf<T>,
+        _meta: Option<(u8, u64)>,
+        now: BlockNumberFor<T>,
+        duration_weeks: Option<u32>,
+    ) {
         Pallet::<T>::mark_active(who, now, duration_weeks);
         Pallet::<T>::record_distribution(who, amount, now);
     }
 }
-
-

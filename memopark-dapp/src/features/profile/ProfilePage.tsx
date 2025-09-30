@@ -165,6 +165,7 @@ const ProfilePage: React.FC = () => {
             <DashboardPage />
           </Card>
           <Space>
+            <Button type="primary" onClick={()=> { window.location.hash = '#/otc/order' }}>购买 MEMO（OTC）</Button>
             <Button onClick={() => window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'transfer' } }))}>转账</Button>
             <Button type="primary" onClick={() => window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create-grave' } }))}>创建陵墓</Button>
             <Button onClick={()=> { window.location.hash = '#/grave/my' }}>我的墓地</Button>

@@ -1,7 +1,7 @@
 //! 函数级中文注释：memo-content-governance 权重接口与占位实现。
 //! 后续可通过 frame-benchmarking 自动生成覆盖本实现。
 
-use frame_support::weights::{Weight, constants::RocksDbWeight};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 
 pub trait WeightInfo {
     fn on_initialize(processed: u32) -> Weight;
@@ -43,5 +43,3 @@ impl<T> WeightInfo for SubstrateWeight<T> {
             .saturating_add(Weight::from_parts(2_000, 0).saturating_mul(limit.into()))
     }
 }
-
-

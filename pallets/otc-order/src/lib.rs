@@ -1,21 +1,38 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
+// 作用：
+// - 让 runtime 可以通过 `pallet_otc_order::Call` 与 `pallet_otc_order::ArbitrationHook` 进行类型引用；
+// - 降低路径耦合，便于其他 pallet/rpc 使用。
+pub use pallet::*;
+
 #[frame_support::pallet]
 pub mod pallet {
-    use frame_support::{pallet_prelude::*, traits::{Currency, Get}};
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{Currency, Get},
+    };
     use frame_system::pallet_prelude::*;
-    use sp_core::H256;
     use pallet_escrow::pallet::Escrow as EscrowTrait;
-    use sp_core::hashing::blake2_256;
     use pallet_otc_listing::pallet::Listings as ListingsMap;
     use pallet_pricing::PriceProvider;
-    use sp_runtime::traits::{Saturating, Zero, SaturatedConversion};
+    use sp_core::hashing::blake2_256;
+    use sp_core::H256;
+    use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
     use sp_std::vec::Vec;
 
     // Balance aliases 将在 Config 定义之后重新声明
 
     #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    pub enum OrderState { Created, PaidOrCommitted, Released, Refunded, Canceled, Disputed, Closed }
+    pub enum OrderState {
+        Created,
+        PaidOrCommitted,
+        Released,
+        Refunded,
+        Canceled,
+        Disputed,
+        Closed,
+    }
 
     #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct Order<AccountId, Balance, BlockNumber> {
@@ -37,7 +54,9 @@ pub mod pallet {
 
     #[pallet::config]
     // Plan B: 仅依赖 listing 与 escrow（listing 已经 transitively 依赖 maker/KYC），去掉直接对 maker pallet 的耦合。
-    pub trait Config: frame_system::Config + pallet_otc_listing::Config + pallet_escrow::pallet::Config {
+    pub trait Config:
+        frame_system::Config + pallet_otc_listing::Config + pallet_escrow::pallet::Config
+    {
         type Currency: Currency<Self::AccountId>;
         type ConfirmTTL: Get<BlockNumberFor<Self>>;
         /// 托管接口（用于锁定/释放/退款）
@@ -55,52 +74,77 @@ pub mod pallet {
         type PaidWindow: Get<BlockNumberFor<Self>>;
         #[pallet::constant]
         type PaidMaxInWindow: Get<u32>;
+        /// 函数级中文注释：事件类型，确保 Pallet 事件能映射到 RuntimeEvent。
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
     }
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     // 余额别名（在 Config 定义之后，复用 listing 的余额类型以避免类型不匹配）
-    pub type BalanceOf<T> =
-        <<T as pallet_otc_listing::Config>::Currency as Currency<
-            <T as frame_system::Config>::AccountId
-        >>::Balance;
+    pub type BalanceOf<T> = <<T as pallet_otc_listing::Config>::Currency as Currency<
+        <T as frame_system::Config>::AccountId,
+    >>::Balance;
 
     // ===== 可治理风控参数（以存储为准，默认值来源于 Config 常量） =====
     #[pallet::type_value]
-    pub fn DefaultOpenWindow<T: Config>() -> BlockNumberFor<T> { T::OpenWindow::get() }
+    pub fn DefaultOpenWindow<T: Config>() -> BlockNumberFor<T> {
+        T::OpenWindow::get()
+    }
     #[pallet::type_value]
-    pub fn DefaultOpenMaxInWindow<T: Config>() -> u32 { T::OpenMaxInWindow::get() }
+    pub fn DefaultOpenMaxInWindow<T: Config>() -> u32 {
+        T::OpenMaxInWindow::get()
+    }
     #[pallet::type_value]
-    pub fn DefaultPaidWindow<T: Config>() -> BlockNumberFor<T> { T::PaidWindow::get() }
+    pub fn DefaultPaidWindow<T: Config>() -> BlockNumberFor<T> {
+        T::PaidWindow::get()
+    }
     #[pallet::type_value]
-    pub fn DefaultPaidMaxInWindow<T: Config>() -> u32 { T::PaidMaxInWindow::get() }
+    pub fn DefaultPaidMaxInWindow<T: Config>() -> u32 {
+        T::PaidMaxInWindow::get()
+    }
     #[pallet::type_value]
-    pub fn DefaultConfirmTTL<T: Config>() -> BlockNumberFor<T> { T::ConfirmTTL::get() }
+    pub fn DefaultConfirmTTL<T: Config>() -> BlockNumberFor<T> {
+        T::ConfirmTTL::get()
+    }
     #[pallet::type_value]
-    pub fn DefaultMinOrderAmount<T: Config>() -> BalanceOf<T> { Default::default() }
+    pub fn DefaultMinOrderAmount<T: Config>() -> BalanceOf<T> {
+        Default::default()
+    }
     // 移除 DefaultMinOrderAmount，MinOrderAmount 改为无默认值的 ValueQuery=Default()
 
     /// 吃单限频窗口（块）
     #[pallet::storage]
-    pub type OpenWindowParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultOpenWindow<T>>;
+    pub type OpenWindowParam<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultOpenWindow<T>>;
     /// 窗口内最多吃单数
     #[pallet::storage]
-    pub type OpenMaxInWindowParam<T: Config> = StorageValue<_, u32, ValueQuery, DefaultOpenMaxInWindow<T>>;
+    pub type OpenMaxInWindowParam<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultOpenMaxInWindow<T>>;
     /// 标记支付限频窗口（块）
     #[pallet::storage]
-    pub type PaidWindowParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultPaidWindow<T>>;
+    pub type PaidWindowParam<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultPaidWindow<T>>;
     /// 窗口内最多标记支付数
     #[pallet::storage]
-    pub type PaidMaxInWindowParam<T: Config> = StorageValue<_, u32, ValueQuery, DefaultPaidMaxInWindow<T>>;
+    pub type PaidMaxInWindowParam<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultPaidMaxInWindow<T>>;
     /// 订单最小金额
     #[pallet::storage]
-    pub type MinOrderAmount<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinOrderAmount<T>>;
+    pub type MinOrderAmount<T: Config> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinOrderAmount<T>>;
     /// 订单确认 TTL（块）
     #[pallet::storage]
-    pub type ConfirmTTLParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultConfirmTTL<T>>;
+    pub type ConfirmTTLParam<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultConfirmTTL<T>>;
     #[pallet::storage]
-    pub type Orders<T: Config> = StorageMap<_, Blake2_128Concat, u64, Order<T::AccountId, BalanceOf<T>, BlockNumberFor<T>>, OptionQuery>;
+    pub type Orders<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        Order<T::AccountId, BalanceOf<T>, BlockNumberFor<T>>,
+        OptionQuery,
+    >;
     #[pallet::storage]
     pub type NextOrderId<T: Config> = StorageValue<_, u64, ValueQuery>;
     /// 到期订单索引：在指定区块高度到期的订单集合
@@ -112,38 +156,68 @@ pub mod pallet {
         BlockNumberFor<T>,
         // Plan B: 复用 listing pallet 的容量上限，避免本 pallet 与 listing 重复定义同名关联类型引起歧义。
         BoundedVec<u64, <T as pallet_otc_listing::Config>::MaxExpiringPerBlock>,
-        ValueQuery
+        ValueQuery,
     >;
 
     #[pallet::storage]
     /// 函数级中文注释：吃单限频（账户 -> (窗口起点高度, 窗口内计数)）
-    pub type OpenRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+    pub type OpenRate<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
     #[pallet::storage]
     /// 函数级中文注释：标记支付限频（账户 -> (窗口起点高度, 窗口内计数)）
-    pub type PaidRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+    pub type PaidRate<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 函数级中文注释：订单创建事件（补充快照字段，便于索引器建模）。
-    OrderOpened { id: u64, listing_id: u64, maker: T::AccountId, taker: T::AccountId, price: BalanceOf<T>, qty: BalanceOf<T>, amount: BalanceOf<T>, created_at: BlockNumberFor<T>, expire_at: BlockNumberFor<T> },
+        OrderOpened {
+            id: u64,
+            listing_id: u64,
+            maker: T::AccountId,
+            taker: T::AccountId,
+            price: BalanceOf<T>,
+            qty: BalanceOf<T>,
+            amount: BalanceOf<T>,
+            created_at: BlockNumberFor<T>,
+            expire_at: BlockNumberFor<T>,
+        },
         /// 函数级中文注释：买家已支付或提交支付承诺
-        OrderPaidCommitted { id: u64 },
-        OrderReleased { id: u64 },
-        OrderRefunded { id: u64 },
-        OrderCanceled { id: u64 },
+        OrderPaidCommitted {
+            id: u64,
+        },
+        OrderReleased {
+            id: u64,
+        },
+        OrderRefunded {
+            id: u64,
+        },
+        OrderCanceled {
+            id: u64,
+        },
         /// 函数级中文注释：订单被标记为争议中（仅状态标识，实际仲裁登记由仲裁 pallet 完成）
-        OrderDisputed { id: u64 },
+        OrderDisputed {
+            id: u64,
+        },
         /// 支付承诺已揭示并校验通过
-        PaymentRevealed { id: u64 },
+        PaymentRevealed {
+            id: u64,
+        },
         /// 联系方式承诺已揭示并校验通过
-        ContactRevealed { id: u64 },
+        ContactRevealed {
+            id: u64,
+        },
         /// 风控参数已更新（治理）
         OrderParamsUpdated,
     }
 
     #[pallet::error]
-    pub enum Error<T> { NotFound, BadState, BadCommit }
+    pub enum Error<T> {
+        NotFound,
+        BadState,
+        BadCommit,
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -172,10 +246,18 @@ pub mod pallet {
             let (wstart, cnt) = OpenRate::<T>::get(&who);
             let now = <frame_system::Pallet<T>>::block_number();
             let window = OpenWindowParam::<T>::get();
-            let (wstart, cnt) = if now.saturating_sub(wstart) > window { (now, 0u32) } else { (wstart, cnt) };
+            let (wstart, cnt) = if now.saturating_sub(wstart) > window {
+                (now, 0u32)
+            } else {
+                (wstart, cnt)
+            };
             ensure!(cnt < OpenMaxInWindowParam::<T>::get(), Error::<T>::BadState);
             OpenRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
-            let id = NextOrderId::<T>::mutate(|x| { let id=*x; *x = id.saturating_add(1); id });
+            let id = NextOrderId::<T>::mutate(|x| {
+                let id = *x;
+                *x = id.saturating_add(1);
+                id
+            });
             let now = <frame_system::Pallet<T>>::block_number();
             // 读取挂单，校验状态/价格/每单数量区间/是否允许部分成交/库存，并扣减 remaining
             let l = ListingsMap::<T>::get(listing_id).ok_or(Error::<T>::NotFound)?;
@@ -185,24 +267,38 @@ pub mod pallet {
             let amount_b: BalanceOf<T> = amount;
             // 计算撮合价：读取价格源并校验陈旧
             let now_secs = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6u64;
-            ensure!(!<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs), Error::<T>::BadState);
-            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price().ok_or(Error::<T>::BadState)?;
+            ensure!(
+                !<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs),
+                Error::<T>::BadState
+            );
+            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price()
+                .ok_or(Error::<T>::BadState)?;
             // base_price = floor(num/den)，amount 与 qty 的单位需保持业务一致（此处复用 Balance 类型）
             // exec_price = base_price * (1 + spread_bps/10000)
             let base_raw: u128 = num / den;
             let base_price: BalanceOf<T> = base_raw.saturated_into::<BalanceOf<T>>();
-            let exec_price: BalanceOf<T> = base_price.saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
+            let exec_price: BalanceOf<T> = base_price
+                .saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
 
             ListingsMap::<T>::try_mutate(listing_id, |maybe| -> Result<(), DispatchError> {
                 let l = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(l.active, Error::<T>::BadState);
                 let exec_p = exec_price;
-                if let Some(pmin) = l.price_min { ensure!(exec_p >= pmin, Error::<T>::BadState); }
-                if let Some(pmax) = l.price_max { ensure!(exec_p <= pmax, Error::<T>::BadState); }
+                if let Some(pmin) = l.price_min {
+                    ensure!(exec_p >= pmin, Error::<T>::BadState);
+                }
+                if let Some(pmax) = l.price_max {
+                    ensure!(exec_p <= pmax, Error::<T>::BadState);
+                }
                 // 每笔下单最小/最大数量约束
-                ensure!(qty_b >= l.min_qty && qty_b <= l.max_qty, Error::<T>::BadState);
+                ensure!(
+                    qty_b >= l.min_qty && qty_b <= l.max_qty,
+                    Error::<T>::BadState
+                );
                 // 不允许部分成交则本单必须吃完剩余
-                if !l.partial { ensure!(qty_b == l.remaining, Error::<T>::BadState); }
+                if !l.partial {
+                    ensure!(qty_b == l.remaining, Error::<T>::BadState);
+                }
                 ensure!(l.remaining >= qty_b, Error::<T>::BadState);
                 l.remaining = l.remaining.saturating_sub(qty_b);
                 Ok(())
@@ -213,19 +309,34 @@ pub mod pallet {
                 listing_id,
                 maker: maker_acc.clone(),
                 taker: who.clone(),
-                price: exec_price, qty: qty_b, amount: amount_b,
+                price: exec_price,
+                qty: qty_b,
+                amount: amount_b,
                 created_at: now,
                 expire_at: now.saturating_add(ConfirmTTLParam::<T>::get()),
                 evidence_until: now.saturating_add(ConfirmTTLParam::<T>::get()),
-                payment_commit, contact_commit,
+                payment_commit,
+                contact_commit,
                 state: OrderState::Created,
             };
             Orders::<T>::insert(id, &order);
             // Plan B：库存托管模式——只锁定 Maker 库存（由 listing pallet 在创建挂单时完成），
             // 订单创建不再额外锁定买家资金，减少双向锁定复杂度；放行/退款仅操作 listing 托管或库存恢复。
             // 建立到期索引
-            ExpiringAt::<T>::mutate(order.expire_at, |v| { let _ = v.try_push(id); });
-            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: maker_acc, taker: who, price: exec_price, qty: qty_b, amount: amount_b, created_at: now, expire_at: order.expire_at });
+            ExpiringAt::<T>::mutate(order.expire_at, |v| {
+                let _ = v.try_push(id);
+            });
+            Self::deposit_event(Event::OrderOpened {
+                id,
+                listing_id,
+                maker: maker_acc,
+                taker: who,
+                price: exec_price,
+                qty: qty_b,
+                amount: amount_b,
+                created_at: now,
+                expire_at: order.expire_at,
+            });
             Ok(())
         }
 
@@ -239,13 +350,20 @@ pub mod pallet {
             let (wstart, cnt) = PaidRate::<T>::get(&who);
             let now_blk = <frame_system::Pallet<T>>::block_number();
             let window = PaidWindowParam::<T>::get();
-            let (wstart, cnt) = if now_blk.saturating_sub(wstart) > window { (now_blk, 0u32) } else { (wstart, cnt) };
+            let (wstart, cnt) = if now_blk.saturating_sub(wstart) > window {
+                (now_blk, 0u32)
+            } else {
+                (wstart, cnt)
+            };
             ensure!(cnt < PaidMaxInWindowParam::<T>::get(), Error::<T>::BadState);
             PaidRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(ord.taker == who, Error::<T>::BadState);
-                ensure!(matches!(ord.state, OrderState::Created), Error::<T>::BadState);
+                ensure!(
+                    matches!(ord.state, OrderState::Created),
+                    Error::<T>::BadState
+                );
                 ord.state = OrderState::PaidOrCommitted;
                 Ok(())
             })?;
@@ -269,7 +387,10 @@ pub mod pallet {
                 let cond_paid_unreleased = matches!(ord.state, OrderState::PaidOrCommitted);
                 let cond_expired = now >= ord.expire_at;
                 let cond_evidence_window = now <= ord.evidence_until;
-                ensure!(cond_paid_unreleased || cond_expired || cond_evidence_window, Error::<T>::BadState);
+                ensure!(
+                    cond_paid_unreleased || cond_expired || cond_evidence_window,
+                    Error::<T>::BadState
+                );
                 ord.state = OrderState::Disputed;
                 Ok(())
             })?;
@@ -286,9 +407,19 @@ pub mod pallet {
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(ord.maker == who, Error::<T>::BadState);
-                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ensure!(
+                    matches!(
+                        ord.state,
+                        OrderState::PaidOrCommitted | OrderState::Disputed
+                    ),
+                    Error::<T>::BadState
+                );
                 // 库存托管模式：从挂单托管划转本单金额给买家
-                <T as Config>::Escrow::transfer_from_escrow(ord.listing_id, &ord.taker, ord.amount)?;
+                <T as Config>::Escrow::transfer_from_escrow(
+                    ord.listing_id,
+                    &ord.taker,
+                    ord.amount,
+                )?;
                 ord.state = OrderState::Released;
                 Ok(())
             })?;
@@ -306,9 +437,19 @@ pub mod pallet {
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(now >= ord.expire_at, Error::<T>::BadState);
-                ensure!(matches!(ord.state, OrderState::Created | OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ensure!(
+                    matches!(
+                        ord.state,
+                        OrderState::Created | OrderState::PaidOrCommitted | OrderState::Disputed
+                    ),
+                    Error::<T>::BadState
+                );
                 // 归还库存：将预留的数量退回到 listing.remaining
-                ListingsMap::<T>::mutate(ord.listing_id, |m| if let Some(l)=m.as_mut(){ l.remaining = l.remaining.saturating_add(ord.qty); });
+                ListingsMap::<T>::mutate(ord.listing_id, |m| {
+                    if let Some(l) = m.as_mut() {
+                        l.remaining = l.remaining.saturating_add(ord.qty);
+                    }
+                });
                 ord.state = OrderState::Refunded;
                 Ok(())
             })?;
@@ -320,13 +461,20 @@ pub mod pallet {
         /// - 计算 blake2_256(payload||salt) 与存储的 payment_commit 比较，不一致则报错
         #[pallet::call_index(5)]
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
-        pub fn reveal_payment(origin: OriginFor<T>, id: u64, payload: Vec<u8>, salt: Vec<u8>) -> DispatchResult {
+        pub fn reveal_payment(
+            origin: OriginFor<T>,
+            id: u64,
+            payload: Vec<u8>,
+            salt: Vec<u8>,
+        ) -> DispatchResult {
             let _ = ensure_signed(origin)?;
             let ok = if let Some(o) = Orders::<T>::get(id) {
                 let mut buf = payload.clone();
                 buf.extend_from_slice(&salt);
                 H256::from(blake2_256(&buf)) == o.payment_commit
-            } else { false };
+            } else {
+                false
+            };
             ensure!(ok, Error::<T>::BadCommit);
             Self::deposit_event(Event::PaymentRevealed { id });
             Ok(())
@@ -336,13 +484,20 @@ pub mod pallet {
         /// - 校验哈希一致性
         #[pallet::call_index(6)]
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
-        pub fn reveal_contact(origin: OriginFor<T>, id: u64, payload: Vec<u8>, salt: Vec<u8>) -> DispatchResult {
+        pub fn reveal_contact(
+            origin: OriginFor<T>,
+            id: u64,
+            payload: Vec<u8>,
+            salt: Vec<u8>,
+        ) -> DispatchResult {
             let _ = ensure_signed(origin)?;
             let ok = if let Some(o) = Orders::<T>::get(id) {
                 let mut buf = payload.clone();
                 buf.extend_from_slice(&salt);
                 H256::from(blake2_256(&buf)) == o.contact_commit
-            } else { false };
+            } else {
+                false
+            };
             ensure!(ok, Error::<T>::BadCommit);
             Self::deposit_event(Event::ContactRevealed { id });
             Ok(())
@@ -362,12 +517,24 @@ pub mod pallet {
             confirm_ttl: Option<BlockNumberFor<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            if let Some(v) = open_window { OpenWindowParam::<T>::put(v); }
-            if let Some(v) = open_max_in_window { OpenMaxInWindowParam::<T>::put(v); }
-            if let Some(v) = paid_window { PaidWindowParam::<T>::put(v); }
-            if let Some(v) = paid_max_in_window { PaidMaxInWindowParam::<T>::put(v); }
-            if let Some(v) = min_order_amount { MinOrderAmount::<T>::put(v); }
-            if let Some(v) = confirm_ttl { ConfirmTTLParam::<T>::put(v); }
+            if let Some(v) = open_window {
+                OpenWindowParam::<T>::put(v);
+            }
+            if let Some(v) = open_max_in_window {
+                OpenMaxInWindowParam::<T>::put(v);
+            }
+            if let Some(v) = paid_window {
+                PaidWindowParam::<T>::put(v);
+            }
+            if let Some(v) = paid_max_in_window {
+                PaidMaxInWindowParam::<T>::put(v);
+            }
+            if let Some(v) = min_order_amount {
+                MinOrderAmount::<T>::put(v);
+            }
+            if let Some(v) = confirm_ttl {
+                ConfirmTTLParam::<T>::put(v);
+            }
             Self::deposit_event(Event::OrderParamsUpdated);
             Ok(())
         }
@@ -394,7 +561,11 @@ pub mod pallet {
             let (wstart, cnt) = OpenRate::<T>::get(&who);
             let now = <frame_system::Pallet<T>>::block_number();
             let window = OpenWindowParam::<T>::get();
-            let (wstart, cnt) = if now.saturating_sub(wstart) > window { (now, 0u32) } else { (wstart, cnt) };
+            let (wstart, cnt) = if now.saturating_sub(wstart) > window {
+                (now, 0u32)
+            } else {
+                (wstart, cnt)
+            };
             ensure!(cnt < OpenMaxInWindowParam::<T>::get(), Error::<T>::BadState);
             OpenRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
 
@@ -404,26 +575,41 @@ pub mod pallet {
 
             // 计算撮合价并做保护校验
             let now_secs = <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6u64;
-            ensure!(!<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs), Error::<T>::BadState);
-            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price().ok_or(Error::<T>::BadState)?;
+            ensure!(
+                !<T as pallet_otc_listing::Config>::PriceFeed::is_stale(now_secs),
+                Error::<T>::BadState
+            );
+            let (num, den, _ts) = <T as pallet_otc_listing::Config>::PriceFeed::current_price()
+                .ok_or(Error::<T>::BadState)?;
             ensure!(den != 0, Error::<T>::BadState);
             let base_raw: u128 = num / den;
             let base_price: BalanceOf<T> = base_raw.saturated_into::<BalanceOf<T>>();
-            let exec_price: BalanceOf<T> = base_price.saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
+            let exec_price: BalanceOf<T> = base_price
+                .saturating_add(base_price / 10_000u32.into() * (l.pricing_spread_bps.into()));
 
             // 价带保护：做市商设置的 min/max
-            if let Some(pmin) = l.price_min { ensure!(exec_price >= pmin, Error::<T>::BadState); }
-            if let Some(pmax) = l.price_max { ensure!(exec_price <= pmax, Error::<T>::BadState); }
+            if let Some(pmin) = l.price_min {
+                ensure!(exec_price >= pmin, Error::<T>::BadState);
+            }
+            if let Some(pmax) = l.price_max {
+                ensure!(exec_price <= pmax, Error::<T>::BadState);
+            }
             // taker 滑点保护
-            if let Some(pmin) = min_accept_price { ensure!(exec_price >= pmin, Error::<T>::BadState); }
-            if let Some(pmax) = max_accept_price { ensure!(exec_price <= pmax, Error::<T>::BadState); }
+            if let Some(pmin) = min_accept_price {
+                ensure!(exec_price >= pmin, Error::<T>::BadState);
+            }
+            if let Some(pmax) = max_accept_price {
+                ensure!(exec_price <= pmax, Error::<T>::BadState);
+            }
 
             // 校验数量边界与库存，并扣减库存
             ListingsMap::<T>::try_mutate(listing_id, |maybe| -> Result<(), DispatchError> {
                 let l = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(l.active, Error::<T>::BadState);
                 ensure!(qty >= l.min_qty && qty <= l.max_qty, Error::<T>::BadState);
-                if !l.partial { ensure!(qty == l.remaining, Error::<T>::BadState); }
+                if !l.partial {
+                    ensure!(qty == l.remaining, Error::<T>::BadState);
+                }
                 ensure!(l.remaining >= qty, Error::<T>::BadState);
                 l.remaining = l.remaining.saturating_sub(qty);
                 Ok(())
@@ -434,7 +620,11 @@ pub mod pallet {
             ensure!(amount >= MinOrderAmount::<T>::get(), Error::<T>::BadState);
 
             // 创建订单
-            let id = NextOrderId::<T>::mutate(|x| { let id=*x; *x = id.saturating_add(1); id });
+            let id = NextOrderId::<T>::mutate(|x| {
+                let id = *x;
+                *x = id.saturating_add(1);
+                id
+            });
             let order = Order::<_, _, _> {
                 listing_id,
                 maker: maker_acc.clone(),
@@ -450,8 +640,20 @@ pub mod pallet {
                 state: OrderState::Created,
             };
             Orders::<T>::insert(id, &order);
-            ExpiringAt::<T>::mutate(order.expire_at, |v| { let _ = v.try_push(id); });
-            Self::deposit_event(Event::OrderOpened { id, listing_id, maker: maker_acc, taker: who, price: exec_price, qty, amount, created_at: now, expire_at: order.expire_at });
+            ExpiringAt::<T>::mutate(order.expire_at, |v| {
+                let _ = v.try_push(id);
+            });
+            Self::deposit_event(Event::OrderOpened {
+                id,
+                listing_id,
+                maker: maker_acc,
+                taker: who,
+                price: exec_price,
+                qty,
+                amount,
+                created_at: now,
+                expire_at: order.expire_at,
+            });
             Ok(())
         }
     }
@@ -480,8 +682,18 @@ pub mod pallet {
         fn arbitrate_release(id: u64) -> DispatchResult {
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
-                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
-                <T as Config>::Escrow::transfer_from_escrow(ord.listing_id, &ord.taker, ord.amount)?;
+                ensure!(
+                    matches!(
+                        ord.state,
+                        OrderState::PaidOrCommitted | OrderState::Disputed
+                    ),
+                    Error::<T>::BadState
+                );
+                <T as Config>::Escrow::transfer_from_escrow(
+                    ord.listing_id,
+                    &ord.taker,
+                    ord.amount,
+                )?;
                 ord.state = OrderState::Released;
                 Ok(())
             })
@@ -489,9 +701,19 @@ pub mod pallet {
         fn arbitrate_refund(id: u64) -> DispatchResult {
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
-                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ensure!(
+                    matches!(
+                        ord.state,
+                        OrderState::PaidOrCommitted | OrderState::Disputed
+                    ),
+                    Error::<T>::BadState
+                );
                 // 恢复库存
-                ListingsMap::<T>::mutate(ord.listing_id, |m| if let Some(l)=m.as_mut(){ l.remaining = l.remaining.saturating_add(ord.qty); });
+                ListingsMap::<T>::mutate(ord.listing_id, |m| {
+                    if let Some(l) = m.as_mut() {
+                        l.remaining = l.remaining.saturating_add(ord.qty);
+                    }
+                });
                 ord.state = OrderState::Refunded;
                 Ok(())
             })
@@ -499,13 +721,31 @@ pub mod pallet {
         fn arbitrate_partial(id: u64, bps: u16) -> DispatchResult {
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
-                ensure!(matches!(ord.state, OrderState::PaidOrCommitted | OrderState::Disputed), Error::<T>::BadState);
+                ensure!(
+                    matches!(
+                        ord.state,
+                        OrderState::PaidOrCommitted | OrderState::Disputed
+                    ),
+                    Error::<T>::BadState
+                );
                 // 函数级中文注释：按 bps 分账：bps 给买家，其余退回卖家（从 listing 托管资金划转）
                 let total = ord.amount;
                 let buyer_share = (total / 10_000u32.into()) * (bps.into());
                 let seller_share = total.saturating_sub(buyer_share);
-                if !buyer_share.is_zero() { <T as Config>::Escrow::transfer_from_escrow(ord.listing_id, &ord.taker, buyer_share)?; }
-                if !seller_share.is_zero() { <T as Config>::Escrow::transfer_from_escrow(ord.listing_id, &ord.maker, seller_share)?; }
+                if !buyer_share.is_zero() {
+                    <T as Config>::Escrow::transfer_from_escrow(
+                        ord.listing_id,
+                        &ord.taker,
+                        buyer_share,
+                    )?;
+                }
+                if !seller_share.is_zero() {
+                    <T as Config>::Escrow::transfer_from_escrow(
+                        ord.listing_id,
+                        &ord.maker,
+                        seller_share,
+                    )?;
+                }
                 // 部分成交视为订单关闭，库存不回增（已占用份额按金额完成分配）
                 ord.state = OrderState::Released;
                 Ok(())
@@ -522,9 +762,16 @@ pub mod pallet {
             let ids = ExpiringAt::<T>::take(n);
             for id in ids.into_inner() {
                 if let Some(mut ord) = Orders::<T>::get(id) {
-                    if matches!(ord.state, OrderState::Created | OrderState::PaidOrCommitted | OrderState::Disputed) {
+                    if matches!(
+                        ord.state,
+                        OrderState::Created | OrderState::PaidOrCommitted | OrderState::Disputed
+                    ) {
                         // Plan B：自动超时退款仅恢复库存（买家资金未被锁定）。
-                        ListingsMap::<T>::mutate(ord.listing_id, |m| if let Some(l)=m.as_mut(){ l.remaining = l.remaining.saturating_add(ord.qty); });
+                        ListingsMap::<T>::mutate(ord.listing_id, |m| {
+                            if let Some(l) = m.as_mut() {
+                                l.remaining = l.remaining.saturating_add(ord.qty);
+                            }
+                        });
                         ord.state = OrderState::Refunded;
                         Orders::<T>::insert(id, ord);
                         // 可选：触发事件 Self::deposit_event(Event::OrderRefunded { id });
@@ -535,7 +782,3 @@ pub mod pallet {
         }
     }
 }
-
-pub use pallet::*;
-
-

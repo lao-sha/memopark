@@ -1,4 +1,6 @@
 target/
+epay/
+epay1/
 对话内容记录.md
 C:\Users\Administrator\Documents\memopark\memopark-dapp\.gitignore
 memopark-dapp/node_modules
@@ -12,6 +14,7 @@ memopark-dapp/*.suo
 memopark-dapp/*.ntvs*
 my-chain-state/
 key.md
+epay.zip
 
 # ignore frontend legacy workspace dependencies
 memopark-front-end/

@@ -11,14 +11,15 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 // （已下线）移除对 memo-endowment 的接口依赖
-use sp_core::crypto::KeyTypeId;
-use sp_runtime::{offchain::{http, StorageKind}, traits::AtLeast32BitUnsigned};
-use sp_std::{vec::Vec, str};
-use codec::Encode;
 use alloc::string::String;
+use codec::Encode;
 use serde_json::Value as JsonValue;
-
-pub use pallet::*;
+use sp_core::crypto::KeyTypeId;
+use sp_runtime::{
+    offchain::{http, StorageKind},
+    traits::AtLeast32BitUnsigned,
+};
+use sp_std::{str, vec::Vec};
 
 /// 函数级详细中文注释：逝者 owner 只读提供者（低耦合）。
 /// - 由 runtime 注入实现，通常从 pallet-deceased 读取 owner 字段。
@@ -41,16 +42,22 @@ pub mod sr25519_app {
 
 pub type AuthorityId = sr25519_app::Public;
 
+// 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
+// 作用：
+// 1) 让 runtime 集成宏（#[frame_support::runtime]）能够找到 `tt_default_parts_v2` 等默认部件；
+// 2) 便于上层以 `pallet_memo_ipfs::Call` 等简洁路径引用类型，降低路径耦合。
+pub use pallet::*;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::traits::StorageVersion;
     use frame_support::traits::ConstU32;
+    use frame_support::traits::StorageVersion;
     use sp_runtime::traits::Saturating;
     use sp_runtime::SaturatedConversion;
     // 已移除签名交易上报，避免对 CreateSignedTransaction 约束
-    use frame_support::traits::tokens::Imbalance;
     use alloc::string::ToString;
+    use frame_support::traits::tokens::Imbalance;
     use frame_support::PalletId;
     use sp_runtime::traits::AccountIdConversion;
 
@@ -62,7 +69,8 @@ pub mod pallet {
         /// 事件类型
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// 货币接口（用于预留押金或扣费）
-        type Currency: Currency<Self::AccountId, Balance = Self::Balance> + ReservableCurrency<Self::AccountId>;
+        type Currency: Currency<Self::AccountId, Balance = Self::Balance>
+            + ReservableCurrency<Self::AccountId>;
         /// 余额类型
         type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
@@ -119,11 +127,18 @@ pub mod pallet {
 
     /// Pin 订单：存储 `cid_hash` 等元数据（骨架）
     #[pallet::storage]
-    pub type PendingPins<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u32, u64, T::Balance), OptionQuery>;
+    pub type PendingPins<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u32, u64, T::Balance), OptionQuery>;
 
     /// Pin 元信息（副本数、大小、创建时间、最后巡检）
     #[pallet::storage]
-    pub type PinMeta<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (u32, u64, BlockNumberFor<T>, BlockNumberFor<T>), OptionQuery>;
+    pub type PinMeta<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash,
+        (u32, u64, BlockNumberFor<T>, BlockNumberFor<T>),
+        OptionQuery,
+    >;
 
     /// Pin 状态机：0=Requested,1=Pinning,2=Pinned,3=Degraded,4=Failed
     #[pallet::storage]
@@ -131,11 +146,25 @@ pub mod pallet {
 
     /// 副本分配：为每个 cid_hash 挑选的运营者账户
     #[pallet::storage]
-    pub type PinAssignments<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, BoundedVec<T::AccountId, frame_support::traits::ConstU32<16>>, OptionQuery>;
+    pub type PinAssignments<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash,
+        BoundedVec<T::AccountId, frame_support::traits::ConstU32<16>>,
+        OptionQuery,
+    >;
 
     /// 分配内的成功标记：(cid_hash, operator) -> 成功与否
     #[pallet::storage]
-    pub type PinSuccess<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::Hash, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+    pub type PinSuccess<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::Hash,
+        Blake2_128Concat,
+        T::AccountId,
+        bool,
+        ValueQuery,
+    >;
 
     /// 运营者信息
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -150,10 +179,12 @@ pub mod pallet {
 
     /// 运营者注册表与保证金
     #[pallet::storage]
-    pub type Operators<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, OperatorInfo<T>, OptionQuery>;
+    pub type Operators<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, OperatorInfo<T>, OptionQuery>;
 
     #[pallet::storage]
-    pub type OperatorBond<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
+    pub type OperatorBond<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
 
     /// 运营者 SLA 统计
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -170,47 +201,70 @@ pub mod pallet {
         /// 函数级中文注释：为 SlaStats<T> 提供显式的 Default 实现，避免对 T 施加 Default 约束
         /// - 将计数置 0，last_update 使用 BlockNumber 的默认值
         fn default() -> Self {
-            Self { pinned_bytes: 0, probe_ok: 0, probe_fail: 0, degraded: 0, last_update: Default::default() }
+            Self {
+                pinned_bytes: 0,
+                probe_ok: 0,
+                probe_fail: 0,
+                degraded: 0,
+                last_update: Default::default(),
+            }
         }
     }
 
     #[pallet::storage]
-    pub type OperatorSla<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, SlaStats<T>, ValueQuery>;
+    pub type OperatorSla<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, SlaStats<T>, ValueQuery>;
 
     // ====== 计费与生命周期（最小增量）======
     /// 函数级中文注释：每 GiB·周 单价（治理可调）。单位使用链上最小余额单位的整数，建议采用按字节的定点基数以避免小数。
     #[pallet::type_value]
-    pub fn DefaultPricePerGiBWeek<T: Config>() -> u128 { 1_000_000_000 }
+    pub fn DefaultPricePerGiBWeek<T: Config>() -> u128 {
+        1_000_000_000
+    }
     #[pallet::storage]
-    pub type PricePerGiBWeek<T: Config> = StorageValue<_, u128, ValueQuery, DefaultPricePerGiBWeek<T>>;
+    pub type PricePerGiBWeek<T: Config> =
+        StorageValue<_, u128, ValueQuery, DefaultPricePerGiBWeek<T>>;
 
     /// 函数级中文注释：计费周期（块），默认一周（6s/块 × 60 × 60 × 24 × 7 = 100_800）。
     #[pallet::type_value]
-    pub fn DefaultBillingPeriodBlocks<T: Config>() -> u32 { 100_800 }
+    pub fn DefaultBillingPeriodBlocks<T: Config>() -> u32 {
+        100_800
+    }
     #[pallet::storage]
-    pub type BillingPeriodBlocks<T: Config> = StorageValue<_, u32, ValueQuery, DefaultBillingPeriodBlocks<T>>;
+    pub type BillingPeriodBlocks<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultBillingPeriodBlocks<T>>;
 
     /// 函数级中文注释：宽限期（块）。在余额不足时进入 Grace，超过宽限仍不足则过期。
     #[pallet::type_value]
-    pub fn DefaultGraceBlocks<T: Config>() -> u32 { 10_080 }
+    pub fn DefaultGraceBlocks<T: Config>() -> u32 {
+        10_080
+    }
     #[pallet::storage]
     pub type GraceBlocks<T: Config> = StorageValue<_, u32, ValueQuery, DefaultGraceBlocks<T>>;
 
     /// 函数级中文注释：每块处理的最大扣费数，用于限流保护。
     #[pallet::type_value]
-    pub fn DefaultMaxChargePerBlock<T: Config>() -> u32 { 50 }
+    pub fn DefaultMaxChargePerBlock<T: Config>() -> u32 {
+        50
+    }
     #[pallet::storage]
-    pub type MaxChargePerBlock<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMaxChargePerBlock<T>>;
+    pub type MaxChargePerBlock<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultMaxChargePerBlock<T>>;
 
     /// 函数级中文注释：主体资金账户最低保留（KeepAlive 余量），扣费需确保余额-金额≥该值。
     #[pallet::type_value]
-    pub fn DefaultSubjectMinReserve<T: Config>() -> BalanceOf<T> { BalanceOf::<T>::default() }
+    pub fn DefaultSubjectMinReserve<T: Config>() -> BalanceOf<T> {
+        BalanceOf::<T>::default()
+    }
     #[pallet::storage]
-    pub type SubjectMinReserve<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery, DefaultSubjectMinReserve<T>>;
+    pub type SubjectMinReserve<T: Config> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, DefaultSubjectMinReserve<T>>;
 
     /// 函数级中文注释：计费暂停总开关（治理控制）。
     #[pallet::type_value]
-    pub fn DefaultBillingPaused<T: Config>() -> bool { false }
+    pub fn DefaultBillingPaused<T: Config>() -> bool {
+        false
+    }
     #[pallet::storage]
     pub type BillingPaused<T: Config> = StorageValue<_, bool, ValueQuery, DefaultBillingPaused<T>>;
 
@@ -218,29 +272,45 @@ pub mod pallet {
     /// - 默认建议关闭（false），统一走“主题资金账户聚合计费”的 request_pin_for_deceased 路径。
     /// - 可由治理通过 set_billing_params 动态调整。
     #[pallet::type_value]
-    pub fn DefaultAllowDirectPin<T: Config>() -> bool { false }
+    pub fn DefaultAllowDirectPin<T: Config>() -> bool {
+        false
+    }
     #[pallet::storage]
-    pub type AllowDirectPin<T: Config> = StorageValue<_, bool, ValueQuery, DefaultAllowDirectPin<T>>;
+    pub type AllowDirectPin<T: Config> =
+        StorageValue<_, bool, ValueQuery, DefaultAllowDirectPin<T>>;
 
     /// 函数级中文注释：到期队列容量上限（每个区块键对应的最大 CID 数）。
     #[pallet::type_value]
-    pub fn DefaultDueListCap<T: Config>() -> u32 { 1024 }
+    pub fn DefaultDueListCap<T: Config>() -> u32 {
+        1024
+    }
     #[pallet::storage]
-    pub type DueQueue<T: Config> = StorageMap<_, Blake2_128Concat, BlockNumberFor<T>, BoundedVec<T::Hash, ConstU32<1024>>, ValueQuery>;
+    pub type DueQueue<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BlockNumberFor<T>,
+        BoundedVec<T::Hash, ConstU32<1024>>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：入队扩散窗口（块）。将到期项在 `base..base+spread` 内寻找首个未满的队列入队，平滑负载。
     #[pallet::type_value]
-    pub fn DefaultDueEnqueueSpread<T: Config>() -> u32 { 10 }
+    pub fn DefaultDueEnqueueSpread<T: Config>() -> u32 {
+        10
+    }
     #[pallet::storage]
-    pub type DueEnqueueSpread<T: Config> = StorageValue<_, u32, ValueQuery, DefaultDueEnqueueSpread<T>>;
+    pub type DueEnqueueSpread<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultDueEnqueueSpread<T>>;
 
     /// 函数级中文注释：每个 CID 的计费状态：下一次扣费块高、单价快照、状态（0=Active,1=Grace,2=Expired）。
     #[pallet::storage]
-    pub type PinBilling<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (BlockNumberFor<T>, u128, u8), OptionQuery>;
+    pub type PinBilling<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::Hash, (BlockNumberFor<T>, u128, u8), OptionQuery>;
 
     /// 函数级中文注释：仅对“逝者主题扣费”的 CID 记录 funding 来源（owner, subject_id），用于从派生账户自动扣款。
     #[pallet::storage]
-    pub type PinSubjectOf<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u64), OptionQuery>;
+    pub type PinSubjectOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u64), OptionQuery>;
 
     /// 事件
     #[pallet::event]
@@ -334,7 +404,9 @@ pub mod pallet {
             let hex = hex::encode(cid_hash.as_ref());
             key.extend_from_slice(hex.as_bytes());
             if let Some(bytes) = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, &key) {
-                if let Ok(s) = core::str::from_utf8(&bytes) { return s.into(); }
+                if let Ok(s) = core::str::from_utf8(&bytes) {
+                    return s.into();
+                }
             }
             "<redacted>".into()
         }
@@ -349,13 +421,22 @@ pub mod pallet {
         /// - 行为：从 caller → 派生账户 转账（KeepAlive）
         #[pallet::call_index(9)]
         #[pallet::weight(10_000)]
-        pub fn fund_subject_account(origin: OriginFor<T>, subject_id: u64, amount: BalanceOf<T>) -> DispatchResult {
+        pub fn fund_subject_account(
+            origin: OriginFor<T>,
+            subject_id: u64,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(amount != BalanceOf::<T>::default(), Error::<T>::BadParams);
             let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
             ensure!(owner == who, Error::<T>::BadStatus);
             let to = Self::subject_account_for_deceased(subject_id);
-            <T as Config>::Currency::transfer(&who, &to, amount, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+            <T as Config>::Currency::transfer(
+                &who,
+                &to,
+                amount,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
             Self::deposit_event(Event::SubjectFunded(subject_id, who, to, amount));
             Ok(())
         }
@@ -379,13 +460,20 @@ pub mod pallet {
             // 将一次性费用直接转入 FeeCollector（例如 Treasury）
             {
                 let to = <T as Config>::FeeCollector::get();
-                <T as Config>::Currency::transfer(&who, &to, price, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+                <T as Config>::Currency::transfer(
+                    &who,
+                    &to,
+                    price,
+                    frame_support::traits::ExistenceRequirement::KeepAlive,
+                )?;
             }
             PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
             let now = <frame_system::Pallet<T>>::block_number();
             PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
             PinStateOf::<T>::insert(&cid_hash, 0u8); // Requested
-            Self::deposit_event(Event::PinRequested(cid_hash, who, replicas, size_bytes, price));
+            Self::deposit_event(Event::PinRequested(
+                cid_hash, who, replicas, size_bytes, price,
+            ));
             Ok(())
         }
 
@@ -410,13 +498,20 @@ pub mod pallet {
             // 主题扣费：从派生账户转入 FeeCollector
             {
                 let to = <T as Config>::FeeCollector::get();
-                <T as Config>::Currency::transfer(&payer, &to, price, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+                <T as Config>::Currency::transfer(
+                    &payer,
+                    &to,
+                    price,
+                    frame_support::traits::ExistenceRequirement::KeepAlive,
+                )?;
             }
             PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, size_bytes, price));
             let now = <frame_system::Pallet<T>>::block_number();
             PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
             PinStateOf::<T>::insert(&cid_hash, 0u8);
-            Self::deposit_event(Event::PinRequested(cid_hash, who, replicas, size_bytes, price));
+            Self::deposit_event(Event::PinRequested(
+                cid_hash, who, replicas, size_bytes, price,
+            ));
             // 计费初始化：仅对“主题扣费”场景登记来源/周期
             PinSubjectOf::<T>::insert(&cid_hash, (owner.clone(), subject_id));
             let period = BillingPeriodBlocks::<T>::get();
@@ -438,7 +533,9 @@ pub mod pallet {
             ensure!(!BillingPaused::<T>::get(), Error::<T>::BadStatus);
             let now = <frame_system::Pallet<T>>::block_number();
             let mut left = core::cmp::min(limit, MaxChargePerBlock::<T>::get());
-            if left == 0 { return Ok(()); }
+            if left == 0 {
+                return Ok(());
+            }
             // 取出本块到期列表
             let mut list = DueQueue::<T>::take(now);
             let original_len = list.len() as u32;
@@ -455,7 +552,9 @@ pub mod pallet {
                                 let gib: u128 = 1_073_741_824u128; // 1024^3
                                 let sz = size_bytes as u128;
                                 let units = (sz + gib - 1) / gib; // ceil
-                                let due_u128 = units.saturating_mul(replicas as u128).saturating_mul(unit_price);
+                                let due_u128 = units
+                                    .saturating_mul(replicas as u128)
+                                    .saturating_mul(unit_price);
                                 let due_bal: BalanceOf<T> = due_u128.saturated_into();
                                 let payer = Self::subject_account_for_deceased(subject_id);
                                 let min_res = SubjectMinReserve::<T>::get();
@@ -464,14 +563,21 @@ pub mod pallet {
                                     // 扣费：转入 FeeCollector（国库/平台）
                                     {
                                         let to = <T as Config>::FeeCollector::get();
-                                        <T as Config>::Currency::transfer(&payer, &to, due_bal, frame_support::traits::ExistenceRequirement::KeepAlive)?;
+                                        <T as Config>::Currency::transfer(
+                                            &payer,
+                                            &to,
+                                            due_bal,
+                                            frame_support::traits::ExistenceRequirement::KeepAlive,
+                                        )?;
                                     }
                                     // 推进下一期并重新入队
                                     let period = BillingPeriodBlocks::<T>::get();
                                     let next = now.saturating_add(period.into());
                                     PinBilling::<T>::insert(&cid, (next, unit_price, 0u8));
                                     Self::enqueue_due(cid, next);
-                                    Self::deposit_event(Event::PinCharged(cid, due_bal, period, next));
+                                    Self::deposit_event(Event::PinCharged(
+                                        cid, due_bal, period, next,
+                                    ));
                                 } else {
                                     // 余额不足：首次不足进入 Grace；已在 Grace 再次不足则过期
                                     if state == 0u8 {
@@ -491,7 +597,9 @@ pub mod pallet {
                 }
             }
             // 剩余未处理的放回队列
-            if !list.is_empty() { DueQueue::<T>::insert(now, list.clone()); }
+            if !list.is_empty() {
+                DueQueue::<T>::insert(now, list.clone());
+            }
             let remaining = list.len() as u32;
             let dequeued = original_len.saturating_sub(remaining);
             Self::deposit_event(Event::DueQueueStats(now, original_len, dequeued, remaining));
@@ -530,9 +638,15 @@ pub mod pallet {
                 ensure!(v > 0, Error::<T>::BadParams);
                 MaxChargePerBlock::<T>::put(v);
             }
-            if let Some(v) = subject_min_reserve { SubjectMinReserve::<T>::put(v); }
-            if let Some(v) = paused { BillingPaused::<T>::put(v); }
-            if let Some(v) = allow_direct_pin { AllowDirectPin::<T>::put(v); }
+            if let Some(v) = subject_min_reserve {
+                SubjectMinReserve::<T>::put(v);
+            }
+            if let Some(v) = paused {
+                BillingPaused::<T>::put(v);
+            }
+            if let Some(v) = allow_direct_pin {
+                AllowDirectPin::<T>::put(v);
+            }
             Ok(())
         }
 
@@ -541,16 +655,28 @@ pub mod pallet {
         /// - 仅更新状态并发出事件（骨架）。
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::mark_pinned())]
-        pub fn mark_pinned(origin: OriginFor<T>, cid_hash: T::Hash, replicas: u32) -> DispatchResult {
+        pub fn mark_pinned(
+            origin: OriginFor<T>,
+            cid_hash: T::Hash,
+            replicas: u32,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // 仅允许活跃运营者上报
             let op = Operators::<T>::get(&who).ok_or(Error::<T>::OperatorNotFound)?;
             ensure!(op.status == 0, Error::<T>::OperatorBanned);
-            ensure!(PendingPins::<T>::contains_key(&cid_hash), Error::<T>::OrderNotFound);
+            ensure!(
+                PendingPins::<T>::contains_key(&cid_hash),
+                Error::<T>::OrderNotFound
+            );
             // 必须是该 cid 的指派运营者之一
             if let Some(assign) = PinAssignments::<T>::get(&cid_hash) {
-                ensure!(assign.iter().any(|a| a == &who), Error::<T>::OperatorNotAssigned);
-            } else { return Err(Error::<T>::AssignmentNotFound.into()); }
+                ensure!(
+                    assign.iter().any(|a| a == &who),
+                    Error::<T>::OperatorNotAssigned
+                );
+            } else {
+                return Err(Error::<T>::AssignmentNotFound.into());
+            }
             // 标记该运营者完成
             PinSuccess::<T>::insert(&cid_hash, &who, true);
             // 达到副本数则完成
@@ -558,7 +684,9 @@ pub mod pallet {
                 let mut ok_count: u32 = 0;
                 if let Some(ops) = PinAssignments::<T>::get(&cid_hash) {
                     for o in ops.iter() {
-                        if PinSuccess::<T>::get(&cid_hash, o) { ok_count = ok_count.saturating_add(1); }
+                        if PinSuccess::<T>::get(&cid_hash, o) {
+                            ok_count = ok_count.saturating_add(1);
+                        }
                     }
                 }
                 if ok_count >= expect {
@@ -579,14 +707,26 @@ pub mod pallet {
         /// - 记录错误码，便于外部审计。
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::mark_pin_failed())]
-        pub fn mark_pin_failed(origin: OriginFor<T>, cid_hash: T::Hash, code: u16) -> DispatchResult {
+        pub fn mark_pin_failed(
+            origin: OriginFor<T>,
+            cid_hash: T::Hash,
+            code: u16,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let op = Operators::<T>::get(&who).ok_or(Error::<T>::OperatorNotFound)?;
             ensure!(op.status == 0, Error::<T>::OperatorBanned);
-            ensure!(PendingPins::<T>::contains_key(&cid_hash), Error::<T>::OrderNotFound);
+            ensure!(
+                PendingPins::<T>::contains_key(&cid_hash),
+                Error::<T>::OrderNotFound
+            );
             if let Some(assign) = PinAssignments::<T>::get(&cid_hash) {
-                ensure!(assign.iter().any(|a| a == &who), Error::<T>::OperatorNotAssigned);
-            } else { return Err(Error::<T>::AssignmentNotFound.into()); }
+                ensure!(
+                    assign.iter().any(|a| a == &who),
+                    Error::<T>::OperatorNotAssigned
+                );
+            } else {
+                return Err(Error::<T>::AssignmentNotFound.into());
+            }
             // 标记失败并置为 Pinning/Failed
             PinSuccess::<T>::insert(&cid_hash, &who, false);
             PinStateOf::<T>::insert(&cid_hash, 1u8);
@@ -609,13 +749,28 @@ pub mod pallet {
             bond: BalanceOf<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(!Operators::<T>::contains_key(&who), Error::<T>::OperatorExists);
-            ensure!(capacity_gib >= T::MinCapacityGiB::get(), Error::<T>::InsufficientCapacity);
-            ensure!(bond >= T::MinOperatorBond::get(), Error::<T>::InsufficientBond);
+            ensure!(
+                !Operators::<T>::contains_key(&who),
+                Error::<T>::OperatorExists
+            );
+            ensure!(
+                capacity_gib >= T::MinCapacityGiB::get(),
+                Error::<T>::InsufficientCapacity
+            );
+            ensure!(
+                bond >= T::MinOperatorBond::get(),
+                Error::<T>::InsufficientBond
+            );
             // 保证金保留
             <T as Config>::Currency::reserve(&who, bond)?;
             OperatorBond::<T>::insert(&who, bond);
-            let info = OperatorInfo::<T>{ peer_id, capacity_gib, endpoint_hash, cert_fingerprint, status: 0 };
+            let info = OperatorInfo::<T> {
+                peer_id,
+                capacity_gib,
+                endpoint_hash,
+                cert_fingerprint,
+                status: 0,
+            };
             Operators::<T>::insert(&who, info);
             Self::deposit_event(Event::OperatorJoined(who));
             Ok(())
@@ -634,10 +789,22 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             Operators::<T>::try_mutate(&who, |maybe| -> DispatchResult {
                 let op = maybe.as_mut().ok_or(Error::<T>::OperatorNotFound)?;
-                if let Some(p) = peer_id { op.peer_id = p; }
-                if let Some(c) = capacity_gib { ensure!(c >= T::MinCapacityGiB::get(), Error::<T>::InsufficientCapacity); op.capacity_gib = c; }
-                if let Some(h) = endpoint_hash { op.endpoint_hash = h; }
-                if let Some(cf) = cert_fingerprint { op.cert_fingerprint = cf; }
+                if let Some(p) = peer_id {
+                    op.peer_id = p;
+                }
+                if let Some(c) = capacity_gib {
+                    ensure!(
+                        c >= T::MinCapacityGiB::get(),
+                        Error::<T>::InsufficientCapacity
+                    );
+                    op.capacity_gib = c;
+                }
+                if let Some(h) = endpoint_hash {
+                    op.endpoint_hash = h;
+                }
+                if let Some(cf) = cert_fingerprint {
+                    op.cert_fingerprint = cf;
+                }
                 Ok(())
             })?;
             Self::deposit_event(Event::OperatorUpdated(who));
@@ -649,14 +816,21 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn leave_operator(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(Operators::<T>::contains_key(&who), Error::<T>::OperatorNotFound);
+            ensure!(
+                Operators::<T>::contains_key(&who),
+                Error::<T>::OperatorNotFound
+            );
             // 退出校验：不得出现在任何分配中（MVP：线性扫描）
             for (_cid, ops) in PinAssignments::<T>::iter() {
-                if ops.iter().any(|o| o == &who) { return Err(Error::<T>::HasActiveAssignments.into()); }
+                if ops.iter().any(|o| o == &who) {
+                    return Err(Error::<T>::HasActiveAssignments.into());
+                }
             }
             Operators::<T>::remove(&who);
             let bond = OperatorBond::<T>::take(&who);
-            if !bond.is_zero() { let _ = <T as Config>::Currency::unreserve(&who, bond); }
+            if !bond.is_zero() {
+                let _ = <T as Config>::Currency::unreserve(&who, bond);
+            }
             Self::deposit_event(Event::OperatorLeft(who));
             Ok(())
         }
@@ -664,11 +838,16 @@ pub mod pallet {
         /// 函数级详细中文注释：治理设置运营者状态（0=Active,1=Suspended,2=Banned）
         #[pallet::call_index(6)]
         #[pallet::weight(10_000)]
-        pub fn set_operator_status(origin: OriginFor<T>, who: T::AccountId, status: u8) -> DispatchResult {
+        pub fn set_operator_status(
+            origin: OriginFor<T>,
+            who: T::AccountId,
+            status: u8,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             Operators::<T>::try_mutate(&who, |maybe| -> DispatchResult {
                 let op = maybe.as_mut().ok_or(Error::<T>::OperatorNotFound)?;
-                op.status = status; Ok(())
+                op.status = status;
+                Ok(())
             })?;
             Self::deposit_event(Event::OperatorStatusChanged(who, status));
             Ok(())
@@ -683,7 +862,11 @@ pub mod pallet {
             let op = Operators::<T>::get(&who).ok_or(Error::<T>::OperatorNotFound)?;
             ensure!(op.status == 0, Error::<T>::BadStatus);
             OperatorSla::<T>::mutate(&who, |s| {
-                if ok { s.probe_ok = s.probe_ok.saturating_add(1); } else { s.probe_fail = s.probe_fail.saturating_add(1); }
+                if ok {
+                    s.probe_ok = s.probe_ok.saturating_add(1);
+                } else {
+                    s.probe_fail = s.probe_fail.saturating_add(1);
+                }
                 s.last_update = <frame_system::Pallet<T>>::block_number();
             });
             Self::deposit_event(Event::OperatorProbed(who, ok));
@@ -693,9 +876,16 @@ pub mod pallet {
         /// 函数级详细中文注释：治理扣罚运营者的保证金（阶梯惩罚使用）。
         #[pallet::call_index(8)]
         #[pallet::weight(10_000)]
-        pub fn slash_operator(origin: OriginFor<T>, who: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+        pub fn slash_operator(
+            origin: OriginFor<T>,
+            who: T::AccountId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            ensure!(Operators::<T>::contains_key(&who), Error::<T>::OperatorNotFound);
+            ensure!(
+                Operators::<T>::contains_key(&who),
+                Error::<T>::OperatorNotFound
+            );
             let (slashed, _remaining) = <T as Config>::Currency::slash_reserved(&who, amount);
             // 记录剩余 bond（slash_reserved 返回负不平衡，使用 peek 获取相应余额值再进行安全减法）
             let old = OperatorBond::<T>::get(&who);
@@ -714,22 +904,41 @@ pub mod pallet {
         /// - HTTP 令牌与集群端点从本地 offchain storage 读取，避免上链泄露。
         fn offchain_worker(_n: BlockNumberFor<T>) {
             // 读取本地配置（示例键）："/memo/ipfs/cluster_endpoint" 与 "/memo/ipfs/token"
-            let endpoint: alloc::string::String = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/cluster_endpoint")
-                .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()))
-                .unwrap_or_else(|| alloc::string::String::from("http://127.0.0.1:9094"));
-            let token: Option<alloc::string::String> = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/token")
-                .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()));
+            let endpoint: alloc::string::String = sp_io::offchain::local_storage_get(
+                StorageKind::PERSISTENT,
+                b"/memo/ipfs/cluster_endpoint",
+            )
+            .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()))
+            .unwrap_or_else(|| alloc::string::String::from("http://127.0.0.1:9094"));
+            let token: Option<alloc::string::String> =
+                sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"/memo/ipfs/token")
+                    .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()));
 
             // 分配与 Pin：遍历 PendingPins，若无分配则创建；否则尝试 POST /pins 携带 allocations
-            if let Some((cid_hash, (_payer, replicas, _size, _price))) = <PendingPins<T>>::iter().next() {
+            if let Some((cid_hash, (_payer, replicas, _size, _price))) =
+                <PendingPins<T>>::iter().next()
+            {
                 // 若未分配，则挑选活跃运营者账户（简化：取前 N 个）
                 if PinAssignments::<T>::get(&cid_hash).is_none() {
-                    let mut selected: BoundedVec<T::AccountId, frame_support::traits::ConstU32<16>> = Default::default();
+                    let mut selected: BoundedVec<
+                        T::AccountId,
+                        frame_support::traits::ConstU32<16>,
+                    > = Default::default();
                     for (op_acc, info) in Operators::<T>::iter() {
-                        if info.status == 0 { let _ = selected.try_push(op_acc); }
-                        if (selected.len() as u32) >= replicas { break; }
+                        if info.status == 0 {
+                            let _ = selected.try_push(op_acc);
+                        }
+                        if (selected.len() as u32) >= replicas {
+                            break;
+                        }
                     }
-                    if !selected.is_empty() { PinAssignments::<T>::insert(&cid_hash, &selected); Self::deposit_event(Event::AssignmentCreated(cid_hash, selected.len() as u32)); }
+                    if !selected.is_empty() {
+                        PinAssignments::<T>::insert(&cid_hash, &selected);
+                        Self::deposit_event(Event::AssignmentCreated(
+                            cid_hash,
+                            selected.len() as u32,
+                        ));
+                    }
                 }
                 // 发起 Pin 请求（MVP 不在 body 中传 allocations，真实集群应携带）
                 let _ = Self::submit_pin_request(&endpoint, &token, cid_hash);
@@ -744,44 +953,88 @@ pub mod pallet {
             // 巡检：针对已 Pinned/Pinning 的对象，GET /pins/{cid} 矫正副本；若缺少则再 Pin；并统计上报
             // 注意：演示中未持有明文 CID，这里仅示意调用；生产需有 CID 解密/映射。
             // 逻辑：遍历 PinStateOf in {1=Pinning,2=Pinned}，若 assignments 存在，检查成功标记数；不足副本则再次发起 submit_pin_request。
-            let mut sample:u32=0; let mut pinning:u32=0; let mut pinned:u32=0; let mut missing:u32=0;
+            let mut sample: u32 = 0;
+            let mut pinning: u32 = 0;
+            let mut pinned: u32 = 0;
+            let mut missing: u32 = 0;
             for (cid_hash, state) in PinStateOf::<T>::iter() {
                 if state == 1u8 || state == 2u8 {
                     sample = sample.saturating_add(1);
                     if let Some(assign) = PinAssignments::<T>::get(&cid_hash) {
-                        let expect = PinMeta::<T>::get(&cid_hash).map(|m| m.0).unwrap_or(assign.len() as u32);
+                        let expect = PinMeta::<T>::get(&cid_hash)
+                            .map(|m| m.0)
+                            .unwrap_or(assign.len() as u32);
                         let mut ok_count: u32 = 0;
-                        for o in assign.iter() { if PinSuccess::<T>::get(&cid_hash, o) { ok_count = ok_count.saturating_add(1); } }
+                        for o in assign.iter() {
+                            if PinSuccess::<T>::get(&cid_hash, o) {
+                                ok_count = ok_count.saturating_add(1);
+                            }
+                        }
                         if ok_count < expect {
                             // 解析 /pins/{cid}，对比分配并触发降级/修复事件
                             let cid_str = Self::resolve_cid(&cid_hash);
                             // 直接 GET /pins/{cid} 获取状态（Plan B 替换 submit_get_pin_status_collect）
-                            if let Some(body) = Self::http_get_bytes(&endpoint, &token, &alloc::format!("/pins/{}", cid_str)) {
+                            if let Some(body) = Self::http_get_bytes(
+                                &endpoint,
+                                &token,
+                                &alloc::format!("/pins/{}", cid_str),
+                            ) {
                                 let mut online_peers: Vec<Vec<u8>> = Vec::new();
                                 if let Ok(json) = serde_json::from_slice::<JsonValue>(&body) {
                                     // 兼容两类结构：{peer_map:{"peerid":{status:"pinned"|...}}} 或 {allocations:["peerid",...]}
-                                    if let Some(map) = json.get("peer_map").and_then(|v| v.as_object()) {
-                                        for (pid, st) in map.iter() { if st.get("status").and_then(|s| s.as_str()) == Some("pinned") { online_peers.push(pid.as_bytes().to_vec()); } }
-                                    } else if let Some(arr) = json.get("allocations").and_then(|v| v.as_array()) {
-                                        for v in arr.iter() { if let Some(s) = v.as_str() { online_peers.push(s.as_bytes().to_vec()); } }
+                                    if let Some(map) =
+                                        json.get("peer_map").and_then(|v| v.as_object())
+                                    {
+                                        for (pid, st) in map.iter() {
+                                            if st.get("status").and_then(|s| s.as_str())
+                                                == Some("pinned")
+                                            {
+                                                online_peers.push(pid.as_bytes().to_vec());
+                                            }
+                                        }
+                                    } else if let Some(arr) =
+                                        json.get("allocations").and_then(|v| v.as_array())
+                                    {
+                                        for v in arr.iter() {
+                                            if let Some(s) = v.as_str() {
+                                                online_peers.push(s.as_bytes().to_vec());
+                                            }
+                                        }
                                     }
                                 }
                                 // 标记降级与修复：对比本地分配和在线列表
                                 for op_acc in assign.iter() {
                                     if let Some(info) = Operators::<T>::get(op_acc) {
-                                        let present = online_peers.iter().any(|p| p.as_slice() == info.peer_id.as_slice());
+                                        let present = online_peers
+                                            .iter()
+                                            .any(|p| p.as_slice() == info.peer_id.as_slice());
                                         let success = PinSuccess::<T>::get(&cid_hash, op_acc);
-                                        if present && !success { PinSuccess::<T>::insert(&cid_hash, op_acc, true); Self::deposit_event(Event::ReplicaRepaired(cid_hash, op_acc.clone())); }
+                                        if present && !success {
+                                            PinSuccess::<T>::insert(&cid_hash, op_acc, true);
+                                            Self::deposit_event(Event::ReplicaRepaired(
+                                                cid_hash,
+                                                op_acc.clone(),
+                                            ));
+                                        }
                                         if !present && success {
                                             PinSuccess::<T>::insert(&cid_hash, op_acc, false);
                                             // 统计降级次数并触发告警建议
                                             OperatorSla::<T>::mutate(op_acc, |s| {
                                                 s.degraded = s.degraded.saturating_add(1);
-                                                if s.degraded % 10 == 0 { // 简单阈值：每 10 次降级告警
-                                                    Self::deposit_event(Event::OperatorDegradationAlert(op_acc.clone(), s.degraded));
+                                                if s.degraded % 10 == 0 {
+                                                    // 简单阈值：每 10 次降级告警
+                                                    Self::deposit_event(
+                                                        Event::OperatorDegradationAlert(
+                                                            op_acc.clone(),
+                                                            s.degraded,
+                                                        ),
+                                                    );
                                                 }
                                             });
-                                            Self::deposit_event(Event::ReplicaDegraded(cid_hash, op_acc.clone()));
+                                            Self::deposit_event(Event::ReplicaDegraded(
+                                                cid_hash,
+                                                op_acc.clone(),
+                                            ));
                                         }
                                     }
                                 }
@@ -801,7 +1054,9 @@ pub mod pallet {
                 }
             }
             // 事件上报（轻量只读）：不改变状态，仅供监控
-            if sample > 0 { Self::deposit_event(Event::PinProbe(sample, pinning, pinned, missing)); }
+            if sample > 0 {
+                Self::deposit_event(Event::PinProbe(sample, pinning, pinned, missing));
+            }
         }
     }
 
@@ -811,14 +1066,21 @@ pub mod pallet {
             DueQueue::<T>::get(block).len() as u32
         }
         /// 函数级中文注释：只读 - 在闭区间 [from, to] 返回非空到期列表的块号与长度元组（最多 512 条）。
-        pub fn due_between(from: BlockNumberFor<T>, to: BlockNumberFor<T>) -> BoundedVec<(BlockNumberFor<T>, u32), ConstU32<512>> {
+        pub fn due_between(
+            from: BlockNumberFor<T>,
+            to: BlockNumberFor<T>,
+        ) -> BoundedVec<(BlockNumberFor<T>, u32), ConstU32<512>> {
             let mut out: BoundedVec<(BlockNumberFor<T>, u32), ConstU32<512>> = Default::default();
             let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
             let mut n = lo;
             while n <= hi {
                 let c = DueQueue::<T>::get(n).len() as u32;
-                if c > 0 { let _ = out.try_push((n, c)); }
-                if out.len() as u32 >= 512 { break; }
+                if c > 0 {
+                    let _ = out.try_push((n, c));
+                }
+                if out.len() as u32 >= 512 {
+                    break;
+                }
                 n = n.saturating_add(1u32.into());
             }
             out
@@ -832,7 +1094,11 @@ pub mod pallet {
             for off in 0..=spread {
                 let key = base_next.saturating_add(off.into());
                 let mut v = DueQueue::<T>::get(key);
-                if v.try_push(cid).is_ok() { DueQueue::<T>::insert(key, v); inserted = true; break; }
+                if v.try_push(cid).is_ok() {
+                    DueQueue::<T>::insert(key, v);
+                    inserted = true;
+                    break;
+                }
             }
             if !inserted { /* 放弃，治理可通过扫描修复 */ }
         }
@@ -882,7 +1148,11 @@ pub mod pallet {
             let pending = req.deadline(timeout).send().map_err(|_| ())?;
             let resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
             let code: u16 = resp.code;
-            if (200..300).contains(&code) { Ok(()) } else { Err(()) }
+            if (200..300).contains(&code) {
+                Ok(())
+            } else {
+                Err(())
+            }
         }
 
         /// 函数级详细中文注释：通过 OCW 发送 HTTP DELETE /pins/{cid}（示例）
@@ -897,8 +1167,8 @@ pub mod pallet {
             let url = alloc::format!("{}/pins/{}", endpoint, cid_str);
             // 不用切片：空体使用 Vec<Vec<u8>>
             let chunks: Vec<Vec<u8>> = alloc::vec![Vec::new()];
-            let mut req = http::Request::post(&url, chunks)
-                .add_header("X-HTTP-Method-Override", "DELETE");
+            let mut req =
+                http::Request::post(&url, chunks).add_header("X-HTTP-Method-Override", "DELETE");
             if let Some(t) = token.as_ref() {
                 req = req.add_header("Authorization", &alloc::format!("Bearer {}", t));
             }
@@ -907,26 +1177,27 @@ pub mod pallet {
             let pending = req.deadline(timeout).send().map_err(|_| ())?;
             let resp = pending.try_wait(timeout).map_err(|_| ())?.map_err(|_| ())?;
             let code: u16 = resp.code;
-            if (200..300).contains(&code) { Ok(()) } else { Err(()) }
+            if (200..300).contains(&code) {
+                Ok(())
+            } else {
+                Err(())
+            }
         }
     }
 
-    #[pallet::view_functions]
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：只读视图——派生“逝者主题资金账户”地址。
-        /// - 输入：`subject_id`（逝者 ID，u64）。
-        /// - 输出：由 `SubjectPalletId` 与 `(DeceasedDomain, subject_id)` 稳定派生的账户地址；无私钥、仅用于托管与扣费。
-        #[inline]
-        pub fn derive_subject_account_for_deceased(subject_id: u64) -> T::AccountId {
-            Self::subject_account_for_deceased(subject_id)
+        /// 函数级中文注释：只读接口——根据运营者账户派生对应的押金保留账户地址。
+        pub fn operator_bond_account(operator: &T::AccountId) -> T::AccountId {
+            T::SubjectPalletId::get()
+                .try_into_sub_account((b"bond", operator))
+                .expect("pallet sub-account derivation should not fail")
         }
 
-        /// 函数级中文注释：只读视图——通用派生“主题资金账户”地址。
-        /// - 输入：`domain:u8` 与 `subject_id:u64`。
-        /// - 输出：稳定派生的账户地址，适用于多内容域统一计费场景。
-        #[inline]
-        pub fn derive_subject_account(domain: u8, subject_id: u64) -> T::AccountId {
-            Self::subject_account_for(domain, subject_id)
+        /// 函数级中文注释：只读接口——根据逝者 subject_id 派生其资金账户地址。
+        pub fn subject_account(subject_id: u64) -> T::AccountId {
+            T::SubjectPalletId::get()
+                .try_into_sub_account((T::DeceasedDomain::get(), subject_id))
+                .expect("pallet sub-account derivation should not fail")
         }
     }
 
@@ -941,17 +1212,25 @@ pub mod pallet {
         fn set_billing_params() -> Weight;
     }
     impl WeightInfo for () {
-        fn request_pin() -> Weight { Weight::from_parts(10_000, 0) }
-        fn mark_pinned() -> Weight { Weight::from_parts(10_000, 0) }
-        fn mark_pin_failed() -> Weight { Weight::from_parts(10_000, 0) }
+        fn request_pin() -> Weight {
+            Weight::from_parts(10_000, 0)
+        }
+        fn mark_pinned() -> Weight {
+            Weight::from_parts(10_000, 0)
+        }
+        fn mark_pin_failed() -> Weight {
+            Weight::from_parts(10_000, 0)
+        }
         fn charge_due(limit: u32) -> Weight {
             // 简化：基准前权重估算（常数项 + 每件线性项）
-            Weight::from_parts(20_000, 0).saturating_add(Weight::from_parts(5_000, 0).saturating_mul(limit.into()))
+            Weight::from_parts(20_000, 0)
+                .saturating_add(Weight::from_parts(5_000, 0).saturating_mul(limit.into()))
         }
-        fn set_billing_params() -> Weight { Weight::from_parts(20_000, 0) }
+        fn set_billing_params() -> Weight {
+            Weight::from_parts(20_000, 0)
+        }
     }
 }
-
 
 #[cfg(test)]
 mod tests;

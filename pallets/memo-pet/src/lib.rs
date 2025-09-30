@@ -8,8 +8,8 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec};
     use alloc::vec::Vec;
+    use frame_support::{pallet_prelude::*, BoundedVec};
     use frame_system::pallet_prelude::*;
 
     /// 函数级中文注释：最小“宠物主体”Pallet，占位结构与只读接口，便于 TargetControl 与前端整合展示。
@@ -17,7 +17,8 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        #[pallet::constant] type StringLimit: Get<u32>;
+        #[pallet::constant]
+        type StringLimit: Get<u32>;
         /// 函数级中文注释：墓位检查与权限接口（低耦合）。
         type GraveProvider: GraveInspector<Self::AccountId, u64>;
     }
@@ -46,10 +47,13 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(PhantomData<T>);
 
-    #[pallet::storage] pub type NextPetId<T: Config> = StorageValue<_, u64, ValueQuery>;
-    #[pallet::storage] pub type PetOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, Pet<T>, OptionQuery>;
+    #[pallet::storage]
+    pub type NextPetId<T: Config> = StorageValue<_, u64, ValueQuery>;
+    #[pallet::storage]
+    pub type PetOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, Pet<T>, OptionQuery>;
     /// 函数级中文注释：宠物附着到的墓位（可选）。
-    #[pallet::storage] pub type PetInGrave<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
+    #[pallet::storage]
+    pub type PetInGrave<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -62,7 +66,13 @@ pub mod pallet {
     }
 
     #[pallet::error]
-    pub enum Error<T> { BadInput, NotFound, NotOwner, GraveNotFound, NotAllowed }
+    pub enum Error<T> {
+        BadInput,
+        NotFound,
+        NotOwner,
+        GraveNotFound,
+        NotAllowed,
+    }
 
     // 说明：仅保留创建，便于测试；后续可扩展为与 deceased 同结构的访问 Trait。
     #[allow(warnings)]
@@ -72,14 +82,32 @@ pub mod pallet {
         /// 函数级中文注释：创建一只宠物主体（最小字段）。
         #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
-        pub fn create_pet(origin: OriginFor<T>, name: Vec<u8>, species: Vec<u8>, token: Vec<u8>) -> DispatchResult {
+        pub fn create_pet(
+            origin: OriginFor<T>,
+            name: Vec<u8>,
+            species: Vec<u8>,
+            token: Vec<u8>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let name_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
-            let sp_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(species).map_err(|_| Error::<T>::BadInput)?;
-            let tk_bv: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(token).map_err(|_| Error::<T>::BadInput)?;
-            let id = NextPetId::<T>::mutate(|n| { let x=*n; *n = x.saturating_add(1); x });
+            let name_bv: BoundedVec<_, T::StringLimit> =
+                BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
+            let sp_bv: BoundedVec<_, T::StringLimit> =
+                BoundedVec::try_from(species).map_err(|_| Error::<T>::BadInput)?;
+            let tk_bv: BoundedVec<_, T::StringLimit> =
+                BoundedVec::try_from(token).map_err(|_| Error::<T>::BadInput)?;
+            let id = NextPetId::<T>::mutate(|n| {
+                let x = *n;
+                *n = x.saturating_add(1);
+                x
+            });
             let now = <frame_system::Pallet<T>>::block_number();
-            let p = Pet { name: name_bv, owner: who.clone(), species: sp_bv, token: tk_bv, created: now };
+            let p = Pet {
+                name: name_bv,
+                owner: who.clone(),
+                species: sp_bv,
+                token: tk_bv,
+                created: now,
+            };
             PetOf::<T>::insert(id, p);
             Self::deposit_event(Event::PetCreated(id, who));
             Ok(())
@@ -92,8 +120,14 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let pet = PetOf::<T>::get(pet_id).ok_or(Error::<T>::NotFound)?;
             ensure!(pet.owner == who, Error::<T>::NotOwner);
-            ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
-            ensure!(T::GraveProvider::can_attach(&who, grave_id), Error::<T>::NotAllowed);
+            ensure!(
+                T::GraveProvider::grave_exists(grave_id),
+                Error::<T>::GraveNotFound
+            );
+            ensure!(
+                T::GraveProvider::can_attach(&who, grave_id),
+                Error::<T>::NotAllowed
+            );
             PetInGrave::<T>::insert(pet_id, grave_id);
             Self::deposit_event(Event::PetAttached(pet_id, grave_id));
             Ok(())
@@ -112,5 +146,3 @@ pub mod pallet {
         }
     }
 }
-
-

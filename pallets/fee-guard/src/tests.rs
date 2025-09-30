@@ -3,8 +3,8 @@
 #![cfg(test)]
 
 use super::*;
-use crate::pallet::Pallet as FeeGuardPallet;
 use crate::mock::*;
+use crate::pallet::Pallet as FeeGuardPallet;
 use frame_support::{assert_ok, dispatch::RawOrigin as R};
 
 #[test]
@@ -42,5 +42,3 @@ fn on_killed_account_cleanup() {
         assert!(!FeeGuardPallet::<Test>::is_fee_only(&2));
     });
 }
-
-

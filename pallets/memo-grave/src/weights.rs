@@ -76,49 +76,133 @@ pub trait WeightInfo {
 /// 函数级中文注释：未基准化前的兜底实现，全部返回零权重。
 pub struct TestWeights;
 impl WeightInfo for TestWeights {
-    fn create_grave() -> Weight { Weight::zero() }
-    fn set_park() -> Weight { Weight::zero() }
-    fn update_grave() -> Weight { Weight::zero() }
-    fn transfer_grave() -> Weight { Weight::zero() }
-    fn inter() -> Weight { Weight::zero() }
-    fn exhume() -> Weight { Weight::zero() }
-    fn set_meta() -> Weight { Weight::zero() }
-    fn complain() -> Weight { Weight::zero() }
-    fn restrict() -> Weight { Weight::zero() }
-    fn remove() -> Weight { Weight::zero() }
-    fn set_name_hash() -> Weight { Weight::zero() }
-    fn clear_name_hash() -> Weight { Weight::zero() }
-    fn add_admin() -> Weight { Weight::zero() }
-    fn remove_admin() -> Weight { Weight::zero() }
-    fn set_policy() -> Weight { Weight::zero() }
-    fn join_open() -> Weight { Weight::zero() }
-    fn apply_join() -> Weight { Weight::zero() }
-    fn approve_member() -> Weight { Weight::zero() }
-    fn reject_member() -> Weight { Weight::zero() }
-    fn set_visibility() -> Weight { Weight::zero() }
-    fn follow() -> Weight { Weight::zero() }
-    fn unfollow() -> Weight { Weight::zero() }
-    fn set_kinship_policy() -> Weight { Weight::zero() }
-    fn declare_kinship() -> Weight { Weight::zero() }
-    fn approve_kinship() -> Weight { Weight::zero() }
-    fn reject_kinship() -> Weight { Weight::zero() }
-    fn update_kinship() -> Weight { Weight::zero() }
-    fn remove_kinship() -> Weight { Weight::zero() }
-    fn add_cover_option() -> Weight { Weight::zero() }
-    fn remove_cover_option() -> Weight { Weight::zero() }
-    fn set_cover_from_option() -> Weight { Weight::zero() }
-    fn set_audio() -> Weight { Weight::zero() }
-    fn clear_audio() -> Weight { Weight::zero() }
-    fn set_audio_via_governance() -> Weight { Weight::zero() }
-    fn clear_audio_via_governance() -> Weight { Weight::zero() }
-    fn add_audio_option() -> Weight { Weight::zero() }
-    fn remove_audio_option() -> Weight { Weight::zero() }
-    fn set_audio_from_option() -> Weight { Weight::zero() }
-    fn add_private_audio_option() -> Weight { Weight::zero() }
-    fn remove_private_audio_option() -> Weight { Weight::zero() }
-    fn set_audio_from_private_option() -> Weight { Weight::zero() }
-    fn set_audio_playlist(_len: u32) -> Weight { Weight::zero() }
-    fn set_carousel(_len: u32) -> Weight { Weight::zero() }
+    fn create_grave() -> Weight {
+        Weight::zero()
+    }
+    fn set_park() -> Weight {
+        Weight::zero()
+    }
+    fn update_grave() -> Weight {
+        Weight::zero()
+    }
+    fn transfer_grave() -> Weight {
+        Weight::zero()
+    }
+    fn inter() -> Weight {
+        Weight::zero()
+    }
+    fn exhume() -> Weight {
+        Weight::zero()
+    }
+    fn set_meta() -> Weight {
+        Weight::zero()
+    }
+    fn complain() -> Weight {
+        Weight::zero()
+    }
+    fn restrict() -> Weight {
+        Weight::zero()
+    }
+    fn remove() -> Weight {
+        Weight::zero()
+    }
+    fn set_name_hash() -> Weight {
+        Weight::zero()
+    }
+    fn clear_name_hash() -> Weight {
+        Weight::zero()
+    }
+    fn add_admin() -> Weight {
+        Weight::zero()
+    }
+    fn remove_admin() -> Weight {
+        Weight::zero()
+    }
+    fn set_policy() -> Weight {
+        Weight::zero()
+    }
+    fn join_open() -> Weight {
+        Weight::zero()
+    }
+    fn apply_join() -> Weight {
+        Weight::zero()
+    }
+    fn approve_member() -> Weight {
+        Weight::zero()
+    }
+    fn reject_member() -> Weight {
+        Weight::zero()
+    }
+    fn set_visibility() -> Weight {
+        Weight::zero()
+    }
+    fn follow() -> Weight {
+        Weight::zero()
+    }
+    fn unfollow() -> Weight {
+        Weight::zero()
+    }
+    fn set_kinship_policy() -> Weight {
+        Weight::zero()
+    }
+    fn declare_kinship() -> Weight {
+        Weight::zero()
+    }
+    fn approve_kinship() -> Weight {
+        Weight::zero()
+    }
+    fn reject_kinship() -> Weight {
+        Weight::zero()
+    }
+    fn update_kinship() -> Weight {
+        Weight::zero()
+    }
+    fn remove_kinship() -> Weight {
+        Weight::zero()
+    }
+    fn add_cover_option() -> Weight {
+        Weight::zero()
+    }
+    fn remove_cover_option() -> Weight {
+        Weight::zero()
+    }
+    fn set_cover_from_option() -> Weight {
+        Weight::zero()
+    }
+    fn set_audio() -> Weight {
+        Weight::zero()
+    }
+    fn clear_audio() -> Weight {
+        Weight::zero()
+    }
+    fn set_audio_via_governance() -> Weight {
+        Weight::zero()
+    }
+    fn clear_audio_via_governance() -> Weight {
+        Weight::zero()
+    }
+    fn add_audio_option() -> Weight {
+        Weight::zero()
+    }
+    fn remove_audio_option() -> Weight {
+        Weight::zero()
+    }
+    fn set_audio_from_option() -> Weight {
+        Weight::zero()
+    }
+    fn add_private_audio_option() -> Weight {
+        Weight::zero()
+    }
+    fn remove_private_audio_option() -> Weight {
+        Weight::zero()
+    }
+    fn set_audio_from_private_option() -> Weight {
+        Weight::zero()
+    }
+    fn set_audio_playlist(_len: u32) -> Weight {
+        Weight::zero()
+    }
+    fn set_carousel(_len: u32) -> Weight {
+        Weight::zero()
+    }
 }
-
-

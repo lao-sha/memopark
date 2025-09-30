@@ -15,29 +15,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig, UNIT};
-use crate::Runtime;
 use crate::configs::BurnAccount;
+use crate::Runtime;
+use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig, UNIT};
 use alloc::{vec, vec::Vec};
 use frame_support::build_struct_json_patch;
 use serde_json::Value;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
-use sp_genesis_builder::{self, PresetId};
-use sp_keyring::Sr25519Keyring;
 use sp_core::crypto::Ss58Codec;
 use sp_core::Get;
+use sp_genesis_builder::{self, PresetId};
+use sp_keyring::Sr25519Keyring;
 
 // Returns the genesis config presets populated with given parameters.
 /// 函数级中文注释：构建创世配置，设置 MEMO 总发行量 1000 亿（按 12 位精度）。
 /// - 将全部初始发行分配给 sudo（root）账户；
 /// - 如需多账号分配，可在 balances 向量中拆分，保证总和一致。
 fn testnet_genesis(
-	initial_authorities: Vec<(AuraId, GrandpaId)>,
-	_endowed_accounts: Vec<AccountId>,
-	root: AccountId,
+    initial_authorities: Vec<(AuraId, GrandpaId)>,
+    _endowed_accounts: Vec<AccountId>,
+    root: AccountId,
 ) -> Value {
-	let total_issuance: u128 = 100_000_000_000u128.saturating_mul(UNIT);
+    let total_issuance: u128 = 100_000_000_000u128.saturating_mul(UNIT);
     let _burn_account = BurnAccount::get();
     let _ed: u128 = crate::EXISTENTIAL_DEPOSIT;
 
@@ -56,89 +56,102 @@ fn testnet_genesis(
     build_struct_json_patch!(RuntimeGenesisConfig {
         balances: BalancesConfig {
             // 函数级中文注释：将全部初始发行量分配给指定地址（用户提供的 SS58），不再拆分给 root/burn。
-            balances: vec![
-                (parse_account("5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4"), total_issuance),
-            ],
+            balances: vec![(
+                parse_account("5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4"),
+                total_issuance
+            ),],
         },
-		aura: pallet_aura::GenesisConfig {
-			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect::<Vec<_>>(),
-		},
-		grandpa: pallet_grandpa::GenesisConfig {
-			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect::<Vec<_>>(),
-		},
+        aura: pallet_aura::GenesisConfig {
+            authorities: initial_authorities
+                .iter()
+                .map(|x| (x.0.clone()))
+                .collect::<Vec<_>>(),
+        },
+        grandpa: pallet_grandpa::GenesisConfig {
+            authorities: initial_authorities
+                .iter()
+                .map(|x| (x.1.clone(), 1))
+                .collect::<Vec<_>>(),
+        },
         // 函数级中文注释：初始化各委员会（Instance1/2/3）成员为指定三地址；Prime 留空。
         council: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance1> {
             members: committee_members.clone(),
             phantom: Default::default(),
         },
-        technical_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance2> {
+        technical_committee: pallet_collective::GenesisConfig::<
+            Runtime,
+            pallet_collective::Instance2,
+        > {
             members: committee_members.clone(),
             phantom: Default::default(),
         },
-        content_committee: pallet_collective::GenesisConfig::<Runtime, pallet_collective::Instance3> {
+        content_committee: pallet_collective::GenesisConfig::<
+            Runtime,
+            pallet_collective::Instance3,
+        > {
             members: committee_members.clone(),
             phantom: Default::default(),
         },
-		sudo: SudoConfig { key: Some(root) },
-	})
+        sudo: SudoConfig { key: Some(root) },
+    })
 }
 
 /// Return the development genesis config.
 pub fn development_config_genesis() -> Value {
-	testnet_genesis(
-		vec![(
-			sp_keyring::Sr25519Keyring::Alice.public().into(),
-			sp_keyring::Ed25519Keyring::Alice.public().into(),
-		)],
-		vec![
-			Sr25519Keyring::Alice.to_account_id(),
-			Sr25519Keyring::Bob.to_account_id(),
-			Sr25519Keyring::AliceStash.to_account_id(),
-			Sr25519Keyring::BobStash.to_account_id(),
-		],
-		sp_keyring::Sr25519Keyring::Alice.to_account_id(),
-	)
+    testnet_genesis(
+        vec![(
+            sp_keyring::Sr25519Keyring::Alice.public().into(),
+            sp_keyring::Ed25519Keyring::Alice.public().into(),
+        )],
+        vec![
+            Sr25519Keyring::Alice.to_account_id(),
+            Sr25519Keyring::Bob.to_account_id(),
+            Sr25519Keyring::AliceStash.to_account_id(),
+            Sr25519Keyring::BobStash.to_account_id(),
+        ],
+        sp_keyring::Sr25519Keyring::Alice.to_account_id(),
+    )
 }
 
 /// Return the local genesis config preset.
 pub fn local_config_genesis() -> Value {
-	testnet_genesis(
-		vec![
-			(
-				sp_keyring::Sr25519Keyring::Alice.public().into(),
-				sp_keyring::Ed25519Keyring::Alice.public().into(),
-			),
-			(
-				sp_keyring::Sr25519Keyring::Bob.public().into(),
-				sp_keyring::Ed25519Keyring::Bob.public().into(),
-			),
-		],
-		Sr25519Keyring::iter()
-			.filter(|v| v != &Sr25519Keyring::One && v != &Sr25519Keyring::Two)
-			.map(|v| v.to_account_id())
-			.collect::<Vec<_>>(),
-		Sr25519Keyring::Alice.to_account_id(),
-	)
+    testnet_genesis(
+        vec![
+            (
+                sp_keyring::Sr25519Keyring::Alice.public().into(),
+                sp_keyring::Ed25519Keyring::Alice.public().into(),
+            ),
+            (
+                sp_keyring::Sr25519Keyring::Bob.public().into(),
+                sp_keyring::Ed25519Keyring::Bob.public().into(),
+            ),
+        ],
+        Sr25519Keyring::iter()
+            .filter(|v| v != &Sr25519Keyring::One && v != &Sr25519Keyring::Two)
+            .map(|v| v.to_account_id())
+            .collect::<Vec<_>>(),
+        Sr25519Keyring::Alice.to_account_id(),
+    )
 }
 
 /// Provides the JSON representation of predefined genesis config for given `id`.
 pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
-	let patch = match id.as_ref() {
-		sp_genesis_builder::DEV_RUNTIME_PRESET => development_config_genesis(),
-		sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET => local_config_genesis(),
-		_ => return None,
-	};
-	Some(
-		serde_json::to_string(&patch)
-			.expect("serialization to json is expected to work. qed.")
-			.into_bytes(),
-	)
+    let patch = match id.as_ref() {
+        sp_genesis_builder::DEV_RUNTIME_PRESET => development_config_genesis(),
+        sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET => local_config_genesis(),
+        _ => return None,
+    };
+    Some(
+        serde_json::to_string(&patch)
+            .expect("serialization to json is expected to work. qed.")
+            .into_bytes(),
+    )
 }
 
 /// List of supported presets.
 pub fn preset_names() -> Vec<PresetId> {
-	vec![
-		PresetId::from(sp_genesis_builder::DEV_RUNTIME_PRESET),
-		PresetId::from(sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET),
-	]
+    vec![
+        PresetId::from(sp_genesis_builder::DEV_RUNTIME_PRESET),
+        PresetId::from(sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET),
+    ]
 }

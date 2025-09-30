@@ -24,25 +24,23 @@
 // For more information, please refer to <http://unlicense.org>
 
 // Substrate and Polkadot dependencies
+// 移除重复导入，避免与下方 `use super::{ ... Runtime, RuntimeCall, RuntimeEvent, ... }` 冲突
+use frame_support::traits::{Contains, EnsureOrigin};
 use frame_support::{
-    derive_impl, parameter_types,
+    derive_impl, ensure, parameter_types,
     traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, VariantCountOf},
     weights::{
         constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
         IdentityFee, Weight,
     },
-    ensure,
+    PalletId,
 };
 use frame_system::limits::{BlockLength, BlockWeights};
-use sp_runtime::traits::AccountIdConversion;
-use sp_core::Get;
 use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_runtime::{traits::One, Perbill};
+use sp_core::Get;
+use sp_runtime::{traits::AccountIdConversion, traits::One, Perbill};
 use sp_version::RuntimeVersion;
-use frame_support::traits::{Contains, EnsureOrigin};
-use frame_support::PalletId;
-use pallet_pricing as _;
 // ===== memo-content-governance 运行时配置（占位骨架） =====
 impl pallet_memo_content_governance::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -66,7 +64,7 @@ impl pallet_memo_content_governance::Config for Runtime {
     /// 审批起源：Root | 委员会阈值(2/3)
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 每块最多执行 50 条（示例）
     type MaxExecPerBlock = frame_support::traits::ConstU32<50>;
@@ -80,7 +78,7 @@ impl pallet_memo_content_governance::Config for Runtime {
     type AppealDepositPolicy = ContentAppealDepositPolicy;
     /// 权重实现（占位）
     type WeightInfo = pallet_memo_content_governance::weights::SubstrateWeight<Runtime>;
-    /// 函数级中文注释：最近活跃度提供者（用于“应答自动否决”判断）。
+    /// 函数级中文注释：最近活跃度提供者（用于"应答自动否决"判断）。
     type LastActiveProvider = ContentLastActiveProvider;
     /// 函数级中文注释：CID 最小长度默认值（示例：10字节）。
     type MinEvidenceCidLen = frame_support::traits::ConstU32<10>;
@@ -99,16 +97,22 @@ impl pallet_memo_content_governance::AppealDepositPolicy for ContentAppealDeposi
     type AccountId = AccountId;
     type Balance = Balance;
     type BlockNumber = BlockNumber;
-    fn calc_deposit(_who: &Self::AccountId, domain: u8, _target: u64, action: u8) -> Option<Self::Balance> {
+    fn calc_deposit(
+        _who: &Self::AccountId,
+        domain: u8,
+        _target: u64,
+        action: u8,
+    ) -> Option<Self::Balance> {
         use frame_support::traits::Get as _;
-        let base: Balance = <Runtime as pallet_memo_content_governance::pallet::Config>::AppealDeposit::get();
+        let base: Balance =
+            <Runtime as pallet_memo_content_governance::pallet::Config>::AppealDeposit::get();
         let mult_bp: u16 = match (domain, action) {
-            (4, 31) | (4, 32) => 20000,  // 2.0x
-            (4, 30) => 10000,            // 1.0x
-            (3, 20) | (3, 21) => 15000,  // 1.5x
-            (3, 22) | (3, 23) => 10000,  // 1.0x
+            (4, 31) | (4, 32) => 20000, // 2.0x
+            (4, 30) => 10000,           // 1.0x
+            (3, 20) | (3, 21) => 15000, // 1.5x
+            (3, 22) | (3, 23) => 10000, // 1.0x
             (2, 1) | (2, 2) | (2, 3) => 10000,
-            (2, 4) => 15000,            // 治理转移拥有者 ≥1.5x 基准
+            (2, 4) => 15000, // 治理转移拥有者 ≥1.5x 基准
             _ => return None,
         };
         // 以万分比计算：base * mult_bp / 10000
@@ -251,9 +255,9 @@ use alloc::vec;
 
 // Local module imports
 use super::{
-	AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, Nonce, PalletInfo, Runtime,
-	RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
-	System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
+    AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, Nonce, PalletInfo, Runtime,
+    RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
+    System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
 };
 
 // ===== Forwarder 集成所需的适配与类型 =====
@@ -263,12 +267,14 @@ use sp_runtime::traits::IdentityLookup;
 /// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
 pub struct AuthorizerAdapter;
 impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
-	/// 函数级中文注释：校验赞助者是否在命名空间下被允许
-	/// - 当前仅允许平台账户代付，便于统一风控与审计；未来可扩展为授权中心。
-    fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool { true }
+    /// 函数级中文注释：校验赞助者是否在命名空间下被允许
+    /// - 当前仅允许平台账户代付，便于统一风控与审计；未来可扩展为授权中心。
+    fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool {
+        true
+    }
 
-	/// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
-	/// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
+    /// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
+    /// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
     fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
         match (ns, call) {
             // 仅放行 OTC 买方侧方法（买方全流程免 GAS）
@@ -300,20 +306,19 @@ impl frame_support::traits::Contains<RuntimeCall> for ForbidEscapeCalls {
 }
 // 已移除：pallet-authorizer 配置与常量
 
-
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 parameter_types! {
-	pub const BlockHashCount: BlockNumber = 2400;
-	pub const Version: RuntimeVersion = VERSION;
+    pub const BlockHashCount: BlockNumber = 2400;
+    pub const Version: RuntimeVersion = VERSION;
 
-	/// We allow for 2 seconds of compute with a 6 second average block time.
-	pub RuntimeBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(
-		Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
-		NORMAL_DISPATCH_RATIO,
-	);
-	pub RuntimeBlockLength: BlockLength = BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
-	pub const SS58Prefix: u8 = 42;
+    /// We allow for 2 seconds of compute with a 6 second average block time.
+    pub RuntimeBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(
+        Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
+        NORMAL_DISPATCH_RATIO,
+    );
+    pub RuntimeBlockLength: BlockLength = BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
+    pub const SS58Prefix: u8 = 42;
 }
 
 // 函数级中文注释：deceased-data 费用/押金与成熟期参数
@@ -334,128 +339,144 @@ parameter_types! {
 /// but overridden as needed.
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
 impl frame_system::Config for Runtime {
-	/// The block type for the runtime.
-	type Block = Block;
-	/// Block & extrinsics weights: base values and limits.
-	type BlockWeights = RuntimeBlockWeights;
-	/// The maximum length of a block (in bytes).
-	type BlockLength = RuntimeBlockLength;
-	/// The identifier used to distinguish between accounts.
-	type AccountId = AccountId;
-	/// The type for storing how many extrinsics an account has signed.
-	type Nonce = Nonce;
-	/// The type for hashing blocks and tries.
-	type Hash = Hash;
-	/// Maximum number of block number to block hash mappings to keep (oldest pruned first).
-	type BlockHashCount = BlockHashCount;
-	/// The weight of database operations that the runtime can invoke.
-	type DbWeight = RocksDbWeight;
-	/// Version of the runtime.
-	type Version = Version;
-	/// The data to be stored in an account.
-	type AccountData = pallet_balances::AccountData<Balance>;
-	/// This is used as an identifier of the chain. 42 is the generic substrate prefix.
-	type SS58Prefix = SS58Prefix;
-	type MaxConsumers = frame_support::traits::ConstU32<16>;
-	/// 函数级中文注释：基础调用过滤器，接入 origin-restriction 软策略（当前默认放行）。
-	type BaseCallFilter = crate::configs::OriginRestrictionFilter;
+    /// The block type for the runtime.
+    type Block = Block;
+    /// Block & extrinsics weights: base values and limits.
+    type BlockWeights = RuntimeBlockWeights;
+    /// The maximum length of a block (in bytes).
+    type BlockLength = RuntimeBlockLength;
+    /// The identifier used to distinguish between accounts.
+    type AccountId = AccountId;
+    /// The type for storing how many extrinsics an account has signed.
+    type Nonce = Nonce;
+    /// The type for hashing blocks and tries.
+    type Hash = Hash;
+    /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
+    type BlockHashCount = BlockHashCount;
+    /// The weight of database operations that the runtime can invoke.
+    type DbWeight = RocksDbWeight;
+    /// Version of the runtime.
+    type Version = Version;
+    /// The data to be stored in an account.
+    type AccountData = pallet_balances::AccountData<Balance>;
+    /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
+    type SS58Prefix = SS58Prefix;
+    type MaxConsumers = frame_support::traits::ConstU32<16>;
+    /// 函数级中文注释：基础调用过滤器，接入 origin-restriction 软策略（当前默认放行）。
+    type BaseCallFilter = crate::configs::OriginRestrictionFilter;
 }
 
 impl pallet_aura::Config for Runtime {
-	type AuthorityId = AuraId;
-	type DisabledValidators = ();
-	type MaxAuthorities = ConstU32<32>;
-	type AllowMultipleBlocksPerSlot = ConstBool<false>;
-	type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
+    type AuthorityId = AuraId;
+    type DisabledValidators = ();
+    type MaxAuthorities = ConstU32<32>;
+    type AllowMultipleBlocksPerSlot = ConstBool<false>;
+    type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
 }
 
 impl pallet_grandpa::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
+    type RuntimeEvent = RuntimeEvent;
 
-	type WeightInfo = ();
-	type MaxAuthorities = ConstU32<32>;
-	type MaxNominators = ConstU32<0>;
-	type MaxSetIdSessionEntries = ConstU64<0>;
+    type WeightInfo = ();
+    type MaxAuthorities = ConstU32<32>;
+    type MaxNominators = ConstU32<0>;
+    type MaxSetIdSessionEntries = ConstU64<0>;
 
-	type KeyOwnerProof = sp_core::Void;
-	type EquivocationReportSystem = ();
+    type KeyOwnerProof = sp_core::Void;
+    type EquivocationReportSystem = ();
 }
 
 impl pallet_timestamp::Config for Runtime {
-	/// A timestamp: milliseconds since the unix epoch.
-	type Moment = u64;
-	type OnTimestampSet = Aura;
-	type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-	type WeightInfo = ();
+    /// A timestamp: milliseconds since the unix epoch.
+    type Moment = u64;
+    type OnTimestampSet = Aura;
+    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
+    type WeightInfo = ();
 }
 
 impl pallet_balances::Config for Runtime {
-	type MaxLocks = ConstU32<50>;
-	type MaxReserves = ();
-	type ReserveIdentifier = [u8; 8];
-	/// The type for recording an account's balance.
-	type Balance = Balance;
-	/// The ubiquitous event type.
-	type RuntimeEvent = RuntimeEvent;
-	type DustRemoval = ();
-	type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
-	type AccountStore = System;
-	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-	type FreezeIdentifier = RuntimeFreezeReason;
-	type MaxFreezes = VariantCountOf<RuntimeFreezeReason>;
-	type RuntimeHoldReason = RuntimeHoldReason;
-	type RuntimeFreezeReason = RuntimeFreezeReason;
-	type DoneSlashHandler = ();
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    /// The type for recording an account's balance.
+    type Balance = Balance;
+    /// The ubiquitous event type.
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
+    type AccountStore = System;
+    type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+    type FreezeIdentifier = RuntimeFreezeReason;
+    type MaxFreezes = VariantCountOf<RuntimeFreezeReason>;
+    type RuntimeHoldReason = RuntimeHoldReason;
+    type RuntimeFreezeReason = RuntimeFreezeReason;
+    type DoneSlashHandler = ();
+}
+
+// ====== OTC Claim（基于 balances 的命名预留+再归属）运行时配置 ======
+parameter_types! {
+    /// 函数级中文注释：按区块数表示的一天（用于做市商日累计额度切片）。
+    pub const OtcBlocksPerDay: BlockNumber = DAYS;
+}
+
+impl pallet_otc_claim::Config for Runtime {
+    /// 函数级中文注释：事件类型绑定到运行时事件。
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：使用原生币（Balances）作为 Currency，支持命名预留与再归属。
+    type Currency = Balances;
+    /// 函数级中文注释：日切片长度（区块数）。
+    type BlocksPerDay = OtcBlocksPerDay;
 }
 
 parameter_types! {
-	pub FeeMultiplier: Multiplier = Multiplier::one();
+    pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
 impl pallet_transaction_payment::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type OnChargeTransaction = FungibleAdapter<Balances, ()>;
-	type OperationalFeeMultiplier = ConstU8<5>;
-	type WeightToFee = IdentityFee<Balance>;
-	type LengthToFee = IdentityFee<Balance>;
-	type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
-	type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
+    type RuntimeEvent = RuntimeEvent;
+    type OnChargeTransaction = FungibleAdapter<Balances, ()>;
+    type OperationalFeeMultiplier = ConstU8<5>;
+    type WeightToFee = IdentityFee<Balance>;
+    type LengthToFee = IdentityFee<Balance>;
+    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
+    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type RuntimeCall = RuntimeCall;
-	type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type WeightInfo = pallet_template::weights::SubstrateWeight<Runtime>;
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = pallet_template::weights::SubstrateWeight<Runtime>;
 }
 
 // 已移除：pallet_karma 配置块与相关常量
 
 // ===== pallet-forwarder 配置实现 =====
 impl pallet_forwarder::Config for Runtime {
-	/// 事件类型
-	type RuntimeEvent = RuntimeEvent;
-	/// 运行时聚合调用类型（作为元交易内层调用）
-	type RuntimeCall = RuntimeCall;
-	/// Authorizer 适配器（Noop 实现，默认拒绝）
-	type Authorizer = AuthorizerAdapter;
-	/// 禁止调用集合（MVP：为空集）
-	type ForbiddenCalls = ForbidEscapeCalls;
-	/// 字节上限（根据业务情况调整）
-	type MaxMetaLen = frame_support::traits::ConstU32<8192>;
-	type MaxPermitLen = frame_support::traits::ConstU32<512>;
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+    /// 运行时聚合调用类型（作为元交易内层调用）
+    type RuntimeCall = RuntimeCall;
+    /// Authorizer 适配器（Noop 实现，默认拒绝）
+    type Authorizer = AuthorizerAdapter;
+    /// 禁止调用集合（MVP：为空集）
+    type ForbiddenCalls = ForbidEscapeCalls;
+    /// 字节上限（根据业务情况调整）
+    type MaxMetaLen = frame_support::traits::ConstU32<8192>;
+    type MaxPermitLen = frame_support::traits::ConstU32<512>;
     /// 函数级中文注释：强制校验 open_session 的所有者签名
     type RequirePermitSig = frame_support::traits::ConstBool<true>;
     /// 函数级中文注释：强制校验 forward 的会话签名
     type RequireMetaSig = frame_support::traits::ConstBool<true>;
     /// 会话配额与预算上限（示例值）
     type MaxCallsPerSession = frame_support::traits::ConstU32<100>;
-    type MaxWeightPerSessionRefTime = frame_support::traits::ConstU64<{ 2u64 * WEIGHT_REF_TIME_PER_SECOND }>; // 约2秒
+    type MaxWeightPerSessionRefTime =
+        frame_support::traits::ConstU64<{ 2u64 * WEIGHT_REF_TIME_PER_SECOND }>; // 约2秒
     /// 函数级中文注释：最小 meta TTL（示例：10 块）。
     type MinMetaTxTTL = frame_support::traits::ConstU32<10>;
     /// 每块代付上限与窗口统计
@@ -490,16 +511,16 @@ parameter_types! {
 }
 pub struct RootOnlyParkAdmin;
 impl pallet_memo_park::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
+    type RuntimeEvent = RuntimeEvent;
     type MaxRegionLen = ParkMaxRegionLen;
     type MaxCidLen = ParkMaxCidLen;
     type MaxParksPerCountry = ParkMaxPerCountry;
     type ParkAdmin = RootOnlyParkAdmin; // 由本地适配器校验 Root
-	/// 函数级中文注释：治理起源采用 Root | 委员会阈值(2/3)。
-	type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
-		frame_system::EnsureRoot<AccountId>,
-		pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
-	>;
+    /// 函数级中文注释：治理起源采用 Root | 委员会阈值(2/3)。
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
+    >;
 }
 
 parameter_types! {
@@ -521,6 +542,7 @@ parameter_types! {
 pub struct NoopIntermentHook;
 // 重命名 crate：从 pallet_grave → pallet_memo_grave
 impl pallet_memo_grave::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_memo_grave::weights::TestWeights;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
@@ -542,7 +564,7 @@ impl pallet_memo_grave::Config for Runtime {
     /// 函数级中文注释：治理起源绑定（Root | 内容委员会阈值 2/3）。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 函数级中文注释：注入公共封面目录容量上限。
     type MaxCoverOptions = GraveMaxCoverOptions;
@@ -577,20 +599,29 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
         if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
             // 1) 墓主放行
-            if grave.owner == *who { return true; }
+            if grave.owner == *who {
+                return true;
+            }
             // 2) 墓位管理员放行
             let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
-            if admins.iter().any(|a| a == who) { return true; }
+            if admins.iter().any(|a| a == who) {
+                return true;
+            }
             // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
             if let Some(pid) = grave.park_id {
                 <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
     /// 冗余校验：读取 memo-grave 的已安葬令牌缓存长度（最多 6）。
     fn cached_deceased_tokens_len(grave_id: u64) -> Option<u32> {
-        pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id).map(|g| g.deceased_tokens.len() as u32)
+        pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id)
+            .map(|g| g.deceased_tokens.len() as u32)
     }
 }
 
@@ -601,14 +632,22 @@ impl pallet_memo_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAd
     }
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
         if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
-            if grave.owner == *who { return true; }
+            if grave.owner == *who {
+                return true;
+            }
             let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
-            if admins.iter().any(|a| a == who) { return true; }
+            if admins.iter().any(|a| a == who) {
+                return true;
+            }
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
             if let Some(pid) = grave.park_id {
                 <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 }
 
@@ -626,7 +665,7 @@ impl pallet_deceased::Config for Runtime {
     /// 函数级中文注释：绑定治理起源为 Root | 内容委员会阈值(2/3) 双通道，用于 gov* 接口。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
 }
 
@@ -649,15 +688,21 @@ pub struct DeceasedProviderAdapter;
 
 /// 函数级中文注释：Deceased token 适配器，将 `pallet-deceased` 的 `deceased_token` 转换为 `BoundedVec<u8, GraveMaxCidLen>`。
 pub struct DeceasedTokenProviderAdapter;
-impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for DeceasedTokenProviderAdapter {
+impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen>
+    for DeceasedTokenProviderAdapter
+{
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
             let bytes: Vec<u8> = d.deceased_token.to_vec();
             let max = GraveMaxCidLen::get() as usize;
             let mut v = bytes;
-            if v.len() > max { v.truncate(max); }
+            if v.len() > max {
+                v.truncate(max);
+            }
             frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
-        } else { None }
+        } else {
+            None
+        }
     }
 }
 
@@ -666,34 +711,61 @@ impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen> for Deceased
 // ===== 为新拆分的内容 Pallet 实现相同的适配器（保持低耦合复用） =====
 impl pallet_deceased_media::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
     /// 检查逝者是否存在
-    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
+    fn deceased_exists(id: u64) -> bool {
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id)
+    }
     /// 检查操作者是否可管理该逝者
     fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
-        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) {
+            d.owner == *who
+        } else {
+            false
+        }
     }
 }
-impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+impl pallet_deceased_media::DeceasedTokenAccess<GraveMaxCidLen, u64>
+    for DeceasedTokenProviderAdapter
+{
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
             let mut v = d.deceased_token.to_vec();
-            let max = GraveMaxCidLen::get() as usize; if v.len() > max { v.truncate(max); }
+            let max = GraveMaxCidLen::get() as usize;
+            if v.len() > max {
+                v.truncate(max);
+            }
             frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
-        } else { None }
+        } else {
+            None
+        }
     }
 }
 
 impl pallet_deceased_text::DeceasedAccess<AccountId, u64> for DeceasedProviderAdapter {
-    fn deceased_exists(id: u64) -> bool { pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id) }
+    fn deceased_exists(id: u64) -> bool {
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(id)
+    }
     fn can_manage(who: &AccountId, deceased_id: u64) -> bool {
-        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) { d.owner == *who } else { false }
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) {
+            d.owner == *who
+        } else {
+            false
+        }
     }
 }
-impl pallet_deceased_text::DeceasedTokenAccess<GraveMaxCidLen, u64> for DeceasedTokenProviderAdapter {
+impl pallet_deceased_text::DeceasedTokenAccess<GraveMaxCidLen, u64>
+    for DeceasedTokenProviderAdapter
+{
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
         if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(id) {
-            let mut v = d.deceased_token.to_vec(); let max = GraveMaxCidLen::get() as usize; if v.len() > max { v.truncate(max); }
+            let mut v = d.deceased_token.to_vec();
+            let max = GraveMaxCidLen::get() as usize;
+            if v.len() > max {
+                v.truncate(max);
+            }
             frame_support::BoundedVec::<u8, GraveMaxCidLen>::try_from(v).ok()
-        } else { None }
+        } else {
+            None
+        }
     }
 }
 
@@ -777,7 +849,7 @@ impl pallet_origin_restriction::Config for Runtime {
     /// 函数级中文注释：治理起源采用 Root | 委员会阈值(2/3) 双通道。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
 }
 
@@ -793,7 +865,6 @@ impl pallet_ledger::Config for Runtime {
     /// 函数级中文注释：绑定 ledger 手写占位权重（后续可替换为基准生成版）。
     type WeightInfo = pallet_ledger::weights::SubstrateWeight<Runtime>;
 }
-
 
 parameter_types! {
     pub const OfferMaxCidLen: u32 = 64;
@@ -821,12 +892,12 @@ impl pallet_memo_offerings::Config for Runtime {
     /// 函数级中文注释：管理员 Origin 改为 Root | 委员会阈值(2/3)。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 函数级中文注释：治理起源（Root | 委员会阈值），用于 gov* 接口证据化调整。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 函数级中文注释：供奉转账使用链上余额
     type Currency = Balances;
@@ -843,9 +914,13 @@ impl pallet_memo_offerings::Config for Runtime {
 pub struct OfferDonationRouter;
 impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationRouter {
     fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)> {
-        if gross == 0 { return alloc::vec::Vec::new(); }
+        if gross == 0 {
+            return alloc::vec::Vec::new();
+        }
         // 优先按域路由表；无则按全局；再无则按旧 SubjectBps 单路策略
-        if let Some(table) = pallet_memo_offerings::pallet::RouteTableByDomain::<Runtime>::get(target.0) {
+        if let Some(table) =
+            pallet_memo_offerings::pallet::RouteTableByDomain::<Runtime>::get(target.0)
+        {
             return resolve_table(target, table);
         }
         if let Some(table) = pallet_memo_offerings::pallet::RouteTableGlobal::<Runtime>::get() {
@@ -854,10 +929,13 @@ impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationR
         // 旧策略回退：仅 Grave 域路由到主题账户
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
-            if let Some(primary_id) = pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1) {
+            if let Some(primary_id) =
+                pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
+            {
                 if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
                     let owner = d.owner.clone();
-                    let subject_acc = EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
+                    let subject_acc =
+                        EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
                     let bps = pallet_memo_offerings::pallet::SubjectBps::<Runtime>::get();
                     return alloc::vec::Vec::from([(subject_acc, bps)]);
                 }
@@ -868,21 +946,34 @@ impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationR
 }
 
 /// 函数级中文注释：解析路由表，将 SubjectFunding/SpecificAccount 映射为实际账户与份额。
-fn resolve_table<I>(target: (u8,u64), table: I) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)>
+fn resolve_table<I>(
+    target: (u8, u64),
+    table: I,
+) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)>
 where
     I: IntoIterator<Item = pallet_memo_offerings::pallet::RouteEntry<Runtime>>,
 {
     use pallet_memo_offerings::pallet::RouteEntry;
     const DOMAIN_GRAVE: u8 = 1;
     let mut out: alloc::vec::Vec<(AccountId, sp_runtime::Permill)> = alloc::vec::Vec::new();
-    for RouteEntry { kind, account, share } in table.into_iter() {
+    for RouteEntry {
+        kind,
+        account,
+        share,
+    } in table.into_iter()
+    {
         match (kind, account) {
             (0, _) => {
                 if target.0 == DOMAIN_GRAVE {
-                    if let Some(primary_id) = pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1) {
-                        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
+                    if let Some(primary_id) =
+                        pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
+                    {
+                        if let Some(d) =
+                            pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id)
+                        {
                             let owner = d.owner.clone();
-                            let subject_acc = EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
+                            let subject_acc = EscrowPalletId::get()
+                                .into_sub_account_truncating((owner, primary_id));
                             out.push((subject_acc, share));
                         }
                     }
@@ -898,7 +989,13 @@ where
 /// 函数级中文注释：消费回调占位实现（不做任何状态变更），保障编译期绑定。
 pub struct NoopConsumer;
 impl pallet_memo_offerings::pallet::EffectConsumer<AccountId> for NoopConsumer {
-    fn apply(_target: (u8, u64), _who: &AccountId, _effect: &pallet_memo_offerings::pallet::EffectSpec) -> frame_support::dispatch::DispatchResult { Ok(()) }
+    fn apply(
+        _target: (u8, u64),
+        _who: &AccountId,
+        _effect: &pallet_memo_offerings::pallet::EffectSpec,
+    ) -> frame_support::dispatch::DispatchResult {
+        Ok(())
+    }
 }
 
 // ===== memo-sacrifice（目录）配置 =====
@@ -919,7 +1016,7 @@ impl pallet_memo_sacrifice::Config for Runtime {
     // 函数级中文注释：将目录创建/更新的治理权限绑定到"内容委员会"，便于链上内容治理一体化。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     type Currency = Balances;
     type ListingDeposit = SacListingDeposit;
@@ -945,11 +1042,22 @@ impl frame_support::traits::tokens::Pay for NativePaymaster {
     type Beneficiary = AccountId;
     type Id = ();
     type Error = sp_runtime::DispatchError;
-    fn pay(who: &Self::Beneficiary, _asset_kind: Self::AssetKind, amount: Self::Balance) -> Result<Self::Id, Self::Error> {
-        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(&PlatformAccount::get(), who, amount, frame_support::traits::tokens::Preservation::Expendable)?;
+    fn pay(
+        who: &Self::Beneficiary,
+        _asset_kind: Self::AssetKind,
+        amount: Self::Balance,
+    ) -> Result<Self::Id, Self::Error> {
+        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(
+            &PlatformAccount::get(),
+            who,
+            amount,
+            frame_support::traits::tokens::Preservation::Expendable,
+        )?;
         Ok(())
     }
-    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus { frame_support::traits::tokens::PaymentStatus::Success }
+    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus {
+        frame_support::traits::tokens::PaymentStatus::Success
+    }
 }
 #[cfg(feature = "runtime-benchmarks")]
 impl frame_support::traits::tokens::Pay for NativePaymaster {
@@ -958,25 +1066,44 @@ impl frame_support::traits::tokens::Pay for NativePaymaster {
     type Beneficiary = AccountId;
     type Id = ();
     type Error = sp_runtime::DispatchError;
-    fn pay(who: &Self::Beneficiary, _asset_kind: Self::AssetKind, amount: Self::Balance) -> Result<Self::Id, Self::Error> {
-        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(&PlatformAccount::get(), who, amount, frame_support::traits::tokens::Preservation::Expendable)?;
+    fn pay(
+        who: &Self::Beneficiary,
+        _asset_kind: Self::AssetKind,
+        amount: Self::Balance,
+    ) -> Result<Self::Id, Self::Error> {
+        <Balances as frame_support::traits::fungible::Mutate<AccountId>>::transfer(
+            &PlatformAccount::get(),
+            who,
+            amount,
+            frame_support::traits::tokens::Preservation::Expendable,
+        )?;
         Ok(())
     }
-    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus { frame_support::traits::tokens::PaymentStatus::Success }
+    fn check_payment(_: Self::Id) -> frame_support::traits::tokens::PaymentStatus {
+        frame_support::traits::tokens::PaymentStatus::Success
+    }
     fn ensure_successful(_: &Self::Beneficiary, _: Self::AssetKind, _: Self::Balance) {}
     fn ensure_concluded(_: Self::Id) {}
 }
 
 pub struct UnitBalanceConverter;
 #[cfg(not(feature = "runtime-benchmarks"))]
-impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance> for UnitBalanceConverter {
+impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance>
+    for UnitBalanceConverter
+{
     type Error = sp_runtime::DispatchError;
-    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> { Ok(amount) }
+    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> {
+        Ok(amount)
+    }
 }
 #[cfg(feature = "runtime-benchmarks")]
-impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance> for UnitBalanceConverter {
+impl frame_support::traits::tokens::ConversionFromAssetBalance<Balance, (), Balance>
+    for UnitBalanceConverter
+{
     type Error = sp_runtime::DispatchError;
-    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> { Ok(amount) }
+    fn from_asset_balance(amount: Balance, _asset: ()) -> Result<Balance, Self::Error> {
+        Ok(amount)
+    }
     fn ensure_successful(_: ()) {}
 }
 
@@ -990,7 +1117,8 @@ impl pallet_treasury::Config for Runtime {
     type WeightInfo = pallet_treasury::weights::SubstrateWeight<Runtime>;
     type SpendFunds = ();
     type MaxApprovals = TreasuryMaxApprovals;
-    type SpendOrigin = frame_system::EnsureRootWithSuccess<AccountId, ConstU128<1_000_000_000_000_000_000>>; // Root 最多可一次性支出 1e18 单位
+    type SpendOrigin =
+        frame_system::EnsureRootWithSuccess<AccountId, ConstU128<1_000_000_000_000_000_000>>; // Root 最多可一次性支出 1e18 单位
     type AssetKind = ();
     type Beneficiary = AccountId;
     type BeneficiaryLookup = IdentityLookup<AccountId>;
@@ -1004,7 +1132,9 @@ impl pallet_treasury::Config for Runtime {
 /// 函数级中文注释：国库账户解析器——由 Treasury PalletId 派生稳定账户地址。
 pub struct TreasuryAccount;
 impl sp_core::Get<AccountId> for TreasuryAccount {
-    fn get() -> AccountId { TreasuryPalletId::get().into_account_truncating() }
+    fn get() -> AccountId {
+        TreasuryPalletId::get().into_account_truncating()
+    }
 }
 // ===== memo-bridge（MEMO↔ETH）运行时配置 =====
 parameter_types! {
@@ -1019,7 +1149,7 @@ impl pallet_memo_bridge::Config for Runtime {
     type FeeCollector = TreasuryAccount;
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     type MinLock = BridgeMinLock;
     type BridgePalletId = BridgePalletId;
@@ -1046,7 +1176,7 @@ impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAd
     /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
-            return Ok(())
+            return Ok(());
         }
         pallet_collective::EnsureProportionAtLeast::<AccountId, pallet_collective::Instance1, 2, 3>::try_origin(origin)
             .map(|_| ())
@@ -1058,7 +1188,7 @@ impl pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkA
     /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
-            return Ok(())
+            return Ok(());
         }
         pallet_collective::EnsureProportionAtLeast::<AccountId, pallet_collective::Instance1, 2, 3>::try_origin(origin)
             .map(|_| ())
@@ -1072,7 +1202,9 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 }
 
 /// 函数级中文注释：供奉目标控制器（允许所有目标，Grave 域做成员校验）
-impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for AllowAllTargetControl {
+impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId>
+    for AllowAllTargetControl
+{
     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
     fn exists(target: (u8, u64)) -> bool {
         const DOMAIN_GRAVE: u8 = 1;
@@ -1086,14 +1218,22 @@ impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId> for 
         true
     }
     /// 函数级中文注释：权限检查：若目标域为 Grave(=1)，则要求发起者为该墓位成员；否则放行。
-    fn ensure_allowed(origin: RuntimeOrigin, target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
+    fn ensure_allowed(
+        origin: RuntimeOrigin,
+        target: (u8, u64),
+    ) -> frame_support::dispatch::DispatchResult {
         let who = frame_system::ensure_signed(origin)?;
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
             // 若墓位公开则放行，否则必须为成员
-            let is_public = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1).map(|g| g.is_public).unwrap_or(false);
+            let is_public = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1)
+                .map(|g| g.is_public)
+                .unwrap_or(false);
             if !is_public {
-                ensure!(pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who), sp_runtime::DispatchError::Other("NotMember"));
+                ensure!(
+                    pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who),
+                    sp_runtime::DispatchError::Other("NotMember")
+                );
             }
         }
         // DOMAIN_PET：当前不限制成员，放行（如需限制可在此增加校验）
@@ -1107,7 +1247,13 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
     /// 供奉 Hook：由 `pallet-memorial-offerings` 在供奉确认后调用。
     /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）。
     /// - 携带金额（若 Some）则累计到排行榜；Timed 的持续周数用于标记有效供奉周期
-    fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId, amount: Option<u128>, duration_weeks: Option<u32>) {
+    fn on_offering(
+        target: (u8, u64),
+        kind_code: u8,
+        who: &AccountId,
+        amount: Option<u128>,
+        duration_weeks: Option<u32>,
+    ) {
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
             let amt: Option<Balance> = amount.map(|a| a as Balance);
@@ -1116,17 +1262,37 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
             let now = <frame_system::Pallet<Runtime>>::block_number();
             let ex_idx = <frame_system::Pallet<Runtime>>::extrinsic_index();
             let seed = (target.0, target.1, who.clone(), now, amount, ex_idx);
-            let tx_key = Some(sp_core::H256::from(sp_core::blake2_256(&codec::Encode::encode(&seed))));
-            pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(target.1, who.clone(), kind_code, amt, None, tx_key);
+            let tx_key = Some(sp_core::H256::from(sp_core::blake2_256(
+                &codec::Encode::encode(&seed),
+            )));
+            pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(
+                target.1,
+                who.clone(),
+                kind_code,
+                amt,
+                None,
+                tx_key,
+            );
             // 2) 标记有效供奉周期：
             // - 若为 Timed（duration_weeks=Some），无论是否转账成功，均标记从当周起连续 w 周
             // - 若为 Instant（None），仅当存在金额落账时标记当周
             let should_mark = duration_weeks.is_some() || amount.is_some();
             if should_mark {
-                pallet_ledger::Pallet::<Runtime>::mark_weekly_active(target.1, who.clone(), now, duration_weeks);
+                pallet_ledger::Pallet::<Runtime>::mark_weekly_active(
+                    target.1,
+                    who.clone(),
+                    now,
+                    duration_weeks,
+                );
                 // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
                 if let Some(pay) = amt {
-                    pallet_memo_affiliate::Pallet::<Runtime>::report(who, pay, Some(target), now, duration_weeks);
+                    pallet_memo_affiliate::Pallet::<Runtime>::report(
+                        who,
+                        pay,
+                        Some(target),
+                        now,
+                        duration_weeks,
+                    );
                 }
             }
             // 3) 累计到逝者总额：若墓位绑定了 primary_deceased_id 则累加（不含押金，amount 已为实付）
@@ -1136,9 +1302,19 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
                     if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::iter()
                         .find_map(|(id, rec)| {
                             let tok = rec.deceased_token.to_vec();
-                            if tok == primary.to_vec() { Some(id) } else { None }
-                        }) {
-                        if let Some(v) = amount { pallet_ledger::Pallet::<Runtime>::add_to_deceased_total(d, v as Balance); }
+                            if tok == primary.to_vec() {
+                                Some(id)
+                            } else {
+                                None
+                            }
+                        })
+                    {
+                        if let Some(v) = amount {
+                            pallet_ledger::Pallet::<Runtime>::add_to_deceased_total(
+                                d,
+                                v as Balance,
+                            );
+                        }
                     }
                 }
             }
@@ -1179,7 +1355,7 @@ impl pallet_evidence::Config for Runtime {
     type MaxMemoLen = EvidenceMaxMemoLen;
     type EvidenceNsBytes = EvidenceNsBytes;
     // 无授权中心：占位实现，默认允许
-    type Authorizer = AllowAllEvidenceAuthorizer; 
+    type Authorizer = AllowAllEvidenceAuthorizer;
     /// 函数级中文注释：每主体证据与账号限频的示例默认值。
     type MaxPerSubjectTarget = frame_support::traits::ConstU32<10_000>;
     type MaxPerSubjectNs = frame_support::traits::ConstU32<10_000>;
@@ -1189,9 +1365,24 @@ impl pallet_evidence::Config for Runtime {
     type MaxListLen = frame_support::traits::ConstU32<512>;
     /// 函数级中文注释：绑定权重实现，当前为手写估算版；后续可替换为基准生成版
     type WeightInfo = pallet_evidence::weights::SubstrateWeight<Runtime>;
+    /// 函数级中文注释：家庭关系校验适配器（占位实现）。
+    type FamilyVerifier = FamilyVerifierAdapter;
+    /// 函数级中文注释：授权用户与密钥长度上限（与前端 RSA-2048/SPKI 长度匹配）。
+    type MaxAuthorizedUsers = frame_support::traits::ConstU32<64>;
+    type MaxKeyLen = frame_support::traits::ConstU32<4096>;
 }
 impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for AllowAllEvidenceAuthorizer {
-    fn is_authorized(_ns: [u8; 8], _who: &AccountId) -> bool { true }
+    fn is_authorized(_ns: [u8; 8], _who: &AccountId) -> bool {
+        true
+    }
+}
+
+/// 函数级中文注释：家庭关系验证适配器（占位实现）。
+/// - 当前始终返回 false；后续可根据 `pallet-memo-grave` 的成员/亲属关系完善。
+pub struct FamilyVerifierAdapter;
+impl pallet_evidence::pallet::FamilyRelationVerifier<AccountId> for FamilyVerifierAdapter {
+    fn is_family_member(_user: &AccountId, _deceased_id: u64) -> bool { false }
+    fn is_authorized_for_deceased(_user: &AccountId, _deceased_id: u64) -> bool { false }
 }
 
 // 已移除：pallet-order 参数与 Config
@@ -1204,7 +1395,11 @@ parameter_types! {
     pub const ConstPalletId: frame_support::PalletId = frame_support::PalletId(*b"otc/orde");
 }
 pub struct PlatformAccount;
-impl sp_core::Get<AccountId> for PlatformAccount { fn get() -> AccountId { sp_core::crypto::AccountId32::new([0u8;32]).into() } }
+impl sp_core::Get<AccountId> for PlatformAccount {
+    fn get() -> AccountId {
+        sp_core::crypto::AccountId32::new([0u8; 32]).into()
+    }
+}
 
 /// 函数级中文注释：黑洞账户（无私钥）
 /// - 选用全 0 公钥对应的 AccountId32；无法从私钥推导签名，链上仅可接收，不可支出。
@@ -1240,7 +1435,10 @@ impl pallet_memo_grave::pallet::KycProvider<AccountId> for KycByIdentity {
     fn is_verified(who: &AccountId) -> bool {
         use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
         if let Some(reg) = IdOf::<Runtime>::get(who) {
-            return reg.judgements.iter().any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
+            return reg
+                .judgements
+                .iter()
+                .any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
         }
         false
     }
@@ -1252,7 +1450,10 @@ impl pallet_otc_maker::pallet::KycProvider<AccountId> for KycByIdentity {
         use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
         if let Some(reg) = IdOf::<Runtime>::get(who) {
             // 只要存在非负向的 judgement 即视为通过（可按需收紧）
-            return reg.judgements.iter().any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
+            return reg
+                .judgements
+                .iter()
+                .any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
         }
         false
     }
@@ -1296,7 +1497,8 @@ impl pallet_identity::Config for Runtime {
     type MaxSubAccounts = IdentityMaxSubAccounts;
     type MaxRegistrars = IdentityMaxRegistrars;
     /// 身份信息类型（采用官方 legacy 结构，字段上限 64）
-    type IdentityInformation = pallet_identity::legacy::IdentityInfo<frame_support::traits::ConstU32<64>>;
+    type IdentityInformation =
+        pallet_identity::legacy::IdentityInfo<frame_support::traits::ConstU32<64>>;
     /// 被罚没资金处理（占位：丢弃）
     type Slashed = ();
     /// Root 权限用于强制操作/登记管理员
@@ -1331,7 +1533,9 @@ parameter_types! {
 }
 pub struct OtcFeeReceiver;
 impl sp_core::Get<AccountId> for OtcFeeReceiver {
-    fn get() -> AccountId { OtcFeePalletId::get().into_account_truncating() }
+    fn get() -> AccountId {
+        OtcFeePalletId::get().into_account_truncating()
+    }
 }
 
 impl pallet_otc_listing::Config for Runtime {
@@ -1361,6 +1565,7 @@ impl pallet_otc_listing::Config for Runtime {
 }
 parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
 impl pallet_otc_order::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type ConfirmTTL = OtcOrderConfirmTTL;
     /// 函数级中文注释：托管接口（用于订单锁定/释放/退款），对接 pallet-escrow
@@ -1382,12 +1587,12 @@ impl pallet_escrow::Config for Runtime {
     /// 函数级中文注释：授权外部入口的 Origin（Root | 内容委员会阈值）。
     type AuthorizedOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 函数级中文注释：管理员 Origin（同上）。
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
     /// 函数级中文注释：每块最多处理的到期项（示例：200）。
     type MaxExpiringPerBlock = frame_support::traits::ConstU32<200>;
@@ -1397,10 +1602,14 @@ impl pallet_escrow::Config for Runtime {
 /// 函数级中文注释：到期策略占位实现——不做任何资金处理，仅用于演示。
 pub struct NoopExpiryPolicy;
 impl pallet_escrow::pallet::ExpiryPolicy<AccountId, BlockNumber> for NoopExpiryPolicy {
-    fn on_expire(_id: u64) -> Result<pallet_escrow::pallet::ExpiryAction<AccountId>, sp_runtime::DispatchError> {
+    fn on_expire(
+        _id: u64,
+    ) -> Result<pallet_escrow::pallet::ExpiryAction<AccountId>, sp_runtime::DispatchError> {
         Ok(pallet_escrow::pallet::ExpiryAction::Noop)
     }
-    fn now() -> BlockNumber { <frame_system::Pallet<Runtime>>::block_number() }
+    fn now() -> BlockNumber {
+        <frame_system::Pallet<Runtime>>::block_number()
+    }
 }
 
 parameter_types! { pub const ArbMaxEvidence: u32 = 16; pub const ArbMaxCidLen: u32 = 64; }
@@ -1414,7 +1623,7 @@ impl pallet_arbitration::Config for Runtime {
     /// 函数级中文注释：仲裁裁决起源绑定为 Root | 内容委员会阈值(2/3)
     type DecisionOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
 }
 
@@ -1430,17 +1639,32 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
             // 引入 trait 以启用方法解析
             use pallet_otc_order::ArbitrationHook;
             pallet_otc_order::pallet::Pallet::<Runtime>::can_dispute(who, id)
-        } else { false }
+        } else {
+            false
+        }
     }
     /// 函数级中文注释：将仲裁裁决应用到对应域
     /// - Release → 托管释放给买家；Refund → 托管退款给卖家；Partial(bps) → 按 bps 分账
-    fn apply_decision(domain: [u8; 8], id: u64, decision: pallet_arbitration::pallet::Decision) -> frame_support::dispatch::DispatchResult {
+    fn apply_decision(
+        domain: [u8; 8],
+        id: u64,
+        decision: pallet_arbitration::pallet::Decision,
+    ) -> frame_support::dispatch::DispatchResult {
         use pallet_arbitration::pallet::Decision as D;
         if domain == OtcOrderNsBytes::get() {
             match decision {
-                D::Release => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_release(id) },
-                D::Refund => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_refund(id) },
-                D::Partial(bps) => { use pallet_otc_order::ArbitrationHook; pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps) },
+                D::Release => {
+                    use pallet_otc_order::ArbitrationHook;
+                    pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_release(id)
+                }
+                D::Refund => {
+                    use pallet_otc_order::ArbitrationHook;
+                    pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_refund(id)
+                }
+                D::Partial(bps) => {
+                    use pallet_otc_order::ArbitrationHook;
+                    pallet_otc_order::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps)
+                }
             }
         } else {
             Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
@@ -1455,89 +1679,167 @@ pub struct ContentGovernanceRouter;
 /// - MVP：先覆盖常见内容域（grave/deceased/deceased-text/deceased-media/offerings/park）；
 /// - 安全：仅在 memo-content-governance Pallet 审批通过后由 Hooks 调用，无需二次权限判断。
 impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernanceRouter {
-    fn execute(_who: &AccountId, domain: u8, target: u64, action: u8) -> frame_support::dispatch::DispatchResult {
+    fn execute(
+        _who: &AccountId,
+        domain: u8,
+        target: u64,
+        action: u8,
+    ) -> frame_support::dispatch::DispatchResult {
         match (domain, action) {
             // 1=grave：治理强制执行（示例：10=清空封面；11=强制转让墓地 owner 到平台账户）
             (1, 10) => {
                 // 清空封面
-                pallet_memo_grave::pallet::Pallet::<Runtime>::clear_cover_via_governance(RuntimeOrigin::root(), target)
+                pallet_memo_grave::pallet::Pallet::<Runtime>::clear_cover_via_governance(
+                    RuntimeOrigin::root(),
+                    target,
+                )
             }
-            (1, 11) => {
-                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_transfer_grave(RuntimeOrigin::root(), target, PlatformAccount::get(), vec![])
-            }
+            (1, 11) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_transfer_grave(
+                RuntimeOrigin::root(),
+                target,
+                PlatformAccount::get(),
+                vec![],
+            ),
             // 1=grave：12=设置限制；13=软删除；14=恢复
-            (1, 12) => {
-                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_set_restricted(RuntimeOrigin::root(), target, true, 1u8, vec![])
-            }
-            (1, 13) => {
-                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_remove_grave(RuntimeOrigin::root(), target, 1u8, vec![])
-            }
-            (1, 14) => {
-                pallet_memo_grave::pallet::Pallet::<Runtime>::gov_restore_grave(RuntimeOrigin::root(), target, vec![])
-            }
+            (1, 12) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_set_restricted(
+                RuntimeOrigin::root(),
+                target,
+                true,
+                1u8,
+                vec![],
+            ),
+            (1, 13) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_remove_grave(
+                RuntimeOrigin::root(),
+                target,
+                1u8,
+                vec![],
+            ),
+            (1, 14) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_restore_grave(
+                RuntimeOrigin::root(),
+                target,
+                vec![],
+            ),
             // 2=deceased：更新 profile（此处作为示例仅切换可见性为 true）
             (2, 1) => {
                 // 证据由上层记录；此处直接调用 gov_set_visibility(true)
-                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_visibility(RuntimeOrigin::root(), target as u64, true, vec![])
+                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_visibility(
+                    RuntimeOrigin::root(),
+                    target as u64,
+                    true,
+                    vec![],
+                )
             }
             // 2=deceased：2=清空主图；3=设置主图（以事件化为主，字段存储在 deceased）
-            (2, 2) => {
-                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(RuntimeOrigin::root(), target as u64, None, vec![])
-            }
+            (2, 2) => pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(
+                RuntimeOrigin::root(),
+                target as u64,
+                None,
+                vec![],
+            ),
             (2, 3) => {
                 // 占位：设置为默认头像（前端约定 CID），此处用 None 保持接口对齐
-                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(RuntimeOrigin::root(), target as u64, None, vec![])
+                pallet_deceased::pallet::Pallet::<Runtime>::gov_set_main_image(
+                    RuntimeOrigin::root(),
+                    target as u64,
+                    None,
+                    vec![],
+                )
             }
             // 2=deceased：4=治理转移拥有者
             (2, 4) => {
                 // 运行时通过治理 Pallet 的只读接口查找 new_owner
-                if let Some((_id, new_owner)) = pallet_memo_content_governance::pallet::Pallet::<Runtime>::find_owner_transfer_params(target) {
-                    pallet_deceased::pallet::Pallet::<Runtime>::gov_transfer_owner(RuntimeOrigin::root(), target as u64, new_owner, vec![])
-                } else { Err(sp_runtime::DispatchError::Other("MissingNewOwner")) }
+                if let Some((_id, new_owner)) = pallet_memo_content_governance::pallet::Pallet::<
+                    Runtime,
+                >::find_owner_transfer_params(target)
+                {
+                    pallet_deceased::pallet::Pallet::<Runtime>::gov_transfer_owner(
+                        RuntimeOrigin::root(),
+                        target as u64,
+                        new_owner,
+                        vec![],
+                    )
+                } else {
+                    Err(sp_runtime::DispatchError::Other("MissingNewOwner"))
+                }
             }
             // 3=deceased-text：20=移除悼词；21=强制删除文本（支持文章/留言）
-            (3, 20) => {
-                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_eulogy(RuntimeOrigin::root(), target as u64, vec![])
-            }
-            (3, 21) => {
-                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_text(RuntimeOrigin::root(), target as u64, vec![])
-            }
+            (3, 20) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_eulogy(
+                RuntimeOrigin::root(),
+                target as u64,
+                vec![],
+            ),
+            (3, 21) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_text(
+                RuntimeOrigin::root(),
+                target as u64,
+                vec![],
+            ),
             // 3=deceased-text：22=治理编辑文本；23=治理设置生平
-            (3, 22) => {
-                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_edit_text(RuntimeOrigin::root(), target as u64, None, None, None, vec![])
-            }
-            (3, 23) => {
-                pallet_deceased_text::pallet::Pallet::<Runtime>::gov_set_life(RuntimeOrigin::root(), target as u64, vec![], vec![])
-            }
+            (3, 22) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_edit_text(
+                RuntimeOrigin::root(),
+                target as u64,
+                None,
+                None,
+                None,
+                vec![],
+            ),
+            (3, 23) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_set_life(
+                RuntimeOrigin::root(),
+                target as u64,
+                vec![],
+                vec![],
+            ),
             // 4=deceased-media：隐藏媒体（target 为 media_id）
-            (4, 30) => {
-                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_set_media_hidden(RuntimeOrigin::root(), target as u64, true, vec![])
-            }
+            (4, 30) => pallet_deceased_media::pallet::Pallet::<Runtime>::gov_set_media_hidden(
+                RuntimeOrigin::root(),
+                target as u64,
+                true,
+                vec![],
+            ),
             // 4=deceased-media：31=替换媒体URI；32=冻结视频集
-            (4, 31) => {
-                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_replace_media_uri(RuntimeOrigin::root(), target as u64, vec![], vec![])
-            }
+            (4, 31) => pallet_deceased_media::pallet::Pallet::<Runtime>::gov_replace_media_uri(
+                RuntimeOrigin::root(),
+                target as u64,
+                vec![],
+                vec![],
+            ),
             (4, 32) => {
                 // 将 target 解读为 VideoCollectionId
-                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_freeze_video_collection(RuntimeOrigin::root(), target as u64, true, vec![])
+                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_freeze_video_collection(
+                    RuntimeOrigin::root(),
+                    target as u64,
+                    true,
+                    vec![],
+                )
             }
             // 5=park：转移园区所有权（占位，new_owner=平台账户）
-            (5, 40) => {
-                pallet_memo_park::pallet::Pallet::<Runtime>::gov_transfer_park(RuntimeOrigin::root(), target as u64, PlatformAccount::get(), vec![])
-            }
+            (5, 40) => pallet_memo_park::pallet::Pallet::<Runtime>::gov_transfer_park(
+                RuntimeOrigin::root(),
+                target as u64,
+                PlatformAccount::get(),
+                vec![],
+            ),
             // 5=park：41=设置园区封面（事件化）
-            (5, 41) => {
-                pallet_memo_park::pallet::Pallet::<Runtime>::gov_set_park_cover(RuntimeOrigin::root(), target as u64, None, vec![])
-            }
+            (5, 41) => pallet_memo_park::pallet::Pallet::<Runtime>::gov_set_park_cover(
+                RuntimeOrigin::root(),
+                target as u64,
+                None,
+                vec![],
+            ),
             // 6=offerings：按域暂停（domain=1 grave）
-            (6, 50) => {
-                pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_pause_domain(RuntimeOrigin::root(), 1u8, true, vec![])
-            }
+            (6, 50) => pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_pause_domain(
+                RuntimeOrigin::root(),
+                1u8,
+                true,
+                vec![],
+            ),
             // 6=offerings：51=上/下架供奉模板
-            (6, 51) => {
-                pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_offering_enabled(RuntimeOrigin::root(), target as u8, true, vec![])
-            }
-            _ => Err(sp_runtime::DispatchError::Other("UnsupportedContentAction"))
+            (6, 51) => pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_offering_enabled(
+                RuntimeOrigin::root(),
+                target as u8,
+                true,
+                vec![],
+            ),
+            _ => Err(sp_runtime::DispatchError::Other("UnsupportedContentAction")),
         }
     }
 }
@@ -1604,13 +1906,15 @@ impl pallet_memo_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
 /// 函数级中文注释：SLA 数据提供者，从 `pallet-memo-ipfs` 读取运营者统计
 pub struct SlaFromIpfs;
 // （已下线）SLA Provider 适配器不再实现 endowment 的 trait
-impl /*pallet_memo_endowment::*/ SlaFromIpfs {
+impl SlaFromIpfs {
     /// 函数级中文注释：占位保留工具函数，可被迁移脚本或索引层复用（不依赖 endowment trait）。
     pub fn foreach_active_operator<F: FnMut(&AccountId, u32, u32, BlockNumber)>(mut f: F) {
         use pallet_memo_ipfs::pallet::{OperatorSla as SlaMap, Operators as OpMap};
         for (op, s) in SlaMap::<Runtime>::iter() {
             if let Some(info) = OpMap::<Runtime>::get(&op) {
-                if info.status == 0 { f(&op, s.probe_ok, s.probe_fail, s.last_update); }
+                if info.status == 0 {
+                    f(&op, s.probe_ok, s.probe_fail, s.last_update);
+                }
             }
         }
     }

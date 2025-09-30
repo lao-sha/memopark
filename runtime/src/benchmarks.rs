@@ -23,6 +23,4 @@
 //
 // For more information, please refer to <http://unlicense.org>
 
-frame_benchmarking::define_benchmarks!(
-    [pallet_memo_content_governance, Pallet]
-);
+frame_benchmarking::define_benchmarks!([pallet_memo_content_governance, Pallet]);

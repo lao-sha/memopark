@@ -15,16 +15,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { features = ["derive"], workspace = true }
 frame-benchmarking = { optional = true, workspace = true }
-frame-executive.workspace = true
-frame-metadata-hash-extension.workspace = true
-frame-support = { features = ["experimental"], workspace = true }
-frame-system-benchmarking = { optional = true, workspace = true }
-frame-system-rpc-runtime-api.workspace = true
-frame-system.workspace = true
-frame-try-runtime = { optional = true, workspace = true }
-pallet-aura.workspace = true
-pallet-balances.workspace = true
-pallet-grandpa.workspace = true
+frame-executive = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-metadata-hash-extension = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-support = { features = ["experimental"], git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-system-benchmarking = { optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-try-runtime = { optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
 pallet-forwarder = { path = "../pallets/forwarder", default-features = false }
 pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
 pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
@@ -50,6 +50,7 @@ pallet-collective = { path = "../pallets/collective", default-features = false }
 pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
 pallet-memo-bridge = { path = "../pallets/memo-bridge", default-features = false }
 pallet-pricing = { path = "../pallets/pricing", default-features = false }
+pallet-otc-claim = { path = "../pallets/otc-claim", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -117,6 +118,7 @@ std = [
 	"pallet-memo-pet/std",
     "pallet-memo-bridge/std",
     "pallet-pricing/std",
+    "pallet-otc-claim/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
@@ -155,7 +157,6 @@ runtime-benchmarks = [
 	"pallet-sudo/runtime-benchmarks",
 	"pallet-template/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
-	"pallet-transaction-payment/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
 

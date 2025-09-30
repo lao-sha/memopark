@@ -4,11 +4,11 @@ extern crate alloc;
 
 pub use pallet::*;
 
+use frame_support::weights::Weight;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use sp_std::vec::Vec;
 use sp_runtime::traits::AtLeast32BitUnsigned;
-use frame_support::weights::Weight;
+use sp_std::vec::Vec;
 // use sp_runtime::Saturating;
 use sp_core::hashing::blake2_256;
 
@@ -21,7 +21,10 @@ pub trait GraveInspector<AccountId, GraveId> {
     /// 函数级中文注释：可选的冗余校验接口——返回墓地下缓存的逝者令牌数量（若无实现则返回 None）。
     /// - 默认由 runtime 适配器从 `pallet-memo-grave::Graves[id].deceased_tokens.len()` 读取；
     /// - 仅作为快速拒绝优化，最终仍以本模块 `DeceasedByGrave` 的长度为准。
-    fn cached_deceased_tokens_len(grave_id: GraveId) -> Option<u32> { let _ = grave_id; None }
+    fn cached_deceased_tokens_len(grave_id: GraveId) -> Option<u32> {
+        let _ = grave_id;
+        None
+    }
 }
 
 /// 函数级中文注释：权重信息占位接口，后续可通过 benchmarking 生成并替换。
@@ -34,16 +37,28 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     /// 函数级中文注释：Weight 新结构不再支持从整数直接转换，使用 from_parts(ref_time, proof_size)。
-    fn create() -> Weight { Weight::from_parts(10_000, 0) }
-    fn update() -> Weight { Weight::from_parts(10_000, 0) }
-    fn remove() -> Weight { Weight::from_parts(10_000, 0) }
-    fn transfer() -> Weight { Weight::from_parts(10_000, 0) }
+    fn create() -> Weight {
+        Weight::from_parts(10_000, 0)
+    }
+    fn update() -> Weight {
+        Weight::from_parts(10_000, 0)
+    }
+    fn remove() -> Weight {
+        Weight::from_parts(10_000, 0)
+    }
+    fn transfer() -> Weight {
+        Weight::from_parts(10_000, 0)
+    }
 }
 
 /// 函数级中文注释：性别枚举。
 /// - 仅三种取值：M(男)、F(女)、B(保密/双性/未指明)。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-pub enum Gender { M, F, B }
+pub enum Gender {
+    M,
+    F,
+    B,
+}
 
 /// 函数级中文注释：逝者实体，链上仅存最小必要信息与链下指针。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -89,9 +104,9 @@ pub struct Deceased<T: Config> {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use frame_support::traits::ConstU32;
     use frame_support::traits::StorageVersion;
     use sp_runtime::traits::SaturatedConversion;
-    use frame_support::traits::ConstU32;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -149,29 +164,39 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn deceased_of)]
     /// 逝者详情：DeceasedId -> Deceased
-    pub type DeceasedOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, Deceased<T>, OptionQuery>;
+    pub type DeceasedOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::DeceasedId, Deceased<T>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn deceased_by_grave)]
     /// 墓位下的逝者列表：GraveId -> BoundedVec<DeceasedId>
-    pub type DeceasedByGrave<T: Config> = StorageMap<_, Blake2_128Concat, T::GraveId, BoundedVec<T::DeceasedId, T::MaxDeceasedPerGrave>, ValueQuery>;
+    pub type DeceasedByGrave<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::GraveId,
+        BoundedVec<T::DeceasedId, T::MaxDeceasedPerGrave>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：逝者可见性标记（默认公开）。
     /// - 设计：创建时写入 true；后续可由管理员/owner 通过 set_visibility 修改。
     /// - 读取：若不存在记录（None）应视作 true（默认公开）。
     #[pallet::storage]
-    pub type VisibilityOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, bool, OptionQuery>;
+    pub type VisibilityOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::DeceasedId, bool, OptionQuery>;
 
     /// 函数级中文注释：按 `deceased_token` 建立的唯一索引，用于防止重复创建。
     /// - Key：`deceased_token`（BoundedVec<u8, TokenLimit>）。
     /// - Val：`DeceasedId`。
     /// - 说明：在 create/update 时分别插入与维护，禁止同 token 的重复记录。
     #[pallet::storage]
-    pub type DeceasedIdByToken<T: Config> = StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::TokenLimit>, T::DeceasedId, OptionQuery>;
+    pub type DeceasedIdByToken<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoundedVec<u8, T::TokenLimit>, T::DeceasedId, OptionQuery>;
 
     /// 函数级中文注释：最近活跃块高（owner 对该逝者的最近一次有效签名交互）。
     #[pallet::storage]
-    pub type LastActiveOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BlockNumberFor<T>, OptionQuery>;
+    pub type LastActiveOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::DeceasedId, BlockNumberFor<T>, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -254,16 +279,37 @@ pub mod pallet {
     /// 函数级中文注释：最近一次拥有者变更日志（用于前端展示与审计）。
     /// - 写入于治理转移成功后；仅保留最近一次，历史可由事件索引层查询。
     #[pallet::storage]
-    pub type OwnerChangeLogOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, (T::AccountId, T::AccountId, BlockNumberFor<T>, BoundedVec<u8, T::TokenLimit>), OptionQuery>;
+    pub type OwnerChangeLogOf<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        (
+            T::AccountId,
+            T::AccountId,
+            BlockNumberFor<T>,
+            BoundedVec<u8, T::TokenLimit>,
+        ),
+        OptionQuery,
+    >;
 
     /// 函数级中文注释：版本历史条目（version, editor, at）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
-    pub struct VersionEntry<T: Config> { pub version: u32, pub editor: T::AccountId, pub at: BlockNumberFor<T> }
+    pub struct VersionEntry<T: Config> {
+        pub version: u32,
+        pub editor: T::AccountId,
+        pub at: BlockNumberFor<T>,
+    }
 
     /// 函数级中文注释：逝者版本历史（最多 512 条，超出后停止追加）。
     #[pallet::storage]
-    pub type DeceasedHistory<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<VersionEntry<T>, ConstU32<512>>, ValueQuery>;
+    pub type DeceasedHistory<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        BoundedVec<VersionEntry<T>, ConstU32<512>>,
+        ValueQuery,
+    >;
 
     /// 函数级中文注释：逝者关系记录。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -278,7 +324,11 @@ pub mod pallet {
     // =================== 亲友团：存储与类型（最小实现，无押金） ===================
     /// 函数级中文注释：亲友角色枚举（0=Member，1=Core，2=Admin）。Admin 固定包含逝者 owner。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-    pub enum FriendRole { Member, Core, Admin }
+    pub enum FriendRole {
+        Member,
+        Core,
+        Admin,
+    }
 
     /// 函数级中文注释：亲友策略
     /// - require_approval：是否需要管理员审批
@@ -304,50 +354,109 @@ pub mod pallet {
 
     /// 亲友策略：DeceasedId -> FriendPolicy
     #[pallet::storage]
-    pub type FriendPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, FriendPolicy<T>, OptionQuery>;
+    pub type FriendPolicyOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::DeceasedId, FriendPolicy<T>, OptionQuery>;
 
     /// 亲友成员： (DeceasedId, AccountId) -> FriendRecord
     #[pallet::storage]
-    pub type FriendsOf<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::AccountId, FriendRecord<T>, OptionQuery>;
+    pub type FriendsOf<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        Blake2_128Concat,
+        T::AccountId,
+        FriendRecord<T>,
+        OptionQuery,
+    >;
 
     /// 亲友计数： DeceasedId -> u32
     #[pallet::storage]
-    pub type FriendCount<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, u32, ValueQuery>;
+    pub type FriendCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::DeceasedId, u32, ValueQuery>;
 
     /// 待审批： DeceasedId -> BoundedVec<(AccountId, BlockNumber), ConstU32<256>>
     #[pallet::storage]
-    pub type FriendJoinRequests<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>>, ValueQuery>;
+    pub type FriendJoinRequests<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
-    pub type Relations<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, Relation<T>, OptionQuery>;
+    pub type Relations<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        Blake2_128Concat,
+        T::DeceasedId,
+        Relation<T>,
+        OptionQuery,
+    >;
 
     #[pallet::storage]
-    pub type RelationsByDeceased<T: Config> = StorageMap<_, Blake2_128Concat, T::DeceasedId, BoundedVec<(T::DeceasedId, u8), ConstU32<128>>, ValueQuery>;
+    pub type RelationsByDeceased<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        BoundedVec<(T::DeceasedId, u8), ConstU32<128>>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
-    pub type PendingRelationRequests<T: Config> = StorageDoubleMap<_, Blake2_128Concat, T::DeceasedId, Blake2_128Concat, T::DeceasedId, (u8, T::AccountId, BoundedVec<u8, T::StringLimit>, BlockNumberFor<T>), OptionQuery>;
+    pub type PendingRelationRequests<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::DeceasedId,
+        Blake2_128Concat,
+        T::DeceasedId,
+        (
+            u8,
+            T::AccountId,
+            BoundedVec<u8, T::StringLimit>,
+            BlockNumberFor<T>,
+        ),
+        OptionQuery,
+    >;
 
     /// 函数级详细中文注释：关系工具函数与规范
     /// - 0=ParentOf(有向) 1=SpouseOf(无向) 2=SiblingOf(无向) 3=ChildOf(有向)
-    fn is_undirected_kind(kind: u8) -> bool { matches!(kind, 1 | 2) }
+    fn is_undirected_kind(kind: u8) -> bool {
+        matches!(kind, 1 | 2)
+    }
 
     /// 函数级详细中文注释：关系冲突矩阵（最小实现）
     /// - 父母/子女 与 配偶/兄弟姐妹 互斥；父母 与 子女 互斥（方向相反视为同类）
     fn is_conflicting_kind(a: u8, b: u8) -> bool {
         let dir_a = matches!(a, 0 | 3);
         let dir_b = matches!(b, 0 | 3);
-        if dir_a && dir_b { return true; }
-        if (dir_a && is_undirected_kind(b)) || (dir_b && is_undirected_kind(a)) { return true; }
+        if dir_a && dir_b {
+            return true;
+        }
+        if (dir_a && is_undirected_kind(b)) || (dir_b && is_undirected_kind(a)) {
+            return true;
+        }
         false
     }
 
     /// 函数级详细中文注释：对无向关系使用 canonical(min,max) 键；有向关系保持 (from,to) 原样
-    fn canonical_ids<TC: Config>(from: TC::DeceasedId, to: TC::DeceasedId, kind: u8) -> (TC::DeceasedId, TC::DeceasedId) {
+    fn canonical_ids<TC: Config>(
+        from: TC::DeceasedId,
+        to: TC::DeceasedId,
+        kind: u8,
+    ) -> (TC::DeceasedId, TC::DeceasedId) {
         if is_undirected_kind(kind) {
             let af: u128 = from.saturated_into::<u128>();
             let bf: u128 = to.saturated_into::<u128>();
-            if af <= bf { (from, to) } else { (to, from) }
-        } else { (from, to) }
+            if af <= bf {
+                (from, to)
+            } else {
+                (to, from)
+            }
+        } else {
+            (from, to)
+        }
     }
 
     // =================== Pallet 工具函数（非外部可调用） ===================
@@ -355,11 +464,15 @@ pub mod pallet {
         /// 函数级中文注释：判断账户是否为该逝者的管理员（owner 视为 Admin）。
         pub(crate) fn is_admin(deceased_id: T::DeceasedId, who: &T::AccountId) -> bool {
             if let Some(d) = DeceasedOf::<T>::get(deceased_id) {
-                if d.owner == *who { return true; }
+                if d.owner == *who {
+                    return true;
+                }
             }
             if let Some(rec) = FriendsOf::<T>::get(deceased_id, who) {
                 matches!(rec.role, FriendRole::Admin)
-            } else { false }
+            } else {
+                false
+            }
         }
 
         /// 函数级详细中文注释：治理起源统一校验入口。
@@ -373,8 +486,12 @@ pub mod pallet {
         }
 
         /// 函数级中文注释（内部工具）：将证据 CID 记入事件，返回有界向量。
-        pub(crate) fn note_evidence(id: T::DeceasedId, cid: Vec<u8>) -> Result<BoundedVec<u8, T::TokenLimit>, sp_runtime::DispatchError> {
-            let bv: BoundedVec<u8, T::TokenLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+        pub(crate) fn note_evidence(
+            id: T::DeceasedId,
+            cid: Vec<u8>,
+        ) -> Result<BoundedVec<u8, T::TokenLimit>, sp_runtime::DispatchError> {
+            let bv: BoundedVec<u8, T::TokenLimit> =
+                BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             Self::deposit_event(Event::GovEvidenceNoted(id, bv.clone()));
             Ok(bv)
         }
@@ -404,45 +521,72 @@ pub mod pallet {
             gender_code: u8, // 0=M,1=F,2=B
             // bio 移除：简介/悼词请使用 deceased-data::Life（IPFS CID）
             name_full_cid: Option<Vec<u8>>, // 可选：完整姓名的链下 CID
-            birth_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
-            death_ts: Vec<u8>, // 必填，格式 YYYYMMDD（8 位数字）
+            birth_ts: Vec<u8>,              // 必填，格式 YYYYMMDD（8 位数字）
+            death_ts: Vec<u8>,              // 必填，格式 YYYYMMDD（8 位数字）
             links: Vec<Vec<u8>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(T::GraveProvider::grave_exists(grave_id), Error::<T>::GraveNotFound);
-            ensure!(T::GraveProvider::can_attach(&who, grave_id), Error::<T>::NotAuthorized);
+            ensure!(
+                T::GraveProvider::grave_exists(grave_id),
+                Error::<T>::GraveNotFound
+            );
+            ensure!(
+                T::GraveProvider::can_attach(&who, grave_id),
+                Error::<T>::NotAuthorized
+            );
             // 冗余快速校验：若外部缓存的令牌数已达软上限，也直接拒绝（最终仍以下方 DeceasedByGrave 为准）
             if let Some(cached) = T::GraveProvider::cached_deceased_tokens_len(grave_id) {
-                ensure!(cached < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+                ensure!(
+                    cached < T::MaxDeceasedPerGraveSoft::get(),
+                    Error::<T>::TooManyDeceasedInGrave
+                );
             }
             // 软上限权威校验：每墓位最多允许的逝者数量（默认 6）。
             let existing_in_grave = DeceasedByGrave::<T>::get(grave_id).len() as u32;
-            ensure!(existing_in_grave < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+            ensure!(
+                existing_in_grave < T::MaxDeceasedPerGraveSoft::get(),
+                Error::<T>::TooManyDeceasedInGrave
+            );
 
             // 校验与规范化字段
-            let name_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
+            let name_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> =
+                BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
             // name_badge 相关逻辑已移除
-            let gender: Gender = match gender_code { 0 => Gender::M, 1 => Gender::F, _ => Gender::B };
+            let gender: Gender = match gender_code {
+                0 => Gender::M,
+                1 => Gender::F,
+                _ => Gender::B,
+            };
             // 校验日期：若提供则必须为 8 位数字
-            fn is_yyyymmdd(v: &Vec<u8>) -> bool { v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b)) }
+            fn is_yyyymmdd(v: &Vec<u8>) -> bool {
+                v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b))
+            }
             ensure!(is_yyyymmdd(&birth_ts), Error::<T>::BadInput);
             ensure!(is_yyyymmdd(&death_ts), Error::<T>::BadInput);
-            let birth_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> = Some(BoundedVec::try_from(birth_ts).map_err(|_| Error::<T>::BadInput)?);
-            let death_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> = Some(BoundedVec::try_from(death_ts).map_err(|_| Error::<T>::BadInput)?);
+            let birth_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> =
+                Some(BoundedVec::try_from(birth_ts).map_err(|_| Error::<T>::BadInput)?);
+            let death_bv: Option<BoundedVec<_, <T as pallet::Config>::StringLimit>> =
+                Some(BoundedVec::try_from(death_ts).map_err(|_| Error::<T>::BadInput)?);
             // 可选 CID 校验（仅限长度）
             let name_full_cid_bv: Option<BoundedVec<u8, T::TokenLimit>> = match name_full_cid {
                 Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
                 None => None,
             };
 
-            let mut links_bv: BoundedVec<BoundedVec<u8, <T as pallet::Config>::StringLimit>, T::MaxLinks> = Default::default();
+            let mut links_bv: BoundedVec<
+                BoundedVec<u8, <T as pallet::Config>::StringLimit>,
+                T::MaxLinks,
+            > = Default::default();
             for l in links.into_iter() {
-                let lb: BoundedVec<_, <T as pallet::Config>::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
+                let lb: BoundedVec<_, <T as pallet::Config>::StringLimit> =
+                    BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
                 links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
             }
 
             let id = NextDeceasedId::<T>::get();
-            let next = id.checked_add(&<T as pallet::Config>::DeceasedId::from(1u32)).ok_or(Error::<T>::Overflow)?;
+            let next = id
+                .checked_add(&<T as pallet::Config>::DeceasedId::from(1u32))
+                .ok_or(Error::<T>::Overflow)?;
             NextDeceasedId::<T>::put(next);
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
@@ -450,53 +594,83 @@ pub mod pallet {
             /// 函数级中文注释：构造逝者令牌：gender + birth(8) + death(8) + blake2_256(name_norm)
             /// - name 规范化：去首尾空格、压缩连续空格为单个0x20、a-z→A-Z；非ASCII保持原样
             /// - birth/death 缺省用 "00000000"（长度异常也回退到8个'0'）
-            fn build_token_from_fields<TC: Config>(g: &Gender, birth: &Option<BoundedVec<u8, TC::StringLimit>>, death: &Option<BoundedVec<u8, TC::StringLimit>>, name: &BoundedVec<u8, TC::StringLimit>) -> BoundedVec<u8, TC::TokenLimit> {
+            fn build_token_from_fields<TC: Config>(
+                g: &Gender,
+                birth: &Option<BoundedVec<u8, TC::StringLimit>>,
+                death: &Option<BoundedVec<u8, TC::StringLimit>>,
+                name: &BoundedVec<u8, TC::StringLimit>,
+            ) -> BoundedVec<u8, TC::TokenLimit> {
                 // 规范化姓名
                 let mut norm: Vec<u8> = Vec::with_capacity(name.len());
                 // 去首尾空格 & 压缩空格
                 let mut i = 0usize;
                 let bytes = name.as_slice();
-                while i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                while i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
                 let mut last_space = false;
                 while i < bytes.len() {
                     let mut b = bytes[i];
                     if b == b' ' {
-                        if !last_space { norm.push(b' '); last_space = true; }
+                        if !last_space {
+                            norm.push(b' ');
+                            last_space = true;
+                        }
                     } else {
                         // a-z → A-Z，仅ASCII字母；其他字节保持
-                        if (b'a'..=b'z').contains(&b) { b = b - 32; }
+                        if (b'a'..=b'z').contains(&b) {
+                            b = b - 32;
+                        }
                         norm.push(b);
                         last_space = false;
                     }
                     i += 1;
                 }
                 // 去尾随空格
-                while norm.last().copied() == Some(b' ') { norm.pop(); }
+                while norm.last().copied() == Some(b' ') {
+                    norm.pop();
+                }
 
                 // 计算姓名哈希
                 let name_hash = blake2_256(norm.as_slice());
 
                 // 组装 token
                 let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
-                let c = match g { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' };
+                let c = match g {
+                    Gender::M => b'M',
+                    Gender::F => b'F',
+                    Gender::B => b'B',
+                };
                 v.push(c);
-                let zeros8: [u8;8] = *b"00000000";
-                let b8 = birth.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
-                let d8 = death.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
+                let zeros8: [u8; 8] = *b"00000000";
+                let b8 = birth
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
+                let d8 = death
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
                 v.extend_from_slice(b8);
                 v.extend_from_slice(d8);
                 v.extend_from_slice(&name_hash);
                 BoundedVec::<u8, TC::TokenLimit>::try_from(v).unwrap_or_default()
             }
-            let deceased_token = build_token_from_fields::<T>(&gender, &birth_bv, &death_bv, &name_bv);
+            let deceased_token =
+                build_token_from_fields::<T>(&gender, &birth_bv, &death_bv, &name_bv);
             // 唯一性检查：同 token 已存在则拒绝创建
-            ensure!(DeceasedIdByToken::<T>::get(&deceased_token).is_none(), Error::<T>::DeceasedTokenExists);
+            ensure!(
+                DeceasedIdByToken::<T>::get(&deceased_token).is_none(),
+                Error::<T>::DeceasedTokenExists
+            );
             let deceased = Deceased::<T> {
                 grave_id,
                 owner: who.clone(),
                 creator: who.clone(),
                 name: name_bv,
-                
+
                 gender,
                 // bio 已移除：请使用 deceased-data::Life（CID）
                 name_full_cid: name_full_cid_bv,
@@ -513,13 +687,22 @@ pub mod pallet {
             DeceasedOf::<T>::insert(id, deceased);
             // 初始化版本历史
             let mut hist: BoundedVec<VersionEntry<T>, ConstU32<512>> = Default::default();
-            let _ = hist.try_push(VersionEntry { version: 1, editor: who.clone(), at: now });
+            let _ = hist.try_push(VersionEntry {
+                version: 1,
+                editor: who.clone(),
+                at: now,
+            });
             DeceasedHistory::<T>::insert(id, hist);
-            DeceasedByGrave::<T>::try_mutate(grave_id, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
+            DeceasedByGrave::<T>::try_mutate(grave_id, |list| {
+                list.try_push(id)
+                    .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
+            })?;
             // 默认公开
             VisibilityOf::<T>::insert(id, true);
             // 建立 token -> id 索引
-            if let Some(d) = DeceasedOf::<T>::get(id) { DeceasedIdByToken::<T>::insert(d.deceased_token, id); }
+            if let Some(d) = DeceasedOf::<T>::get(id) {
+                DeceasedIdByToken::<T>::insert(d.deceased_token, id);
+            }
 
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
 
@@ -557,27 +740,58 @@ pub mod pallet {
                 // 记录旧 token 以便更新索引
                 let old_token = d.deceased_token.clone();
 
-                if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(n) = name {
+                    d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?;
+                }
                 // name_badge 已移除
-                if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
+                if let Some(gc) = gender_code {
+                    d.gender = match gc {
+                        0 => Gender::M,
+                        1 => Gender::F,
+                        _ => Gender::B,
+                    };
+                }
                 // bio 已移除：改由 deceased-data::Life 维护
                 if let Some(cid_opt) = name_full_cid {
                     d.name_full_cid = match cid_opt {
-                        Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?),
+                        Some(v) => Some(
+                            BoundedVec::<u8, T::TokenLimit>::try_from(v)
+                                .map_err(|_| Error::<T>::BadInput)?,
+                        ),
                         None => None,
                     };
                 }
                 // 主图字段通过专用接口设置/清空（见 set_main_image/clear_main_image）
                 if let Some(bi) = birth_ts {
-                    d.birth_ts = match bi { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                    d.birth_ts = match bi {
+                        Some(v) => {
+                            ensure!(
+                                v.len() == 8 && v.iter().all(|x| (b'0'..=b'9').contains(x)),
+                                Error::<T>::BadInput
+                            );
+                            Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?)
+                        }
+                        None => None,
+                    };
                 }
                 if let Some(de) = death_ts {
-                    d.death_ts = match de { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                    d.death_ts = match de {
+                        Some(v) => {
+                            ensure!(
+                                v.len() == 8 && v.iter().all(|x| (b'0'..=b'9').contains(x)),
+                                Error::<T>::BadInput
+                            );
+                            Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?)
+                        }
+                        None => None,
+                    };
                 }
                 if let Some(ls) = links {
-                    let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
+                    let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> =
+                        Default::default();
                     for l in ls.into_iter() {
-                        let lb: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
+                        let lb: BoundedVec<_, T::StringLimit> =
+                            BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
                         links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
                     }
                     d.links = links_bv;
@@ -587,30 +801,76 @@ pub mod pallet {
                 d.version = d.version.saturating_add(1);
                 let v = d.version;
                 let at = d.updated;
-                DeceasedHistory::<T>::mutate(id, |h| { let _ = h.try_push(VersionEntry { version: v, editor: who.clone(), at }); });
+                DeceasedHistory::<T>::mutate(id, |h| {
+                    let _ = h.try_push(VersionEntry {
+                        version: v,
+                        editor: who.clone(),
+                        at,
+                    });
+                });
                 // 重新构造 token（gender + birth(8) + death(8) + blake2_256(name_norm)）
                 fn normalize_name(bytes: &[u8]) -> Vec<u8> {
                     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-                    let mut i = 0usize; while i < bytes.len() && bytes[i]==b' ' { i+=1; }
-                    let mut last_space=false;
-                    while i<bytes.len() { let mut b=bytes[i]; if b==b' ' { if !last_space { out.push(b' '); last_space=true; } } else { if (b'a'..=b'z').contains(&b) { b=b-32; } out.push(b); last_space=false; } i+=1; }
-                    while out.last().copied()==Some(b' ') { out.pop(); }
+                    let mut i = 0usize;
+                    while i < bytes.len() && bytes[i] == b' ' {
+                        i += 1;
+                    }
+                    let mut last_space = false;
+                    while i < bytes.len() {
+                        let mut b = bytes[i];
+                        if b == b' ' {
+                            if !last_space {
+                                out.push(b' ');
+                                last_space = true;
+                            }
+                        } else {
+                            if (b'a'..=b'z').contains(&b) {
+                                b = b - 32;
+                            }
+                            out.push(b);
+                            last_space = false;
+                        }
+                        i += 1;
+                    }
+                    while out.last().copied() == Some(b' ') {
+                        out.pop();
+                    }
                     out
                 }
                 let name_norm = normalize_name(d.name.as_slice());
                 let name_hash = blake2_256(name_norm.as_slice());
-                let mut v: Vec<u8> = Vec::with_capacity(1+8+8+32);
-                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' }; v.push(c);
-                let zeros8: [u8;8] = *b"00000000";
-                let b8 = d.birth_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
-                let de8 = d.death_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
-                v.extend_from_slice(b8); v.extend_from_slice(de8); v.extend_from_slice(&name_hash);
-                let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
+                let c = match d.gender {
+                    Gender::M => b'M',
+                    Gender::F => b'F',
+                    Gender::B => b'B',
+                };
+                v.push(c);
+                let zeros8: [u8; 8] = *b"00000000";
+                let b8 = d
+                    .birth_ts
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
+                let de8 = d
+                    .death_ts
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
+                v.extend_from_slice(b8);
+                v.extend_from_slice(de8);
+                v.extend_from_slice(&name_hash);
+                let new_token: BoundedVec<u8, T::TokenLimit> =
+                    BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
                 // 若 token 发生变化，需检查唯一性并更新索引
                 if new_token != old_token {
                     if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) {
                         // 已存在同 token 且不是当前记录 → 拒绝
-                        if existing_id != id { return Err(Error::<T>::DeceasedTokenExists.into()); }
+                        if existing_id != id {
+                            return Err(Error::<T>::DeceasedTokenExists.into());
+                        }
                     }
                     // 更新存储与索引
                     d.deceased_token = new_token.clone();
@@ -641,13 +901,26 @@ pub mod pallet {
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer())]
-        pub fn transfer_deceased(origin: OriginFor<T>, id: T::DeceasedId, new_grave: T::GraveId) -> DispatchResult {
+        pub fn transfer_deceased(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            new_grave: T::GraveId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(T::GraveProvider::grave_exists(new_grave), Error::<T>::GraveNotFound);
-            ensure!(T::GraveProvider::can_attach(&who, new_grave), Error::<T>::NotAuthorized);
+            ensure!(
+                T::GraveProvider::grave_exists(new_grave),
+                Error::<T>::GraveNotFound
+            );
+            ensure!(
+                T::GraveProvider::can_attach(&who, new_grave),
+                Error::<T>::NotAuthorized
+            );
             // 软上限校验：目标墓位是否已达上限
             let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
-            ensure!(existing_in_target < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+            ensure!(
+                existing_in_target < T::MaxDeceasedPerGraveSoft::get(),
+                Error::<T>::TooManyDeceasedInGrave
+            );
 
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
@@ -655,11 +928,16 @@ pub mod pallet {
                 let original_owner = d.owner.clone();
 
                 // 先检查新墓位容量
-                DeceasedByGrave::<T>::try_mutate(new_grave, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
+                DeceasedByGrave::<T>::try_mutate(new_grave, |list| {
+                    list.try_push(id)
+                        .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
+                })?;
 
                 // 从旧墓位移除
                 DeceasedByGrave::<T>::mutate(d.grave_id, |list| {
-                    if let Some(pos) = list.iter().position(|x| x == &id) { list.swap_remove(pos); }
+                    if let Some(pos) = list.iter().position(|x| x == &id) {
+                        list.swap_remove(pos);
+                    }
                 });
 
                 let old = d.grave_id;
@@ -678,9 +956,16 @@ pub mod pallet {
         #[pallet::call_index(39)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn set_visibility(origin: OriginFor<T>, id: T::DeceasedId, public: bool) -> DispatchResult {
+        pub fn set_visibility(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            public: bool,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(DeceasedOf::<T>::contains_key(id), Error::<T>::DeceasedNotFound);
+            ensure!(
+                DeceasedOf::<T>::contains_key(id),
+                Error::<T>::DeceasedNotFound
+            );
             ensure!(Self::is_admin(id, &who), Error::<T>::NotAuthorized);
             VisibilityOf::<T>::insert(id, public);
             Self::deposit_event(Event::VisibilityChanged(id, public));
@@ -694,7 +979,11 @@ pub mod pallet {
         #[pallet::call_index(40)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn set_main_image(origin: OriginFor<T>, id: T::DeceasedId, cid: Vec<u8>) -> DispatchResult {
+        pub fn set_main_image(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            cid: Vec<u8>,
+        ) -> DispatchResult {
             let is_root = ensure_root(origin.clone()).is_ok();
             let who = ensure_signed(origin.clone()).ok();
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
@@ -703,7 +992,8 @@ pub mod pallet {
                     let caller = who.as_ref().ok_or(Error::<T>::NotAuthorized)?;
                     ensure!(d.owner == *caller, Error::<T>::NotAuthorized);
                 }
-                let bv: BoundedVec<u8, T::TokenLimit> = BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
+                let bv: BoundedVec<u8, T::TokenLimit> =
+                    BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
                 d.main_image_cid = Some(bv);
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
@@ -745,13 +1035,24 @@ pub mod pallet {
         #[pallet::call_index(45)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn gov_set_main_image(origin: OriginFor<T>, id: T::DeceasedId, cid: Option<Vec<u8>>, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_main_image(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            cid: Option<Vec<u8>>,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
             let is_some = cid.is_some();
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
-                d.main_image_cid = match cid { Some(v)=>Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?), None=>None };
+                d.main_image_cid = match cid {
+                    Some(v) => Some(
+                        BoundedVec::<u8, T::TokenLimit>::try_from(v)
+                            .map_err(|_| Error::<T>::BadInput)?,
+                    ),
+                    None => None,
+                };
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
@@ -767,14 +1068,20 @@ pub mod pallet {
         #[pallet::call_index(46)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn gov_transfer_owner(origin: OriginFor<T>, id: T::DeceasedId, new_owner: T::AccountId, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_transfer_owner(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            new_owner: T::AccountId,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let ev = Self::note_evidence(id, evidence_cid)?;
             let now = <frame_system::Pallet<T>>::block_number();
             let mut old_owner: Option<T::AccountId> = None;
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
-                let old = d.owner.clone(); old_owner = Some(old.clone());
+                let old = d.owner.clone();
+                old_owner = Some(old.clone());
                 ensure!(old != new_owner, Error::<T>::BadInput);
                 d.owner = new_owner.clone();
                 d.updated = now;
@@ -813,22 +1120,56 @@ pub mod pallet {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 let original_owner = d.owner.clone();
                 let old_token = d.deceased_token.clone();
-                if let Some(n) = name { d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?; }
+                if let Some(n) = name {
+                    d.name = BoundedVec::try_from(n).map_err(|_| Error::<T>::BadInput)?;
+                }
                 // name_badge 已移除
-                if let Some(gc) = gender_code { d.gender = match gc { 0 => Gender::M, 1 => Gender::F, _ => Gender::B }; }
+                if let Some(gc) = gender_code {
+                    d.gender = match gc {
+                        0 => Gender::M,
+                        1 => Gender::F,
+                        _ => Gender::B,
+                    };
+                }
                 if let Some(cid_opt) = name_full_cid {
-                    d.name_full_cid = match cid_opt { Some(v) => Some(BoundedVec::<u8, T::TokenLimit>::try_from(v).map_err(|_| Error::<T>::BadInput)?), None => None };
+                    d.name_full_cid = match cid_opt {
+                        Some(v) => Some(
+                            BoundedVec::<u8, T::TokenLimit>::try_from(v)
+                                .map_err(|_| Error::<T>::BadInput)?,
+                        ),
+                        None => None,
+                    };
                 }
                 if let Some(bi) = birth_ts {
-                    d.birth_ts = match bi { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                    d.birth_ts = match bi {
+                        Some(v) => {
+                            ensure!(
+                                v.len() == 8 && v.iter().all(|x| (b'0'..=b'9').contains(x)),
+                                Error::<T>::BadInput
+                            );
+                            Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?)
+                        }
+                        None => None,
+                    };
                 }
                 if let Some(de) = death_ts {
-                    d.death_ts = match de { Some(v) => { ensure!(v.len()==8 && v.iter().all(|x| (b'0'..=b'9').contains(x)), Error::<T>::BadInput); Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?) }, None => None };
+                    d.death_ts = match de {
+                        Some(v) => {
+                            ensure!(
+                                v.len() == 8 && v.iter().all(|x| (b'0'..=b'9').contains(x)),
+                                Error::<T>::BadInput
+                            );
+                            Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?)
+                        }
+                        None => None,
+                    };
                 }
                 if let Some(ls) = links {
-                    let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> = Default::default();
+                    let mut links_bv: BoundedVec<BoundedVec<u8, T::StringLimit>, T::MaxLinks> =
+                        Default::default();
                     for l in ls.into_iter() {
-                        let lb: BoundedVec<_, T::StringLimit> = BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
+                        let lb: BoundedVec<_, T::StringLimit> =
+                            BoundedVec::try_from(l).map_err(|_| Error::<T>::BadInput)?;
                         links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
                     }
                     d.links = links_bv;
@@ -836,28 +1177,78 @@ pub mod pallet {
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 // 版本自增并记录历史（治理代表修改，编辑者记为当前 owner）
                 d.version = d.version.saturating_add(1);
-                let v = d.version; let at = d.updated; let editor = d.owner.clone();
-                DeceasedHistory::<T>::mutate(id, |h| { let _ = h.try_push(VersionEntry { version: v, editor, at }); });
+                let v = d.version;
+                let at = d.updated;
+                let editor = d.owner.clone();
+                DeceasedHistory::<T>::mutate(id, |h| {
+                    let _ = h.try_push(VersionEntry {
+                        version: v,
+                        editor,
+                        at,
+                    });
+                });
                 // 重建 token 并维护唯一索引（gender + birth(8) + death(8) + blake2_256(name_norm)）
                 fn normalize_name2(bytes: &[u8]) -> Vec<u8> {
                     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-                    let mut i = 0usize; while i < bytes.len() && bytes[i]==b' ' { i+=1; }
-                    let mut last_space=false;
-                    while i<bytes.len() { let mut b=bytes[i]; if b==b' ' { if !last_space { out.push(b' '); last_space=true; } } else { if (b'a'..=b'z').contains(&b) { b=b-32; } out.push(b); last_space=false; } i+=1; }
-                    while out.last().copied()==Some(b' ') { out.pop(); }
+                    let mut i = 0usize;
+                    while i < bytes.len() && bytes[i] == b' ' {
+                        i += 1;
+                    }
+                    let mut last_space = false;
+                    while i < bytes.len() {
+                        let mut b = bytes[i];
+                        if b == b' ' {
+                            if !last_space {
+                                out.push(b' ');
+                                last_space = true;
+                            }
+                        } else {
+                            if (b'a'..=b'z').contains(&b) {
+                                b = b - 32;
+                            }
+                            out.push(b);
+                            last_space = false;
+                        }
+                        i += 1;
+                    }
+                    while out.last().copied() == Some(b' ') {
+                        out.pop();
+                    }
                     out
                 }
                 let name_norm = normalize_name2(d.name.as_slice());
                 let name_hash = blake2_256(name_norm.as_slice());
-                let mut v: Vec<u8> = Vec::with_capacity(1+8+8+32);
-                let c = match d.gender { Gender::M => b'M', Gender::F => b'F', Gender::B => b'B' }; v.push(c);
-                let zeros8: [u8;8] = *b"00000000";
-                let b8 = d.birth_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
-                let de8 = d.death_ts.as_ref().map(|x| x.as_slice()).filter(|s| s.len()==8).unwrap_or(&zeros8);
-                v.extend_from_slice(b8); v.extend_from_slice(de8); v.extend_from_slice(&name_hash);
-                let new_token: BoundedVec<u8, T::TokenLimit> = BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
+                let c = match d.gender {
+                    Gender::M => b'M',
+                    Gender::F => b'F',
+                    Gender::B => b'B',
+                };
+                v.push(c);
+                let zeros8: [u8; 8] = *b"00000000";
+                let b8 = d
+                    .birth_ts
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
+                let de8 = d
+                    .death_ts
+                    .as_ref()
+                    .map(|x| x.as_slice())
+                    .filter(|s| s.len() == 8)
+                    .unwrap_or(&zeros8);
+                v.extend_from_slice(b8);
+                v.extend_from_slice(de8);
+                v.extend_from_slice(&name_hash);
+                let new_token: BoundedVec<u8, T::TokenLimit> =
+                    BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
                 if new_token != old_token {
-                    if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) { if existing_id != id { return Err(Error::<T>::DeceasedTokenExists.into()); } }
+                    if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) {
+                        if existing_id != id {
+                            return Err(Error::<T>::DeceasedTokenExists.into());
+                        }
+                    }
                     d.deceased_token = new_token.clone();
                     DeceasedIdByToken::<T>::remove(old_token);
                     DeceasedIdByToken::<T>::insert(new_token, id);
@@ -873,17 +1264,35 @@ pub mod pallet {
         #[pallet::call_index(43)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer())]
-        pub fn gov_transfer_deceased(origin: OriginFor<T>, id: T::DeceasedId, new_grave: T::GraveId, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_transfer_deceased(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            new_grave: T::GraveId,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
-            ensure!(T::GraveProvider::grave_exists(new_grave), Error::<T>::GraveNotFound);
+            ensure!(
+                T::GraveProvider::grave_exists(new_grave),
+                Error::<T>::GraveNotFound
+            );
             let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
-            ensure!(existing_in_target < T::MaxDeceasedPerGraveSoft::get(), Error::<T>::TooManyDeceasedInGrave);
+            ensure!(
+                existing_in_target < T::MaxDeceasedPerGraveSoft::get(),
+                Error::<T>::TooManyDeceasedInGrave
+            );
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 let original_owner = d.owner.clone();
-                DeceasedByGrave::<T>::try_mutate(new_grave, |list| list.try_push(id).map_err(|_| Error::<T>::TooManyDeceasedInGrave))?;
-                DeceasedByGrave::<T>::mutate(d.grave_id, |list| { if let Some(pos) = list.iter().position(|x| x == &id) { list.swap_remove(pos); } });
+                DeceasedByGrave::<T>::try_mutate(new_grave, |list| {
+                    list.try_push(id)
+                        .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
+                })?;
+                DeceasedByGrave::<T>::mutate(d.grave_id, |list| {
+                    if let Some(pos) = list.iter().position(|x| x == &id) {
+                        list.swap_remove(pos);
+                    }
+                });
                 let old = d.grave_id;
                 d.grave_id = new_grave;
                 d.updated = <frame_system::Pallet<T>>::block_number();
@@ -898,10 +1307,18 @@ pub mod pallet {
         #[pallet::call_index(44)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn gov_set_visibility(origin: OriginFor<T>, id: T::DeceasedId, public: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_visibility(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            public: bool,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             Self::ensure_gov(origin)?;
             let _ = Self::note_evidence(id, evidence_cid)?;
-            ensure!(DeceasedOf::<T>::contains_key(id), Error::<T>::DeceasedNotFound);
+            ensure!(
+                DeceasedOf::<T>::contains_key(id),
+                Error::<T>::DeceasedNotFound
+            );
             VisibilityOf::<T>::insert(id, public);
             Self::deposit_event(Event::VisibilityChanged(id, public));
             Ok(())
@@ -911,22 +1328,44 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn propose_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, kind: u8, note: Option<Vec<u8>>) -> DispatchResult {
+        pub fn propose_relation(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+            kind: u8,
+            note: Option<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
             let _b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(T::GraveProvider::can_attach(&who, a.grave_id), Error::<T>::NotAuthorized);
+            ensure!(
+                T::GraveProvider::can_attach(&who, a.grave_id),
+                Error::<T>::NotAuthorized
+            );
             ensure!(from != to, Error::<T>::BadInput);
             ensure!(matches!(kind, 0..=3), Error::<T>::BadRelationKind);
             // 去重：主记录存在则拒绝；无向需同时检查反向
-            if Relations::<T>::contains_key(from, to) { return Err(Error::<T>::RelationExists.into()); }
-            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) { return Err(Error::<T>::RelationExists.into()); }
+            if Relations::<T>::contains_key(from, to) {
+                return Err(Error::<T>::RelationExists.into());
+            }
+            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) {
+                return Err(Error::<T>::RelationExists.into());
+            }
             // Pending 去重：无向需阻止反向重复提案
-            if is_undirected_kind(kind) && PendingRelationRequests::<T>::contains_key(to, from) { return Err(Error::<T>::PendingApproval.into()); }
+            if is_undirected_kind(kind) && PendingRelationRequests::<T>::contains_key(to, from) {
+                return Err(Error::<T>::PendingApproval.into());
+            }
             // 冲突：若另一方向已存在且冲突
-            if let Some(r) = Relations::<T>::get(to, from) { if is_conflicting_kind(r.kind, kind) { return Err(Error::<T>::BadRelationKind.into()); } }
+            if let Some(r) = Relations::<T>::get(to, from) {
+                if is_conflicting_kind(r.kind, kind) {
+                    return Err(Error::<T>::BadRelationKind.into());
+                }
+            }
             let now = <frame_system::Pallet<T>>::block_number();
-            let note_bv: BoundedVec<_, T::StringLimit> = match note { Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+            let note_bv: BoundedVec<_, T::StringLimit> = match note {
+                Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?,
+                None => Default::default(),
+            };
             PendingRelationRequests::<T>::insert(from, to, (kind, who, note_bv, now));
             Self::deposit_event(Event::RelationProposed(from, to, kind));
             Ok(())
@@ -936,22 +1375,47 @@ pub mod pallet {
         #[pallet::call_index(5)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn approve_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+        pub fn approve_relation(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
-            let (kind, created_by, note, _created_at) = PendingRelationRequests::<T>::get(from, to).ok_or(Error::<T>::RelationNotFound)?;
+            ensure!(
+                T::GraveProvider::can_attach(&who, b.grave_id),
+                Error::<T>::NotAuthorized
+            );
+            let (kind, created_by, note, _created_at) =
+                PendingRelationRequests::<T>::get(from, to).ok_or(Error::<T>::RelationNotFound)?;
             // 二次防冲突：避免并发与方向不一致
-            if Relations::<T>::contains_key(from, to) { return Err(Error::<T>::RelationExists.into()); }
-            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) { return Err(Error::<T>::RelationExists.into()); }
-            if let Some(r) = Relations::<T>::get(to, from) { if is_conflicting_kind(r.kind, kind) { return Err(Error::<T>::BadRelationKind.into()); } }
+            if Relations::<T>::contains_key(from, to) {
+                return Err(Error::<T>::RelationExists.into());
+            }
+            if is_undirected_kind(kind) && Relations::<T>::contains_key(to, from) {
+                return Err(Error::<T>::RelationExists.into());
+            }
+            if let Some(r) = Relations::<T>::get(to, from) {
+                if is_conflicting_kind(r.kind, kind) {
+                    return Err(Error::<T>::BadRelationKind.into());
+                }
+            }
             let now = <frame_system::Pallet<T>>::block_number();
-            let rec = Relation::<T> { kind, note: note.clone(), created_by, since: now };
+            let rec = Relation::<T> {
+                kind,
+                note: note.clone(),
+                created_by,
+                since: now,
+            };
             let (ff, tt) = canonical_ids::<T>(from, to, kind);
             Relations::<T>::insert(ff, tt, &rec);
-            RelationsByDeceased::<T>::try_mutate(ff, |list| list.try_push((tt, kind)).map_err(|_| Error::<T>::BadInput))?;
+            RelationsByDeceased::<T>::try_mutate(ff, |list| {
+                list.try_push((tt, kind)).map_err(|_| Error::<T>::BadInput)
+            })?;
             if is_undirected_kind(kind) && ff != tt {
-                RelationsByDeceased::<T>::try_mutate(tt, |list| list.try_push((ff, kind)).map_err(|_| Error::<T>::BadInput))?;
+                RelationsByDeceased::<T>::try_mutate(tt, |list| {
+                    list.try_push((ff, kind)).map_err(|_| Error::<T>::BadInput)
+                })?;
             }
             PendingRelationRequests::<T>::remove(from, to);
             Self::deposit_event(Event::RelationApproved(from, to, kind));
@@ -962,11 +1426,21 @@ pub mod pallet {
         #[pallet::call_index(6)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn reject_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+        pub fn reject_relation(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
-            ensure!(PendingRelationRequests::<T>::contains_key(from, to), Error::<T>::RelationNotFound);
+            ensure!(
+                T::GraveProvider::can_attach(&who, b.grave_id),
+                Error::<T>::NotAuthorized
+            );
+            ensure!(
+                PendingRelationRequests::<T>::contains_key(from, to),
+                Error::<T>::RelationNotFound
+            );
             PendingRelationRequests::<T>::remove(from, to);
             Self::deposit_event(Event::RelationRejected(from, to));
             Ok(())
@@ -976,16 +1450,38 @@ pub mod pallet {
         #[pallet::call_index(7)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn revoke_relation(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId) -> DispatchResult {
+        pub fn revoke_relation(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
-            let (ff, tt, kind) = if let Some(r) = Relations::<T>::get(from, to) { (from, to, r.kind) } else if let Some(r) = Relations::<T>::get(to, from) { (to, from, r.kind) } else { return Err(Error::<T>::RelationNotFound.into()) };
+            ensure!(
+                T::GraveProvider::can_attach(&who, a.grave_id)
+                    || T::GraveProvider::can_attach(&who, b.grave_id),
+                Error::<T>::NotAuthorized
+            );
+            let (ff, tt, kind) = if let Some(r) = Relations::<T>::get(from, to) {
+                (from, to, r.kind)
+            } else if let Some(r) = Relations::<T>::get(to, from) {
+                (to, from, r.kind)
+            } else {
+                return Err(Error::<T>::RelationNotFound.into());
+            };
             Relations::<T>::remove(ff, tt);
-            RelationsByDeceased::<T>::mutate(ff, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == tt) { list.swap_remove(i); } });
+            RelationsByDeceased::<T>::mutate(ff, |list| {
+                if let Some(i) = list.iter().position(|(peer, _)| *peer == tt) {
+                    list.swap_remove(i);
+                }
+            });
             if is_undirected_kind(kind) && ff != tt {
-                RelationsByDeceased::<T>::mutate(tt, |list| { if let Some(i) = list.iter().position(|(peer, _)| *peer == ff) { list.swap_remove(i); } });
+                RelationsByDeceased::<T>::mutate(tt, |list| {
+                    if let Some(i) = list.iter().position(|(peer, _)| *peer == ff) {
+                        list.swap_remove(i);
+                    }
+                });
             }
             Self::deposit_event(Event::RelationRevoked(from, to));
             Ok(())
@@ -995,20 +1491,39 @@ pub mod pallet {
         #[pallet::call_index(8)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn update_relation_note(origin: OriginFor<T>, from: T::DeceasedId, to: T::DeceasedId, note: Option<Vec<u8>>) -> DispatchResult {
+        pub fn update_relation_note(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+            note: Option<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin.clone())?;
             let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
-            ensure!(T::GraveProvider::can_attach(&who, a.grave_id) || T::GraveProvider::can_attach(&who, b.grave_id), Error::<T>::NotAuthorized);
+            ensure!(
+                T::GraveProvider::can_attach(&who, a.grave_id)
+                    || T::GraveProvider::can_attach(&who, b.grave_id),
+                Error::<T>::NotAuthorized
+            );
             // 同时尝试两个方向，支持无向 canonical
             if Relations::<T>::try_mutate(from, to, |maybe| -> DispatchResult {
                 let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
-                r.note = match note.as_ref() { Some(v) => BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                r.note = match note.as_ref() {
+                    Some(v) => BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?,
+                    None => Default::default(),
+                };
                 Ok(())
-            }).is_err() {
+            })
+            .is_err()
+            {
                 Relations::<T>::try_mutate(to, from, |maybe| -> DispatchResult {
                     let r = maybe.as_mut().ok_or(Error::<T>::RelationNotFound)?;
-                    r.note = match note.as_ref() { Some(v) => BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?, None => Default::default() };
+                    r.note = match note.as_ref() {
+                        Some(v) => {
+                            BoundedVec::try_from(v.clone()).map_err(|_| Error::<T>::BadInput)?
+                        }
+                        None => Default::default(),
+                    };
                     Ok(())
                 })?;
             }
@@ -1021,14 +1536,31 @@ pub mod pallet {
         #[pallet::call_index(32)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn set_friend_policy(origin: OriginFor<T>, deceased_id: T::DeceasedId, require_approval: bool, is_private: bool, max_members: u32) -> DispatchResult {
+        pub fn set_friend_policy(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            require_approval: bool,
+            is_private: bool,
+            max_members: u32,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(DeceasedOf::<T>::contains_key(deceased_id), Error::<T>::DeceasedNotFound);
+            ensure!(
+                DeceasedOf::<T>::contains_key(deceased_id),
+                Error::<T>::DeceasedNotFound
+            );
             ensure!(Self::is_admin(deceased_id, &who), Error::<T>::NotAuthorized);
             // 不允许将上限设置为小于现有成员数
             let current = FriendCount::<T>::get(deceased_id);
             ensure!(max_members >= current, Error::<T>::FriendTooMany);
-            FriendPolicyOf::<T>::insert(deceased_id, FriendPolicy::<T> { require_approval, is_private, max_members, _phantom: core::marker::PhantomData });
+            FriendPolicyOf::<T>::insert(
+                deceased_id,
+                FriendPolicy::<T> {
+                    require_approval,
+                    is_private,
+                    max_members,
+                    _phantom: core::marker::PhantomData,
+                },
+            );
             Ok(())
         }
 
@@ -1036,24 +1568,56 @@ pub mod pallet {
         #[pallet::call_index(33)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn request_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, note: Option<Vec<u8>>) -> DispatchResult {
+        pub fn request_join(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            note: Option<Vec<u8>>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(DeceasedOf::<T>::contains_key(deceased_id), Error::<T>::DeceasedNotFound);
-            ensure!(!FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendAlreadyMember);
+            ensure!(
+                DeceasedOf::<T>::contains_key(deceased_id),
+                Error::<T>::DeceasedNotFound
+            );
+            ensure!(
+                !FriendsOf::<T>::contains_key(deceased_id, &who),
+                Error::<T>::FriendAlreadyMember
+            );
             let mut fc = FriendCount::<T>::get(deceased_id);
-            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy { require_approval: true, is_private: false, max_members: 1024, _phantom: core::marker::PhantomData });
+            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy {
+                require_approval: true,
+                is_private: false,
+                max_members: 1024,
+                _phantom: core::marker::PhantomData,
+            });
             if !policy.require_approval {
                 ensure!(fc < policy.max_members, Error::<T>::FriendTooMany);
                 let now = <frame_system::Pallet<T>>::block_number();
-                let n: BoundedVec<_, T::StringLimit> = match note { Some(v)=>BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?, None=>Default::default() };
-                FriendsOf::<T>::insert(deceased_id, &who, FriendRecord::<T>{ role: FriendRole::Member, since: now, note: n });
-                fc = fc.saturating_add(1); FriendCount::<T>::insert(deceased_id, fc);
-                return Ok(())
+                let n: BoundedVec<_, T::StringLimit> = match note {
+                    Some(v) => BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?,
+                    None => Default::default(),
+                };
+                FriendsOf::<T>::insert(
+                    deceased_id,
+                    &who,
+                    FriendRecord::<T> {
+                        role: FriendRole::Member,
+                        since: now,
+                        note: n,
+                    },
+                );
+                fc = fc.saturating_add(1);
+                FriendCount::<T>::insert(deceased_id, fc);
+                return Ok(());
             }
             // 需要审批：写入待审批列表（去重）
-            let mut pend: BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>> = FriendJoinRequests::<T>::get(deceased_id);
-            ensure!(!pend.iter().any(|(a, _)| a == &who), Error::<T>::FriendPendingExists);
-            pend.try_push((who.clone(), <frame_system::Pallet<T>>::block_number())).map_err(|_| Error::<T>::BadInput)?;
+            let mut pend: BoundedVec<(T::AccountId, BlockNumberFor<T>), ConstU32<256>> =
+                FriendJoinRequests::<T>::get(deceased_id);
+            ensure!(
+                !pend.iter().any(|(a, _)| a == &who),
+                Error::<T>::FriendPendingExists
+            );
+            pend.try_push((who.clone(), <frame_system::Pallet<T>>::block_number()))
+                .map_err(|_| Error::<T>::BadInput)?;
             FriendJoinRequests::<T>::insert(deceased_id, pend);
             Ok(())
         }
@@ -1062,18 +1626,45 @@ pub mod pallet {
         #[pallet::call_index(34)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn approve_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+        pub fn approve_join(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            who: T::AccountId,
+        ) -> DispatchResult {
             let admin = ensure_signed(origin)?;
-            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            ensure!(
+                Self::is_admin(deceased_id, &admin),
+                Error::<T>::NotAuthorized
+            );
             let mut pend = FriendJoinRequests::<T>::get(deceased_id);
-            let idx = pend.iter().position(|(a, _)| a == &who).ok_or(Error::<T>::FriendNoPending)?;
-            pend.swap_remove(idx); FriendJoinRequests::<T>::insert(deceased_id, pend);
-            ensure!(!FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendAlreadyMember);
-            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy { require_approval: true, is_private: false, max_members: 1024, _phantom: core::marker::PhantomData });
+            let idx = pend
+                .iter()
+                .position(|(a, _)| a == &who)
+                .ok_or(Error::<T>::FriendNoPending)?;
+            pend.swap_remove(idx);
+            FriendJoinRequests::<T>::insert(deceased_id, pend);
+            ensure!(
+                !FriendsOf::<T>::contains_key(deceased_id, &who),
+                Error::<T>::FriendAlreadyMember
+            );
+            let policy = FriendPolicyOf::<T>::get(deceased_id).unwrap_or(FriendPolicy {
+                require_approval: true,
+                is_private: false,
+                max_members: 1024,
+                _phantom: core::marker::PhantomData,
+            });
             let count = FriendCount::<T>::get(deceased_id);
             ensure!(count < policy.max_members, Error::<T>::FriendTooMany);
             let now = <frame_system::Pallet<T>>::block_number();
-            FriendsOf::<T>::insert(deceased_id, &who, FriendRecord::<T>{ role: FriendRole::Member, since: now, note: Default::default() });
+            FriendsOf::<T>::insert(
+                deceased_id,
+                &who,
+                FriendRecord::<T> {
+                    role: FriendRole::Member,
+                    since: now,
+                    note: Default::default(),
+                },
+            );
             FriendCount::<T>::insert(deceased_id, count.saturating_add(1));
             Ok(())
         }
@@ -1082,12 +1673,23 @@ pub mod pallet {
         #[pallet::call_index(35)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn reject_join(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+        pub fn reject_join(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            who: T::AccountId,
+        ) -> DispatchResult {
             let admin = ensure_signed(origin)?;
-            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            ensure!(
+                Self::is_admin(deceased_id, &admin),
+                Error::<T>::NotAuthorized
+            );
             let mut pend = FriendJoinRequests::<T>::get(deceased_id);
-            let idx = pend.iter().position(|(a, _)| a == &who).ok_or(Error::<T>::FriendNoPending)?;
-            pend.swap_remove(idx); FriendJoinRequests::<T>::insert(deceased_id, pend);
+            let idx = pend
+                .iter()
+                .position(|(a, _)| a == &who)
+                .ok_or(Error::<T>::FriendNoPending)?;
+            pend.swap_remove(idx);
+            FriendJoinRequests::<T>::insert(deceased_id, pend);
             Ok(())
         }
 
@@ -1095,12 +1697,21 @@ pub mod pallet {
         #[pallet::call_index(36)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn leave_friend_group(origin: OriginFor<T>, deceased_id: T::DeceasedId) -> DispatchResult {
+        pub fn leave_friend_group(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendNotMember);
+            ensure!(
+                FriendsOf::<T>::contains_key(deceased_id, &who),
+                Error::<T>::FriendNotMember
+            );
             // 保护：owner/Admin 不允许用此接口自降级退出，避免孤儿；需由另一 Admin 处理
             let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
-            ensure!(!matches!(rec.role, FriendRole::Admin), Error::<T>::NotAuthorized);
+            ensure!(
+                !matches!(rec.role, FriendRole::Admin),
+                Error::<T>::NotAuthorized
+            );
             FriendsOf::<T>::remove(deceased_id, &who);
             let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
             FriendCount::<T>::insert(deceased_id, cnt);
@@ -1111,13 +1722,26 @@ pub mod pallet {
         #[pallet::call_index(37)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn kick_friend(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId) -> DispatchResult {
+        pub fn kick_friend(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            who: T::AccountId,
+        ) -> DispatchResult {
             let admin = ensure_signed(origin)?;
-            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
-            ensure!(FriendsOf::<T>::contains_key(deceased_id, &who), Error::<T>::FriendNotMember);
+            ensure!(
+                Self::is_admin(deceased_id, &admin),
+                Error::<T>::NotAuthorized
+            );
+            ensure!(
+                FriendsOf::<T>::contains_key(deceased_id, &who),
+                Error::<T>::FriendNotMember
+            );
             let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
             // 禁止移除 owner/Admin，自我保护
-            ensure!(!matches!(rec.role, FriendRole::Admin), Error::<T>::NotAuthorized);
+            ensure!(
+                !matches!(rec.role, FriendRole::Admin),
+                Error::<T>::NotAuthorized
+            );
             FriendsOf::<T>::remove(deceased_id, &who);
             let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
             FriendCount::<T>::insert(deceased_id, cnt);
@@ -1128,12 +1752,24 @@ pub mod pallet {
         #[pallet::call_index(38)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn set_friend_role(origin: OriginFor<T>, deceased_id: T::DeceasedId, who: T::AccountId, role: u8) -> DispatchResult {
+        pub fn set_friend_role(
+            origin: OriginFor<T>,
+            deceased_id: T::DeceasedId,
+            who: T::AccountId,
+            role: u8,
+        ) -> DispatchResult {
             let admin = ensure_signed(origin)?;
-            ensure!(Self::is_admin(deceased_id, &admin), Error::<T>::NotAuthorized);
+            ensure!(
+                Self::is_admin(deceased_id, &admin),
+                Error::<T>::NotAuthorized
+            );
             FriendsOf::<T>::try_mutate(deceased_id, &who, |maybe| -> DispatchResult {
                 let r = maybe.as_mut().ok_or(Error::<T>::FriendNotMember)?;
-                r.role = match role { 2 => FriendRole::Admin, 1 => FriendRole::Core, _ => FriendRole::Member };
+                r.role = match role {
+                    2 => FriendRole::Admin,
+                    1 => FriendRole::Core,
+                    _ => FriendRole::Member,
+                };
                 Ok(())
             })?;
             Ok(())
@@ -1151,5 +1787,3 @@ pub mod pallet {
         }
     }
 }
-
-

@@ -10,11 +10,18 @@ pub use pallet::*;
 pub mod pallet {
     use super::*;
     // 函数级中文注释：移除未使用的 StorageVersion 导入以消除未使用警告
-    use frame_support::{pallet_prelude::*, BoundedVec, CloneNoBound, PartialEqNoBound, EqNoBound, traits::{EnsureOrigin, Currency, ExistenceRequirement}};
-    use frame_system::pallet_prelude::*;
     use alloc::vec::Vec;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{Currency, EnsureOrigin, ExistenceRequirement},
+        BoundedVec, CloneNoBound, EqNoBound, PartialEqNoBound,
+    };
+    use frame_system::pallet_prelude::*;
     // 引入 PerThing 以便使用 Permill::ACCURACY 常量
-    use sp_runtime::{traits::{SaturatedConversion, Saturating}, Permill, PerThing};
+    use sp_runtime::{
+        traits::{SaturatedConversion, Saturating},
+        PerThing, Permill,
+    };
 
     /// 函数级中文注释：目标控制接口。
     /// - exists：目标是否存在；
@@ -25,7 +32,10 @@ pub mod pallet {
         fn ensure_allowed(origin: Origin, target: (u8, u64)) -> DispatchResult;
         /// 函数级中文注释：用于成员制的允许策略（例如仅允许成员供奉）。
         /// - 返回 true 表示该调用者为目标的成员。
-        fn is_member_of(target: (u8, u64), who: &AccountId) -> bool { let _ = (target, who); true }
+        fn is_member_of(target: (u8, u64), who: &AccountId) -> bool {
+            let _ = (target, who);
+            true
+        }
     }
 
     /// 函数级中文注释：供奉提交后的回调接口，用于统计或联动积分。
@@ -36,7 +46,13 @@ pub mod pallet {
         /// - who: 供奉发起者
         /// - amount: 实际成功转账的金额（若无转账则为 None）
         /// - duration_weeks: 若为 Timed 供奉，则以“周”为单位的时长；Instant 则为 None。
-        fn on_offering(target: (u8, u64), kind_code: u8, who: &AccountId, amount: Option<u128>, duration_weeks: Option<u32>);
+        fn on_offering(
+            target: (u8, u64),
+            kind_code: u8,
+            who: &AccountId,
+            amount: Option<u128>,
+            duration_weeks: Option<u32>,
+        );
     }
 
     /// 函数级中文注释：捐赠账户解析器（由 runtime 注入）。
@@ -57,9 +73,20 @@ pub mod pallet {
     /// - can_purchase：校验可购（结合会员态）
     /// - effect_of：读取可选“消费效果”定义（例如宠物道具效果），由消费侧解释与应用
     pub trait SacrificeCatalog<AccountId, SacrificeId, Balance, BlockNumber> {
-        fn spec_of(id: SacrificeId) -> Option<(Option<Balance>, Option<Balance>, bool, bool, alloc::vec::Vec<(u8,u64)>)>;
+        fn spec_of(
+            id: SacrificeId,
+        ) -> Option<(
+            Option<Balance>,
+            Option<Balance>,
+            bool,
+            bool,
+            alloc::vec::Vec<(u8, u64)>,
+        )>;
         fn can_purchase(who: &AccountId, id: SacrificeId, is_vip: bool) -> bool;
-        fn effect_of(id: SacrificeId) -> Option<EffectSpec> { let _ = id; None }
+        fn effect_of(id: SacrificeId) -> Option<EffectSpec> {
+            let _ = id;
+            None
+        }
     }
 
     /// 函数级中文注释：消费效果定义（跨 Pallet 的低耦合数据契约）。
@@ -92,21 +119,32 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        #[pallet::constant] type MaxCidLen: Get<u32>;
-        #[pallet::constant] type MaxNameLen: Get<u32>;
-        #[pallet::constant] type MaxOfferingsPerTarget: Get<u32>;
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
+        #[pallet::constant]
+        type MaxNameLen: Get<u32>;
+        #[pallet::constant]
+        type MaxOfferingsPerTarget: Get<u32>;
         /// 函数级中文注释：单次供奉所允许附带的媒体条目上限（每条仅存 CID 与可选承诺）。
-        #[pallet::constant] type MaxMediaPerOffering: Get<u32>;
+        #[pallet::constant]
+        type MaxMediaPerOffering: Get<u32>;
         /// 函数级中文注释：单条媒体的可选备注（memo）最大长度（如前端显示用途），当前未使用，保留扩展。
-        #[pallet::constant] type MaxMemoLen: Get<u32>;
+        #[pallet::constant]
+        type MaxMemoLen: Get<u32>;
         /// 函数级中文注释：供奉限频窗口大小（以块为单位，常量默认，存储参数可覆盖）。
-        #[pallet::constant] type OfferWindow: Get<BlockNumberFor<Self>>;
+        #[pallet::constant]
+        type OfferWindow: Get<BlockNumberFor<Self>>;
         /// 函数级中文注释：窗口内最多供奉次数（常量默认，存储参数可覆盖）。
-        #[pallet::constant] type OfferMaxInWindow: Get<u32>;
+        #[pallet::constant]
+        type OfferMaxInWindow: Get<u32>;
         /// 函数级中文注释：最小供奉金额（以 u128 表示，常量默认，存储参数可覆盖）。
-        #[pallet::constant] type MinOfferAmount: Get<u128>;
+        #[pallet::constant]
+        type MinOfferAmount: Get<u128>;
         // 函数级中文注释：目标控制器，使用 runtime 的 Origin 与 AccountId 类型以进行权限校验
-        type TargetCtl: TargetControl<Self::RuntimeOrigin, <Self as frame_system::Config>::AccountId>;
+        type TargetCtl: TargetControl<
+            Self::RuntimeOrigin,
+            <Self as frame_system::Config>::AccountId,
+        >;
         type OnOffering: OnOfferingCommitted<Self::AccountId>;
         /// 函数级中文注释：管理员 Origin（Root / Council / 多签等），用于上架/下架/编辑。
         type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
@@ -125,7 +163,8 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：通用余额类型别名，便于在本 Pallet 内部进行从 u128 到链上 Balance 的安全饱和转换。
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// 函数级中文注释：供奉品类型（区分是否需要时长）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -133,7 +172,12 @@ pub mod pallet {
         /// 无时长：一次性生效
         Instant,
         /// 有时长：要求携带时长，支持上下限与到期动作
-        Timed { min: u32, max: Option<u32>, can_renew: bool, expire_action: u8 },
+        Timed {
+            min: u32,
+            max: Option<u32>,
+            can_renew: bool,
+            expire_action: u8,
+        },
     }
 
     /// 函数级中文注释：祭祀品规格（目录）。
@@ -150,7 +194,9 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：单个媒体条目，仅存 IPFS CID 与可选承诺哈希（不存明文）。
-    #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct MediaItem<T: Config> {
         /// 媒体的 IPFS CID（或其他内容可寻址标识），链上仅存标识，不存明文。
@@ -160,7 +206,9 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：供奉记录（内置媒体元数据，仅存 CID 与可选承诺，不依赖外部 Evidence）。
-    #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, TypeInfo, MaxEncodedLen,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct OfferingRecord<T: Config> {
         pub who: T::AccountId,
@@ -178,34 +226,59 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     // ===== 可治理风控参数（以存储参数为准，常量作为默认）=====
-    #[pallet::type_value] pub fn DefaultOfferWindow<T: Config>() -> BlockNumberFor<T> { T::OfferWindow::get() }
-    #[pallet::type_value] pub fn DefaultOfferMaxInWindow<T: Config>() -> u32 { T::OfferMaxInWindow::get() }
-    #[pallet::type_value] pub fn DefaultMinOfferAmount<T: Config>() -> u128 { T::MinOfferAmount::get() }
+    #[pallet::type_value]
+    pub fn DefaultOfferWindow<T: Config>() -> BlockNumberFor<T> {
+        T::OfferWindow::get()
+    }
+    #[pallet::type_value]
+    pub fn DefaultOfferMaxInWindow<T: Config>() -> u32 {
+        T::OfferMaxInWindow::get()
+    }
+    #[pallet::type_value]
+    pub fn DefaultMinOfferAmount<T: Config>() -> u128 {
+        T::MinOfferAmount::get()
+    }
 
     /// 供奉限频窗口（块）
-    #[pallet::storage] pub type OfferWindowParam<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultOfferWindow<T>>;
+    #[pallet::storage]
+    pub type OfferWindowParam<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultOfferWindow<T>>;
     /// 窗口内最多供奉次数
-    #[pallet::storage] pub type OfferMaxInWindowParam<T: Config> = StorageValue<_, u32, ValueQuery, DefaultOfferMaxInWindow<T>>;
+    #[pallet::storage]
+    pub type OfferMaxInWindowParam<T: Config> =
+        StorageValue<_, u32, ValueQuery, DefaultOfferMaxInWindow<T>>;
     /// 最小供奉金额
-    #[pallet::storage] pub type MinOfferAmountParam<T: Config> = StorageValue<_, u128, ValueQuery, DefaultMinOfferAmount<T>>;
+    #[pallet::storage]
+    pub type MinOfferAmountParam<T: Config> =
+        StorageValue<_, u128, ValueQuery, DefaultMinOfferAmount<T>>;
     /// 限频计数（账户 -> (窗口起点, 计数)）
-    #[pallet::storage] pub type OfferRate<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
+    #[pallet::storage]
+    pub type OfferRate<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
     /// 目标级限频计数（目标 -> (窗口起点, 计数)）
-    #[pallet::storage] pub type OfferRateByTarget<T: Config> = StorageMap<_, Blake2_128Concat, (u8,u64), (BlockNumberFor<T>, u32), ValueQuery>;
+    #[pallet::storage]
+    pub type OfferRateByTarget<T: Config> =
+        StorageMap<_, Blake2_128Concat, (u8, u64), (BlockNumberFor<T>, u32), ValueQuery>;
     /// 暂停总开关
-    #[pallet::storage] pub type PausedGlobal<T: Config> = StorageValue<_, bool, ValueQuery>;
+    #[pallet::storage]
+    pub type PausedGlobal<T: Config> = StorageValue<_, bool, ValueQuery>;
     /// 按域暂停
-    #[pallet::storage] pub type PausedByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, bool, ValueQuery>;
+    #[pallet::storage]
+    pub type PausedByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, bool, ValueQuery>;
 
     /// 函数级中文注释：逝者主题账户分账比例（Permill，默认 20%）。
     #[pallet::type_value]
-    pub fn DefaultSubjectBps<T: Config>() -> Permill { Permill::from_percent(20) }
+    pub fn DefaultSubjectBps<T: Config>() -> Permill {
+        Permill::from_percent(20)
+    }
     #[pallet::storage]
     pub type SubjectBps<T: Config> = StorageValue<_, Permill, ValueQuery, DefaultSubjectBps<T>>;
 
     /// 函数级中文注释：路由分账最大笔数（用于裁剪 Router 返回项，防止状态/计算膨胀）。
     #[pallet::type_value]
-    pub fn DefaultMaxRouteSplits<T: Config>() -> u32 { 5 }
+    pub fn DefaultMaxRouteSplits<T: Config>() -> u32 {
+        5
+    }
     #[pallet::storage]
     pub type MaxRouteSplits<T: Config> = StorageValue<_, u32, ValueQuery, DefaultMaxRouteSplits<T>>;
 
@@ -213,9 +286,12 @@ pub mod pallet {
     /// - true：回退到 `DonationResolver::account_for(target)`；
     /// - false：忽略剩余（不再额外转账）。
     #[pallet::type_value]
-    pub fn DefaultRouteRemainderToDefault<T: Config>() -> bool { true }
+    pub fn DefaultRouteRemainderToDefault<T: Config>() -> bool {
+        true
+    }
     #[pallet::storage]
-    pub type RouteRemainderToDefault<T: Config> = StorageValue<_, bool, ValueQuery, DefaultRouteRemainderToDefault<T>>;
+    pub type RouteRemainderToDefault<T: Config> =
+        StorageValue<_, bool, ValueQuery, DefaultRouteRemainderToDefault<T>>;
 
     // ====== 多路分账（可治理）======
     /// 函数级中文注释：路由项（最多 5 条）。
@@ -232,11 +308,13 @@ pub mod pallet {
 
     /// 函数级中文注释：全局路由表（当按域未配置时回退）。
     #[pallet::storage]
-    pub type RouteTableGlobal<T: Config> = StorageValue<_, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
+    pub type RouteTableGlobal<T: Config> =
+        StorageValue<_, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
 
     /// 函数级中文注释：按域路由表（优先级高于全局）。key = domain（u8）。
     #[pallet::storage]
-    pub type RouteTableByDomain<T: Config> = StorageMap<_, Blake2_128Concat, u8, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
+    pub type RouteTableByDomain<T: Config> =
+        StorageMap<_, Blake2_128Concat, u8, BoundedVec<RouteEntry<T>, ConstU32<5>>, OptionQuery>;
 
     #[pallet::storage]
     pub type Specs<T: Config> = StorageMap<_, Blake2_128Concat, u8, OfferingSpec<T>, OptionQuery>;
@@ -244,14 +322,23 @@ pub mod pallet {
     /// 函数级中文注释：定价（独立存储，避免变更规格结构导致迁移）。
     /// - Instant：使用 FixedPriceOf(kind_code)；
     /// - Timed：使用 UnitPricePerWeekOf(kind_code) × duration；
-    #[pallet::storage] pub type FixedPriceOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
-    #[pallet::storage] pub type UnitPricePerWeekOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
+    #[pallet::storage]
+    pub type FixedPriceOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
+    #[pallet::storage]
+    pub type UnitPricePerWeekOf<T: Config> = StorageMap<_, Blake2_128Concat, u8, u128, OptionQuery>;
 
     #[pallet::storage]
-    pub type OfferingsByTarget<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u64), BoundedVec<u64, T::MaxOfferingsPerTarget>, ValueQuery>;
+    pub type OfferingsByTarget<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (u8, u64),
+        BoundedVec<u64, T::MaxOfferingsPerTarget>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
-    pub type OfferingRecords<T: Config> = StorageMap<_, Blake2_128Concat, u64, OfferingRecord<T>, OptionQuery>;
+    pub type OfferingRecords<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, OfferingRecord<T>, OptionQuery>;
 
     #[pallet::storage]
     pub type NextOfferingId<T: Config> = StorageValue<_, u64, ValueQuery>;
@@ -261,13 +348,20 @@ pub mod pallet {
         match &spec.kind {
             OfferingKind::Instant => true,
             OfferingKind::Timed { min, max, .. } => {
-                if let Some(mx) = max { *min <= *mx } else { true }
+                if let Some(mx) = max {
+                    *min <= *mx
+                } else {
+                    true
+                }
             }
         }
     }
 
     /// 函数级中文注释：下单时长的策略校验。
-    fn ensure_duration_allowed<T: Config>(spec: &OfferingSpec<T>, duration: &Option<u32>) -> DispatchResult {
+    fn ensure_duration_allowed<T: Config>(
+        spec: &OfferingSpec<T>,
+        duration: &Option<u32>,
+    ) -> DispatchResult {
         match &spec.kind {
             OfferingKind::Instant => {
                 ensure!(duration.is_none(), Error::<T>::DurationNotAllowed);
@@ -275,7 +369,9 @@ pub mod pallet {
             }
             OfferingKind::Timed { min, max, .. } => {
                 let d = duration.ok_or(Error::<T>::DurationRequired)?;
-                if let Some(mx) = max { ensure!(d <= *mx, Error::<T>::DurationOutOfRange); }
+                if let Some(mx) = max {
+                    ensure!(d <= *mx, Error::<T>::DurationOutOfRange);
+                }
                 ensure!(d >= *min, Error::<T>::DurationOutOfRange);
                 Ok(())
             }
@@ -292,7 +388,11 @@ pub mod pallet {
         /// 设置模板是否启用
         OfferingEnabled { kind_code: u8, enabled: bool },
         /// 函数级中文注释：定价已更新（快照）。
-        OfferingPriceUpdated { kind_code: u8, fixed_price: Option<u128>, unit_price_per_week: Option<u128> },
+        OfferingPriceUpdated {
+            kind_code: u8,
+            fixed_price: Option<u128>,
+            unit_price_per_week: Option<u128>,
+        },
         /// 函数级中文注释：供奉已确认并落账（便于 Subsquid 索引）。
         /// - 增补字段：who/amount/duration_weeks/block，降低索引端读取存储的复杂度与成本。
         OfferingCommitted {
@@ -361,8 +461,13 @@ pub mod pallet {
     #[allow(warnings)]
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释（内部工具）：记录治理证据 CID（明文），返回有界向量。
-        fn note_evidence(scope: u8, key: u64, cid: Vec<u8>) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
-            let bv: BoundedVec<u8, T::MaxCidLen> = BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
+        fn note_evidence(
+            scope: u8,
+            key: u64,
+            cid: Vec<u8>,
+        ) -> Result<BoundedVec<u8, T::MaxCidLen>, DispatchError> {
+            let bv: BoundedVec<u8, T::MaxCidLen> =
+                BoundedVec::try_from(cid).map_err(|_| DispatchError::Other("BadInput"))?;
             Self::deposit_event(Event::GovEvidenceNoted(scope, key, bv.clone()));
             Ok(bv)
         }
@@ -392,10 +497,21 @@ pub mod pallet {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
             let kind = match kind_flag {
                 0 => OfferingKind::Instant,
-                1 => OfferingKind::Timed { min: min_duration.unwrap_or(1), max: max_duration, can_renew, expire_action },
+                1 => OfferingKind::Timed {
+                    min: min_duration.unwrap_or(1),
+                    max: max_duration,
+                    can_renew,
+                    expire_action,
+                },
                 _ => return Err(Error::<T>::BadKind.into()),
             };
-            let spec = OfferingSpec::<T> { kind_code, name, media_schema_cid, enabled, kind };
+            let spec = OfferingSpec::<T> {
+                kind_code,
+                name,
+                media_schema_cid,
+                enabled,
+                kind,
+            };
             ensure!(spec_validate::<T>(&spec), Error::<T>::BadKind);
             Specs::<T>::insert(kind_code, spec);
             Self::deposit_event(Event::OfferingCreated { kind_code });
@@ -419,13 +535,31 @@ pub mod pallet {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
             Specs::<T>::try_mutate(kind_code, |maybe| -> DispatchResult {
                 let s = maybe.as_mut().ok_or(Error::<T>::BadKind)?;
-                if let Some(n) = name { s.name = n; }
-                if let Some(c) = media_schema_cid { s.media_schema_cid = c; }
-                if let OfferingKind::Timed { min, max, can_renew: cr, expire_action: ea } = &mut s.kind {
-                    if let Some(md) = min_duration { *min = md.unwrap_or(*min); }
-                    if let Some(mx) = max_duration { *max = mx; }
-                    if let Some(r) = can_renew { *cr = r; }
-                    if let Some(e) = expire_action { *ea = e; }
+                if let Some(n) = name {
+                    s.name = n;
+                }
+                if let Some(c) = media_schema_cid {
+                    s.media_schema_cid = c;
+                }
+                if let OfferingKind::Timed {
+                    min,
+                    max,
+                    can_renew: cr,
+                    expire_action: ea,
+                } = &mut s.kind
+                {
+                    if let Some(md) = min_duration {
+                        *min = md.unwrap_or(*min);
+                    }
+                    if let Some(mx) = max_duration {
+                        *max = mx;
+                    }
+                    if let Some(r) = can_renew {
+                        *cr = r;
+                    }
+                    if let Some(e) = expire_action {
+                        *ea = e;
+                    }
                 }
                 ensure!(spec_validate::<T>(s), Error::<T>::BadKind);
                 Ok(())
@@ -438,7 +572,11 @@ pub mod pallet {
         #[pallet::call_index(2)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn set_offering_enabled(origin: OriginFor<T>, kind_code: u8, enabled: bool) -> DispatchResult {
+        pub fn set_offering_enabled(
+            origin: OriginFor<T>,
+            kind_code: u8,
+            enabled: bool,
+        ) -> DispatchResult {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
             Specs::<T>::try_mutate(kind_code, |maybe| -> DispatchResult {
                 let s = maybe.as_mut().ok_or(Error::<T>::BadKind)?;
@@ -467,7 +605,9 @@ pub mod pallet {
             let who = ensure_signed(origin.clone())?;
             // 暂停检查（全局/按域）
             ensure!(!PausedGlobal::<T>::get(), Error::<T>::NotAllowed);
-            if PausedByDomain::<T>::get(target.0) { return Err(Error::<T>::NotAllowed.into()); }
+            if PausedByDomain::<T>::get(target.0) {
+                return Err(Error::<T>::NotAllowed.into());
+            }
             ensure!(Specs::<T>::contains_key(kind_code), Error::<T>::BadKind);
             let spec = Specs::<T>::get(kind_code).ok_or(Error::<T>::BadKind)?;
             ensure!(spec.enabled, Error::<T>::OfferingDisabled);
@@ -479,20 +619,36 @@ pub mod pallet {
             let now = <frame_system::Pallet<T>>::block_number();
             let (win_start, cnt) = OfferRate::<T>::get(&who);
             let window = OfferWindowParam::<T>::get();
-            let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
+            let (win_start, cnt) = if now.saturating_sub(win_start) > window {
+                (now, 0u32)
+            } else {
+                (win_start, cnt)
+            };
             ensure!(cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
             OfferRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
             let (t_start, t_cnt) = OfferRateByTarget::<T>::get(target);
-            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window { (now, 0u32) } else { (t_start, t_cnt) };
-            ensure!(t_cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window {
+                (now, 0u32)
+            } else {
+                (t_start, t_cnt)
+            };
+            ensure!(
+                t_cnt < OfferMaxInWindowParam::<T>::get(),
+                Error::<T>::TooMany
+            );
             OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
             // 供奉为付费动作：要求 amount ≥ MinOfferAmount，并完成实际转账
             let amt = amount.ok_or(Error::<T>::AmountRequired)?;
-            ensure!(amt >= MinOfferAmountParam::<T>::get(), Error::<T>::AmountTooLow);
+            ensure!(
+                amt >= MinOfferAmountParam::<T>::get(),
+                Error::<T>::AmountTooLow
+            );
             // 定价校验：Instant → fixed；Timed → unit×duration
             match &spec.kind {
                 OfferingKind::Instant => {
-                    if let Some(p) = FixedPriceOf::<T>::get(kind_code) { ensure!(amt == p, Error::<T>::AmountTooLow); }
+                    if let Some(p) = FixedPriceOf::<T>::get(kind_code) {
+                        ensure!(amt == p, Error::<T>::AmountTooLow);
+                    }
                 }
                 OfferingKind::Timed { .. } => {
                     if let Some(u) = UnitPricePerWeekOf::<T>::get(kind_code) {
@@ -508,18 +664,26 @@ pub mod pallet {
             let mut shares = T::DonationRouter::route(target, amt);
             // 裁剪条数上限
             let max_splits = MaxRouteSplits::<T>::get().max(0);
-            if shares.len() as u32 > max_splits { shares.truncate(max_splits as usize); }
+            if shares.len() as u32 > max_splits {
+                shares.truncate(max_splits as usize);
+            }
             // 执行转账（超额部分由 remainder 承担）
             for (acc, pm) in shares.into_iter() {
                 let part_u128: u128 = pm * amt; // Permill * u128 → u128
-                if part_u128 == 0 { continue; }
+                if part_u128 == 0 {
+                    continue;
+                }
                 let transfer_u128 = core::cmp::min(part_u128, remainder_u128);
-                if transfer_u128 == 0 { break; }
+                if transfer_u128 == 0 {
+                    break;
+                }
                 let bal: BalanceOf<T> = transfer_u128.saturated_into();
                 T::Currency::transfer(&who, &acc, bal, ExistenceRequirement::KeepAlive)?;
                 routed.push((acc, transfer_u128));
                 remainder_u128 = remainder_u128.saturating_sub(transfer_u128);
-                if remainder_u128 == 0 { break; }
+                if remainder_u128 == 0 {
+                    break;
+                }
             }
             // 处理回退：根据策略决定是否回退到默认收款账户
             if remainder_u128 > 0 && RouteRemainderToDefault::<T>::get() {
@@ -534,17 +698,48 @@ pub mod pallet {
                 let item = MediaItem::<T> { cid, commit };
                 items.try_push(item).map_err(|_| Error::<T>::TooMany)?;
             }
-            let id = NextOfferingId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
+            let id = NextOfferingId::<T>::mutate(|n| {
+                let id = *n;
+                *n = n.saturating_add(1);
+                id
+            });
             let now = <frame_system::Pallet<T>>::block_number();
-            let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code, amount: settled_amount, media: items, duration, time: now };
+            let rec = OfferingRecord::<T> {
+                who: who.clone(),
+                target,
+                kind_code,
+                amount: settled_amount,
+                media: items,
+                duration,
+                time: now,
+            };
             OfferingRecords::<T>::insert(id, &rec);
-            OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            OfferingsByTarget::<T>::try_mutate(target, |v| {
+                v.try_push(id).map_err(|_| Error::<T>::TooMany)
+            })?;
             // 审计分账事件
-            Self::deposit_event(Event::OfferingRouted { id, target, gross: amt, shares: routed, remainder: remainder_u128 });
+            Self::deposit_event(Event::OfferingRouted {
+                id,
+                target,
+                gross: amt,
+                shares: routed,
+                remainder: remainder_u128,
+            });
             // 传递以“周”为单位的有效期：Instant=None，Timed=Some(duration)
-            let duration_weeks: Option<u32> = match &spec.kind { OfferingKind::Instant => None, OfferingKind::Timed { .. } => duration };
+            let duration_weeks: Option<u32> = match &spec.kind {
+                OfferingKind::Instant => None,
+                OfferingKind::Timed { .. } => duration,
+            };
             T::OnOffering::on_offering(target, kind_code, &who, settled_amount, duration_weeks);
-            Self::deposit_event(Event::OfferingCommitted { id, target, kind_code, who, amount: settled_amount, duration_weeks, block: now });
+            Self::deposit_event(Event::OfferingCommitted {
+                id,
+                target,
+                kind_code,
+                who,
+                amount: settled_amount,
+                duration_weeks,
+                block: now,
+            });
             Ok(())
         }
 
@@ -552,8 +747,20 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn batch_offer(origin: OriginFor<T>, calls: Vec<(u8, u64, u8, Option<u128>, Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>, Option<u32>)>) -> DispatchResult {
-            for (d,id,k,a,m,dur) in calls { Self::offer(origin.clone(), (d,id), k, a, m, dur)?; }
+        pub fn batch_offer(
+            origin: OriginFor<T>,
+            calls: Vec<(
+                u8,
+                u64,
+                u8,
+                Option<u128>,
+                Vec<(BoundedVec<u8, T::MaxCidLen>, Option<sp_core::H256>)>,
+                Option<u32>,
+            )>,
+        ) -> DispatchResult {
+            for (d, id, k, a, m, dur) in calls {
+                Self::offer(origin.clone(), (d, id), k, a, m, dur)?;
+            }
             Ok(())
         }
 
@@ -571,10 +778,18 @@ pub mod pallet {
             subject_bps: Option<u32>,
         ) -> DispatchResult {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
-            if let Some(v) = offer_window { OfferWindowParam::<T>::put(v); }
-            if let Some(v) = offer_max_in_window { OfferMaxInWindowParam::<T>::put(v); }
-            if let Some(v) = min_offer_amount { MinOfferAmountParam::<T>::put(v); }
-            if let Some(p) = subject_bps { SubjectBps::<T>::put(Permill::from_parts(p.min(1_000_000))); }
+            if let Some(v) = offer_window {
+                OfferWindowParam::<T>::put(v);
+            }
+            if let Some(v) = offer_max_in_window {
+                OfferMaxInWindowParam::<T>::put(v);
+            }
+            if let Some(v) = min_offer_amount {
+                MinOfferAmountParam::<T>::put(v);
+            }
+            if let Some(p) = subject_bps {
+                SubjectBps::<T>::put(Permill::from_parts(p.min(1_000_000)));
+            }
             Self::deposit_event(Event::OfferParamsUpdated);
             Ok(())
         }
@@ -583,7 +798,10 @@ pub mod pallet {
         #[pallet::call_index(15)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn set_route_table_global(origin: OriginFor<T>, routes: Vec<(u8, Option<T::AccountId>, u32)>) -> DispatchResult {
+        pub fn set_route_table_global(
+            origin: OriginFor<T>,
+            routes: Vec<(u8, Option<T::AccountId>, u32)>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let mut list: BoundedVec<RouteEntry<T>, ConstU32<5>> = Default::default();
             let mut sum: u32 = 0;
@@ -596,9 +814,12 @@ pub mod pallet {
                     (0, _) | (1, Some(_)) => {}
                     _ => return Err(Error::<T>::BadRouteEntry.into()),
                 }
-                list
-                    .try_push(RouteEntry::<T> { kind, account: acc, share: pm })
-                    .map_err(|_| Error::<T>::TooMany)?;
+                list.try_push(RouteEntry::<T> {
+                    kind,
+                    account: acc,
+                    share: pm,
+                })
+                .map_err(|_| Error::<T>::TooMany)?;
             }
             ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
             RouteTableGlobal::<T>::put(list);
@@ -610,7 +831,11 @@ pub mod pallet {
         #[pallet::call_index(16)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn set_route_table_by_domain(origin: OriginFor<T>, domain: u8, routes: Vec<(u8, Option<T::AccountId>, u32)>) -> DispatchResult {
+        pub fn set_route_table_by_domain(
+            origin: OriginFor<T>,
+            domain: u8,
+            routes: Vec<(u8, Option<T::AccountId>, u32)>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let mut list: BoundedVec<RouteEntry<T>, ConstU32<5>> = Default::default();
             let mut sum: u32 = 0;
@@ -623,13 +848,19 @@ pub mod pallet {
                     (0, _) | (1, Some(_)) => {}
                     _ => return Err(Error::<T>::BadRouteEntry.into()),
                 }
-                list
-                    .try_push(RouteEntry::<T> { kind, account: acc, share: pm })
-                    .map_err(|_| Error::<T>::TooMany)?;
+                list.try_push(RouteEntry::<T> {
+                    kind,
+                    account: acc,
+                    share: pm,
+                })
+                .map_err(|_| Error::<T>::TooMany)?;
             }
             ensure!(sum <= Permill::ACCURACY as u32, Error::<T>::TooMany);
             RouteTableByDomain::<T>::insert(domain, list);
-            Self::deposit_event(Event::RouteTableUpdated { scope: 1, key: domain as u64 });
+            Self::deposit_event(Event::RouteTableUpdated {
+                scope: 1,
+                key: domain as u64,
+            });
             Ok(())
         }
 
@@ -646,9 +877,15 @@ pub mod pallet {
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let _ = Self::note_evidence(1u8, 0u64, evidence_cid)?;
-            if let Some(v) = offer_window { OfferWindowParam::<T>::put(v); }
-            if let Some(v) = offer_max_in_window { OfferMaxInWindowParam::<T>::put(v); }
-            if let Some(v) = min_offer_amount { MinOfferAmountParam::<T>::put(v); }
+            if let Some(v) = offer_window {
+                OfferWindowParam::<T>::put(v);
+            }
+            if let Some(v) = offer_max_in_window {
+                OfferMaxInWindowParam::<T>::put(v);
+            }
+            if let Some(v) = min_offer_amount {
+                MinOfferAmountParam::<T>::put(v);
+            }
             Self::deposit_event(Event::OfferParamsUpdated);
             Ok(())
         }
@@ -666,14 +903,24 @@ pub mod pallet {
         ) -> DispatchResult {
             T::AdminOrigin::try_origin(origin).map_err(|_| DispatchError::BadOrigin)?;
             if let Some(fp) = fixed_price {
-                match fp { Some(v) => FixedPriceOf::<T>::insert(kind_code, v), None => FixedPriceOf::<T>::remove(kind_code) }
+                match fp {
+                    Some(v) => FixedPriceOf::<T>::insert(kind_code, v),
+                    None => FixedPriceOf::<T>::remove(kind_code),
+                }
             }
             if let Some(up) = unit_price_per_week {
-                match up { Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v), None => UnitPricePerWeekOf::<T>::remove(kind_code) }
+                match up {
+                    Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v),
+                    None => UnitPricePerWeekOf::<T>::remove(kind_code),
+                }
             }
             let cur_fp = FixedPriceOf::<T>::get(kind_code);
             let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
-            Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
+            Self::deposit_event(Event::OfferingPriceUpdated {
+                kind_code,
+                fixed_price: cur_fp,
+                unit_price_per_week: cur_up,
+            });
             Ok(())
         }
 
@@ -690,11 +937,25 @@ pub mod pallet {
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let _ = Self::note_evidence(2u8, kind_code as u64, evidence_cid)?;
-            if let Some(fp) = fixed_price { match fp { Some(v) => FixedPriceOf::<T>::insert(kind_code, v), None => FixedPriceOf::<T>::remove(kind_code) } }
-            if let Some(up) = unit_price_per_week { match up { Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v), None => UnitPricePerWeekOf::<T>::remove(kind_code) } }
+            if let Some(fp) = fixed_price {
+                match fp {
+                    Some(v) => FixedPriceOf::<T>::insert(kind_code, v),
+                    None => FixedPriceOf::<T>::remove(kind_code),
+                }
+            }
+            if let Some(up) = unit_price_per_week {
+                match up {
+                    Some(v) => UnitPricePerWeekOf::<T>::insert(kind_code, v),
+                    None => UnitPricePerWeekOf::<T>::remove(kind_code),
+                }
+            }
             let cur_fp = FixedPriceOf::<T>::get(kind_code);
             let cur_up = UnitPricePerWeekOf::<T>::get(kind_code);
-            Self::deposit_event(Event::OfferingPriceUpdated { kind_code, fixed_price: cur_fp, unit_price_per_week: cur_up });
+            Self::deposit_event(Event::OfferingPriceUpdated {
+                kind_code,
+                fixed_price: cur_fp,
+                unit_price_per_week: cur_up,
+            });
             Ok(())
         }
 
@@ -726,7 +987,11 @@ pub mod pallet {
         #[pallet::call_index(12)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_pause_global(origin: OriginFor<T>, paused: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_pause_global(
+            origin: OriginFor<T>,
+            paused: bool,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let _ = Self::note_evidence(3u8, 0u64, evidence_cid)?;
             PausedGlobal::<T>::put(paused);
@@ -738,7 +1003,12 @@ pub mod pallet {
         #[pallet::call_index(13)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_pause_domain(origin: OriginFor<T>, domain: u8, paused: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_pause_domain(
+            origin: OriginFor<T>,
+            domain: u8,
+            paused: bool,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let _ = Self::note_evidence(4u8, domain as u64, evidence_cid)?;
             PausedByDomain::<T>::insert(domain, paused);
@@ -751,7 +1021,12 @@ pub mod pallet {
         #[pallet::call_index(14)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
-        pub fn gov_set_offering_enabled(origin: OriginFor<T>, kind_code: u8, enabled: bool, evidence_cid: Vec<u8>) -> DispatchResult {
+        pub fn gov_set_offering_enabled(
+            origin: OriginFor<T>,
+            kind_code: u8,
+            enabled: bool,
+            evidence_cid: Vec<u8>,
+        ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             let _ = Self::note_evidence(1u8, kind_code as u64, evidence_cid)?;
             Specs::<T>::try_mutate(kind_code, |maybe| -> DispatchResult {
@@ -780,23 +1055,47 @@ pub mod pallet {
             let who = ensure_signed(origin.clone())?;
             // 暂停检查（全局/按域）
             ensure!(!PausedGlobal::<T>::get(), Error::<T>::NotAllowed);
-            if PausedByDomain::<T>::get(target.0) { return Err(Error::<T>::NotAllowed.into()); }
+            if PausedByDomain::<T>::get(target.0) {
+                return Err(Error::<T>::NotAllowed.into());
+            }
             ensure!(T::TargetCtl::exists(target), Error::<T>::TargetNotFound);
             T::TargetCtl::ensure_allowed(origin, target).map_err(|_| Error::<T>::NotAllowed)?;
-            let (fixed, unit, enabled, _vip_only, exclusive) = T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
+            let (fixed, unit, enabled, _vip_only, exclusive) =
+                T::Catalog::spec_of(sacrifice_id).ok_or(Error::<T>::NotFound)?;
             ensure!(enabled, Error::<T>::NotFound);
-            ensure!(T::Catalog::can_purchase(&who, sacrifice_id, is_vip), Error::<T>::NotAllowed);
-            if !exclusive.is_empty() { ensure!(exclusive.iter().any(|pair| pair.0 == target.0 && pair.1 == target.1), Error::<T>::NotAllowed); }
+            ensure!(
+                T::Catalog::can_purchase(&who, sacrifice_id, is_vip),
+                Error::<T>::NotAllowed
+            );
+            if !exclusive.is_empty() {
+                ensure!(
+                    exclusive
+                        .iter()
+                        .any(|pair| pair.0 == target.0 && pair.1 == target.1),
+                    Error::<T>::NotAllowed
+                );
+            }
             // 限频：账户 + 目标 双滑动窗口
             let now = <frame_system::Pallet<T>>::block_number();
             let (win_start, cnt) = OfferRate::<T>::get(&who);
             let window = OfferWindowParam::<T>::get();
-            let (win_start, cnt) = if now.saturating_sub(win_start) > window { (now, 0u32) } else { (win_start, cnt) };
+            let (win_start, cnt) = if now.saturating_sub(win_start) > window {
+                (now, 0u32)
+            } else {
+                (win_start, cnt)
+            };
             ensure!(cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
             OfferRate::<T>::insert(&who, (win_start, cnt.saturating_add(1)));
             let (t_start, t_cnt) = OfferRateByTarget::<T>::get(target);
-            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window { (now, 0u32) } else { (t_start, t_cnt) };
-            ensure!(t_cnt < OfferMaxInWindowParam::<T>::get(), Error::<T>::TooMany);
+            let (t_start, t_cnt) = if now.saturating_sub(t_start) > window {
+                (now, 0u32)
+            } else {
+                (t_start, t_cnt)
+            };
+            ensure!(
+                t_cnt < OfferMaxInWindowParam::<T>::get(),
+                Error::<T>::TooMany
+            );
             OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
             // 计算应付金额
             let amount: u128 = if let Some(p) = fixed {
@@ -806,30 +1105,63 @@ pub mod pallet {
                 let d = duration_weeks.ok_or(Error::<T>::DurationRequired)? as u128;
                 u.saturating_mul(d)
             };
-            if amount > 0 { ensure!(amount >= MinOfferAmountParam::<T>::get(), Error::<T>::AmountTooLow); }
+            if amount > 0 {
+                ensure!(
+                    amount >= MinOfferAmountParam::<T>::get(),
+                    Error::<T>::AmountTooLow
+                );
+            }
             let dest = T::DonationResolver::account_for(target);
             if amount > 0 {
                 let amt_balance: BalanceOf<T> = amount.saturated_into();
                 T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
             }
             let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
-            for (cid, commit) in media.into_iter() { items.try_push(MediaItem::<T> { cid, commit }).map_err(|_| Error::<T>::TooMany)?; }
-            let id = NextOfferingId::<T>::mutate(|n| { let id = *n; *n = n.saturating_add(1); id });
+            for (cid, commit) in media.into_iter() {
+                items
+                    .try_push(MediaItem::<T> { cid, commit })
+                    .map_err(|_| Error::<T>::TooMany)?;
+            }
+            let id = NextOfferingId::<T>::mutate(|n| {
+                let id = *n;
+                *n = n.saturating_add(1);
+                id
+            });
             let now = <frame_system::Pallet<T>>::block_number();
-            let rec = OfferingRecord::<T> { who: who.clone(), target, kind_code: 0, amount: Some(amount), media: items, duration: duration_weeks, time: now };
+            let rec = OfferingRecord::<T> {
+                who: who.clone(),
+                target,
+                kind_code: 0,
+                amount: Some(amount),
+                media: items,
+                duration: duration_weeks,
+                time: now,
+            };
             OfferingRecords::<T>::insert(id, &rec);
-            OfferingsByTarget::<T>::try_mutate(target, |v| v.try_push(id).map_err(|_| Error::<T>::TooMany))?;
+            OfferingsByTarget::<T>::try_mutate(target, |v| {
+                v.try_push(id).map_err(|_| Error::<T>::TooMany)
+            })?;
             T::OnOffering::on_offering(target, 0, &who, Some(amount), duration_weeks);
-            Self::deposit_event(Event::OfferingCommittedBySacrifice { id, target, sacrifice_id, who, amount, duration_weeks, block: now });
+            Self::deposit_event(Event::OfferingCommittedBySacrifice {
+                id,
+                target,
+                sacrifice_id,
+                who,
+                amount,
+                duration_weeks,
+                block: now,
+            });
             // 尝试读取消费效果并调用消费侧回调（失败不回滚交易，确保资金路径安全）
             if let Some(effect) = T::Catalog::effect_of(sacrifice_id) {
                 if effect.target_domain == target.0 {
-                    let _ = T::Consumer::apply(target, &OfferingRecords::<T>::get(id).unwrap().who, &effect);
+                    let _ = T::Consumer::apply(
+                        target,
+                        &OfferingRecords::<T>::get(id).unwrap().who,
+                        &effect,
+                    );
                 }
             }
             Ok(())
         }
     }
 }
-
-
