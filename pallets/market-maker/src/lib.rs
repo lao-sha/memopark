@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub use pallet::*;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::traits::{tokens::Imbalance, ConstU32};
@@ -75,6 +77,9 @@ pub mod pallet {
         /// 最大交易对数量（预留）
         #[pallet::constant]
         type MaxPairs: Get<u32>;
+        /// 函数级中文注释：治理起源（用于批准/驳回做市商申请）
+        /// - 推荐配置为 Root 或 委员会 2/3 多数
+        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -270,11 +275,13 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 批准（委员会）
+        /// 函数级中文注释：批准做市商申请
+        /// - 权限：Root 或 委员会 2/3 多数通过
+        /// - 通过委员会提案流程：propose → vote → close 自动调用本函数
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::approve())]
         pub fn approve(origin: OriginFor<T>, mm_id: u64) -> DispatchResult {
-            ensure_root(origin)?; // 后续改为 EnsureMember<Collective>
+            T::GovernanceOrigin::ensure_origin(origin)?;
             Applications::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
                 let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(
@@ -290,11 +297,14 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 驳回（扣罚/退余）
+        /// 函数级中文注释：驳回做市商申请
+        /// - 权限：Root 或 委员会 2/3 多数通过
+        /// - 通过委员会提案流程：propose → vote → close 自动调用本函数
+        /// - 扣罚比例由提案中指定，余额退还申请人
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::reject())]
         pub fn reject(origin: OriginFor<T>, mm_id: u64, slash_bps: u16) -> DispatchResult {
-            ensure_root(origin)?;
+            T::GovernanceOrigin::ensure_origin(origin)?;
             ensure!(
                 slash_bps <= T::RejectSlashBpsMax::get(),
                 Error::<T>::BadSlashRatio

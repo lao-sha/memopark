@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Card, Form, InputNumber, Button, List, Space, Tag, Typography, message, Pagination } from 'antd'
 
 /**
- * 函数级详细中文注释：目标供奉时间线（Subsquid 查询）
- * - 通过环境变量 SQUIUD_HTTP（或默认 http://localhost:4350/graphql）查询 GraphQL
- * - 查询 OfferingBySacrifice/Offering 两类（按 targetDomain/targetId 过滤）
+ * 函数级详细中文注释：目标供奉时间线（全局链上直连模式）
+ * - 当前禁用 Subsquid 查询，改为显示提示信息
+ * - 未来可从链上直接查询或接入 Subsquid
  */
 const OfferingsTimeline: React.FC = () => {
   const [form] = Form.useForm()
@@ -13,9 +13,17 @@ const OfferingsTimeline: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(20)
   const [total, setTotal] = useState<number>(0)
   const [lastQuery, setLastQuery] = useState<{ d:number; id:number; from?:number|null; to?:number|null }|null>(null)
-  const endpoint = (import.meta as any).env?.VITE_SQUID_HTTP || (window as any).__SQUID_HTTP__ || 'http://localhost:4350/graphql'
+  // 全局链上直连模式，暂时不使用 Subsquid
+  const endpoint = ''
 
+  // 函数级中文注释：全局链上直连模式，暂时禁用查询
   const query = async (domain: number, targetId: number, from?: number|null, to?: number|null, p: number = page, ps: number = pageSize) => {
+    // 暂时禁用 Subsquid 查询
+    message.warning('当前采用全局链上直连模式，供奉时间线功能暂时禁用')
+    setItems([])
+    setTotal(0)
+    
+    /* 原 Subsquid 查询代码（暂时注释）
     try {
       const q = `query Q($d:Int!,$id:BigInt!,$from:Int,$to:Int,$limit:Int!,$offset:Int!){
         a: offeringBySacrifices(
@@ -40,6 +48,7 @@ const OfferingsTimeline: React.FC = () => {
       setItems(rows)
       setTotal(Number(json?.data?.c?.totalCount || 0))
     } catch (e:any) { message.error(e?.message||'查询失败') }
+    */
   }
 
   const onFinish = (v:any) => {
@@ -60,7 +69,8 @@ const OfferingsTimeline: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12, textAlign: 'left' }}>
-      <Typography.Title level={4}>目标供奉时间线（Subsquid）</Typography.Title>
+      <Typography.Title level={4}>目标供奉时间线</Typography.Title>
+      <Alert type="warning" showIcon message="功能暂时禁用" description="当前采用全局链上直连模式，供奉时间线功能暂时禁用。需要部署 Subsquid 索引器后启用。" style={{ marginBottom: 12 }} />
       <Card size="small">
         <Form form={form} layout="inline" onFinish={onFinish} style={{ rowGap: 8 }} initialValues={{ domain: 1 }}>
           <Form.Item name="domain" rules={[{ required: true }]}>

@@ -5423,6 +5423,7 @@ dependencies = [
  "pallet-grandpa",
  "pallet-identity",
  "pallet-ledger",
+ "pallet-market-maker",
  "pallet-memo-affiliate",
  "pallet-memo-bridge",
  "pallet-memo-content-governance",

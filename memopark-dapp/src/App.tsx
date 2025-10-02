@@ -65,6 +65,7 @@ import PayCreateTestPage from './features/otc/PayCreateTestPage';
 import CreateMarketMakerPage from './features/otc/CreateMarketMakerPage';
 import GovMarketMakerReviewPage from './features/otc/GovMarketMakerReviewPage';
 import PayResultPage from './features/otc/PayResultPage';
+import CouncilProposalPage from './features/governance/CouncilProposalPage';
 
 /**
  * 函数级详细中文注释：应用主组件
@@ -133,6 +134,7 @@ const App: React.FC = () => {
                 : hash === '#/otc/order' ? <CreateOrderPage />
                 : hash === '#/otc/mm-apply' ? <CreateMarketMakerPage />
                 : hash === '#/gov/mm-review' ? <GovMarketMakerReviewPage />
+                : hash === '#/gov/council-proposals' ? <CouncilProposalPage />
                 : hash === '#/otc/pay-result' ? <PayResultPage />
                 : hash === '#/otc/pay-test' ? <PayCreateTestPage />
                 : hash === '#/otc/claim' ? <ClaimMemoForm />

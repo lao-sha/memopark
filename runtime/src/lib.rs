@@ -358,4 +358,7 @@ pub mod runtime {
 
     #[runtime::pallet_index(44)]
     pub type OtcClaim = pallet_otc_claim;
+
+    #[runtime::pallet_index(45)]
+    pub type MarketMaker = pallet_market_maker;
 }

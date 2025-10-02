@@ -16,6 +16,17 @@ my-chain-state/
 key.md
 epay.zip
 
+
+memopark-governance/node_modules
+memopark-governance/dist
+memopark-governance/dist-ssr
+memopark-governance/*.local
+memopark-governance/.vscode
+memopark-governance/.idea
+memopark-governance/.DS_Store
+memopark-governance/*.suo
+memopark-governance/*.ntvs*
+
 # ignore frontend legacy workspace dependencies
 memopark-front-end/
 

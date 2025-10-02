@@ -1428,6 +1428,38 @@ impl pallet_otc_maker::Config for Runtime {
     type Kyc = KycByIdentity;
 }
 
+// ===== market-maker 配置 =====
+parameter_types! {
+    /// 函数级中文注释：做市商最小押金（示例：1000 MEMO）
+    pub const MarketMakerMinDeposit: Balance = 1_000_000_000_000_000; // 1000 UNIT
+    /// 函数级中文注释：资料提交窗口（24 小时 = 86400 秒）
+    pub const MarketMakerInfoWindow: u32 = 86_400;
+    /// 函数级中文注释：审核窗口（7 天 = 604800 秒）
+    pub const MarketMakerReviewWindow: u32 = 604_800;
+    /// 函数级中文注释：驳回最大扣罚比例（10000 bps = 100%）
+    pub const MarketMakerRejectSlashBpsMax: u16 = 10_000;
+    /// 函数级中文注释：最大交易对数量（预留）
+    pub const MarketMakerMaxPairs: u32 = 10;
+}
+
+impl pallet_market_maker::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type WeightInfo = ();
+    type MinDeposit = MarketMakerMinDeposit;
+    type InfoWindow = MarketMakerInfoWindow;
+    type ReviewWindow = MarketMakerReviewWindow;
+    type RejectSlashBpsMax = MarketMakerRejectSlashBpsMax;
+    type MaxPairs = MarketMakerMaxPairs;
+    /// 函数级中文注释：治理起源绑定为 Root 或 委员会(Instance1) 2/3 多数
+    /// - Root：紧急通道，可单独批准/驳回
+    /// - 委员会 2/3：正常治理流程，需通过提案投票
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
+    >;
+}
+
 // ===== KYC 适配器（基于 pallet-identity 的 judgement） =====
 pub struct KycByIdentity;
 /// 函数级中文注释：KYC 适配器同时实现 memo-grave 与 otc-maker 所需的 Provider 接口。

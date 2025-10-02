@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Card, Form, Input, Button, List, Space, Tag, Typography, message, InputNumber, Pagination } from 'antd'
+import { Card, Form, Input, Button, List, Space, Tag, Typography, message, InputNumber, Pagination, Alert } from 'antd'
 
 /**
- * 函数级详细中文注释：按地址查询供奉历史（Subsquid）
- * - 查询 OfferingBySacrifice 表的 who 字段
+ * 函数级详细中文注释：按地址查询供奉历史（全局链上直连模式）
+ * - 暂时禁用 Subsquid 查询，等待部署索引器
  */
 const OfferingsByWho: React.FC = () => {
   const [form] = Form.useForm()
@@ -12,9 +12,17 @@ const OfferingsByWho: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(20)
   const [total, setTotal] = useState<number>(0)
   const [lastWho, setLastWho] = useState<string>('')
-  const endpoint = (import.meta as any).env?.VITE_SQUID_HTTP || (window as any).__SQUID_HTTP__ || 'http://localhost:4350/graphql'
+  // 全局链上直连模式，暂时不使用 Subsquid
+  const endpoint = ''
 
+  // 函数级中文注释：全局链上直连模式，暂时禁用查询
   const query = async (who: string, from?: number|null, to?: number|null, p: number = page, ps: number = pageSize) => {
+    // 暂时禁用 Subsquid 查询
+    message.warning('当前采用全局链上直连模式，按地址查询功能暂时禁用')
+    setItems([])
+    setTotal(0)
+    
+    /* 原 Subsquid 查询代码（暂时注释）
     try {
       const q = `query Q($who:String!,$from:Int,$to:Int,$limit:Int!,$offset:Int!){
         a: offeringBySacrifices(orderBy: block_DESC, where:{who_eq:$who, ${'${FROM}'} ${'${TO}'} }, limit:$limit, offset:$offset){ id block who amount sacrificeId targetDomain targetId durationWeeks }
@@ -29,6 +37,7 @@ const OfferingsByWho: React.FC = () => {
       setItems(json?.data?.a || [])
       setTotal(Number(json?.data?.c?.totalCount || 0))
     } catch (e:any) { message.error(e?.message||'查询失败') }
+    */
   }
 
   const onFinish = (v:any) => {
@@ -49,6 +58,7 @@ const OfferingsByWho: React.FC = () => {
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12, textAlign: 'left' }}>
       <Typography.Title level={4}>按地址查询供奉</Typography.Title>
+      <Alert type="warning" showIcon message="功能暂时禁用" description="当前采用全局链上直连模式，按地址查询功能暂时禁用。需要部署 Subsquid 索引器后启用。" style={{ marginBottom: 12 }} />
       <Card size="small">
         <Form form={form} layout="inline" onFinish={onFinish} style={{ rowGap: 8 }}>
           <Form.Item name="who" rules={[{ required: true, message: '请输入地址' }]}>

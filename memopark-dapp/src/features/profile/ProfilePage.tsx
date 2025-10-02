@@ -161,11 +161,26 @@ const ProfilePage: React.FC = () => {
                 </Space>
               )}
           </Card>
+          <Card size="small" title="做市商与OTC交易">
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <Typography.Text type="secondary">做市商管理</Typography.Text>
+              <Space wrap>
+                <Button onClick={()=> { window.location.hash = '#/otc/mm-apply' }}>申请做市商</Button>
+                <Button onClick={()=> { window.location.hash = '#/gov/mm-review' }}>审核做市商</Button>
+                <Button onClick={()=> { window.location.hash = '#/gov/council-proposals' }}>委员会提案</Button>
+              </Space>
+              <Typography.Text type="secondary" style={{ marginTop: 8 }}>OTC 交易</Typography.Text>
+              <Space wrap>
+                <Button type="primary" onClick={()=> { window.location.hash = '#/otc/order' }}>购买 MEMO</Button>
+                <Button onClick={()=> { window.location.hash = '#/otc/listing' }}>我的挂单</Button>
+                <Button onClick={()=> { window.location.hash = '#/otc/market' }}>交易市场</Button>
+              </Space>
+            </Space>
+          </Card>
           <Card size="small" title="网络与业务数据面板">
             <DashboardPage />
           </Card>
-          <Space>
-            <Button type="primary" onClick={()=> { window.location.hash = '#/otc/order' }}>购买 MEMO（OTC）</Button>
+          <Space wrap>
             <Button onClick={() => window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'transfer' } }))}>转账</Button>
             <Button type="primary" onClick={() => window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create-grave' } }))}>创建陵墓</Button>
             <Button onClick={()=> { window.location.hash = '#/grave/my' }}>我的墓地</Button>

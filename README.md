@@ -1,347 +1,229 @@
-# Substrate Node Template
+# Memopark - 区块链纪念平台
 
-A fresh [Substrate](https://substrate.io/) node, ready for hacking :rocket:
+基于 Substrate 的去中心化纪念与传承平台。
 
-A standalone version of this template is available for each release of Polkadot
-in the [Substrate Developer Hub Parachain
-Template](https://github.com/substrate-developer-hub/substrate-node-template/)
-repository. The parachain template is generated directly at each Polkadot
-release branch from the [Solochain Template in
-Substrate](https://github.com/paritytech/polkadot-sdk/tree/master/templates/solochain)
-upstream
+## 🚀 快速启动
 
-It is usually best to use the stand-alone version to start a new project. All
-bugs, suggestions, and feature requests should be made upstream in the
-[Substrate](https://github.com/paritytech/polkadot-sdk/tree/master/substrate)
-repository.
+### 前置要求
+- Rust 工具链（nightly）
+- Node.js 18+
+- 至少 8GB 内存
 
-## Getting Started
+### 一键启动（推荐）
 
-Depending on your operating system and Rust version, there might be additional
-packages required to compile this template. Check the
-[Install](https://docs.substrate.io/install/) instructions for your platform for
-the most common dependencies. Alternatively, you can use one of the [alternative
-installation](#alternatives-installations) options.
-
-Fetch solochain template code:
-
-```sh
-git clone https://github.com/paritytech/polkadot-sdk-solochain-template.git solochain-template
-
-cd solochain-template
-```
-
-### Build
-
-🔨 Use the following command to build the node without launching it:
-
-```sh
-cargo build --release
-```
-
-### Embedded Docs
-
-After you build the project, you can use the following command to explore its
-parameters and subcommands:
-
-```sh
-./target/release/solochain-template-node -h
-```
-
-You can generate and view the [Rust
-Docs](https://doc.rust-lang.org/cargo/commands/cargo-doc.html) for this template
-with this command:
-
-```sh
-cargo +nightly doc --open
-```
-
-### Single-Node Development Chain
-
-The following command starts a single-node development chain that doesn't
-persist state:
-
-```sh
-./target/release/solochain-template-node --dev
-```
-
-To purge the development chain's state, run the following command:
-
-```sh
-./target/release/solochain-template-node purge-chain --dev
-```
-
-To start the development chain with detailed logging, run the following command:
-
-```sh
-RUST_BACKTRACE=1 ./target/release/solochain-template-node -ldebug --dev
-```
-
-Development chains:
-
-- Maintain state in a `tmp` folder while the node is running.
-- Use the **Alice** and **Bob** accounts as default validator authorities.
-- Use the **Alice** account as the default `sudo` account.
-- Are preconfigured with a genesis state (`/node/src/chain_spec.rs`) that
-  includes several pre-funded development accounts.
-
-
-To persist chain state between runs, specify a base path by running a command
-similar to the following:
-
-```sh
-// Create a folder to use as the db base path
-$ mkdir my-chain-state
-
-// Use of that folder to store the chain state
-$ ./target/release/solochain-template-node --dev --base-path ./my-chain-state/
-
-// Check the folder structure created inside the base path after running the chain
-$ ls ./my-chain-state
-chains
-$ ls ./my-chain-state/chains/
-dev
-$ ls ./my-chain-state/chains/dev
-db keystore network
-```
-
-### Connect with Polkadot-JS Apps Front-End
-
-After you start the node template locally, you can interact with it using the
-hosted version of the [Polkadot/Substrate
-Portal](https://polkadot.js.org/apps/#/explorer?rpc=ws://localhost:9944)
-front-end by connecting to the local node endpoint. A hosted version is also
-available on [IPFS](https://dotapps.io/). You can
-also find the source code and instructions for hosting your own instance in the
-[`polkadot-js/apps`](https://github.com/polkadot-js/apps) repository.
-
-### Multi-Node Local Testnet
-
-If you want to see the multi-node consensus algorithm in action, see [Simulate a
-network](https://docs.substrate.io/tutorials/build-a-blockchain/simulate-network/).
-
-## Template Structure
-
-A Substrate project such as this consists of a number of components that are
-spread across a few directories.
-
-### Node
-
-A blockchain node is an application that allows users to participate in a
-blockchain network. Substrate-based blockchain nodes expose a number of
-capabilities:
-
-- Networking: Substrate nodes use the [`libp2p`](https://libp2p.io/) networking
-  stack to allow the nodes in the network to communicate with one another.
-- Consensus: Blockchains must have a way to come to
-  [consensus](https://docs.substrate.io/fundamentals/consensus/) on the state of
-  the network. Substrate makes it possible to supply custom consensus engines
-  and also ships with several consensus mechanisms that have been built on top
-  of [Web3 Foundation
-  research](https://research.web3.foundation/Polkadot/protocols/NPoS).
-- RPC Server: A remote procedure call (RPC) server is used to interact with
-  Substrate nodes.
-
-There are several files in the `node` directory. Take special note of the
-following:
-
-- [`chain_spec.rs`](./node/src/chain_spec.rs): A [chain
-  specification](https://docs.substrate.io/build/chain-spec/) is a source code
-  file that defines a Substrate chain's initial (genesis) state. Chain
-  specifications are useful for development and testing, and critical when
-  architecting the launch of a production chain. Take note of the
-  `development_config` and `testnet_genesis` functions. These functions are
-  used to define the genesis state for the local development chain
-  configuration. These functions identify some [well-known
-  accounts](https://docs.substrate.io/reference/command-line-tools/subkey/) and
-  use them to configure the blockchain's initial state.
-- [`service.rs`](./node/src/service.rs): This file defines the node
-  implementation. Take note of the libraries that this file imports and the
-  names of the functions it invokes. In particular, there are references to
-  consensus-related topics, such as the [block finalization and
-  forks](https://docs.substrate.io/fundamentals/consensus/#finalization-and-forks)
-  and other [consensus
-  mechanisms](https://docs.substrate.io/fundamentals/consensus/#default-consensus-models)
-  such as Aura for block authoring and GRANDPA for finality.
-
-
-### Runtime
-
-In Substrate, the terms "runtime" and "state transition function" are analogous.
-Both terms refer to the core logic of the blockchain that is responsible for
-validating blocks and executing the state changes they define. The Substrate
-project in this repository uses
-[FRAME](https://docs.substrate.io/learn/runtime-development/#frame) to construct
-a blockchain runtime. FRAME allows runtime developers to declare domain-specific
-logic in modules called "pallets". At the heart of FRAME is a helpful [macro
-language](https://docs.substrate.io/reference/frame-macros/) that makes it easy
-to create pallets and flexibly compose them to create blockchains that can
-address [a variety of needs](https://substrate.io/ecosystem/projects/).
-
-Review the [FRAME runtime implementation](./runtime/src/lib.rs) included in this
-template and note the following:
-
-- This file configures several pallets to include in the runtime. Each pallet
-  configuration is defined by a code block that begins with `impl
-  $PALLET_NAME::Config for Runtime`.
-- The pallets are composed into a single runtime by way of the
-  [#[runtime]](https://paritytech.github.io/polkadot-sdk/master/frame_support/attr.runtime.html)
-  macro, which is part of the [core FRAME pallet
-  library](https://docs.substrate.io/reference/frame-pallets/#system-pallets).
-
-### Pallets
-
-The runtime in this project is constructed using many FRAME pallets that ship
-with [the Substrate
-repository](https://github.com/paritytech/polkadot-sdk/tree/master/substrate/frame) and a
-template pallet that is [defined in the
-`pallets`](./pallets/template/src/lib.rs) directory.
-
-A FRAME pallet is comprised of a number of blockchain primitives, including:
-
-- Storage: FRAME defines a rich set of powerful [storage
-  abstractions](https://docs.substrate.io/build/runtime-storage/) that makes it
-  easy to use Substrate's efficient key-value database to manage the evolving
-  state of a blockchain.
-- Dispatchables: FRAME pallets define special types of functions that can be
-  invoked (dispatched) from outside of the runtime in order to update its state.
-- Events: Substrate uses
-  [events](https://docs.substrate.io/build/events-and-errors/) to notify users
-  of significant state changes.
-- Errors: When a dispatchable fails, it returns an error.
-
-Each pallet has its own `Config` trait which serves as a configuration interface
-to generically define the types and parameters it depends on.
-
-## Alternatives Installations
-
-Instead of installing dependencies and building this source directly, consider
-the following alternatives.
-
-### Nix
-
-Install [nix](https://nixos.org/) and
-[nix-direnv](https://github.com/nix-community/nix-direnv) for a fully
-plug-and-play experience for setting up the development environment. To get all
-the correct dependencies, activate direnv `direnv allow`.
-
-### Docker
-
-Please follow the [Substrate Docker instructions
-here](https://github.com/paritytech/polkadot-sdk/blob/master/substrate/docker/README.md) to
-build the Docker container with the Substrate Node Template binary.
-
-## memopark 定制说明（联盟托管结算 + 15 层压缩）
-
-本工程在模板基础上集成了纪念园业务与联盟计酬，核心模块：
-- `pallet-memo-offerings`：供奉目录与下单记录；Hook 联动统计与联盟计酬。
-- `pallet-memo-referrals`：极简推荐关系源，仅存 `SponsorOf` 与只读遍历。
-- `pallet-memo-affiliate`：托管结算与 15 层压缩分配（每层 5%，不足并入国库；10% 销毁，15% 国库）。
-- `pallet-ledger`：按周的活跃标记与累计统计（明细/排行交由 Subsquid）。
-
-### 供奉 → 联盟托管流程
-1. 用户在 `pallet-memo-offerings::offer` 下单；运行时将入金路由到“联盟托管账户”（PalletId 派生）。
-2. Hook 同步：
-   - 记录供奉流水与媒体；
-   - 标记有效供奉期（Timed 连续 w 周，Instant 仅入金当周）；
-   - 调用 `pallet-memo-affiliate::report(who, amount, meta, now, duration_weeks)` 进行“记账式”分配：
-     - 从下往上动态压缩寻找最多 15 个合格上级（处于有效期且直推有效数 ≥ 3×层数），为其累计应得；
-     - 不足 15 层的预算并入国库；同步累计 10% 销毁与 15% 国库基础份额。
-3. 周期末（或任意时点）分页结算：
-   - 调用 `pallet-memo-affiliate::settle(week, max_pay)`，从托管账户按索引分页向应得账户划拨，然后支付当周销毁与国库并清理索引。
-
-### 治理参数（默认）
-- 层数/比例：`MaxLevels=15`，`LevelRateBps=500`（5%/层），`BurnBps=1000`（10%），`TreasuryBps=1500`（15%）。
-- 有效期与阈值：以周为单位（`BlocksPerWeek=100_800`），直推有效阈值 `PerLevelNeed=3`。
-- 结算模式：`SettlementMode=Escrow`（托管；支持治理切换到 `Immediate` 即时）。
-
-### 关键账户
-- 黑洞：运行时常量 `BurnAccount`（b"memo/burn" 派生）。
-- 国库：运行时常量 `PlatformAccount`（可替换为治理账户）。
-- 联盟托管：运行时 `DonationAccountResolver` 路由到 PalletId 托管账户。
-
-### 开发者提示
-- 推荐关系去耦：仅在 `pallet-memo-referrals` 维护一次性绑定；联盟只读，不触碰资金。
-- 事件齐全，重查询建议使用索引器（如 SubQuery）。
-- 转账统一使用 `transfer_keep_alive`，避免误杀账户；结算与到期处理均支持分页。
-
-## 一页手册：计费 / 分账 / 推荐码 / 治理提案
-
-### 计费（memo-ipfs）
-- 两步法：向“主题资金账户”充值 → `request_pin_for_deceased(subject_id, ...)` 进入生命周期
-- 只读查询：`PinBilling(cid) -> (next_charge_at, unit_price, state)`；`PinSubjectOf(cid) -> (owner, subject_id)`
-- 参数治理：`set_billing_params(price?, period?, grace?, max_per_block?, min_reserve?, paused?)`，参数需 `>0` 防呆
-- 周期扣费：服务方/治理调用 `charge_due(limit)`，受 `MaxChargePerBlock` 与 `BillingPaused` 保护
-
-前端入口：`#/ipfs/pin`（余额/派生地址/复制/充值/下次扣费/状态）
-
-### 分账（memo-offerings）
-- 路由：优先 `RouteTableByDomain` → `RouteTableGlobal` → 兜底（Grave 域 SubjectBps）
-- 路由治理：`set_route_table_by_domain(domain, [(kind, account?, bps)])` / `set_route_table_global([...])`
-  - 校验：最多 5 条，`∑bps ≤ 1_000_000`，`kind=SpecificAccount(1)` 必须提供 `account`
-- 价格治理：`set_offering_price(kind_code, fixed?, unit?)` 与 `gov_set_offering_price(..., evidence_cid)`
-- 暂停：全局/按域暂停与对应治理接口；事件均会记录到审计时间线
-
-前端入口：`#/offerings/admin-route`（编辑/加载/保存路由表）
-
-### 推荐码与绑定（memo-referrals）
-- 一次性绑定推荐人：`bindSponsor(code)`（页面：`#/ref?code=XXXX`）
-- 默认码领取：`claim_default_code()`（需已有推荐人）；事件 `ReferralCodeAssigned`
-- 策略治理建议：码长/黑名单/一次性生成在 referrals 统一治理（affiliate 仅计算分配）
-
-### 治理提案与预映像
-- “内容委员会（Instance3，2/3）”负责内容域：目录创建、分账路由、供奉上下架/暂停等
-- 前端“发起提案”页提供预映像快速构建卡片（如：创建类目、设置分账路由），生成 hex 后提交提案
-- README 中已提供“历史改写后同步”与协作规范，避免 secrets 泄漏
-
-## 历史改写后本地同步与协作指引（重要）
-
-由于先前提交中含有第三方测试私钥样本，仓库已进行历史改写并强制推送。为避免本地分支与远端 `main` 分歧，请协作者按以下方式同步。
-
-### A. 无本地改动或允许丢弃改动
-
+#### 终端 1：启动链节点
 ```bash
-git fetch --all
-git checkout main
-git reset --hard origin/main
-# 可选：清理未跟踪文件
-git clean -xfd
+cd /home/xiaodong/文档/memopark
+./完全重置并启动.sh
 ```
 
-### B. 有本地改动需要保留（推荐先备份）
+等待看到：
+```
+✓ Running JSON-RPC server: addr=0.0.0.0:9944
+✓ 🏆 Imported #1
+```
 
+#### 终端 2：启动前端（等节点启动30秒后）
 ```bash
-# 先在当前基准上做一个备份分支
-git checkout -b backup/pre-rewrite-$(date +%Y%m%d)
-
-# 切回主分支并对齐远端
-git checkout main
-git fetch --all
-git reset --hard origin/main
-
-# 将备份分支中的提交按需 cherry-pick 到最新 main（或使用 rebase -i）
-# 示例：
-git cherry-pick <commit_a> <commit_b>
+cd /home/xiaodong/文档/memopark
+./一键修复并启动.sh
 ```
 
-### C. 重新克隆（最稳妥）
+等待看到：
+```
+➜  Local:   http://127.0.0.1:5173/
+```
 
+#### 浏览器访问
+- 前端：http://127.0.0.1:5173
+- Polkadot.js Apps：https://polkadot.js.org/apps（连接到 ws://127.0.0.1:9944）
+
+---
+
+## 📚 文档导航
+
+### 启动与配置
+- [快速启动指南](./快速启动指南.md) - 完整的启动流程
+- [快速启动节点](./快速启动节点.md) - 节点启动详解
+- [前端修复指南](./docs/FRONTEND_FIX_COMPLETE.md) - 连接问题排查
+- [前端连接诊断](./docs/诊断前端连接.md) - 详细诊断步骤
+
+### 功能文档
+- [委员会提案 UI](./docs/council-proposal-ui.md) - 提案提交/投票/执行
+- [做市商申请指南](./memopark-dapp/docs/MARKET_MAKER_APPLICATION_GUIDE.md)
+- [治理设计](./memopark-dapp/design/governance-design.md)
+- [墓地详情 UI](./memopark-dapp/design/grave_detail_ui_spec.md)
+
+### 技术文档
+- [Pallet 接口文档](./pallets接口文档.md)
+- [前端文档](./前端文档.md)
+- [签名错误排查](./docs/签名错误排查指南.md)
+- [WebSocket 连接优化](./docs/防止WebSocket连接超限.md)
+- [链节点启动说明](./docs/链节点启动说明.md)
+
+---
+
+## 🏗️ 项目结构
+
+```
+memopark/
+├── node/                    # 节点实现
+├── runtime/                 # Runtime 配置
+├── pallets/                 # 自定义 Pallets
+│   ├── market-maker/       # 做市商管理
+│   ├── memo-grave/         # 墓地管理
+│   ├── memo-offerings/     # 供奉系统
+│   ├── collective/         # 委员会
+│   └── ...                 # 其他 pallets
+├── memopark-dapp/          # React 前端 DApp
+│   ├── src/
+│   │   ├── features/       # 功能模块
+│   │   ├── components/     # 组件
+│   │   └── lib/           # 工具库
+│   └── docs/              # 前端文档
+├── docs/                   # 项目文档
+└── scripts/               # 工具脚本
+```
+
+---
+
+## 🎯 核心功能
+
+### 墓地管理
+- ✅ 创建虚拟墓地（公开/私密）
+- ✅ 逝者信息管理
+- ✅ 媒体内容（相册/视频/文章）
+- ✅ 背景音乐与播放列表
+
+### 供奉系统
+- ✅ 虚拟供品（鲜花/香烛等）
+- ✅ MEMO 代币供奉
+- ✅ 供奉记录与统计
+- ✅ 台账系统
+
+### OTC 交易
+- ✅ 做市商申请与审核
+- ✅ 挂单交易
+- ✅ 托管与仲裁
+
+### 治理机制
+- ✅ 委员会提案
+- ✅ 投票与执行
+- ✅ Root 或 2/3 多数决策
+
+### 身份与推荐
+- ✅ 链上身份（昵称）
+- ✅ 推荐码系统
+- ✅ 推荐关系链
+
+---
+
+## 🛠️ 开发说明
+
+### 编译 Runtime
 ```bash
-git clone git@github.com:lao-sha/memopark.git
+cargo build --release -p memopark-node
 ```
 
-### 常见问题
-- 推送被拒绝（非 fast-forward）：请先按上文同步，再推送。
-- 旧提交哈希找不到：历史改写后属于预期；请以 `origin/main` 为新的基线。
-- Secret 扫描再次拦截：确保不要提交 `node_modules/`、`dist/`、日志或任何私钥/令牌；本仓库已启用 Gitleaks 与 GitHub Push Protection。
-
-### 团队协作建议
-- 提交前执行本地扫描（可选）：
+### 运行测试
 ```bash
-# 安装 gitleaks（本地可选）
-curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(uname -s | tr '[:upper:]' '[:lower:]')_x64.tar.gz \
-  | tar -xz && sudo mv gitleaks /usr/local/bin/
-gitleaks detect --redact
+cargo test -p pallet-market-maker
 ```
-- 不要将 `node_modules/`、`target/`、`dist/`、编辑器配置与大文件提交到仓库。
-- 历史改写后协作仓库/分叉请以 rebase 为主，避免再次生成分叉历史。
+
+### 前端开发
+```bash
+cd memopark-dapp
+npm install
+npm run dev
+```
+
+### 生成类型定义
+```bash
+cd memopark-dapp
+npm run generate-types
+```
+
+---
+
+## 🔒 安全注意事项
+
+### 开发模式
+- ✅ 使用 `--dev --tmp` 启动节点（每次重启清空数据）
+- ✅ 前端本地签名仅用于开发/测试
+- ✅ 助记词加密存储在浏览器 localStorage
+
+### 生产环境
+- ⚠️ 使用硬件钱包或浏览器扩展签名
+- ⚠️ 启用 Subsquid 索引器分担查询压力
+- ⚠️ 配置 Nginx 反向代理限制连接数
+- ⚠️ 使用专业的 RPC 服务提供商
+
+详见：[防止WebSocket连接超限](./docs/防止WebSocket连接超限.md)
+
+---
+
+## 📊 当前模式
+
+⚡ **全局链上直连模式**
+
+所有数据直接从链节点查询，暂时不使用 Subsquid 索引器。
+
+**影响的功能**（暂时禁用）：
+- ❌ Dashboard 历史趋势图
+- ❌ 墓位排行榜
+- ❌ 供奉时间线
+- ❌ 按地址查询供奉历史
+
+**正常工作的功能**：
+- ✅ 委员会提案和投票
+- ✅ 做市商申请和审批
+- ✅ 创建墓地/逝者
+- ✅ 供奉操作
+- ✅ OTC 交易
+- ✅ 所有链上写入和实时查询
+
+---
+
+## 🤝 贡献指南
+
+### 编码规范
+- ✅ 所有 Rust 代码使用详细的中文注释
+- ✅ Pallet 之间保持低耦合
+- ✅ 修改 pallet 后同步更新 README
+- ✅ 前端使用组件化设计
+
+### 提交流程
+1. Fork 项目
+2. 创建特性分支
+3. 提交更改（清晰的中文注释）
+4. 推送到分支
+5. 提交 Pull Request
+
+---
+
+## 📝 许可证
+
+详见 [LICENSE](./LICENSE) 文件。
+
+---
+
+## 🙏 致谢
+
+- [Substrate](https://substrate.io/) - 区块链开发框架
+- [Polkadot.js](https://polkadot.js.org/) - JavaScript API
+- [Ant Design](https://ant.design/) - UI 组件库
+- [React](https://react.dev/) - 前端框架
+
+---
+
+## 📞 支持
+
+- **文档**：查看 `docs/` 文件夹
+- **问题排查**：`docs/FRONTEND_FIX_COMPLETE.md`
+- **快速启动**：`快速启动指南.md`
+
+---
+
+**最后更新**：2025-10-01
+**版本**：0.1.0
+**状态**：开发中（主网零迁移，允许破坏式调整）

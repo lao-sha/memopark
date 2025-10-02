@@ -26,6 +26,7 @@ pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "p
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
 pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
 pallet-forwarder = { path = "../pallets/forwarder", default-features = false }
+pallet-market-maker = { path = "../pallets/market-maker", default-features = false }
 pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
 pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
 pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
@@ -95,6 +96,7 @@ std = [
 	"pallet-balances/std",
 	"pallet-grandpa/std",
 	"pallet-forwarder/std",
+	"pallet-market-maker/std",
 	"pallet-otc-maker/std",
 	"pallet-otc-listing/std",
 	"pallet-otc-order/std",

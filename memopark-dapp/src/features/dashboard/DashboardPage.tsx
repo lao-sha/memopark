@@ -204,12 +204,8 @@ const DashboardPage: React.FC = () => {
           </Row>
         </Card>
 
-        <Alert type="info" showIcon message="提示" description="历史趋势与排行榜将接入 Subsquid 后展示。当前为实时骨架数据。" />
-
-        {/* Subsquid 区域（有端点时展示） */}
-        {(!GQL.endpoint || GQL.endpoint.includes('example.com')) ? (
-          <Alert type="warning" showIcon message="Subsquid 未配置" description="请在环境变量 VITE_SQUID_URL 中配置 GraphQL 端点以启用趋势与排行榜。" />
-        ) : (
+        {/* 全局链上直连模式，暂时隐藏 Subsquid 相关功能 */}
+        {false && (
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
             {squidError && <Alert type="error" showIcon message={squidError} />}
 
