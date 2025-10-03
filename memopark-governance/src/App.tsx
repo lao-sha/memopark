@@ -14,6 +14,9 @@ import TracksPage from './pages/Tracks'
 import ReferendaList from './pages/Referenda/List'
 import ReferendumDetail from './pages/Referenda/Detail'
 import CommitteesPage from './pages/Committees'
+import ArbitrationPage from './pages/Arbitration'
+import GraveGovernancePage from './pages/GraveGovernance'
+import ParkGovernancePage from './pages/ParkGovernance'
 
 /**
  * 主应用组件
@@ -73,6 +76,21 @@ function App() {
         {/* 委员会管理 */}
         <Route path="committees">
           <Route index element={<CommitteesPage />} />
+        </Route>
+
+        {/* 仲裁管理 */}
+        <Route path="arbitration">
+          <Route index element={<ArbitrationPage />} />
+        </Route>
+
+        {/* 墓地治理 */}
+        <Route path="grave-governance">
+          <Route index element={<GraveGovernancePage />} />
+        </Route>
+
+        {/* 陵园治理 */}
+        <Route path="park-governance">
+          <Route index element={<ParkGovernancePage />} />
         </Route>
 
         {/* 轨道配置 */}

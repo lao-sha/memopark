@@ -13,7 +13,9 @@ import {
   MenuUnfoldOutlined,
   LogoutOutlined,
   SafetyOutlined,
-  FileProtectOutlined
+  FileProtectOutlined,
+  SolutionOutlined,
+  ToolOutlined
 } from '@ant-design/icons'
 import { useWallet } from '@/contexts/Wallet'
 import WalletConnect from '@/components/WalletConnect'
@@ -63,6 +65,11 @@ export default function BasicLayout() {
       label: '内容治理'
     },
     {
+      key: '/arbitration',
+      icon: <SolutionOutlined />,
+      label: '仲裁管理'
+    },
+    {
       key: '/referenda',
       icon: <FileProtectOutlined />,
       label: '公投管理',
@@ -87,6 +94,15 @@ export default function BasicLayout() {
       label: '委员会',
       children: [
         { key: '/committees', label: '全部委员会' }
+      ]
+    },
+    {
+      key: '/tools',
+      icon: <ToolOutlined />,
+      label: '治理工具',
+      children: [
+        { key: '/grave-governance', label: '墓地治理' },
+        { key: '/park-governance', label: '陵园治理' }
       ]
     },
     {
