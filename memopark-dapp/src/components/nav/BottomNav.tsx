@@ -68,32 +68,104 @@ const BottomNav: React.FC = () => {
   }
 
   return (
-    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
-      <div style={{ maxWidth: 640, margin: '0 auto', background: '#fff', borderTop: '1px solid #eee', padding: '6px 8px calc(6px + env(safe-area-inset-bottom))' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => go('home', '#/')} style={{ ...btnStyle, ...(active==='home'?btnActiveStyle:undefined) }}>
-            <HomeOutlined />
-            <span style={txtStyle}>主页</span>
-          </button>
-          <button onClick={() => go('create-grave', '#/grave/create')} style={{ ...btnStyle, ...(active==='create-grave'?btnActiveStyle:undefined) }}>
-            <PlusCircleOutlined />
-            <span style={txtStyle}>创建陵墓</span>
-          </button>
-          <button onClick={() => go('grave-my', '#/grave/my')} style={{ ...btnStyle, ...(active==='grave-my'?btnActiveStyle:undefined) }}>
-            <UnorderedListOutlined />
-            <span style={txtStyle}>我的墓地</span>
-          </button>
-          <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
-            <TeamOutlined />
-            <span style={txtStyle}>逝者列表</span>
-          </button>
-          <button onClick={() => go('profile', '#/profile')} style={{ ...btnStyle, ...(active==='profile'?btnActiveStyle:undefined) }}>
-            <UserOutlined />
-            <span style={txtStyle}>个人中心</span>
-          </button>
+    <>
+      {/* 底部导航栏 */}
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
+        <div style={{ 
+          maxWidth: 640, 
+          margin: '0 auto', 
+          background: 'var(--color-bg-elevated)', 
+          borderTop: '1px solid var(--color-border)',
+          boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.05)',
+          padding: '8px 8px calc(8px + env(safe-area-inset-bottom))'
+        }}>
+          <div style={{ 
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 64px 1fr 1fr',
+            gap: 0,
+            alignItems: 'center'
+          }}>
+            <button onClick={() => go('home', '#/')} style={{ ...btnStyle, ...(active==='home'?btnActiveStyle:undefined) }}>
+              <HomeOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>首页</span>
+            </button>
+            
+            <button onClick={() => go('grave-my', '#/grave/my')} style={{ ...btnStyle, ...(active==='grave-my'?btnActiveStyle:undefined) }}>
+              <UnorderedListOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>墓地</span>
+            </button>
+            
+            {/* FAB中心大按钮（占位，不计入grid流） */}
+            <div />
+            
+            <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
+              <TeamOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>逝者</span>
+            </button>
+            
+            <button onClick={() => go('profile', '#/profile')} style={{ ...btnStyle, ...(active==='profile'?btnActiveStyle:undefined) }}>
+              <UserOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>个人</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* FAB浮动创建按钮 */}
+      <div style={{
+        position: 'fixed',
+        left: '50%',
+        bottom: 'calc(28px + env(safe-area-inset-bottom))',
+        transform: 'translateX(-50%)',
+        zIndex: 1001
+      }}>
+        <button
+          onClick={() => {
+            // 显示创建菜单
+            const needAddr = !current
+            if (needAddr) {
+              Modal.confirm({
+                title: '需要钱包',
+                content: '请先登录或创建本地钱包后再创建墓地',
+                okText: '去创建钱包',
+                cancelText: '取消',
+                onOk: () => { 
+                  try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })) } catch {} 
+                }
+              })
+              return
+            }
+            // 直接跳转创建墓地
+            go('create-grave', '#/grave/create')
+          }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            border: 'none',
+            background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%)',
+            color: 'var(--color-text-inverse)',
+            fontSize: 28,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-lg)',
+            transition: 'all 0.3s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.1)'
+            e.currentTarget.style.boxShadow = '0 8px 32px rgba(184, 134, 11, 0.25)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.boxShadow = 'var(--shadow-lg)'
+          }}
+        >
+          <PlusCircleOutlined />
+        </button>
+      </div>
+    </>
   )
 }
 
