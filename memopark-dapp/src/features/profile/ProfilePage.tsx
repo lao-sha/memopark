@@ -161,13 +161,80 @@ const ProfilePage: React.FC = () => {
                 </Space>
               )}
           </Card>
-          <Card size="small" title="做市商与OTC交易">
+          <Card size="small" title="🏛️ 治理与管理">
+            <Space direction="vertical" style={{ width: '100%' }} size={12}>
+              <Alert
+                type="info"
+                showIcon
+                message="专业治理功能已迁移到 Web 平台"
+                description="委员会提案、做市商审批、仲裁管理等专业功能请访问桌面端 Web 治理平台"
+              />
+              
+              <Button
+                type="primary"
+                block
+                size="large"
+                onClick={() => {
+                  window.open('https://governance.memopark.com', '_blank')
+                }}
+              >
+                🖥️ 打开 Web 治理平台
+              </Button>
+
+              <Typography.Text strong style={{ marginTop: 8 }}>快捷入口：</Typography.Text>
+              
+              <Button
+                block
+                onClick={() => {
+                  window.open('https://governance.memopark.com/content-governance', '_blank')
+                }}
+              >
+                内容治理（审批申诉）
+              </Button>
+              
+              <Button
+                block
+                onClick={() => {
+                  window.open('https://governance.memopark.com/applications', '_blank')
+                }}
+              >
+                做市商审批
+              </Button>
+              
+              <Button
+                block
+                onClick={() => {
+                  window.open('https://governance.memopark.com/committees', '_blank')
+                }}
+              >
+                委员会管理
+              </Button>
+              
+              <Button
+                block
+                onClick={() => {
+                  window.open('https://governance.memopark.com/arbitration', '_blank')
+                }}
+              >
+                仲裁管理
+              </Button>
+
+              <Button
+                block
+                onClick={() => {
+                  window.location.hash = '#/gov/appeal'
+                }}
+              >
+                快速提交申诉（移动端）
+              </Button>
+            </Space>
+          </Card>
+
+          <Card size="small" title="做市商与OTC交易" style={{ marginTop: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size={8}>
-              <Typography.Text type="secondary">做市商管理</Typography.Text>
+              <Typography.Text type="secondary">做市商申请</Typography.Text>
               <Space wrap>
                 <Button onClick={()=> { window.location.hash = '#/otc/mm-apply' }}>申请做市商</Button>
-                <Button onClick={()=> { window.location.hash = '#/gov/mm-review' }}>审核做市商</Button>
-                <Button onClick={()=> { window.location.hash = '#/gov/council-proposals' }}>委员会提案</Button>
               </Space>
               <Typography.Text type="secondary" style={{ marginTop: 8 }}>OTC 交易</Typography.Text>
               <Space wrap>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Modal } from 'antd'
-import { HomeOutlined, CrownOutlined, UserOutlined, PlusCircleOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { HomeOutlined, TeamOutlined, UserOutlined, PlusCircleOutlined, UnorderedListOutlined } from '@ant-design/icons'
 
 /**
  * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
@@ -19,9 +19,8 @@ const BottomNav: React.FC = () => {
     const h = window.location.hash || ''
     if (h === '#/' || h === '' ) return 'home'
     if (h.startsWith('#/grave/create')) return 'create-grave'
+    if (h.startsWith('#/grave/my')) return 'grave-my'
     if (h.startsWith('#/deceased/list')) return 'deceased-list'
-    if (h.startsWith('#/gov/me')) return 'gov-me'
-    if (h.startsWith('#/gov/content')) return 'gov-content'
     if (h.startsWith('#/profile')) return 'profile'
     return 'home'
   }, [])
@@ -43,8 +42,8 @@ const BottomNav: React.FC = () => {
    * - hash：当处于 Hash 路由场景时的回退跳转
    */
   const go = (tabKey: string, hash?: string) => {
-    // 未登录拦截：创建陵墓/我的治理/个人中心需要地址
-    const needAddr = tabKey === 'create-grave' || tabKey === 'gov-me' || tabKey === 'profile'
+    // 未登录拦截：创建陵墓/我的墓地/个人中心需要地址
+    const needAddr = tabKey === 'create-grave' || tabKey === 'grave-my' || tabKey === 'profile'
     const addr = current || (typeof window !== 'undefined' ? localStorage.getItem('mp.current') : null)
     if (needAddr && !addr) {
       const inst = Modal.confirm({
@@ -80,13 +79,13 @@ const BottomNav: React.FC = () => {
             <PlusCircleOutlined />
             <span style={txtStyle}>创建陵墓</span>
           </button>
-          <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
+          <button onClick={() => go('grave-my', '#/grave/my')} style={{ ...btnStyle, ...(active==='grave-my'?btnActiveStyle:undefined) }}>
             <UnorderedListOutlined />
-            <span style={txtStyle}>逝者列表</span>
+            <span style={txtStyle}>我的墓地</span>
           </button>
-          <button onClick={() => go('gov-content', '#/gov/content')} style={{ ...btnStyle, ...(active==='gov-content'?btnActiveStyle:undefined) }}>
-            <CrownOutlined />
-            <span style={txtStyle}>内容委员会</span>
+          <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
+            <TeamOutlined />
+            <span style={txtStyle}>逝者列表</span>
           </button>
           <button onClick={() => go('profile', '#/profile')} style={{ ...btnStyle, ...(active==='profile'?btnActiveStyle:undefined) }}>
             <UserOutlined />

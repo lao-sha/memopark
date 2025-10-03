@@ -27,6 +27,31 @@ const SubmitAppealPage: React.FC = () => {
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
       <h3>提交内容申诉</h3>
+      
+      {/* 引导提示 */}
+      <Alert
+        type="info"
+        showIcon
+        message="移动端快速提交入口"
+        description={
+          <div>
+            <div style={{ marginBottom: 8 }}>
+              需要查看审批进度、批量操作或专业工具？
+            </div>
+            <Button 
+              type="link" 
+              style={{ padding: 0, height: 'auto', fontWeight: 'bold' }}
+              onClick={() => {
+                window.open('https://governance.memopark.com/content-governance', '_blank')
+              }}
+            >
+              前往 Web 治理平台 →
+            </Button>
+          </div>
+        }
+        style={{ marginBottom: 16 }}
+      />
+      
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         {consts && (
           <Card>
@@ -61,7 +86,27 @@ const SubmitAppealPage: React.FC = () => {
               <Button type="primary" htmlType="submit" block loading={loading}>提交申诉</Button>
             </Form.Item>
           </Form>
-          {txHash && <Alert type="info" showIcon message="提交结果" description={txHash} />}
+          {txHash && (
+            <Alert 
+              type="success" 
+              showIcon 
+              message="提交成功" 
+              description={
+                <div>
+                  <div style={{ marginBottom: 8 }}>交易哈希：{txHash}</div>
+                  <Button 
+                    type="primary" 
+                    size="small"
+                    onClick={() => {
+                      window.open('https://governance.memopark.com/content-governance?tab=pending', '_blank')
+                    }}
+                  >
+                    前往 Web 平台查看进度 →
+                  </Button>
+                </div>
+              }
+            />
+          )}
         </Card>
       </Space>
     </div>
