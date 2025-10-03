@@ -12,7 +12,6 @@ import OfferingsTimeline from './features/offerings/OfferingsTimeline';
 import OfferingsByWho from './features/offerings/OfferingsByWho';
 import BottomNav from './components/nav/BottomNav';
 import TreasuryPage from './features/treasury/TreasuryPage';
-import MyGovernancePage from './features/governance/MyGovernancePage';
 import ProfilePage from './features/profile/ProfilePage';
 import GraveListPage from './features/grave/GraveListPage';
 import MyGravesPage from './features/grave/MyGravesPage';
@@ -30,17 +29,12 @@ import CreatePrimaryCategoryPage from './features/offerings/CreatePrimaryCategor
 import CreateSacrificePage from './features/offerings/CreateSacrificePage';
 import CreateScenePage from './features/offerings/CreateScenePage';
 import CategoryListPage from './features/offerings/CategoryListPage';
-import GovTicketPage from './features/governance/GovTicketPage';
-import ContentCommitteePage from './features/governance/ContentCommitteePage';
 import SubmitAppealPage from './features/governance/SubmitAppealPage';
-import CommitteeTemplatesPage from './features/governance/CommitteeTemplatesPage';
 import BridgeLockPage from './features/bridge/BridgeLockPage';
 import AdminOtcSettingsPage from './features/otc/AdminOtcSettingsPage';
-import AdminArbitrationPage from './features/arbitration/AdminArbitrationPage';
 import DeceasedPinWizard from './features/ipfs/DeceasedPinWizard';
 import AdminOfferRoutePage from './features/offerings/AdminOfferRoutePage';
 import ReferralBindPage from './features/referrals/ReferralBindPage';
-import RestoreDeceasedBuilder from './features/governance/RestoreDeceasedBuilder';
 import FeeGuardAdminPage from './features/fee-guard/FeeGuardAdminPage';
 import ForwarderSessionPage from './features/forwarder/ForwarderSessionPage';
 import BillingAdminPage from './features/ipfs/BillingAdminPage';
@@ -50,11 +44,8 @@ import { initAutoPinOnce } from './lib/auto-pin';
 import SettingsButton from './components/nav/SettingsButton';
 import SettingsDrawer from './components/nav/SettingsDrawer';
 import { GovernanceUiProvider } from './providers/GovernanceUiProvider';
-import ContentGovernanceReviewPage from './features/governance/ContentGovernanceReviewPage';
 import LedgerCleanupPage from './features/ledger/LedgerCleanupPage';
 import EvidenceLinkerPage from './features/evidence/EvidenceLinkerPage';
-import GraveGovernanceToolsPage from './features/grave/GraveGovernanceToolsPage';
-import ParkGovernanceToolsPage from './features/park/ParkGovernanceToolsPage';
 import IdentityViewerPage from './features/identity/IdentityViewerPage';
 import OriginRestrictionPage from './features/origin/OriginRestrictionPage';
 import RewardParamsPanel from './features/affiliate/RewardParamsPanel';
@@ -63,9 +54,7 @@ import ClaimMemoForm from './features/otc/ClaimMemoForm';
 import CreateOrderPage from './features/otc/CreateOrderPage';
 import PayCreateTestPage from './features/otc/PayCreateTestPage';
 import CreateMarketMakerPage from './features/otc/CreateMarketMakerPage';
-import GovMarketMakerReviewPage from './features/otc/GovMarketMakerReviewPage';
 import PayResultPage from './features/otc/PayResultPage';
-import CouncilProposalPage from './features/governance/CouncilProposalPage';
 
 /**
  * 函数级详细中文注释：应用主组件
@@ -108,12 +97,7 @@ const App: React.FC = () => {
                 : hash === '#/grave/my' ? <MyGravesPage />
                 : hash === '#/treasury' ? <TreasuryPage />
                 : hash === '#/dashboard' ? <DashboardPage />
-                : hash === '#/gov/ticket' ? <GovTicketPage />
-                : hash === '#/gov/me' ? <MyGovernancePage />
-                : hash === '#/gov/content' ? <ContentCommitteePage />
-                : hash === '#/gov/review' ? <ContentGovernanceReviewPage />
                 : hash === '#/gov/appeal' ? <SubmitAppealPage />
-                : hash === '#/gov/templates' ? <CommitteeTemplatesPage />
                 : hash === '#/profile' ? <ProfilePage />
                 : hash === '#/covers' ? <CoverOptionsPage />
                 : hash === '#/covers/create' ? <CreateCoverOptionPage />
@@ -133,22 +117,16 @@ const App: React.FC = () => {
                 : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
                 : hash === '#/otc/order' ? <CreateOrderPage />
                 : hash === '#/otc/mm-apply' ? <CreateMarketMakerPage />
-                : hash === '#/gov/mm-review' ? <GovMarketMakerReviewPage />
-                : hash === '#/gov/council-proposals' ? <CouncilProposalPage />
                 : hash === '#/otc/pay-result' ? <PayResultPage />
                 : hash === '#/otc/pay-test' ? <PayCreateTestPage />
                 : hash === '#/otc/claim' ? <ClaimMemoForm />
-                : hash === '#/admin/arbitration' ? <AdminArbitrationPage />
                 : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
                 : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
                 : hash === '#/ipfs/usage' ? <UsagePage />
                 : hash === '#/evidence/linker' ? <EvidenceLinkerPage />
-                : hash === '#/grave/gov' ? <GraveGovernanceToolsPage />
-                : hash === '#/park/gov' ? <ParkGovernanceToolsPage />
                 : hash === '#/fee-guard' ? <FeeGuardAdminPage />
                 : hash === '#/forwarder/session' ? <ForwarderSessionPage />
                 : hash === '#/ipfs/billing' ? <BillingAdminPage />
-                : hash === '#/gov/restore-deceased' ? <RestoreDeceasedBuilder />
                 : hash.startsWith('#/ref') ? <ReferralBindPage />
                 : <AuthEntryPage />}
               <BottomNav />

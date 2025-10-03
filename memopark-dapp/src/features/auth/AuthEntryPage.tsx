@@ -8,11 +8,6 @@ import { sessionManager } from '../../lib/sessionManager'
 import TransferPage from '../ledger/TransferPage'
 import CreateGraveForm from '../grave/CreateGraveForm'
 import GraveListPage from '../grave/GraveListPage'
-import GovernanceHomePage from '../governance/GovernanceHomePage'
-import ReferendaListPage from '../governance/ReferendaListPage'
-import ReferendumDetailPage from '../governance/ReferendumDetailPage'
-import NewProposalPage from '../governance/NewProposalPage'
-import MyGovernancePage from '../governance/MyGovernancePage'
 import TreasuryPage from '../treasury/TreasuryPage'
 import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
 import ArticleListPage from '../deceasedMedia/ArticleListPage'
@@ -45,11 +40,6 @@ const AuthEntryPage: React.FC = () => {
           { key: 'transfer', label: '转账', children: <TransferPage /> },
           { key: 'create-grave', label: '创建墓地', children: <CreateGraveForm /> },
           { key: 'grave-list', label: '墓地列表', children: <GraveListPage /> },
-          { key: 'gov-home', label: '治理', children: <GovernanceHomePage /> },
-          { key: 'gov-list', label: '公投列表', children: <ReferendaListPage /> },
-          { key: 'gov-detail', label: '公投详情', children: <ReferendumDetailPage /> },
-          { key: 'gov-new', label: '发起提案', children: <NewProposalPage /> },
-          { key: 'gov-me', label: '我的治理', children: <MyGovernancePage /> },
           { key: 'article-new', label: '新建文章', children: <CreateArticleForm /> },
           { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
           { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
