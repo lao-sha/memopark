@@ -9,6 +9,9 @@ import RecentTxList from '../../components/wallet/RecentTxList'
 import type { SessionData } from '../../lib/sessionManager'
 import { useWallet } from '../../providers/WalletProvider'
 import FeeGuardCard from './FeeGuardCard'
+import HotGravesList from '../../components/discovery/HotGravesList'
+import RecentOfferingsTimeline from '../../components/discovery/RecentOfferingsTimeline'
+import QuickActions from '../../components/home/QuickActions'
 
 const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
   const [session, setSession] = useState<SessionData | null>(null)
@@ -151,6 +154,15 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
               )}
             </Card>
 
+            <CurrentAccountBar />
+            
+            {/* 快捷操作 */}
+            <QuickActions />
+            
+            {/* 发现和推荐 */}
+            <HotGravesList />
+            <RecentOfferingsTimeline />
+            
             <AccountsOverview />
             <FeeGuardCard />
             
@@ -176,20 +188,20 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
                 <Row gutter={8} style={{ marginTop: 8 }}>
                   <Col span={8}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1890ff' }}>15+</div>
-                      <div style={{ fontSize: 12, color: '#666' }}>治理模块</div>
+                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-primary)' }}>15+</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>治理模块</div>
                     </div>
                   </Col>
                   <Col span={8}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: '#52c41a' }}>3</div>
-                      <div style={{ fontSize: 12, color: '#666' }}>委员会</div>
+                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-success)' }}>3</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>委员会</div>
                     </div>
                   </Col>
                   <Col span={8}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: '#faad14' }}>95%</div>
-                      <div style={{ fontSize: 12, color: '#666' }}>功能完成</div>
+                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-warning)' }}>95%</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>功能完成</div>
                     </div>
                   </Col>
                 </Row>
