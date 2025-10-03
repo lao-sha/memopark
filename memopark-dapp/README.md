@@ -2,6 +2,42 @@
 
 本前端已切换为"本地钱包模式"，不依赖浏览器扩展。用户在"创建钱包"页生成助记词并设置密码，前端使用 PBKDF2 + AES-GCM 将助记词加密存储于浏览器 `localStorage`，后续在"登录"页输入密码解密并使用本地 sr25519 密钥进行签名与上链。
 
+## 🏛️ 治理功能说明（重要更新）
+
+**专业治理功能已迁移到 Web 治理平台**
+
+### 📱 DAPP（移动端优先）
+- **定位**：大众参与，日常管理
+- **功能**：
+  - ✅ 创建墓地和逝者
+  - ✅ 供奉、留言、扫墓
+  - ✅ 查看墓地详情
+  - ✅ 提交申诉（简化版）
+  - ✅ OTC交易和做市商申请
+
+### 🖥️ Web 治理平台（桌面端优先）
+- **地址**：https://governance.memopark.com（开发：http://localhost:3000）
+- **定位**：专业治理，批量操作
+- **功能**：
+  - ✅ 内容治理（申诉审批、批量处理）
+  - ✅ 委员会管理（Council/Technical/Content）
+  - ✅ 做市商审批（详细审查、IPFS直达）
+  - ✅ 仲裁管理（争议案件、裁决执行）
+  - ✅ 墓地/陵园强制治理
+  - ✅ 轨道系统和公投管理
+  - ✅ 数据分析和导出
+
+### 🔗 如何访问治理平台？
+
+**在DAPP中**：
+1. 首页 → 点击"🏛️ 专业治理"卡片
+2. 个人中心 → 点击"治理与管理"卡片
+3. 我的治理（`#/gov/me`）→ 点击快捷入口
+
+**直接访问**：
+- 生产环境：https://governance.memopark.com
+- 开发环境：http://localhost:3000
+
 ## 当前模式
 
 ⚡ **全局链上直连模式**：所有数据直接从链节点查询，暂时不使用 Subsquid 索引器。
@@ -22,15 +58,22 @@
 
 ## 快速导航
 
+### 核心功能（移动端）
+- **创建墓地**: `#/grave/create` - 创建新墓地
+- **我的墓地**: `#/grave/my` - 管理我的墓地
+- **墓地详情**: `#/grave/detail?gid=123` - 查看墓地详情
+- **创建逝者**: `#/deceased/create` - 添加逝者信息
+- **提交申诉**: `#/gov/appeal` - 快速申诉入口（移动端）
+
 ### 做市商功能
 - **申请页面**: `#/otc/mm-apply` - [使用指南](./docs/MARKET_MAKER_APPLICATION_GUIDE.md)
-- **审核页面**: `#/gov/mm-review` - 委员会审核待审申请
-- **委员会提案**: `#/gov/council-proposals` - [使用指南](./docs/council-proposal-ui.md)
-  - 提交批准/驳回提案
-  - 查看所有活跃提案
-  - 投票（赞成/反对）
-  - 执行已通过的提案
-  - 查看个人投票记录
+- **审核页面**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/applications
+
+### 治理功能（已迁移）
+- **委员会提案**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/proposals
+- **内容治理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/content-governance
+- **仲裁管理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/arbitration
+- **墓地治理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/grave-governance
 
 ## 快速开始
 
