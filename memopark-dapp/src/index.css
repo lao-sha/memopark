@@ -1,4 +1,64 @@
-/* 简化的测试样式，确保基本显示 */
+/* MemoPark 纪念主题样式 */
+
+/* CSS变量 - 祭祀文化配色系统 */
+:root {
+  /* 主色系 - 深金色（蜡烛、香炉、庄重） */
+  --color-primary: #B8860B;
+  --color-primary-light: #DAA520;
+  --color-primary-dark: #8B6508;
+  --color-primary-bg: #FFF8DC;
+  
+  /* 辅色系 - 墨绿色（松柏、长青、希望） */
+  --color-secondary: #2F4F4F;
+  --color-secondary-light: #708090;
+  --color-secondary-bg: #F0FFF0;
+  
+  /* 背景色系 - 米白色（纸张、追思、温暖） */
+  --color-bg-primary: #F5F5DC;
+  --color-bg-secondary: #FAFAF0;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-overlay: rgba(0, 0, 0, 0.45);
+  
+  /* 强调色 - 朱红色（祭品、献花） */
+  --color-accent: #DC143C;
+  --color-accent-light: #FF6B6B;
+  
+  /* 语义色 */
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-error: #ff4d4f;
+  --color-info: #1890ff;
+  
+  /* 文字色 */
+  --color-text-primary: #2C2C2C;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
+  --color-text-inverse: #FFFFFF;
+  --color-text-disabled: #BFBFBF;
+  
+  /* 边框色 */
+  --color-border: #E8E8E8;
+  --color-border-light: #F0F0F0;
+  --color-divider: #F0F0F0;
+  
+  /* 祭祀特色色 */
+  --color-candle: #FFD700;
+  --color-flower: #FFB6C1;
+  --color-incense: #98D8C8;
+  --color-fruit: #FF6347;
+  
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(184, 134, 11, 0.08);
+  --shadow-md: 0 4px 12px rgba(184, 134, 11, 0.12);
+  --shadow-lg: 0 8px 24px rgba(184, 134, 11, 0.16);
+  
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -9,6 +69,8 @@ html, body, #root {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
 }
 
 /* 强制显示根元素 */

@@ -1,109 +1,289 @@
 import React, { useCallback, useState } from 'react'
-import { Button, Flex, Modal, Form, InputNumber, Select, message, Input } from 'antd'
-import { ApiPromise, WsProvider } from '@polkadot/api'
-import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { Button, Flex, Modal, Form, InputNumber, message, Typography } from 'antd'
+import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { mapDispatchErrorMessage } from '../../lib/errors'
+import TransactionConfirmModal, { type TransactionInfo } from '../../components/transaction/TransactionConfirmModal'
+import OfferingCardSelector, { OFFERINGS, type OfferingItem } from '../../components/offering/OfferingCardSelector'
 
 /**
- * 函数级详细中文注释：纪念馆动作栏（花圈/蜡烛/清香/供品/扫墓）最小实现
- * - 供奉：调用 memoOfferings.offer((1,graveId), kind_code, amount, [], duration?)
- * - 扫墓：调用 graveGuestbook.sweep(graveId, null)
- * - 关注：调用 memoGrave.follow(graveId)
- * - 取消关注：调用 memoGrave.unfollow(graveId)
+ * 函数级详细中文注释：纪念馆动作栏（供奉/扫墓）重构版
+ * - 使用新的TransactionConfirmModal替代window.prompt
+ * - 使用卡片式供品选择器替代下拉框
+ * - 优化交互流程和视觉呈现
  */
 export default function ActionsBar({ graveId }: { graveId: number }) {
-  const [api, setApi] = useState<ApiPromise | null>(null)
-  const [account, setAccount] = useState('')
   const [openOffer, setOpenOffer] = useState(false)
-  const [openSweep, setOpenSweep] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [loadingFollow, setLoadingFollow] = useState(false)
-
-  const ensureApi = useCallback(async () => {
-    if (api) return api
-    const provider = new WsProvider('ws://127.0.0.1:9944')
-    const apiNew = await ApiPromise.create({ provider })
-    setApi(apiNew)
-    return apiNew
-  }, [api])
-
-  const onOffer = useCallback(async (v: any) => {
-    const api = await ensureApi()
-    if (!account) return message.warning('请输入签名账户')
-    try {
-      setLoading(true)
-      const target = [1, graveId]
-      const amount = BigInt(v.amount)
-      const duration = v.kind === 12 || v.kind === 13 ? Number(v.duration || 1) : null
-      await signAndSendLocalFromKeystore('memoOfferings','offer',[target, v.kind, amount, [], duration])
-      message.success('供奉已上链'); setLoading(false); setOpenOffer(false)
-    } catch (e: any) { console.error(e); message.error(mapDispatchErrorMessage(e, '提交失败')); setLoading(false) }
-  }, [ensureApi, account, graveId])
-
-  const onSweep = useCallback(async () => {
-    const api = await ensureApi()
-    if (!account) return message.warning('请输入签名账户')
-    try {
-      setLoading(true)
-      await signAndSendLocalFromKeystore('memoGraveGuestbook','sweep',[graveId, null])
-      message.success('已记录扫墓'); setLoading(false); setOpenSweep(false)
-    } catch (e: any) { console.error(e); message.error(mapDispatchErrorMessage(e, '提交失败')); setLoading(false) }
-  }, [ensureApi, account, graveId])
+  const [selectedOffering, setSelectedOffering] = useState<OfferingItem | null>(null)
+  const [duration, setDuration] = useState<number>(1)
+  const [customAmount, setCustomAmount] = useState<string>('')
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [pendingTx, setPendingTx] = useState<TransactionInfo | null>(null)
+  const [confirmHandler, setConfirmHandler] = useState<((pwd: string) => Promise<string>) | null>(null)
 
   /**
-   * 函数级详细中文注释：关注纪念馆
-   * - 若开启 public_follow，则任意签名账户可关注；否则需成员
+   * 打开供奉选择Modal
    */
-  const onFollow = useCallback(async () => {
-    // 方案B：墓位关注已停用，提示用户前往“亲友团”（以逝者为主体）
-    message.info('墓位关注已停用，请前往“亲友团”在逝者下加入。')
-    window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'friends' } }))
-  }, [])
+  const handleOpenOffer = () => {
+    setOpenOffer(true)
+    setSelectedOffering(null)
+    setDuration(1)
+    setCustomAmount('')
+  }
 
   /**
-   * 函数级详细中文注释：取消关注纪念馆
+   * 选择供品
    */
-  const onUnfollow = useCallback(async () => {
-    message.info('墓位关注已停用，无需取消；请使用“亲友团”管理关系。')
-  }, [])
+  const handleSelectOffering = (item: OfferingItem) => {
+    setSelectedOffering(item)
+  }
+
+  /**
+   * 计算总金额
+   */
+  const calculateAmount = (): string => {
+    if (!selectedOffering) return '0'
+    if (selectedOffering.id === 19) {
+      // 自定义供品
+      return customAmount || '0'
+    }
+    if (selectedOffering.duration) {
+      return String(selectedOffering.price * duration)
+    }
+    return String(selectedOffering.price)
+  }
+
+  /**
+   * 确认供奉
+   */
+  const handleConfirmOffer = () => {
+    if (!selectedOffering) {
+      message.warning('请选择供品')
+      return
+    }
+
+    if (selectedOffering.id === 19 && (!customAmount || Number(customAmount) <= 0)) {
+      message.warning('请输入自定义金额')
+      return
+    }
+
+    const amount = calculateAmount()
+    const amountBigInt = BigInt(Number(amount) * 1e12) // 转换为最小单位
+
+    // 构建交易信息
+    const txInfo: TransactionInfo = {
+      title: `供奉${selectedOffering.name}`,
+      description: `为墓地 #${graveId} 供奉${selectedOffering.name}${selectedOffering.duration ? ` ${duration}${selectedOffering.unit}` : ''}`,
+      icon: selectedOffering.icon,
+      amount: `${amount} MEMO`,
+      gasFee: '~0.001 MEMO',
+      total: `${(Number(amount) + 0.001).toFixed(3)} MEMO`,
+      target: `墓地 #${graveId}`,
+      metadata: {
+        graveId,
+        kind: selectedOffering.id,
+        duration: selectedOffering.duration ? duration : null
+      }
+    }
+
+    // 设置交易执行函数
+    const executeHandler = async (password: string): Promise<string> => {
+      const target = [1, graveId] // domain=1, targetId=graveId
+      const durationArg = selectedOffering.duration ? duration : null
+      
+      const hash = await signAndSendLocalWithPassword(
+        'memoOfferings',
+        'offer',
+        [target, selectedOffering.id, amountBigInt.toString(), [], durationArg],
+        password
+      )
+      
+      return hash
+    }
+
+    setPendingTx(txInfo)
+    setConfirmHandler(() => executeHandler)
+    setConfirmModalOpen(true)
+    setOpenOffer(false)
+  }
+
+  /**
+   * 扫墓功能
+   */
+  const handleSweep = () => {
+    const txInfo: TransactionInfo = {
+      title: '记录扫墓',
+      description: `为墓地 #${graveId} 记录一次扫墓`,
+      icon: '🧹',
+      metadata: { graveId }
+    }
+
+    const executeHandler = async (password: string): Promise<string> => {
+      const hash = await signAndSendLocalWithPassword(
+        'memoGraveGuestbook',
+        'sweep',
+        [graveId, null],
+        password
+      )
+      return hash
+    }
+
+    setPendingTx(txInfo)
+    setConfirmHandler(() => executeHandler)
+    setConfirmModalOpen(true)
+  }
 
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <Input placeholder='签名账户地址' value={account} onChange={e => setAccount(e.target.value)} style={{ width: '100%' }} />
-      <Flex gap={8}>
-        <Button onClick={() => setOpenOffer(true)}>供奉</Button>
-        <Button onClick={() => setOpenSweep(true)}>扫墓</Button>
-        <Button onClick={onFollow} loading={loadingFollow}>亲友团</Button>
+    <div>
+      {/* 操作按钮 */}
+      <Flex gap={8} wrap="wrap">
+        <Button 
+          type="primary"
+          size="large"
+          onClick={handleOpenOffer}
+          style={{
+            flex: 1,
+            minWidth: 120,
+            height: 48,
+            borderRadius: 'var(--radius-md)',
+            fontSize: 16,
+            fontWeight: 600
+          }}
+        >
+          🌸 供奉
+        </Button>
+        <Button 
+          size="large"
+          onClick={handleSweep}
+          style={{
+            flex: 1,
+            minWidth: 120,
+            height: 48,
+            borderRadius: 'var(--radius-md)',
+            fontSize: 16
+          }}
+        >
+          🧹 扫墓
+        </Button>
       </Flex>
-      <Modal open={openOffer} onCancel={() => setOpenOffer(false)} onOk={() => {}} footer={null} title='供奉'>
-        <Form layout='vertical' onFinish={onOffer}>
-          <Form.Item name='kind' label='供奉项' initialValue={11} rules={[{ required: true }]}>
-            <Select options={[
-              { value: 11, label: '花圈 WREATH' },
-              { value: 12, label: '蜡烛 CANDLE' },
-              { value: 13, label: '清香 INCENSE' },
-              { value: 14, label: '果品 FRUIT' },
-              { value: 19, label: '自定义 CUSTOM' },
-            ]} />
-          </Form.Item>
-          <Form.Item shouldUpdate noStyle>
-            {({ getFieldValue }) => (getFieldValue('kind') === 12 || getFieldValue('kind') === 13) ? (
-              <Form.Item name='duration' label='时长（周）' initialValue={1}>
-                <InputNumber min={1} style={{ width: '100%' }} />
+
+      {/* 供奉选择Modal */}
+      <Modal
+        open={openOffer}
+        onCancel={() => setOpenOffer(false)}
+        footer={null}
+        title={
+          <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 600 }}>
+            🕯️ 选择供品
+          </div>
+        }
+        width={500}
+        styles={{
+          body: { padding: '0 24px 24px' }
+        }}
+      >
+        {/* 供品卡片选择器 */}
+        <OfferingCardSelector 
+          onSelect={handleSelectOffering}
+          selectedId={selectedOffering?.id}
+        />
+
+        {/* 选中供品后显示配置 */}
+        {selectedOffering && (
+          <div style={{ 
+            marginTop: 16, 
+            padding: 16, 
+            background: 'var(--color-bg-secondary)',
+            borderRadius: 'var(--radius-md)'
+          }}>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
+              已选择：{selectedOffering.icon} {selectedOffering.name}
+            </Typography.Text>
+
+            {/* 时长选择 */}
+            {selectedOffering.duration && (
+              <Form.Item label="时长" style={{ marginBottom: 12 }}>
+                <InputNumber
+                  min={1}
+                  max={52}
+                  value={duration}
+                  onChange={(val) => setDuration(Number(val) || 1)}
+                  addonAfter={selectedOffering.unit}
+                  style={{ width: '100%' }}
+                  size="large"
+                />
               </Form.Item>
-            ) : null}
-          </Form.Item>
-          <Form.Item name='amount' label='金额（最小单位）' rules={[{ required: true }]}>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Button type='primary' htmlType='submit' loading={loading} block>确认供奉</Button>
-        </Form>
+            )}
+
+            {/* 自定义金额 */}
+            {selectedOffering.id === 19 && (
+              <Form.Item label="金额" style={{ marginBottom: 12 }}>
+                <InputNumber
+                  min={0.001}
+                  step={0.1}
+                  value={customAmount ? Number(customAmount) : undefined}
+                  onChange={(val) => setCustomAmount(String(val || ''))}
+                  addonAfter="MEMO"
+                  style={{ width: '100%' }}
+                  size="large"
+                  placeholder="输入金额"
+                />
+              </Form.Item>
+            )}
+
+            {/* 金额预览 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 0',
+              borderTop: '1px dashed var(--color-divider)',
+              marginTop: 12
+            }}>
+              <span style={{ color: 'var(--color-text-secondary)' }}>
+                总计
+              </span>
+              <span style={{
+                fontSize: 20,
+                fontWeight: 'bold',
+                color: 'var(--color-primary)'
+              }}>
+                {calculateAmount()} MEMO
+              </span>
+            </div>
+
+            {/* 确认按钮 */}
+            <Button
+              type="primary"
+              block
+              size="large"
+              onClick={handleConfirmOffer}
+              style={{
+                marginTop: 16,
+                height: 48,
+                fontSize: 16,
+                fontWeight: 600,
+                borderRadius: 'var(--radius-md)'
+              }}
+            >
+              确认供奉
+            </Button>
+          </div>
+        )}
       </Modal>
-      <Modal open={openSweep} onCancel={() => setOpenSweep(false)} onOk={onSweep} confirmLoading={loading} title='扫墓'>
-        <p>记录一次清扫/维护（免费，受限频）。</p>
-      </Modal>
+
+      {/* 交易确认Modal */}
+      {confirmHandler && pendingTx && (
+        <TransactionConfirmModal
+          open={confirmModalOpen}
+          onCancel={() => {
+            setConfirmModalOpen(false)
+            setPendingTx(null)
+            setConfirmHandler(null)
+          }}
+          transaction={pendingTx}
+          onConfirm={confirmHandler}
+        />
+      )}
     </div>
   )
 }
-
-

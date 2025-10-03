@@ -2,6 +2,7 @@ import React from 'react';
 import { ConfigProvider, Alert } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { WalletProvider } from './providers/WalletProvider';
+import memorialTheme from './theme/colors';
 import AuthEntryPage from './features/auth/AuthEntryPage';
 import AdminPause from './features/offerings/AdminPause';
 import AdminCategory from './features/offerings/AdminCategory';
@@ -79,7 +80,7 @@ const App: React.FC = () => {
     }, []);
 
     return (
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider locale={zhCN} theme={memorialTheme}>
         <div className="App">
           <GovernanceUiProvider>
             <WalletProvider>
