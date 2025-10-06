@@ -1,10 +1,10 @@
 import React from 'react'
 import { Modal } from 'antd'
-import { HomeOutlined, TeamOutlined, UserOutlined, PlusCircleOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, UnorderedListOutlined } from '@ant-design/icons'
 
 /**
  * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
- * - 入口：主页、创建陵墓、国库、我的治理、个人中心
+ * - 入口：主页、我的墓地、创建墓地（FAB）、逝者列表、我的钱包
  * - 事件：优先触发 mp.nav 切换 `AuthEntryPage` 内部 Tab；同时回退到哈希路由
  * - 样式：固定于底部，最大宽度 640px 居中
  */
@@ -21,7 +21,7 @@ const BottomNav: React.FC = () => {
     if (h.startsWith('#/grave/create')) return 'create-grave'
     if (h.startsWith('#/grave/my')) return 'grave-my'
     if (h.startsWith('#/deceased/list')) return 'deceased-list'
-    if (h.startsWith('#/profile')) return 'profile'
+    if (h.startsWith('#/profile')) return 'my-wallet'
     return 'home'
   }, [])
 
@@ -40,10 +40,17 @@ const BottomNav: React.FC = () => {
    * 函数级中文注释：导航跳转（Tab 与 Hash 双通道）
    * - tabKey：AuthEntryPage 内部 Tabs 的 key
    * - hash：当处于 Hash 路由场景时的回退跳转
+   * - 防止重复触发：如果当前已经在目标 tab，不重复触发
    */
   const go = (tabKey: string, hash?: string) => {
-    // 未登录拦截：创建陵墓/我的墓地/个人中心需要地址
-    const needAddr = tabKey === 'create-grave' || tabKey === 'grave-my' || tabKey === 'profile'
+    // 防止重复触发：如果当前已经在目标 tab，直接返回
+    if (active === tabKey) {
+      console.log('已在目标页面，忽略导航:', tabKey)
+      return
+    }
+
+    // 未登录拦截：创建陵墓/我的墓地/我的钱包需要地址
+    const needAddr = tabKey === 'create-grave' || tabKey === 'grave-my' || tabKey === 'my-wallet'
     const addr = current || (typeof window !== 'undefined' ? localStorage.getItem('mp.current') : null)
     if (needAddr && !addr) {
       const inst = Modal.confirm({
@@ -63,8 +70,17 @@ const BottomNav: React.FC = () => {
       })
       return
     }
+
+    // 触发导航事件
     try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: tabKey } })) } catch {}
-    if (hash) { try { window.location.hash = hash } catch {} }
+    
+    // 如果指定了 hash，则设置 hash；否则清空 hash（避免冲突）
+    if (hash) { 
+      try { window.location.hash = hash } catch {} 
+    } else {
+      // 清空 hash，避免 hash 路由与 Tab 导航冲突
+      try { window.location.hash = '' } catch {}
+    }
   }
 
   return (
@@ -103,9 +119,9 @@ const BottomNav: React.FC = () => {
               <span style={txtStyle}>逝者</span>
             </button>
             
-            <button onClick={() => go('profile', '#/profile')} style={{ ...btnStyle, ...(active==='profile'?btnActiveStyle:undefined) }}>
-              <UserOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>个人</span>
+            <button onClick={() => go('my-wallet')} style={{ ...btnStyle, ...(active==='my-wallet'?btnActiveStyle:undefined) }}>
+              <WalletOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>钱包</span>
             </button>
           </div>
         </div>

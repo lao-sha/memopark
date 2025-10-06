@@ -23,6 +23,7 @@ pub mod pallet {
     pub trait WeightInfo {
         fn lock_deposit() -> Weight;
         fn submit_info() -> Weight;
+        fn update_info() -> Weight;
         fn cancel() -> Weight;
         fn approve() -> Weight;
         fn reject() -> Weight;
@@ -34,6 +35,9 @@ pub mod pallet {
             Weight::zero()
         }
         fn submit_info() -> Weight {
+            Weight::zero()
+        }
+        fn update_info() -> Weight {
             Weight::zero()
         }
         fn cancel() -> Weight {
@@ -130,6 +134,9 @@ pub mod pallet {
         Submitted {
             mm_id: u64,
         },
+        InfoUpdated {
+            mm_id: u64,
+        },
         Approved {
             mm_id: u64,
         },
@@ -156,6 +163,7 @@ pub mod pallet {
         InvalidFee,
         BadSlashRatio,
         MinDepositNotMet,
+        NotInEditableStatus,
     }
 
     #[pallet::pallet]
@@ -253,8 +261,85 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 撤销（仅 DepositLocked 阶段）
+        /// 函数级详细中文注释：更新申请资料（审核前可修改）
+        /// - 允许在 DepositLocked 或 PendingReview 状态下修改资料
+        /// - 必须在资料提交截止时间前（DepositLocked）或审核截止时间前（PendingReview）
+        /// - 只能由申请的 owner 调用
+        /// - 质押金额不可修改
+        /// - 参数为 Option 类型，None 表示不修改该字段
         #[pallet::call_index(2)]
+        #[pallet::weight(T::WeightInfo::update_info())]
+        pub fn update_info(
+            origin: OriginFor<T>,
+            mm_id: u64,
+            public_root_cid: Option<Cid>,
+            private_root_cid: Option<Cid>,
+            fee_bps: Option<u16>,
+            min_amount: Option<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Applications::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
+                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(app.owner == who, Error::<T>::NotFound);
+                
+                // 只允许在 DepositLocked 或 PendingReview 状态下修改
+                ensure!(
+                    matches!(app.status, ApplicationStatus::DepositLocked | ApplicationStatus::PendingReview),
+                    Error::<T>::NotInEditableStatus
+                );
+                
+                // 检查截止时间
+                let now = frame_system::Pallet::<T>::block_number().saturated_into::<u32>();
+                match app.status {
+                    ApplicationStatus::DepositLocked => {
+                        // DepositLocked 状态：检查资料提交截止时间
+                        ensure!(now <= app.info_deadline, Error::<T>::DeadlinePassed);
+                    }
+                    ApplicationStatus::PendingReview => {
+                        // PendingReview 状态：检查审核截止时间
+                        ensure!(now <= app.review_deadline, Error::<T>::DeadlinePassed);
+                    }
+                    _ => {}
+                }
+                
+                // 更新字段（如果提供）
+                if let Some(cid) = public_root_cid {
+                    app.public_cid = cid;
+                }
+                if let Some(cid) = private_root_cid {
+                    app.private_cid = cid;
+                }
+                if let Some(fee) = fee_bps {
+                    ensure!(fee <= 10_000, Error::<T>::InvalidFee);
+                    app.fee_bps = fee;
+                }
+                if let Some(amount) = min_amount {
+                    ensure!(amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
+                    app.min_amount = amount;
+                }
+                
+                // 如果之前是 DepositLocked 状态且现在提供了所有必需字段，更新为 PendingReview
+                if matches!(app.status, ApplicationStatus::DepositLocked) {
+                    // 检查是否所有必需字段都已填写（非空）
+                    let has_public_cid = !app.public_cid.is_empty();
+                    let has_private_cid = !app.private_cid.is_empty();
+                    let has_fee = app.fee_bps > 0 || fee_bps.is_some();
+                    let has_min_amount = app.min_amount > BalanceOf::<T>::zero() || min_amount.is_some();
+                    
+                    if has_public_cid && has_private_cid && has_fee && has_min_amount {
+                        app.status = ApplicationStatus::PendingReview;
+                    }
+                }
+                
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::InfoUpdated { mm_id });
+            Ok(())
+        }
+
+        /// 撤销（仅 DepositLocked 阶段）
+        #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::cancel())]
         pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -278,7 +363,7 @@ pub mod pallet {
         /// 函数级中文注释：批准做市商申请
         /// - 权限：Root 或 委员会 2/3 多数通过
         /// - 通过委员会提案流程：propose → vote → close 自动调用本函数
-        #[pallet::call_index(3)]
+        #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::approve())]
         pub fn approve(origin: OriginFor<T>, mm_id: u64) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
@@ -301,7 +386,7 @@ pub mod pallet {
         /// - 权限：Root 或 委员会 2/3 多数通过
         /// - 通过委员会提案流程：propose → vote → close 自动调用本函数
         /// - 扣罚比例由提案中指定，余额退还申请人
-        #[pallet::call_index(4)]
+        #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::reject())]
         pub fn reject(origin: OriginFor<T>, mm_id: u64, slash_bps: u16) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
@@ -340,7 +425,7 @@ pub mod pallet {
         }
 
         /// 超时清理（info 未提交或 pending 超时）
-        #[pallet::call_index(5)]
+        #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::expire())]
         pub fn expire(origin: OriginFor<T>, mm_id: u64) -> DispatchResult {
             let _ = ensure_signed(origin)?;

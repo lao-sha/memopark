@@ -87,5 +87,23 @@ export default defineConfig({
       define: { global: 'globalThis' },
     },
   },
-  build: { target: 'es2020' },
+  build: {
+    target: 'es2020',
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 大型依赖单独分包，浏览器可缓存
+          react: ['react', 'react-dom'],
+          antd: ['antd'],
+          substrate: [
+            '@polkadot/api',
+            '@polkadot/api-base',
+            '@polkadot/types',
+            '@polkadot/util'
+          ],
+        },
+      },
+    },
+  },
 })

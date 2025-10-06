@@ -56,6 +56,8 @@ import CreateOrderPage from './features/otc/CreateOrderPage';
 import PayCreateTestPage from './features/otc/PayCreateTestPage';
 import CreateMarketMakerPage from './features/otc/CreateMarketMakerPage';
 import PayResultPage from './features/otc/PayResultPage';
+import { resolveRoute } from './routes';
+import UIShowcase from './components/ui/UIShowcase';
 
 /**
  * 函数级详细中文注释：应用主组件
@@ -84,52 +86,20 @@ const App: React.FC = () => {
         <div className="App">
           <GovernanceUiProvider>
             <WalletProvider>
-              {hash === '#/admin/pause' ? <AdminPause />
-                : hash === '#/admin/category' ? <AdminCategory />
-                : hash === '#/admin/effect' ? <AdminEffect />
-                : hash.startsWith('#/browse/category') ? <CategoryBrowse />
-                : hash === '#/orders' ? <MyOrders />
-                : hash === '#/timeline' ? <OfferingsTimeline />
-                : hash === '#/offerings/by-who' ? <OfferingsByWho />
-                : hash === '#/grave/create' ? <CreateGraveForm />
-                : hash === '#/deceased/create' ? <CreateDeceasedForm />
-                : hash.startsWith('#/grave/detail') ? <GraveDetailPage />
-                : hash === '#/deceased/list' ? <DeceasedListPage />
-                : hash === '#/grave/my' ? <MyGravesPage />
-                : hash === '#/treasury' ? <TreasuryPage />
-                : hash === '#/dashboard' ? <DashboardPage />
-                : hash === '#/gov/appeal' ? <SubmitAppealPage />
-                : hash === '#/profile' ? <ProfilePage />
-                : hash === '#/covers' ? <CoverOptionsPage />
-                : hash === '#/covers/create' ? <CreateCoverOptionPage />
-                : hash === '#/grave/audio' ? <GraveAudioPicker />
-                : hash === '#/carousel/editor' ? <CarouselEditorPage />
-                : hash === '#/category/create' ? <CreateCategoryPage />
-                : hash === '#/identity' ? <IdentityViewerPage />
-                : hash === '#/origin' ? <OriginRestrictionPage />
-                : hash === '#/affiliate/params' ? <RewardParamsPanel />
-                : hash === '#/bridge/params' ? <BridgeParamsPage />
-                : hash === '#/category/create-primary' ? <CreatePrimaryCategoryPage />
-                : hash === '#/category/list' ? <CategoryListPage />
-                : hash === '#/sacrifice/create' ? <CreateSacrificePage />
-                : hash === '#/scene/create' ? <CreateScenePage />
-                : hash === '#/bridge/lock' ? <BridgeLockPage />
-                : hash === '#/ledger/cleanup' ? <LedgerCleanupPage />
-                : hash === '#/admin/otc' ? <AdminOtcSettingsPage />
-                : hash === '#/otc/order' ? <CreateOrderPage />
-                : hash === '#/otc/mm-apply' ? <CreateMarketMakerPage />
-                : hash === '#/otc/pay-result' ? <PayResultPage />
-                : hash === '#/otc/pay-test' ? <PayCreateTestPage />
-                : hash === '#/otc/claim' ? <ClaimMemoForm />
-                : hash === '#/admin/offer-route' ? <AdminOfferRoutePage />
-                : hash === '#/ipfs/pin' ? <DeceasedPinWizard />
-                : hash === '#/ipfs/usage' ? <UsagePage />
-                : hash === '#/evidence/linker' ? <EvidenceLinkerPage />
-                : hash === '#/fee-guard' ? <FeeGuardAdminPage />
-                : hash === '#/forwarder/session' ? <ForwarderSessionPage />
-                : hash === '#/ipfs/billing' ? <BillingAdminPage />
-                : hash.startsWith('#/ref') ? <ReferralBindPage />
-                : <AuthEntryPage />}
+                {(() => {
+                  const Dynamic = resolveRoute(hash);
+                  if (Dynamic) {
+                    return (
+                      <React.Suspense fallback={<div style={{padding:40,textAlign:'center',color:'#888'}}>加载中...</div>}>
+                        <Dynamic />
+                      </React.Suspense>
+                    );
+                  }
+                  if (hash === '#/graves') return <GraveListPage />; // 保持原有默认入口之一
+                  if (hash === '#/evidence/linker') return <EvidenceLinkerPage />; // 仍保留直载页
+                  if (hash === '#/otc/claim') return <ClaimMemoForm />;
+                  return <AuthEntryPage />;
+                })()}
               <BottomNav />
               <SettingsButton />
               <SettingsDrawer />

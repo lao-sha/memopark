@@ -27,11 +27,33 @@
   |  PendingReview       |
   |  (等待审核)          |
   |                      |
+  |--update_info-------->|
+  |  (可修改资料)        |
+  |  [审核截止前]        |
+  |                      |
   |<-----approve---------|
   |  (批准) 或 reject    |
   |                      |
   |  Active 或 Rejected  |
   ```
+
+**流程说明**：
+1. **质押阶段 (DepositLocked)**：
+   - 申请人质押押金，获得 24 小时提交窗口
+   - 可调用 `submit_info` 提交资料
+   - 可调用 `update_info` 修改资料（需在 info_deadline 前）
+   - 可调用 `cancel` 取消申请并退还押金
+
+2. **审核阶段 (PendingReview)**：
+   - 资料已提交，等待委员会审核
+   - 可调用 `update_info` 继续修改资料（需在 review_deadline 前）
+   - 委员会可调用 `approve` 批准或 `reject` 驳回
+
+3. **终态**：
+   - `Active`：批准通过，成为正式做市商
+   - `Rejected`：驳回，按比例扣罚押金
+   - `Cancelled`：用户主动取消（仅限质押阶段）
+   - `Expired`：超时未提交或审核超时
 
 ## 存储结构
 
@@ -123,6 +145,44 @@ pub fn submit_info(
 **效果**：
 - 状态变更为 `PendingReview`
 - 发出 `Submitted` 事件
+
+### update_info
+```rust
+pub fn update_info(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    public_root_cid: Option<Cid>,
+    private_root_cid: Option<Cid>,
+    fee_bps: Option<u16>,
+    min_amount: Option<BalanceOf<T>>,
+) -> DispatchResult
+```
+
+**功能**：更新申请资料（审核前可修改）
+
+**参数**：
+- `mm_id`: 申请编号
+- `public_root_cid`: 公开资料根 CID（None 表示不修改）
+- `private_root_cid`: 私密资料根 CID（None 表示不修改）
+- `fee_bps`: 费率（None 表示不修改）
+- `min_amount`: 最小下单额（None 表示不修改）
+
+**权限**：申请人本人
+
+**允许状态**：
+- `DepositLocked`：可修改，需在资料提交截止时间（`info_deadline`）前
+- `PendingReview`：可修改，需在审核截止时间（`review_deadline`）前
+
+**效果**：
+- 更新指定字段（参数为 None 的字段不修改）
+- 如果从 `DepositLocked` 状态修改且所有必需字段都已填写，自动变更为 `PendingReview`
+- 发出 `InfoUpdated` 事件
+
+**注意事项**：
+- 质押金额不可修改
+- 只能在审核前修改，一旦 `Active`、`Rejected`、`Cancelled` 或 `Expired` 则不可修改
+- 费率范围：0-10000 bps（0%-100%）
+- 最小下单额必须大于 0
 
 ### approve
 ```rust
@@ -221,6 +281,21 @@ pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
 - 解密提示和审查流程指引
 
 **优化记录**：
+- ✅ **2025-10-06**: 添加 `update_info` 接口支持审核前修改资料
+  - **需求**：做市商在审核成功前，需要能够修改申请资料（质押金额、费率、最小下单额等）
+  - **实现方案**：
+    - 新增 `update_info` 接口（call_index=2）
+    - 允许在 `DepositLocked` 或 `PendingReview` 状态下修改资料
+    - 参数使用 `Option` 类型，None 表示不修改该字段
+    - 自动检查截止时间：DepositLocked 检查 info_deadline，PendingReview 检查 review_deadline
+    - 如果从 DepositLocked 修改且所有必需字段已填写，自动转为 PendingReview 状态
+  - **改进效果**：
+    - ✅ 用户体验提升：提交后发现错误可以及时修改，无需取消重新申请
+    - ✅ 灵活性增强：审核期间可根据委员会反馈调整资料
+    - ✅ 保证安全：质押金额不可修改，状态转换严格控制
+    - ✅ 时间保护：必须在截止时间前修改，防止无限拖延
+  - **新增事件**：`InfoUpdated { mm_id }`
+  - **新增错误**：`NotInEditableStatus`（状态不允许编辑）
 - ✅ **2025-09-30**: 实现委员会治理机制
   - **问题**：委员会成员直接调用 `approve/reject` 被拒绝（BadOrigin）
   - **原因**：原实现使用 `ensure_root`，仅 Sudo 可批准
@@ -252,6 +327,12 @@ Submitted { mm_id: u64 }
 ```
 资料提交成功
 
+### InfoUpdated
+```rust
+InfoUpdated { mm_id: u64 }
+```
+资料更新成功
+
 ### Approved
 ```rust
 Approved { mm_id: u64 }
@@ -282,6 +363,7 @@ Expired { mm_id: u64 }
 - `NotFound`: 申请不存在
 - `NotDepositLocked`: 状态不是 DepositLocked
 - `NotPendingReview`: 状态不是 PendingReview
+- `NotInEditableStatus`: 状态不允许编辑（只能在 DepositLocked 或 PendingReview 状态下修改）
 - `AlreadyFinalized`: 申请已终结
 - `DeadlinePassed`: 超过截止时间
 - `InvalidFee`: 费率超出范围

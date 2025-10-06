@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { Tabs } from 'antd'
+import WalletWelcomePage from './WalletWelcomePage'
 import LoginPage from './LoginPage'
 import CreateWalletPage from './CreateWalletPage'
+import RestoreWalletPage from './RestoreWalletPage'
 import HomePage from '../home/HomePage'
 import ProfilePage from '../profile/ProfilePage'
+import MyWalletPage from '../profile/MyWalletPage'
+import WalletManagePage from '../wallet/WalletManagePage'
 import { sessionManager } from '../../lib/sessionManager'
 import TransferPage from '../ledger/TransferPage'
 import CreateGraveForm from '../grave/CreateGraveForm'
@@ -15,18 +19,29 @@ import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
 import FriendsPage from '../deceased/FriendsPage'
 import CreateDeceasedForm from '../deceased/CreateDeceasedForm'
 
+/**
+ * 函数级详细中文注释：认证入口页面组件
+ * - 管理钱包登录、创建、恢复等流程的页面切换
+ * - 首次访问显示欢迎页面（welcome），用户可选择创建或恢复钱包
+ * - 已有会话则自动跳转到主页（home）
+ * - 支持通过 mp.nav 事件在各页面间切换
+ */
 const AuthEntryPage: React.FC = () => {
-  const [active, setActive] = useState<string>('login')
+  const [active, setActive] = useState<string>('welcome')
 
   useEffect(() => {
     const s = sessionManager.init()
     if (s) setActive('home')
-    const onNav = (e: any) => {
-      const key = e?.detail?.tab
-      if (key) setActive(key)
+    const onNav = (e: Event) => {
+      const customEvent = e as CustomEvent
+      const key = customEvent?.detail?.tab
+      if (key) {
+        console.log('导航到:', key)
+        setActive(key)
+      }
     }
-    window.addEventListener('mp.nav', onNav)
-    return () => window.removeEventListener('mp.nav', onNav)
+    window.addEventListener('mp.nav', onNav as EventListener)
+    return () => window.removeEventListener('mp.nav', onNav as EventListener)
   }, [])
 
   return (
@@ -34,9 +49,19 @@ const AuthEntryPage: React.FC = () => {
       <Tabs
         activeKey={active}
         onChange={setActive}
+        destroyInactiveTabPane={true}
         items={[
-          { key: 'login', label: '登录', children: <LoginPage onSuccess={() => setActive('home')} onNavigateCreate={() => setActive('create')} /> },
-          { key: 'create', label: '创建钱包', children: <CreateWalletPage onCreated={() => setActive('login')} /> },
+          { 
+            key: 'welcome', 
+            label: '欢迎', 
+            children: <WalletWelcomePage 
+              onCreateWallet={() => setActive('create')} 
+              onRestoreWallet={() => setActive('restore')} 
+            /> 
+          },
+          { key: 'restore', label: '恢复钱包', children: <RestoreWalletPage onSuccess={() => setActive('home')} onBack={() => setActive('welcome')} /> },
+          { key: 'login', label: '登录(旧)', children: <LoginPage onSuccess={() => setActive('home')} onNavigateCreate={() => setActive('create')} /> },
+          { key: 'create', label: '创建钱包', children: <CreateWalletPage onCreated={() => setActive('wallet-manage')} /> },
           { key: 'transfer', label: '转账', children: <TransferPage /> },
           { key: 'create-grave', label: '创建墓地', children: <CreateGraveForm /> },
           { key: 'grave-list', label: '墓地列表', children: <GraveListPage /> },
@@ -46,8 +71,10 @@ const AuthEntryPage: React.FC = () => {
           { key: 'friends', label: '亲友团', children: <FriendsPage /> },
           { key: 'deceased-create', label: '创建逝者', children: <CreateDeceasedForm /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },
-          { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('login')} /> },
-          { key: 'profile', label: '个人中心', children: <ProfilePage /> }
+          { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('welcome')} /> },
+          { key: 'profile', label: '个人中心(旧)', children: <ProfilePage /> },
+          { key: 'my-wallet', label: '我的钱包', children: <MyWalletPage /> },
+          { key: 'wallet-manage', label: '钱包管理', children: <WalletManagePage /> }
         ]}
       />
     </div>
