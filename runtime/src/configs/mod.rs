@@ -1314,9 +1314,12 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
                     now,
                     duration_weeks,
                 );
-                // 1.5) 分销托管记账：当存在入金时，将本次消费按联盟规则记账
+                // 1.5) 联盟计酬分配：当存在入金时，将本次消费按联盟规则分配
+                // 函数级中文注释：【核心修改】调用统一分配入口，动态路由到 instant 或 weekly
+                // 资金已通过多路分账存入 pallet-affiliate 托管账户，
+                // 由 pallet-affiliate-config 根据当前模式（Instant/Weekly）动态分配
                 if let Some(pay) = amt {
-                    pallet_memo_affiliate::Pallet::<Runtime>::report(
+                    let _ = pallet_affiliate_config::Pallet::<Runtime>::distribute_rewards(
                         who,
                         pay,
                         Some(target),
@@ -2018,7 +2021,29 @@ impl sp_core::Get<&'static [u16]> for AffiliateTierRates {
     }
 }
 
-impl pallet_memo_affiliate::Config for Runtime {
+/// ============================================================================
+/// 联盟计酬托管层配置 (pallet-affiliate)
+/// ============================================================================
+/// 函数级中文注释：托管层只负责资金托管，不涉及分配逻辑
+impl pallet_affiliate::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    /// 函数级中文注释：托管 PalletId - 使用独立的联盟计酬托管账户
+    type EscrowPalletId = AffiliatePalletId;
+    /// 函数级中文注释：提款权限 - 仅 Root 可以提款（或配置为财务委员会）
+    type WithdrawOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+parameter_types! {
+    /// 函数级中文注释：联盟计酬托管账户地址（供 weekly 使用）
+    pub AffiliateEscrowAccount: AccountId = AffiliatePalletId::get().into_account_truncating();
+}
+
+/// ============================================================================
+/// 联盟计酬周结算分配层配置 (pallet-affiliate-weekly)
+/// ============================================================================
+/// 函数级中文注释：分配层负责分配算法和周期结算，从托管层读取资金
+impl pallet_affiliate_weekly::Config for Runtime {
     /// 事件类型
     type RuntimeEvent = RuntimeEvent;
     /// 货币实现
@@ -2027,8 +2052,8 @@ impl pallet_memo_affiliate::Config for Runtime {
     type Referrals = pallet_memo_referrals::Pallet<Runtime>;
     /// 周对应区块数
     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
-    /// 函数级中文注释：托管 PalletId - 使用独立的联盟计酬托管账户，与 OTC 托管隔离
-    type EscrowPalletId = AffiliatePalletId;
+    /// 函数级中文注释：从托管层读取托管账户（类似 affiliate-instant 的设计）
+    type EscrowAccount = AffiliateEscrowAccount;
     /// 防御性搜索上限
     type MaxSearchHops = frame_support::traits::ConstU32<10_000>;
     /// 结算最大层级与阈值
@@ -2039,7 +2064,8 @@ impl pallet_memo_affiliate::Config for Runtime {
 }
 
 // 运行时可读默认值说明（前端读取 storage）：
-// - memoAffiliate.budgetCapPerCycle / minStakeForReward / budgetSourceAccount / minQualifyingAction
+// - affiliate.totalDeposited / totalWithdrawn（托管层统计）
+// - affiliateWeekly.budgetCapPerCycle / minStakeForReward / minQualifyingAction（分配层参数）
 
 /// 函数级中文注释：分层比例数组 [L1=2000, L2=1000, L3..L15=400]
 pub struct LevelRatesArray;
@@ -2052,6 +2078,151 @@ impl sp_core::Get<&'static [u16]> for LevelRatesArray {
         ];
         RATES
     }
+}
+
+/// ============================================================================
+/// 联盟计酬即时分配工具配置 (pallet-affiliate-instant)
+/// ============================================================================
+/// 函数级中文注释：即时分配工具负责实时计算推荐链并立即转账
+impl pallet_affiliate_instant::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type PalletId = AffiliatePalletId;
+    type ReferralProvider = InstantReferralProviderAdapter;
+    type MembershipProvider = InstantMembershipProviderAdapter;
+    type BurnPercent = frame_support::traits::ConstU8<5>;
+    type TreasuryPercent = frame_support::traits::ConstU8<2>;
+    type StoragePercent = frame_support::traits::ConstU8<3>;
+    type StorageFee = frame_support::traits::ConstU128<1000>;
+    type BurnFee = frame_support::traits::ConstU128<500>;
+    type TreasuryAccount = TreasuryAccount;
+    type StorageAccount = TreasuryAccount;
+}
+
+/// 函数级中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-instant 的 ReferralProvider trait
+pub struct InstantReferralProviderAdapter;
+impl pallet_affiliate_instant::ReferralProvider<AccountId> for InstantReferralProviderAdapter {
+    /// 函数级中文注释：获取推荐链（祖先列表）
+    fn get_sponsor_chain(_who: &AccountId, _max_depth: u8) -> alloc::vec::Vec<AccountId> {
+        // 函数级中文注释：临时返回空列表
+        // TODO: 实际应该从 pallet-memo-referrals 获取完整推荐链
+        alloc::vec::Vec::new()
+    }
+}
+
+/// 函数级中文注释：适配器 - 将 Membership 适配到 pallet-affiliate-instant 的 MembershipProvider trait
+pub struct InstantMembershipProviderAdapter;
+impl pallet_affiliate_instant::MembershipProvider<AccountId> for InstantMembershipProviderAdapter {
+    /// 函数级中文注释：检查是否为有效会员
+    fn is_member_valid(_who: &AccountId) -> bool {
+        // 函数级中文注释：临时返回 true
+        // TODO: 实际应该从 pallet-membership 检查会员有效性
+        true
+    }
+    
+    /// 函数级中文注释：获取会员可拿代数
+    fn get_member_generations(_who: &AccountId) -> Option<u8> {
+        // 函数级中文注释：临时返回最大层级15
+        // TODO: 实际应该从 pallet-membership 获取会员等级对应的代数
+        Some(15)
+    }
+}
+
+/// 函数级中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-config 的 ReferralProvider trait
+pub struct ConfigReferralProviderAdapter;
+impl pallet_affiliate_config::ReferralProvider<AccountId> for ConfigReferralProviderAdapter {
+    /// 函数级中文注释：通过推荐码查找推荐人
+    fn get_referrer_by_code(code: &[u8]) -> Option<AccountId> {
+        // 函数级中文注释：使用 pallet-memo-referrals 的 ReferralProvider trait 方法
+        use pallet_memo_referrals::ReferralProvider;
+        pallet_memo_referrals::Pallet::<Runtime>::find_account_by_code(&code.to_vec())
+    }
+}
+
+/// 函数级中文注释：适配器 - 将 Membership 适配到 pallet-affiliate-config 的 MembershipProvider trait
+pub struct ConfigMembershipProviderAdapter;
+impl pallet_affiliate_config::MembershipProvider<AccountId> for ConfigMembershipProviderAdapter {
+    /// 函数级中文注释：获取会员的推荐层级数
+    fn get_referral_levels(_who: &AccountId) -> u8 {
+        // 函数级中文注释：临时返回最大层级15
+        // TODO: 实际应该从 pallet-membership 获取会员等级对应的层级数
+        15
+    }
+    
+    /// 函数级中文注释：检查是否为有效会员
+    fn is_valid_member(_who: &AccountId) -> bool {
+        // 函数级中文注释：临时返回 true
+        // TODO: 实际应该从 pallet-membership 检查会员有效性
+        true
+    }
+}
+
+/// ============================================================================
+/// 联盟计酬动态切换配置层 (pallet-affiliate-config)
+/// ============================================================================
+/// 函数级中文注释：配置层负责模式路由，根据治理设置动态切换 Instant/Weekly 模式
+impl pallet_affiliate_config::Config for Runtime {
+    /// 函数级中文注释：事件类型
+    type RuntimeEvent = RuntimeEvent;
+    
+    /// 函数级中文注释：货币类型
+    type Currency = Balances;
+    
+    /// 函数级中文注释：托管账户地址（资金池）
+    /// 指向 pallet-affiliate 的托管账户，所有模式的资金都来自这里
+    type EscrowAccount = AffiliateEscrowAccount;
+    
+    /// 函数级中文注释：周结算提供者（pallet-affiliate-weekly）
+    type WeeklyProvider = pallet_affiliate_weekly::Pallet<Runtime>;
+    
+    /// 函数级中文注释：即时分成提供者（pallet-affiliate-instant）
+    type InstantProvider = pallet_affiliate_instant::Pallet<Runtime>;
+    
+    /// 函数级中文注释：会员信息提供者（适配器）
+    type MembershipProvider = ConfigMembershipProviderAdapter;
+    
+    /// 函数级中文注释：推荐关系提供者（适配器）
+    type ReferralProvider = ConfigReferralProviderAdapter;
+    
+    /// 函数级中文注释：财务治理起源（Root 或 财务委员会 2/3 多数）
+    /// 用于切换结算模式等重要财务治理操作
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance2, 2, 3>,
+    >;
+    
+    /// 函数级中文注释：权重信息（占位）
+    type WeightInfo = ();
+    
+    /// 函数级中文注释：Pallet ID（暂时保留，未来可能移除）
+    type PalletId = AffiliatePalletId;
+}
+
+// ===== pallet_membership 运行时配置 =====
+parameter_types! {
+    pub const MembershipPalletId: PalletId = PalletId(*b"membersp");
+    pub const BlocksPerYear: BlockNumber = 5_256_000; // 6秒一个块：365 * 24 * 60 * 60 / 6
+    pub const Units: Balance = 1_000_000_000_000; // 1 MEMO = 10^12
+    pub const MinMembershipPrice: Balance = 100_000_000_000_000; // 100 MEMO
+    pub const MaxMembershipPrice: Balance = 10_000_000_000_000_000; // 10,000 MEMO
+}
+
+impl pallet_membership::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type PalletId = MembershipPalletId;
+    type BlocksPerYear = BlocksPerYear;
+    type Units = Units;
+    type ReferralProvider = pallet_memo_referrals::Pallet<Runtime>;
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance2, 2, 3>,
+    >;
+    type MinMembershipPrice = MinMembershipPrice;
+    type MaxMembershipPrice = MaxMembershipPrice;
+    type AffiliatePalletId = AffiliatePalletId;
+    type AffiliateDistributor = pallet_affiliate_config::Pallet<Runtime>;
+    type WeightInfo = ();
 }
 
 // 已移除：OpenGov 轨道相关 Cow（未使用）

@@ -20,6 +20,9 @@ sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1
 sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
 sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
 
+# Local pallets
+pallet-affiliate-config = { path = "../affiliate-config", default-features = false }
+
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
 sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
@@ -37,6 +40,7 @@ std = [
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"pallet-affiliate-config/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

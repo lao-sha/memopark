@@ -5409,6 +5409,10 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
+ "pallet-affiliate",
+ "pallet-affiliate-config",
+ "pallet-affiliate-instant",
+ "pallet-affiliate-weekly",
  "pallet-arbitration",
  "pallet-aura",
  "pallet-balances",
@@ -5424,7 +5428,7 @@ dependencies = [
  "pallet-identity",
  "pallet-ledger",
  "pallet-market-maker",
- "pallet-memo-affiliate",
+ "pallet-membership",
  "pallet-memo-bridge",
  "pallet-memo-content-governance",
  "pallet-memo-grave",
@@ -6087,6 +6091,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-affiliate"
+version = "0.2.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-affiliate-config"
 version = "0.1.0"
 dependencies = [
@@ -6109,6 +6125,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "pallet-affiliate-config",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -6116,6 +6133,20 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-affiliate-weekly"
+version = "0.2.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-affiliate-config",
+ "pallet-memo-referrals",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -6357,6 +6388,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "pallet-affiliate-config",
  "pallet-memo-referrals",
  "parity-scale-codec",
  "scale-info",
@@ -6365,19 +6397,6 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
-]
-
-[[package]]
-name = "pallet-memo-affiliate"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-memo-referrals",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
 ]
 
 [[package]]

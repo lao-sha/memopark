@@ -1,13 +1,40 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! # 联盟计酬周结算分配层 (pallet-memo-affiliate-weekly)
+//!
+//! ## 功能概述
+//!
+//! 本模块是联盟计酬系统的**分配层**，负责周期结算和奖励分配逻辑。
+//! 职责单一：只负责分配算法、活跃度管理、预算控制，不涉及资金托管。
+//!
+//! ## 核心特性
+//!
+//! 1. **周期结算**
+//!    - 按周统计推荐奖励
+//!    - 分页结算，避免单块过重
+//!    - 从托管层读取资金进行分配
+//!
+//! 2. **15层推荐分配**
+//!    - 非压缩不等比：L1=20%、L2=10%、L3..L15=各4%
+//!    - 资格验证：活跃期、直推有效数、持仓门槛
+//!    - 预算控制：每周奖励上限
+//!
+//! 3. **活跃度管理**
+//!    - 供奉延长活跃期
+//!    - 活跃期内计入直推有效数
+//!    - 到期自动回退直推计数
+//!
+//! 4. **工具层设计**
+//!    - 类似 `pallet-affiliate-instant` 的架构
+//!    - 从托管层读取资金账户
+//!    - 无状态工具模式（存储仅用于记账）
+
 //! 说明：临时全局允许 `deprecated`（常量权重/RuntimeEvent），后续将迁移至 WeightInfo 并移除
 #![allow(deprecated)]
 
 pub use pallet::*;
 extern crate alloc;
 
-/// 函数级中文注释：对外暴露的“消费上报”Trait，供供奉/消费来源调用。
-/// - 托管模式：只记账与托管归集，不即时发放；
-/// - 即时模式：直接按规则发放（默认仍建议托管）。
+/// 函数级中文注释：对外暴露的"消费上报"Trait，供供奉/消费来源调用。
 pub trait ConsumptionReporter<AccountId, Balance, BlockNumber> {
     /// 上报一次消费（供奉）
     /// - who: 发生消费的账户
@@ -26,33 +53,20 @@ pub trait ConsumptionReporter<AccountId, Balance, BlockNumber> {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use alloc::vec::Vec;
     use core::convert::TryInto;
-    use frame_support::sp_runtime::traits::{AccountIdConversion, Saturating};
     use frame_support::{
         pallet_prelude::*,
         traits::{ConstU32, Currency, ExistenceRequirement::KeepAlive, Get, StorageVersion},
     };
     use frame_system::pallet_prelude::*;
     use pallet_memo_referrals::ReferralProvider;
+    use sp_runtime::traits::Saturating;
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
     pub type BlockNumberFor<T> = frame_system::pallet_prelude::BlockNumberFor<T>;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
-
-    /// 结算模式
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, TypeInfo, MaxEncodedLen, RuntimeDebug)]
-    pub enum SettlementMode {
-        Escrow,
-        Immediate,
-    }
-    impl Default for SettlementMode {
-        fn default() -> Self {
-            SettlementMode::Escrow
-        }
-    }
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -65,8 +79,8 @@ pub mod pallet {
         /// 每周对应的区块数（用于计算周编号）
         #[pallet::constant]
         type BlocksPerWeek: Get<u32>;
-        /// 托管 PalletId（统一托管账户，不分周期）
-        type EscrowPalletId: Get<frame_support::PalletId>;
+        /// 函数级中文注释：托管账户（从托管层读取，类似 affiliate-instant 的设计）
+        type EscrowAccount: Get<Self::AccountId>;
         /// 搜索上限（防御性）
         #[pallet::constant]
         type MaxSearchHops: Get<u32>;
@@ -84,15 +98,7 @@ pub mod pallet {
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
-    /// 函数级中文注释：当前结算模式（默认 Escrow）。
-    #[pallet::storage]
-    pub type Mode<T: Config> = StorageValue<_, SettlementMode, ValueQuery>;
-
     // ====== 可治理参数（以存储为准；常量/默认由 runtime 注入） ======
-    #[pallet::type_value]
-    pub fn DefaultBudgetSourceAccount<T: Config>() -> T::AccountId {
-        T::EscrowPalletId::get().into_account_truncating()
-    }
     #[pallet::type_value]
     pub fn DefaultBudgetCapPerCycle<T: Config>() -> BalanceOf<T> {
         0u32.into()
@@ -106,11 +112,7 @@ pub mod pallet {
         0u32
     }
 
-    /// 支付预算来源账户（默认为 PalletId 派生的托管账户）。
-    #[pallet::storage]
-    pub type BudgetSourceAccount<T: Config> =
-        StorageValue<_, T::AccountId, ValueQuery, DefaultBudgetSourceAccount<T>>;
-    /// 每周期（周）奖励上限（仅对发放给上级的份额生效，基础销毁/国库不计入此上限）。0 表示不限制。
+    /// 每周期（周）奖励上限（仅对发放给上级的份额生效）。0 表示不限制。
     #[pallet::storage]
     pub type BudgetCapPerCycle<T: Config> =
         StorageValue<_, BalanceOf<T>, ValueQuery, DefaultBudgetCapPerCycle<T>>;
@@ -122,7 +124,7 @@ pub mod pallet {
     #[pallet::storage]
     pub type MinStakeForReward<T: Config> =
         StorageValue<_, BalanceOf<T>, ValueQuery, DefaultMinStakeForReward<T>>;
-    /// 最小有效行为次数（占位，默认 0，联动外部行为统计后启用）。
+    /// 最小有效行为次数（占位，默认 0）。
     #[pallet::storage]
     pub type MinQualifyingAction<T: Config> =
         StorageValue<_, u32, ValueQuery, DefaultMinQualActions<T>>;
@@ -132,7 +134,7 @@ pub mod pallet {
     pub type ActiveUntilWeek<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
-    /// 函数级中文注释：账户当前“直推有效”人数（随到期/续期动态变化）。
+    /// 函数级中文注释：账户当前"直推有效"人数（随到期/续期动态变化）。
     #[pallet::storage]
     pub type DirectActiveCount<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
@@ -173,20 +175,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type SettleCursor<T: Config> = StorageMap<_, Blake2_128Concat, u32, u32, ValueQuery>;
 
-    /// 函数级中文注释：账户主推荐码（一次性领取，不可重复）。
-    #[pallet::storage]
-    pub type CodeOf<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, ConstU32<16>>, OptionQuery>;
-
-    /// 函数级中文注释：推荐码归属索引（规范化码 → 账户）。
-    #[pallet::storage]
-    pub type OwnerOfCode<T: Config> =
-        StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<16>>, T::AccountId, OptionQuery>;
-
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// 消费已入托管并记账。
+        /// 消费已记账。
         EscrowRecorded {
             cycle: u32,
             who: T::AccountId,
@@ -198,252 +190,182 @@ pub mod pallet {
             to: T::AccountId,
             amount: BalanceOf<T>,
         },
-        /// 完成一批结算。
-        Settled { cycle: u32, paid: u32 },
-        /// 活跃期已标记。
-        ActiveMarked { who: T::AccountId, until_week: u32 },
-        /// 结算模式变更。
-        ModeChanged { mode_code: u8 },
-        /// 已支付给账户的奖励。
+        /// 已从托管账户转账给账户（结算阶段）。
         RewardClaimed {
             cycle: u32,
             to: T::AccountId,
             amount: BalanceOf<T>,
         },
-        /// 参数更新（预算来源/上限/门槛）。
-        RewardParamsUpdated,
-        /// 函数级中文注释：已为账户分配唯一推荐码（默认码）。
-        /// - code 采用规范化（大写十六进制）编码，仅包含 [0-9A-F]，长度固定 8。
-        ReferralCodeAssigned {
+        /// 本周结算完成（清理光标、索引）。
+        SettleCompleted { cycle: u32 },
+        /// 新账户变为活跃（直推的sponsor也 +1）。
+        BecameActive {
             who: T::AccountId,
-            code: BoundedVec<u8, ConstU32<16>>,
+            until_week: u32,
         },
+        /// 账户活跃期延长。
+        ActiveRenewed {
+            who: T::AccountId,
+            until_week: u32,
+        },
+        /// 奖励参数已更新
+        RewardParamsUpdated,
     }
 
     #[pallet::error]
     pub enum Error<T> {
-        /// 参数非法或比例和不为 100%。
-        BadParams,
-        /// 目标周无应结数据。
+        /// 该周无账户待结算
         NothingToSettle,
-        /// 函数级中文注释：尚未绑定推荐人（sponsor），不可领取默认码。
-        NotEligible,
-        /// 函数级中文注释：已存在推荐码，不可重复领取。
-        AlreadyHasCode,
-        /// 函数级中文注释：推荐码生成发生冲突（重试后仍冲突）。
-        CodeCollision,
+        /// 其他可扩展错误
+        OtherError,
     }
 
+    /// 函数级中文注释：Hooks（周期到期清理）
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// 函数级中文注释：按周处理到期账户，回退其上级的直推有效计数。
-        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            // 轻量实现：仅在每个区块检查当前周的 ExpiringAt 列表是否需要处理。
-            // 计算当前周编号
-            let now = <frame_system::Pallet<T>>::block_number();
-            let week = Self::week_of(now);
-            let list = ExpiringAt::<T>::get(week);
-            if list.is_empty() {
-                return Weight::from_parts(0, 0);
-            }
-            for acc in list.into_inner() {
-                let until = ActiveUntilWeek::<T>::get(&acc);
-                if until < week {
-                    if let Some(up) = <Self as ReferralView<T>>::sponsor_of(&acc) {
-                        DirectActiveCount::<T>::mutate(up, |c| *c = c.saturating_sub(1));
-                    }
+        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
+            let cur_week = Self::week_of(n);
+            let expired = ExpiringAt::<T>::take(cur_week);
+            for who in expired.iter() {
+                if let Some(sp) = <Self as ReferralView<T>>::sponsor_of(who) {
+                    DirectActiveCount::<T>::mutate(&sp, |c| {
+                        if *c > 0 {
+                            *c -= 1
+                        }
+                    });
                 }
             }
-            ExpiringAt::<T>::remove(week);
-            Weight::from_parts(0, 0)
+            Weight::from_parts(10_000_000 + (expired.len() as u64 * 1_000_000), 0)
         }
     }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：治理设置结算模式（Escrow/Immediate）。
-        #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
-        pub fn set_mode(origin: OriginFor<T>, mode_code: u8) -> DispatchResult {
-            ensure_root(origin)?;
-            let mode = match mode_code {
-                0 => SettlementMode::Escrow,
-                1 => SettlementMode::Immediate,
-                _ => SettlementMode::Escrow,
-            };
-            Mode::<T>::put(mode);
-            Self::deposit_event(Event::ModeChanged { mode_code });
-            Ok(())
-        }
-
-        /// 函数级中文注释：分页结算指定周的数据。
-        /// - cycle: 周编号
-        /// - max_pay: 本次最多支付的账户数量（不含 burn/treasury）
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
-        /// 函数级中文注释：分页结算指定周的推荐奖励
-        /// 注意：销毁和国库已移至多路分账系统，此函数仅结算推荐奖励
+        #[pallet::weight(Weight::from_parts(10_000_000, 0))]
+        /// 函数级中文注释：分页结算指定周的推荐奖励（从托管账户转账）
         pub fn settle(origin: OriginFor<T>, cycle: u32, max_pay: u32) -> DispatchResult {
             let _ = ensure_signed(origin)?; // 允许任何人触发结算
             let list = EntitledAccounts::<T>::get(cycle).into_inner();
             ensure!(!list.is_empty(), Error::<T>::NothingToSettle);
 
             let mut cursor = SettleCursor::<T>::get(cycle);
-            let src = BudgetSourceAccount::<T>::get();
+            // 函数级中文注释：从托管层读取托管账户（类似 affiliate-instant 的设计）
+            let escrow_account = T::EscrowAccount::get();
             let mut paid: u32 = 0;
-            
+
             // 分页支付账户奖励
             while (cursor as usize) < list.len() && paid < max_pay {
                 let who = &list[cursor as usize];
                 let amt = Entitlement::<T>::take(cycle, who);
                 if !amt.is_zero() {
-                    let _ = T::Currency::transfer(&src, who, amt, KeepAlive);
+                    // 从托管账户转账给推荐人
+                    let _ = T::Currency::transfer(&escrow_account, who, amt, KeepAlive);
                     Self::deposit_event(Event::RewardClaimed {
                         cycle,
                         to: who.clone(),
                         amount: amt,
                     });
-                    paid = paid.saturating_add(1);
                 }
-                cursor = cursor.saturating_add(1);
+                cursor += 1;
+                paid += 1;
             }
-            SettleCursor::<T>::insert(cycle, cursor);
 
-            // 若账户清单已结完，清理索引
+            // 更新游标或清理
             if (cursor as usize) >= list.len() {
-                EntitledAccounts::<T>::remove(cycle);
                 SettleCursor::<T>::remove(cycle);
-                CycleRewardUsed::<T>::remove(cycle);
+                EntitledAccounts::<T>::remove(cycle);
+                Self::deposit_event(Event::SettleCompleted { cycle });
+            } else {
+                SettleCursor::<T>::insert(cycle, cursor);
             }
 
-            Self::deposit_event(Event::Settled { cycle, paid });
             Ok(())
         }
 
-        /// 函数级中文注释：治理更新奖励参数（预算来源/周期上限/门槛）。
-        /// - 未提供的参数保持不变；
-        /// - 预算来源为直接支付账户（默认为 EscrowPalletId 派生账户）。
+        /// 函数级中文注释：治理更新奖励参数（预算上限/门槛）。
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(Weight::from_parts(10_000_000, 0))]
         pub fn set_reward_params(
             origin: OriginFor<T>,
-            budget_source: Option<T::AccountId>,
             budget_cap_per_cycle: Option<BalanceOf<T>>,
             min_stake_for_reward: Option<BalanceOf<T>>,
             min_qual_actions: Option<u32>,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            if let Some(acc) = budget_source {
-                BudgetSourceAccount::<T>::put(acc);
-            }
             if let Some(cap) = budget_cap_per_cycle {
                 BudgetCapPerCycle::<T>::put(cap);
             }
-            if let Some(ms) = min_stake_for_reward {
-                MinStakeForReward::<T>::put(ms);
+            if let Some(min_stake) = min_stake_for_reward {
+                MinStakeForReward::<T>::put(min_stake);
             }
-            if let Some(mq) = min_qual_actions {
-                MinQualifyingAction::<T>::put(mq);
+            if let Some(min_qual) = min_qual_actions {
+                MinQualifyingAction::<T>::put(min_qual);
             }
             Self::deposit_event(Event::RewardParamsUpdated);
-            Ok(())
-        }
-
-        /// 函数级详细中文注释：领取默认推荐码（一次性，不可重复）。
-        /// - 条件：该账户必须已绑定推荐人（Referrals.sponsor_of(Some)）。
-        /// - 生成：取 blake2_256(account_id ++ salt) 的前 4 字节，编码为大写十六进制（长度 8）。
-        /// - 冲突：如已被占用，salt 自增重试（最多 8 次）。
-        #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
-        pub fn claim_default_code(origin: OriginFor<T>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(
-                <Self as ReferralView<T>>::sponsor_of(&who).is_some(),
-                Error::<T>::NotEligible
-            );
-            ensure!(!CodeOf::<T>::contains_key(&who), Error::<T>::AlreadyHasCode);
-
-            let mut salt: u8 = 0;
-            let mut assigned: Option<BoundedVec<u8, ConstU32<16>>> = None;
-            while salt < 8 {
-                let mut bytes: Vec<u8> = who.encode();
-                bytes.push(salt);
-                let hash = sp_core::hashing::blake2_256(&bytes);
-                // 取前 4 字节，编码为 8 位大写十六进制
-                let mut code_bytes: [u8; 8] = [0u8; 8];
-                for i in 0..4 {
-                    let b = hash[i];
-                    code_bytes[i * 2] = Self::hex_upper(b >> 4);
-                    code_bytes[i * 2 + 1] = Self::hex_upper(b & 0x0F);
-                }
-                let vec_code = code_bytes.to_vec();
-                let bv_key: BoundedVec<u8, ConstU32<16>> =
-                    BoundedVec::try_from(vec_code.clone())
-                        .map_err(|_| Error::<T>::CodeCollision)?;
-                if !OwnerOfCode::<T>::contains_key(&bv_key) {
-                    let bv: BoundedVec<u8, ConstU32<16>> = bv_key.clone();
-                    CodeOf::<T>::insert(&who, &bv);
-                    OwnerOfCode::<T>::insert(&bv_key, who.clone());
-                    assigned = Some(bv);
-                    break;
-                }
-                salt = salt.saturating_add(1);
-            }
-            ensure!(assigned.is_some(), Error::<T>::CodeCollision);
-            Self::deposit_event(Event::ReferralCodeAssigned {
-                who,
-                code: assigned.unwrap(),
-            });
             Ok(())
         }
     }
 
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：计算当前区块所属的周编号。
-        pub fn week_of(now: BlockNumberFor<T>) -> u32 {
-            // 简单换算：floor(now / BlocksPerWeek)
-            let bpw = T::BlocksPerWeek::get();
-            let n: u32 = TryInto::<u32>::try_into(now).ok().unwrap_or(0);
-            if bpw == 0 {
+        /// 函数级中文注释：计算区块对应的周编号。
+        pub fn week_of(block_number: BlockNumberFor<T>) -> u32 {
+            let blocks_per_week = T::BlocksPerWeek::get();
+            if blocks_per_week == 0 {
                 return 0;
             }
-            n / bpw
+            let n64: u64 = TryInto::<u64>::try_into(block_number).unwrap_or(0);
+            (n64 / (blocks_per_week as u64)) as u32
         }
 
-        /// 函数级中文注释：标记账户活跃期（供 offering Hook 调用）。
+        /// 函数级中文注释：标记账户活跃（首次/续期）。
         pub fn mark_active(
             who: &T::AccountId,
             now: BlockNumberFor<T>,
             duration_weeks: Option<u32>,
         ) {
             let cur_week = Self::week_of(now);
-            let extend = duration_weeks.unwrap_or(1).max(1);
-            let new_until = cur_week.saturating_add(extend);
-            let old_until = ActiveUntilWeek::<T>::get(who);
+            let weeks = duration_weeks.unwrap_or(1);
+            let new_until = cur_week.saturating_add(weeks);
 
-            // 是否从非活跃变为活跃
-            let was_inactive = old_until < cur_week;
-            if new_until > old_until {
-                ActiveUntilWeek::<T>::insert(who, new_until);
-                // 记录到期周的清单（new_until 之后的第一个周起始触发回退）
-                let expire_slot = new_until.saturating_add(1);
-                let mut v = ExpiringAt::<T>::get(expire_slot);
-                let _ = v.try_push(who.clone());
-                ExpiringAt::<T>::insert(expire_slot, v);
-                // 如从非活跃→活跃，给直属上级直推有效+1
-                if was_inactive {
-                    if let Some(up) = <Self as ReferralView<T>>::sponsor_of(who) {
-                        DirectActiveCount::<T>::mutate(up, |c| *c = c.saturating_add(1));
-                    }
+            let old_until = ActiveUntilWeek::<T>::get(who);
+            if old_until < cur_week {
+                // 从非活跃 → 活跃
+                if let Some(sp) = <Self as ReferralView<T>>::sponsor_of(who) {
+                    DirectActiveCount::<T>::mutate(&sp, |c| *c += 1);
                 }
-                Self::deposit_event(Event::ActiveMarked {
+                let mut expiring = ExpiringAt::<T>::get(new_until);
+                let _ = expiring.try_push(who.clone());
+                ExpiringAt::<T>::insert(new_until, expiring);
+                ActiveUntilWeek::<T>::insert(who, new_until);
+
+                Self::deposit_event(Event::BecameActive {
+                    who: who.clone(),
+                    until_week: new_until,
+                });
+            } else {
+                // 续期
+                if new_until > old_until {
+                    // 从旧到期清单移除
+                    ExpiringAt::<T>::mutate(old_until, |vec| {
+                        vec.retain(|x| x != who);
+                    });
+                    // 加入新到期清单
+                    let mut expiring = ExpiringAt::<T>::get(new_until);
+                    if !expiring.iter().any(|x| x == who) {
+                        let _ = expiring.try_push(who.clone());
+                    }
+                    ExpiringAt::<T>::insert(new_until, expiring);
+                    ActiveUntilWeek::<T>::insert(who, new_until);
+                }
+                Self::deposit_event(Event::ActiveRenewed {
                     who: who.clone(),
                     until_week: new_until,
                 });
             }
         }
 
-        /// 函数级中文注释：托管/即时模式统一入口：记录分配（即时模式也先记账，再直接划拨）。
+        /// 函数级中文注释：记录分配（只记账，不实际转账）。
         pub fn record_distribution(
             who: &T::AccountId,
             amount: BalanceOf<T>,
@@ -454,16 +376,11 @@ pub mod pallet {
             let per_need = T::PerLevelNeed::get();
             let rates = T::LevelRatesBps::get();
 
-            // 函数级中文注释：基础金额（现在是 100% 用于推荐奖励分配）
-            // 注意：销毁和国库已移至多路分账系统，此函数仅处理推荐奖励分配
             let base: BalanceOf<T> = amount;
-            // 非压缩：固定距离逐层分配
             let mut up_opt = <Self as ReferralView<T>>::sponsor_of(who);
             for layer in 1..=max_levels {
                 let rate_bps: u32 = rates.get((layer - 1) as usize).copied().unwrap_or(0) as u32;
                 if rate_bps == 0 {
-                    // 未配置的层视为 0
-                    // 继续上溯一层以推进 up_opt，避免卡住
                     up_opt = up_opt.and_then(|u| <Self as ReferralView<T>>::sponsor_of(&u));
                     continue;
                 }
@@ -472,8 +389,6 @@ pub mod pallet {
                     Some(ref up) => {
                         let active = ActiveUntilWeek::<T>::get(up) >= cur_week;
                         let can_take = (DirectActiveCount::<T>::get(up) / per_need) >= layer;
-                        // 函数级中文注释：若该层推荐人被封禁/不满足门槛/预算已达上限，则该层份额被忽略
-                        // （不再累计到国库，由多路分账系统统一处理剩余资金）
                         let banned = <T as Config>::Referrals::is_banned(up);
                         let stake_ok = {
                             let min_stake = MinStakeForReward::<T>::get();
@@ -520,22 +435,15 @@ pub mod pallet {
                                             amount: alloc,
                                         });
                                     }
-                                    // 函数级中文注释：超出预算的部分被忽略（不累计到国库）
                                 }
                             }
                         }
-                        // 函数级中文注释：不合格的份额被忽略（不累计到国库）
-                        // 上溯到下一层祖先
                         up_opt = <Self as ReferralView<T>>::sponsor_of(up);
                     }
-                    None => {
-                        // 函数级中文注释：没有上级，份额被忽略
-                    }
+                    None => {}
                 }
             }
 
-            // 函数级中文注释：发出托管记录事件
-            // 注意：销毁和国库已移至多路分账系统，此处仅记录推荐奖励分配
             Self::deposit_event(Event::EscrowRecorded {
                 cycle: cur_week,
                 who: who.clone(),
@@ -543,7 +451,7 @@ pub mod pallet {
             });
         }
 
-        /// 函数级中文注释：包装静态 trait 方法，便于 runtime 通过 `Pallet::<Runtime>::report(...)` 直接调用。
+        /// 函数级中文注释：包装静态 trait 方法。
         pub fn report(
             who: &T::AccountId,
             amount: BalanceOf<T>,
@@ -558,16 +466,6 @@ pub mod pallet {
                 now,
                 duration_weeks,
             )
-        }
-
-        /// 函数级中文注释：十六进制编码辅助（大写）。输入低 4 比特，返回 ASCII 字节。
-        #[inline]
-        fn hex_upper(n: u8) -> u8 {
-            match n {
-                0..=9 => b'0' + n,
-                10..=15 => b'A' + (n - 10),
-                _ => b'0',
-            }
         }
     }
 
@@ -589,7 +487,7 @@ impl<T: pallet::Config>
         pallet::BlockNumberFor<T>,
     > for pallet::Pallet<T>
 {
-    /// 函数级中文注释：供奉来源调用：标记活跃 + 记账式 15 层压缩分配；即时模式下仍优先记账，再由治理触发批量支付。
+    /// 函数级中文注释：供奉来源调用：标记活跃 + 记账式分配。
     fn report(
         who: &T::AccountId,
         amount: BalanceOf<T>,
@@ -601,3 +499,32 @@ impl<T: pallet::Config>
         Pallet::<T>::record_distribution(who, amount, now);
     }
 }
+
+// 函数级中文注释：实现 WeeklyAffiliateProvider trait，供 pallet-affiliate-config 调用
+impl<T: pallet::Config> pallet_affiliate_config::WeeklyAffiliateProvider<
+    T::AccountId, 
+    BalanceOf<T>, 
+    BlockNumberFor<T>
+> for pallet::Pallet<T> 
+{
+    /// 函数级中文注释：实现周结算接口（记账，资金已在托管账户）
+    fn escrow_and_record(
+        who: &T::AccountId,
+        amount: BalanceOf<T>,
+        target: Option<(u8, u64)>,
+        block_number: BlockNumberFor<T>,
+        duration_weeks: Option<u32>,
+    ) -> frame_support::dispatch::DispatchResult {
+        // 函数级中文注释：调用现有的 report 函数
+        // 标记活跃 + 记账式分配（资金已在托管账户，等待周期结算）
+        Self::report(
+            who,
+            amount,
+            target,
+            block_number,
+            duration_weeks,
+        );
+        Ok(())
+    }
+}
+

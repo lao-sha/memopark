@@ -223,7 +223,27 @@ pub mod pallet {
 		/// 分成比例更新
 		/// [新比例列表]
 		LevelPercentsUpdated { percents: Vec<u8> },
-	}
+		/// 函数级中文注释：推荐链奖励已分配（单层）
+		ReferralRewardDistributed {
+			sponsor: T::AccountId,
+			amount: BalanceOf<T>,
+			depth: u8,
+		},
+	/// 函数级中文注释：纯推荐链分配完成（100%推荐链）
+	PureReferralDistributionCompleted {
+		buyer: T::AccountId,
+		total_amount: BalanceOf<T>,
+		distributed: BalanceOf<T>,
+	},
+	/// 函数级中文注释：无效层级份额转入国库
+	InvalidLevelToTreasury {
+		amount: BalanceOf<T>,
+	},
+	/// 函数级中文注释：剩余金额保留在托管账户
+	RemainingInEscrow {
+		amount: BalanceOf<T>,
+	},
+}
 
 	#[pallet::error]
 	pub enum Error<T> {
@@ -437,28 +457,199 @@ pub mod pallet {
 				total_distributed: total_distributed_amount,
 			});
 
-			Ok(())
-		}
+		Ok(())
+	}
 
-		/// 计算百分比金额
-		///
-		/// # 参数
-		/// - `amount`: 基础金额
-		/// - `percent`: 百分比（0-100）
-		///
-		/// # 返回
-		/// 计算结果（向下取整）
-		fn percent_of(amount: BalanceOf<T>, percent: u8) -> BalanceOf<T> {
-			let percent_u128: u128 = percent.into();
-			let amount_u128: u128 = amount.saturated_into();
-			let result = amount_u128.saturating_mul(percent_u128) / 100u128;
-			result.saturated_into()
+	/// 函数级中文注释：纯推荐链分配（100%给推荐链，无 Burn/Treasury/Storage）
+	/// - 专用于会员购买等特殊场景
+	/// - amount 全部用于推荐链分配
+	///
+	/// # 参数
+	/// - `buyer`: 购买者账户
+	/// - `amount`: 全部金额（u128）
+	/// - `escrow_account`: 托管账户（资金来源）
+	///
+	/// # 逻辑流程
+	/// 1. 全部金额作为可分配金额（100%）
+	/// 2. 获取推荐链（最多15代）
+	/// 3. 按固定比例分配：30%, 25%, 15%, 10%, 7%, 3%, 2%×3, 1%×6
+	/// 4. 每层验证会员有效性和代数
+	/// 5. 无效层级的份额转入国库
+	/// 6. 即时转账到推荐人账户
+	///
+	/// # 返回
+	/// - `Ok(())`: 分配成功
+	/// - `Err`: 分配失败
+	pub fn distribute_to_referral_chain_only(
+		buyer: &T::AccountId,
+		amount: u128,
+		escrow_account: &T::AccountId,
+	) -> DispatchResult {
+		let amount_balance: BalanceOf<T> = amount.saturated_into();
+		
+		// ✅ 全部金额用于推荐链分配
+		let distributable = amount_balance;
+		
+		// 获取推荐链（最多15代）
+		let chain = T::ReferralProvider::get_sponsor_chain(buyer, 15);
+		
+		// 定义分成比例（15代，总计102% → 归一化到100%）
+		// 第1代：30%, 第2代：25%, 第3代：15%, 第4代：10%, 第5代：7%, 第6代：3%
+		// 第7-9代：各2%, 第10-15代：各1%
+		let ratios: [u32; 15] = [
+			300, 250, 150, 100, 70, 30,  // 前6代：900/1020
+			20, 20, 20,                   // 7-9代：60/1020
+			10, 10, 10, 10, 10, 10,       // 10-15代：60/1020
+		]; // 总计：1020/1020，需要归一化到 1000/1000
+		
+		// 归一化比例（1020 → 1000）
+		let total_ratio: u32 = ratios.iter().sum();
+		
+		let mut distributed: BalanceOf<T> = Zero::zero();
+		let mut remainder = distributable;
+		let mut treasury_amount: BalanceOf<T> = Zero::zero(); // ✅ 无效层级累积到国库
+		
+		for (depth, sponsor) in chain.iter().enumerate() {
+			if depth >= 15 {
+				break;
+			}
+			
+			// 计算该层份额（归一化）
+			let ratio = ratios[depth];
+			let share_u128 = (amount as u64)
+				.saturating_mul(ratio as u64)
+				.saturating_div(total_ratio as u64) as u128;
+			let share: BalanceOf<T> = share_u128.saturated_into();
+			
+			if share.is_zero() {
+				continue;
+			}
+			
+			// 验证推荐人是否为有效会员
+			let is_valid = T::MembershipProvider::is_member_valid(sponsor);
+			
+			if is_valid {
+				// 验证推荐人的可拿代数是否覆盖该层
+				let generations = T::MembershipProvider::get_member_generations(sponsor)
+					.unwrap_or(0);
+				
+				if generations as usize > depth {
+					// 有效，进行转账
+					let actual_share = core::cmp::min(share, remainder);
+					if !actual_share.is_zero() {
+						T::Currency::transfer(
+							escrow_account,
+							sponsor,
+							actual_share,
+							ExistenceRequirement::KeepAlive,
+						)?;
+						
+						distributed = distributed.saturating_add(actual_share);
+						remainder = remainder.saturating_sub(actual_share);
+						
+						// 发出事件
+						Self::deposit_event(Event::ReferralRewardDistributed {
+							sponsor: sponsor.clone(),
+							amount: actual_share,
+							depth: depth as u8,
+						});
+					}
+				} else {
+					// ✅ 代数不足，累积到国库
+					treasury_amount = treasury_amount.saturating_add(share);
+				}
+			} else {
+				// ✅ 无效会员，累积到国库
+				treasury_amount = treasury_amount.saturating_add(share);
+			}
 		}
+		
+		// ✅ 将无效层级的份额转入国库
+		if !treasury_amount.is_zero() {
+			let actual_treasury = core::cmp::min(treasury_amount, remainder);
+			if !actual_treasury.is_zero() {
+				T::Currency::transfer(
+					escrow_account,
+					&T::TreasuryAccount::get(),
+					actual_treasury,
+					ExistenceRequirement::KeepAlive,
+				)?;
+				
+				remainder = remainder.saturating_sub(actual_treasury);
+				
+				Self::deposit_event(Event::InvalidLevelToTreasury {
+					amount: actual_treasury,
+				});
+			}
+		}
+		
+		// 如果还有剩余（由于精度问题），保留在托管账户
+		if !remainder.is_zero() {
+			Self::deposit_event(Event::RemainingInEscrow {
+				amount: remainder,
+			});
+		}
+		
+		Self::deposit_event(Event::PureReferralDistributionCompleted {
+			buyer: buyer.clone(),
+			total_amount: amount_balance,
+			distributed,
+		});
+		
+		Ok(())
+	}
+
+	/// 计算百分比金额
+	///
+	/// # 参数
+	/// - `amount`: 基础金额
+	/// - `percent`: 百分比（0-100）
+	///
+	/// # 返回
+	/// 计算结果（向下取整）
+	fn percent_of(amount: BalanceOf<T>, percent: u8) -> BalanceOf<T> {
+		let percent_u128: u128 = percent.into();
+		let amount_u128: u128 = amount.saturated_into();
+		let result = amount_u128.saturating_mul(percent_u128) / 100u128;
+		result.saturated_into()
+	}
 
 		/// 托管账户（Pallet账户）
-		pub fn escrow_account() -> T::AccountId {
-			T::PalletId::get().into_account_truncating()
-		}
+	pub fn escrow_account() -> T::AccountId {
+		T::PalletId::get().into_account_truncating()
+	}
+	}
+}
+
+// 函数级中文注释：实现 InstantAffiliateProvider trait，供 pallet-affiliate-config 调用
+impl<T: pallet::Config> pallet_affiliate_config::InstantAffiliateProvider<T::AccountId, pallet::BalanceOf<T>> for pallet::Pallet<T> {
+	/// 函数级中文注释：实现即时分配接口（从托管账户转账）
+	fn distribute_instant(
+		buyer: &T::AccountId,
+		amount: pallet::BalanceOf<T>,
+		escrow_account: &T::AccountId,
+	) -> frame_support::dispatch::DispatchResult {
+		// 函数级中文注释：调用现有的 instant_distribute 函数
+		// 参数说明：
+		// - buyer: 购买者账户
+		// - original_price: 原价（等同于 amount）
+		// - actual_paid: 实付金额（等同于 amount）
+		// - escrow_account: 资金来源账户（托管账户）
+		Self::instant_distribute(
+			buyer,
+			amount,          // original_price
+			amount,          // actual_paid
+			escrow_account,  // 从托管账户转账
+		)
+	}
+	
+	/// 函数级中文注释：实现纯推荐链分配接口（100%推荐链，会员专用）
+	fn distribute_to_referral_chain_only(
+		buyer: &T::AccountId,
+		amount: u128,
+		escrow_account: &T::AccountId,
+	) -> frame_support::dispatch::DispatchResult {
+		Self::distribute_to_referral_chain_only(buyer, amount, escrow_account)
 	}
 }
 

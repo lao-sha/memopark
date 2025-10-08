@@ -310,8 +310,24 @@ pub mod runtime {
     #[runtime::pallet_index(22)]
     pub type Referrals = pallet_memo_referrals;
 
+    /// 联盟计酬托管层（职责：资金托管）
     #[runtime::pallet_index(24)]
-    pub type Affiliate = pallet_memo_affiliate;
+    pub type Affiliate = pallet_affiliate;
+
+    /// 联盟计酬周结算分配层（职责：分配算法和周期结算）
+    #[runtime::pallet_index(55)]
+    pub type AffiliateWeekly = pallet_affiliate_weekly;
+
+    /// 函数级中文注释：联盟计酬动态切换配置层（职责：模式路由和治理）
+    #[runtime::pallet_index(56)]
+    pub type AffiliateConfig = pallet_affiliate_config;
+
+    /// 函数级中文注释：联盟计酬即时分配工具（职责：即时转账分配）
+    #[runtime::pallet_index(57)]
+    pub type AffiliateInstant = pallet_affiliate_instant;
+
+    #[runtime::pallet_index(58)]
+    pub type Membership = pallet_membership;
 
     // #[runtime::pallet_index(25)] // memo-endowment 已下线
     // pub type MemoEndowment = pallet_memo_endowment;

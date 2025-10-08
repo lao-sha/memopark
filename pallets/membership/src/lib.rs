@@ -87,6 +87,9 @@ pub mod pallet {
 	/// 函数级中文注释：使用 pallet-memo-referrals 导出的 ReferralProvider trait
 	/// - 已移除本地 trait 定义，统一使用 pallet-memo-referrals::ReferralProvider
 	pub use pallet_memo_referrals::ReferralProvider;
+	
+	/// 函数级中文注释：使用 pallet-affiliate-config 导出的 AffiliateDistributor trait
+	pub use pallet_affiliate_config::AffiliateDistributor;
 
     #[pallet::pallet]
 	pub struct Pallet<T>(_);
@@ -126,13 +129,25 @@ pub mod pallet {
 		#[pallet::constant]
 		type MinMembershipPrice: Get<BalanceOf<Self>>;
 
-		/// 最高会员价格（防止恶意设置过高）
-		#[pallet::constant]
-		type MaxMembershipPrice: Get<BalanceOf<Self>>;
+	/// 最高会员价格（防止恶意设置过高）
+	#[pallet::constant]
+	type MaxMembershipPrice: Get<BalanceOf<Self>>;
 
-		/// 权重信息
-        type WeightInfo: WeightInfo;
-    }
+	/// 函数级中文注释：联盟计酬 PalletId
+	#[pallet::constant]
+	type AffiliatePalletId: Get<PalletId>;
+
+	/// 函数级中文注释：联盟计酬分配器
+	/// 供会员购买后触发联盟计酬分配
+	type AffiliateDistributor: pallet_affiliate_config::AffiliateDistributor<
+		Self::AccountId,
+		u128,
+		BlockNumberFor<Self>,
+	>;
+
+	/// 权重信息
+    type WeightInfo: WeightInfo;
+}
 
 	/// 会员信息存储映射
 	/// 键：账户ID
@@ -238,10 +253,16 @@ pub mod pallet {
 		/// 会员价格更新
 		/// [会员等级ID (0=Year1,1=Year3,2=Year5,3=Year10), 新价格(最小单位)]
 		MembershipPriceUpdated { level_id: u8, price: BalanceOf<T> },
-		/// 批量价格更新
-		/// [更新数量]
-		BatchPricesUpdated { count: u8 },
-    }
+	/// 批量价格更新
+	/// [更新数量]
+	BatchPricesUpdated { count: u8 },
+	/// 函数级中文注释：种子会员已添加
+	/// [账户, 会员等级ID]
+	SeedMemberAdded {
+		who: T::AccountId,
+		level_id: u8,
+	},
+}
 
     #[pallet::error]
 	pub enum Error<T> {
@@ -290,92 +311,95 @@ pub mod pallet {
 		/// - `InvalidReferralCode`: 推荐码不存在或无效
 		/// - `ReferrerNotValid`: 推荐人不是有效会员
 		/// - `ReferralCodeExists`: 生成的推荐码已存在（极小概率）
-		#[pallet::call_index(0)]
-		#[pallet::weight(T::WeightInfo::purchase_membership())]
-		pub fn purchase_membership(
-            origin: OriginFor<T>,
-			level_id: u8,
-			referral_code: Option<Vec<u8>>,
-		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
+	#[pallet::call_index(0)]
+	#[pallet::weight(T::WeightInfo::purchase_membership())]
+	pub fn purchase_membership(
+        origin: OriginFor<T>,
+		level_id: u8,
+		referral_code: Vec<u8>,  // ✅ 改为必填
+	) -> DispatchResult {
+		let who = ensure_signed(origin)?;
 
-			// 0. 解析会员等级
-			let level = match level_id {
-				0 => MembershipLevel::Year1,
-				1 => MembershipLevel::Year3,
-				2 => MembershipLevel::Year5,
-				3 => MembershipLevel::Year10,
-				_ => return Err(Error::<T>::CannotUpgrade.into()),
-			};
-
-		// 1. 验证不能重复购买
-		ensure!(!Memberships::<T>::contains_key(&who), Error::<T>::AlreadyMember);
-
-		// 2. 函数级中文注释：验证推荐码并获取推荐人（使用 pallet-memo-referrals 的接口）
-		let referrer = if let Some(code) = referral_code {
-			// 通过 ReferralProvider 查找推荐人账户
-			let referrer_account = T::ReferralProvider::find_account_by_code(&code)
-				.ok_or(Error::<T>::InvalidReferralCode)?;
-
-			// 验证推荐人是有效会员
-			ensure!(
-				Self::is_member_valid(&referrer_account),
-				Error::<T>::ReferrerNotValid
-			);
-
-			Some(referrer_account)
-		} else {
-			// 允许第一批创始会员没有推荐人
-			None
+		// 0. 解析会员等级
+		let level = match level_id {
+			0 => MembershipLevel::Year1,
+			1 => MembershipLevel::Year3,
+			2 => MembershipLevel::Year5,
+			3 => MembershipLevel::Year10,
+			_ => return Err(Error::<T>::CannotUpgrade.into()),
 		};
 
-		// 3. 计算价格并扣费（使用治理可配置的价格）
-		let price = Self::get_membership_price(level);
-		T::Currency::transfer(
-			&who,
-			&Self::treasury_account(),
-			price,
-			ExistenceRequirement::KeepAlive,
-		)?;
+	// 1. 验证不能重复购买
+	ensure!(!Memberships::<T>::contains_key(&who), Error::<T>::AlreadyMember);
 
-		// 4. 函数级中文注释：如果有推荐人，先绑定推荐关系（必须在自动分配推荐码之前）
-		if let Some(ref referrer_account) = referrer {
-			// 绑定推荐关系到 pallet-memo-referrals（使用内部方法）
-			T::ReferralProvider::bind_sponsor_internal(&who, referrer_account)
-				.map_err(|_| Error::<T>::ReferrerNotValid)?;
-		}
+	// 2. 函数级中文注释：验证推荐码（必填）
+	let referrer_account = T::ReferralProvider::find_account_by_code(&referral_code)
+		.ok_or(Error::<T>::InvalidReferralCode)?;
 
-		// 5. 创建会员信息（不再生成推荐码）
-		let current_block = <frame_system::Pallet<T>>::block_number();
-		let valid_until = Self::create_membership_internal(
-			who.clone(),
-			level,
-			referrer.clone(),
-			current_block,
-		)?;
+	// 验证推荐人是有效会员
+	ensure!(
+		Self::is_member_valid(&referrer_account),
+		Error::<T>::ReferrerNotValid
+	);
 
-		// 6. 函数级中文注释：自动为新会员分配推荐码（如果已绑定 sponsor）
-		// 如果是创始会员（无 sponsor），用户需要稍后手动调用 memoReferrals.claimDefaultCode()
-		if referrer.is_some() {
-			// 静默失败：如果自动分配失败，不影响购买流程，用户可以稍后手动领取
-			let _code_assigned = T::ReferralProvider::try_auto_claim_code(&who);
-		}
+	let referrer = Some(referrer_account);
 
-		// 7. 如果有推荐人，增加推荐人的奖励代数
-		if let Some(ref referrer_account) = referrer {
-			Self::increase_referrer_generation(referrer_account)?;
-		}
+	// 3. ✅ 计算价格并转账到联盟托管账户
+	let price = Self::get_membership_price(level);
+	let affiliate_account = T::AffiliatePalletId::get().into_account_truncating();
+	
+	T::Currency::transfer(
+		&who,
+		&affiliate_account,  // ✅ 改为联盟托管账户
+		price,
+		ExistenceRequirement::KeepAlive,
+	)?;
 
-		// 8. 发出事件
-		Self::deposit_event(Event::MembershipPurchased {
-			who,
-			level_id: level.to_id(),
-			valid_until,
-			referrer,
-		});
+	// 4. 函数级中文注释：绑定推荐关系（必须在自动分配推荐码之前）
+	if let Some(ref referrer_account) = referrer {
+		// 绑定推荐关系到 pallet-memo-referrals（使用内部方法）
+		T::ReferralProvider::bind_sponsor_internal(&who, referrer_account)
+			.map_err(|_| Error::<T>::ReferrerNotValid)?;
+	}
 
-			Ok(())
-		}
+	// 5. 创建会员信息（不再生成推荐码）
+	let current_block = <frame_system::Pallet<T>>::block_number();
+	let valid_until = Self::create_membership_internal(
+		who.clone(),
+		level,
+		referrer.clone(),
+		current_block,
+	)?;
+
+	// 6. 函数级中文注释：自动为新会员分配推荐码
+	if referrer.is_some() {
+		// 静默失败：如果自动分配失败，不影响购买流程，用户可以稍后手动领取
+		let _code_assigned = T::ReferralProvider::try_auto_claim_code(&who);
+	}
+
+	// 7. 增加推荐人的奖励代数
+	if let Some(ref referrer_account) = referrer {
+		Self::increase_referrer_generation(referrer_account)?;
+	}
+
+	// 8. ✅ 触发联盟计酬分配（100%推荐链）
+	let price_u128: u128 = price.saturated_into();
+	T::AffiliateDistributor::distribute_membership_rewards(
+		&who,
+		price_u128,
+		current_block,
+	)?;
+
+	// 9. 发出事件
+	Self::deposit_event(Event::MembershipPurchased {
+		who,
+		level_id: level.to_id(),
+		valid_until,
+		referrer,
+	});
+
+		Ok(())
+	}
 
 		/// 补升级到10年会员
 		///
@@ -609,15 +633,69 @@ pub mod pallet {
 				MembershipPrices::<T>::insert(level, price);
 			}
 
-			// 触发批量更新事件
-			Self::deposit_event(Event::BatchPricesUpdated { count: 4 });
+		// 触发批量更新事件
+		Self::deposit_event(Event::BatchPricesUpdated { count: 4 });
 
-			Ok(())
-		}
+		Ok(())
 	}
 
-	/// 内部辅助函数
-	impl<T: Config> Pallet<T> {
+	/// 函数级中文注释：治理添加种子会员（仅 Root）
+	/// 
+	/// # 参数
+	/// - `origin`: Root 起源
+	/// - `who`: 种子会员账户
+	/// - `level_id`: 会员等级 (0=Year1, 1=Year3, 2=Year5, 3=Year10)
+	/// 
+	/// # 说明
+	/// - 仅 Root 可调用
+	/// - 无需推荐人
+	/// - 用于创建初始种子会员
+	/// 
+	/// # 权重计算
+	/// - 写入：会员信息、统计数据
+	#[pallet::call_index(5)]
+	#[pallet::weight(T::WeightInfo::purchase_membership())]
+	pub fn add_seed_member(
+		origin: OriginFor<T>,
+		who: T::AccountId,
+		level_id: u8,
+	) -> DispatchResult {
+		ensure_root(origin)?;
+		
+		let level = match level_id {
+			0 => MembershipLevel::Year1,
+			1 => MembershipLevel::Year3,
+			2 => MembershipLevel::Year5,
+			3 => MembershipLevel::Year10,
+			_ => return Err(Error::<T>::CannotUpgrade.into()),
+		};
+		
+		ensure!(
+			!Memberships::<T>::contains_key(&who),
+			Error::<T>::AlreadyMember
+		);
+		
+		let current_block = <frame_system::Pallet<T>>::block_number();
+		
+		// 直接创建会员，无需推荐人
+		Self::create_membership_internal(
+			who.clone(),
+			level,
+			None, // 无推荐人
+			current_block,
+		)?;
+		
+		Self::deposit_event(Event::SeedMemberAdded {
+			who,
+			level_id: level.to_id(),
+		});
+		
+		Ok(())
+	}
+}
+
+/// 内部辅助函数
+impl<T: Config> Pallet<T> {
 		/// 检查账户是否是有效会员
 		///
 		/// # 参数

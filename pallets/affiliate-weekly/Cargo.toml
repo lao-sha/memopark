@@ -1,0 +1,31 @@
+[package]
+name = "pallet-affiliate-weekly"
+version = "0.2.0"
+license = "Unlicense"
+edition = "2021"
+publish = false
+description = "联盟计酬周结算分配层 - 负责周期结算和奖励分配逻辑"
+
+[dependencies]
+codec = { workspace = true, features = ["derive"] }
+scale-info = { workspace = true, features = ["derive"], default-features = false }
+frame-support = { workspace = true, default-features = false }
+frame-system = { workspace = true, default-features = false }
+sp-runtime = { workspace = true, default-features = false }
+sp-core = { workspace = true, default-features = false }
+pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
+pallet-affiliate-config = { path = "../affiliate-config", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "scale-info/std",
+    "frame-support/std",
+    "frame-system/std",
+    "sp-runtime/std",
+    "sp-core/std",
+    "pallet-memo-referrals/std",
+    "pallet-affiliate-config/std",
+]
+

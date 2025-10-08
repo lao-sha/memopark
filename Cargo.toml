@@ -27,7 +27,8 @@ members = [
     # 已迁移：删除旧 deceased-data
     "pallets/memo-offerings",
     "pallets/memo-referrals",
-    "pallets/memo-affiliate",
+    "pallets/affiliate",
+    "pallets/affiliate-weekly",
     "pallets/membership",
     "pallets/affiliate-instant",
     "pallets/affiliate-config",

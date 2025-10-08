@@ -22,6 +22,7 @@ sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v
 
 # Local pallets
 pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
+pallet-affiliate-config = { path = "../affiliate-config", default-features = false }
 
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
@@ -41,6 +42,7 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"pallet-memo-referrals/std",
+	"pallet-affiliate-config/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

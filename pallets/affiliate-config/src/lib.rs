@@ -101,7 +101,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::Zero,
+        traits::{Zero, SaturatedConversion},
         Saturating,
     };
     use sp_std::vec::Vec;
@@ -109,39 +109,58 @@ pub mod pallet {
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-    /// 周结算功能提供者
+    /// 函数级中文注释：周结算功能提供者
     ///
-    /// 由 `pallet-memo-affiliate` 实现
-    pub trait WeeklyAffiliateProvider<AccountId, Balance> {
-        /// 托管资金并记录待分配奖励
+    /// 由 `pallet-affiliate-weekly` 实现
+    pub trait WeeklyAffiliateProvider<AccountId, Balance, BlockNumber> {
+        /// 函数级中文注释：记账待分配奖励（资金已在托管账户）
         ///
         /// # 参数
         /// - `who`: 购买供奉的用户
         /// - `amount`: 供奉金额
-        /// - `referrer_code`: 推荐码
+        /// - `target`: 目标对象（domain, subject_id）
+        /// - `block_number`: 当前区块号
+        /// - `duration_weeks`: 持续周数
         fn escrow_and_record(
             who: &AccountId,
             amount: Balance,
-            referrer_code: &[u8],
+            target: Option<(u8, u64)>,
+            block_number: BlockNumber,
+            duration_weeks: Option<u32>,
         ) -> DispatchResult;
     }
 
-    /// 即时分成功能提供者
+    /// 函数级中文注释：即时分成功能提供者
     ///
     /// 由 `pallet-affiliate-instant` 实现
     pub trait InstantAffiliateProvider<AccountId, Balance> {
-        /// 立即分配推荐奖励
+        /// 函数级中文注释：立即分配推荐奖励（从托管账户转账）
         ///
         /// # 参数
         /// - `buyer`: 购买供奉的用户
         /// - `amount`: 供奉金额
-        /// - `referrer`: 直接推荐人
-        /// - `max_levels`: 最大分配层级
+        /// - `escrow_account`: 资金来源账户（托管账户）
         fn distribute_instant(
             buyer: &AccountId,
             amount: Balance,
-            referrer: &AccountId,
-            max_levels: u8,
+            escrow_account: &AccountId,
+        ) -> DispatchResult;
+        
+        /// 函数级中文注释：纯推荐链分配（100%推荐链，会员专用）
+        ///
+        /// # 参数
+        /// - `buyer`: 购买者账户
+        /// - `amount`: 全部金额（u128）
+        /// - `escrow_account`: 托管账户（资金来源）
+        ///
+        /// # 说明
+        /// - 不扣除 Burn、Treasury、Storage
+        /// - 100% 分配给推荐链（15代）
+        /// - 无效层级份额给第1级推荐人
+        fn distribute_to_referral_chain_only(
+            buyer: &AccountId,
+            amount: u128,
+            escrow_account: &AccountId,
         ) -> DispatchResult;
     }
 
@@ -164,38 +183,67 @@ pub mod pallet {
         fn get_referrer_by_code(code: &[u8]) -> Option<AccountId>;
     }
 
+    /// 函数级中文注释：联盟计酬分配器 trait
+    /// - 供其他业务模块（如会员、祭祀品）调用，触发联盟计酬分配
+    /// - 由 `pallet-affiliate-config` 实现
+    pub trait AffiliateDistributor<AccountId, Balance, BlockNumber> {
+        /// 通用分配（含 Burn/Treasury/Storage）
+        /// 适用于祭祀品购买等场景
+        fn distribute_rewards(
+            buyer: &AccountId,
+            amount: Balance,
+            target: Option<(u8, u64)>,
+            block_number: BlockNumber,
+            duration_weeks: Option<u32>,
+        ) -> DispatchResult;
+        
+        /// 函数级中文注释：会员专用分配（100%推荐链）
+        /// - 不扣除 Burn、Treasury、Storage
+        /// - 100% 分配给推荐链
+        /// - 适用于会员购买场景
+        fn distribute_membership_rewards(
+            buyer: &AccountId,
+            amount: Balance,
+            block_number: BlockNumber,
+        ) -> DispatchResult;
+    }
+
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// 事件类型
+        /// 函数级中文注释：事件类型
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        /// 货币类型
+        /// 函数级中文注释：货币类型
         type Currency: Currency<Self::AccountId>;
 
-        /// 周结算提供者
-        type WeeklyProvider: WeeklyAffiliateProvider<Self::AccountId, BalanceOf<Self>>;
+        /// 函数级中文注释：托管账户地址（资金池）
+        /// 指向 pallet-affiliate 的托管账户，所有模式的资金都来自这里
+        type EscrowAccount: Get<Self::AccountId>;
 
-        /// 即时分成提供者
+        /// 函数级中文注释：周结算提供者（pallet-affiliate-weekly）
+        type WeeklyProvider: WeeklyAffiliateProvider<Self::AccountId, BalanceOf<Self>, BlockNumberFor<Self>>;
+
+        /// 函数级中文注释：即时分成提供者（pallet-affiliate-instant）
         type InstantProvider: InstantAffiliateProvider<Self::AccountId, BalanceOf<Self>>;
 
-        /// 会员信息提供者
+        /// 函数级中文注释：会员信息提供者（pallet-membership）
         type MembershipProvider: MembershipProvider<Self::AccountId>;
 
-        /// 推荐关系提供者
+        /// 函数级中文注释：推荐关系提供者（pallet-memo-referrals）
         type ReferralProvider: ReferralProvider<Self::AccountId>;
 
-        /// 治理起源（Root 或 委员会 2/3 多数）
+        /// 函数级中文注释：财务治理起源（Root 或 财务委员会 2/3 多数）
         /// 
-        /// 用于切换结算模式等重要治理操作
+        /// 用于切换结算模式等重要财务治理操作
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
-        /// 权重信息
+        /// 函数级中文注释：权重信息
         type WeightInfo: WeightInfo;
 
-        /// Pallet ID，用于生成模块账户
+        /// 函数级中文注释：Pallet ID，用于生成模块账户（暂时保留，未来可能移除）
         #[pallet::constant]
         type PalletId: Get<frame_support::PalletId>;
     }
@@ -259,6 +307,14 @@ pub mod pallet {
             instant_amount: BalanceOf<T>,
             weekly_amount: BalanceOf<T>,
         },
+    /// 函数级中文注释：会员奖励已分配（100%推荐链）
+    ///
+    /// 参数: [buyer, amount, mode_id] (0=Weekly, 1=Instant, 2=Hybrid)
+    MembershipRewardsDistributed {
+        buyer: T::AccountId,
+        amount: u128,
+        mode_id: u8,
+    },
     }
 
     #[pallet::error]
@@ -357,138 +413,211 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// 分配推荐奖励（内部函数）
+        /// 函数级中文注释：统一分配入口，根据结算模式动态路由到不同的分配工具
         ///
-        /// 根据当前配置的结算模式，调用相应的分配逻辑
+        /// 根据当前配置的结算模式，调用相应的分配逻辑。
+        /// 资金已通过多路分账系统存入 pallet-affiliate 托管账户，
+        /// 本函数只负责分配逻辑的路由，不处理资金转移。
         ///
         /// # 参数
-        /// - `buyer`: 购买供奉的用户
-        /// - `amount`: 供奉金额
-        /// - `referrer_code`: 推荐码
+        /// - `who`: 购买者账户
+        /// - `amount`: 消费金额
+        /// - `target`: 目标对象（domain, subject_id）
+        /// - `block_number`: 当前区块号
+        /// - `duration_weeks`: 持续周数（用于周结算）
         ///
         /// # 返回
         /// - `Ok(())`: 分配成功
         /// - `Err(...)`: 分配失败
         pub fn distribute_rewards(
-            buyer: &T::AccountId,
+            who: &T::AccountId,
             amount: BalanceOf<T>,
-            referrer_code: &[u8],
+            target: Option<(u8, u64)>,
+            block_number: BlockNumberFor<T>,
+            duration_weeks: Option<u32>,
         ) -> DispatchResult {
+            // 函数级中文注释：读取当前结算模式
             let mode = <CurrentMode<T>>::get();
 
-            // 查找推荐人
-            let referrer = T::ReferralProvider::get_referrer_by_code(referrer_code)
-                .ok_or(Error::<T>::ReferrerNotFound)?;
+            // 函数级中文注释：获取托管账户地址（资金来源）
+            let escrow_account = T::EscrowAccount::get();
 
-            // 验证推荐人是有效会员
-            ensure!(
-                T::MembershipProvider::is_valid_member(&referrer),
-                Error::<T>::ReferrerNotValidMember
-            );
-
-            // 获取推荐人的层级数
-            let max_levels = T::MembershipProvider::get_referral_levels(&referrer);
-
-            // 根据模式分配
+            // 函数级中文注释：根据模式路由到不同的分配逻辑
             match mode {
-                SettlementMode::Weekly => {
-                    // 周结算：所有层级托管
-                    T::WeeklyProvider::escrow_and_record(buyer, amount, referrer_code)?;
-                    
-                    Self::deposit_event(Event::RewardsDistributed {
-                        buyer: buyer.clone(),
-                        amount,
-                        mode_id: 0, // Weekly
-                        levels: max_levels,
-                    });
-                }
                 SettlementMode::Instant => {
-                    // 即时分成：所有层级立即分配
-                    T::InstantProvider::distribute_instant(buyer, amount, &referrer, max_levels)?;
+                    // 函数级中文注释：即时分配 - 从托管账户立即转账给推荐人
+                    T::InstantProvider::distribute_instant(
+                        who,
+                        amount,
+                        &escrow_account,
+                    ).map_err(|_| Error::<T>::DistributionFailed)?;
                     
                     Self::deposit_event(Event::RewardsDistributed {
-                        buyer: buyer.clone(),
+                        buyer: who.clone(),
                         amount,
                         mode_id: 1, // Instant
-                        levels: max_levels,
+                        levels: 15, // 默认最大层级
                     });
                 }
-                SettlementMode::Hybrid { instant_levels, weekly_levels } => {
-                    // 混合模式：分层处理
-                    Self::hybrid_distribute(
-                        buyer,
+                SettlementMode::Weekly => {
+                    // 函数级中文注释：周结算 - 记账到待分配列表，等待周期结算
+                    T::WeeklyProvider::escrow_and_record(
+                        who,
                         amount,
-                        &referrer,
-                        referrer_code,
-                        instant_levels,
-                        weekly_levels,
-                        max_levels,
+                        target,
+                        block_number,
+                        duration_weeks,
                     )?;
+                    
+                    Self::deposit_event(Event::RewardsDistributed {
+                        buyer: who.clone(),
+                        amount,
+                        mode_id: 0, // Weekly
+                        levels: 15,
+                    });
+                }
+                SettlementMode::Hybrid { instant_levels: _, weekly_levels: _ } => {
+                    // 函数级中文注释：混合模式 - 前N层即时，后续层周结算
+                    // Phase 2 实现（暂时退化为 Instant 模式）
+                    T::InstantProvider::distribute_instant(
+                        who,
+                        amount,
+                        &escrow_account,
+                    ).map_err(|_| Error::<T>::DistributionFailed)?;
+                    
+                    Self::deposit_event(Event::HybridDistributed {
+                        buyer: who.clone(),
+                        instant_amount: amount,
+                        weekly_amount: BalanceOf::<T>::zero(),
+                    });
                 }
             }
 
-            // 更新统计
-            <ModeUsageCount<T>>::mutate(&mode, |count| *count = count.saturating_add(1));
-            <ModeTotalDistributed<T>>::mutate(&mode, |total| *total = total.saturating_add(amount));
+        // 函数级中文注释：更新统计
+        <ModeUsageCount<T>>::mutate(&mode, |count| *count = count.saturating_add(1));
+        <ModeTotalDistributed<T>>::mutate(&mode, |total| *total = total.saturating_add(amount));
 
-            Ok(())
-        }
+        Ok(())
+    }
 
-        /// 混合模式分配逻辑
-        ///
-        /// 前N层使用即时分成，后续层使用周结算
-        fn hybrid_distribute(
-            buyer: &T::AccountId,
-            amount: BalanceOf<T>,
-            referrer: &T::AccountId,
-            referrer_code: &[u8],
-            instant_levels: u8,
-            weekly_levels: u8,
-            max_levels: u8,
-        ) -> DispatchResult {
-            let actual_instant = instant_levels.min(max_levels);
-            let actual_weekly = weekly_levels.min(max_levels.saturating_sub(actual_instant));
-
-            let mut instant_amount = BalanceOf::<T>::zero();
-            let mut weekly_amount = BalanceOf::<T>::zero();
-
-            // 处理即时分成层
-            if actual_instant > 0 {
-                T::InstantProvider::distribute_instant(buyer, amount, referrer, actual_instant)?;
+    /// 函数级中文注释：会员专用分配（100%推荐链）
+    /// - 不扣除 Burn、Treasury、Storage
+    /// - 100% 分配给推荐链
+    ///
+    /// # 参数
+    /// - `buyer`: 购买者账户
+    /// - `amount`: 会员费用（u128）
+    /// - `block_number`: 当前区块高度
+    ///
+    /// # 返回
+    /// - `Ok(())`: 分配成功
+    /// - `Err`: 分配失败
+    pub fn distribute_membership_rewards(
+        buyer: &T::AccountId,
+        amount: u128,
+        block_number: BlockNumberFor<T>,
+    ) -> DispatchResult {
+        // 读取当前结算模式
+        let mode = <CurrentMode<T>>::get();
+        
+        // 获取托管账户地址（资金来源）
+        let escrow_account = T::EscrowAccount::get();
+        
+        // 根据模式路由到不同的分配逻辑
+        match mode {
+            SettlementMode::Instant => {
+                // ✅ 调用纯推荐链分配（100%）
+                T::InstantProvider::distribute_to_referral_chain_only(
+                    buyer,
+                    amount,
+                    &escrow_account,
+                )?;
                 
-                // 计算即时分成金额（20% * 即时层级比例）
-                let instant_ratio = sp_runtime::Percent::from_rational(actual_instant as u32, max_levels as u32);
-                instant_amount = instant_ratio * amount;
+                // 统计
+                <ModeUsageCount<T>>::mutate(SettlementMode::Instant, |c| {
+                    *c = c.saturating_add(1)
+                });
+                <ModeTotalDistributed<T>>::mutate(SettlementMode::Instant, |t| {
+                    *t = t.saturating_add(amount.saturated_into())
+                });
             }
-
-            // 处理周结算层
-            if actual_weekly > 0 {
-                T::WeeklyProvider::escrow_and_record(buyer, amount, referrer_code)?;
+            
+            SettlementMode::Weekly => {
+                // ✅ Weekly 模式本身就是100%推荐链（周结算时不扣除）
+                T::WeeklyProvider::escrow_and_record(
+                    buyer,
+                    amount.saturated_into(),
+                    None,          // 会员购买无 target
+                    block_number,
+                    None,          // 会员购买无时长
+                )?;
                 
-                // 计算周结算金额
-                let weekly_ratio = sp_runtime::Percent::from_rational(actual_weekly as u32, max_levels as u32);
-                weekly_amount = weekly_ratio * amount;
+                // 统计
+                <ModeUsageCount<T>>::mutate(SettlementMode::Weekly, |c| {
+                    *c = c.saturating_add(1)
+                });
+                <ModeTotalDistributed<T>>::mutate(SettlementMode::Weekly, |t| {
+                    *t = t.saturating_add(amount.saturated_into())
+                });
             }
-
-            Self::deposit_event(Event::HybridDistributed {
-                buyer: buyer.clone(),
-                instant_amount,
-                weekly_amount,
-            });
-
-            Ok(())
+            
+            SettlementMode::Hybrid { .. } => {
+                // 暂时回退到 Instant（100%推荐链）
+                T::InstantProvider::distribute_to_referral_chain_only(
+                    buyer,
+                    amount,
+                    &escrow_account,
+                )?;
+            }
         }
+        
+        // 发出事件
+        Self::deposit_event(Event::MembershipRewardsDistributed {
+            buyer: buyer.clone(),
+            amount,
+            mode_id: mode.to_id(),
+        });
+        
+        Ok(())
+    }
 
-        /// 获取模式使用统计
-        pub fn get_mode_statistics(mode: &SettlementMode) -> (u64, BalanceOf<T>) {
-            let count = <ModeUsageCount<T>>::get(mode);
-            let total = <ModeTotalDistributed<T>>::get(mode);
-            (count, total)
-        }
+
+    /// 获取模式使用统计
+    pub fn get_mode_statistics(mode: &SettlementMode) -> (u64, BalanceOf<T>) {
+        let count = <ModeUsageCount<T>>::get(mode);
+        let total = <ModeTotalDistributed<T>>::get(mode);
+        (count, total)
+    }
 
         /// 获取切换历史
         pub fn get_switch_history() -> Vec<ModeSwitch<BlockNumberFor<T>>> {
             <SwitchHistory<T>>::get().into_inner()
+        }
+    }
+
+    // 函数级中文注释：实现 AffiliateDistributor trait，供其他业务模块调用
+    impl<T: Config> AffiliateDistributor<T::AccountId, u128, BlockNumberFor<T>> for Pallet<T> {
+        fn distribute_rewards(
+            buyer: &T::AccountId,
+            amount: u128,
+            target: Option<(u8, u64)>,
+            block_number: BlockNumberFor<T>,
+            duration_weeks: Option<u32>,
+        ) -> DispatchResult {
+            // 转换金额类型
+            let amount_balance: BalanceOf<T> = amount.saturated_into();
+            
+            // 调用现有的 distribute_rewards 函数
+            Self::distribute_rewards(buyer, amount_balance, target, block_number, duration_weeks)
+        }
+        
+        fn distribute_membership_rewards(
+            buyer: &T::AccountId,
+            amount: u128,
+            block_number: BlockNumberFor<T>,
+        ) -> DispatchResult {
+            // 直接调用内部实现
+            Self::distribute_membership_rewards(buyer, amount, block_number)
         }
     }
 }
