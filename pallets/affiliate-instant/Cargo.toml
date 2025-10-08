@@ -1,15 +1,15 @@
 [package]
-name = "pallet-membership"
+name = "pallet-affiliate-instant"
 version = "0.1.0"
 authors = ["Memopark Team"]
 edition = "2021"
 license = "Apache-2.0"
-description = "年费会员系统：支持多等级会员、动态代数增长、推荐奖励"
+description = "即时分成系统：供奉支付后立即按层级分配推荐奖励"
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
 scale-info = { version = "2.0.0", default-features = false, features = ["derive"] }
-serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
+serde = { version = "1.0", optional = true }
 
 # Substrate
 frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
@@ -19,9 +19,6 @@ sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-
 sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
 sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
 sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-
-# Local pallets
-pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
 
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
@@ -40,7 +37,6 @@ std = [
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
-	"pallet-memo-referrals/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
@@ -51,3 +47,4 @@ try-runtime = [
 	"frame-support/try-runtime",
 	"frame-system/try-runtime",
 ]
+

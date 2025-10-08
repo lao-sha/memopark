@@ -245,8 +245,9 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：十六进制编码（大写），输入低 4 比特返回 ASCII 字节。
+        /// - 设为 public 以供 ReferralProvider trait 实现使用。
         #[inline]
-        fn hex_upper(n: u8) -> u8 {
+        pub fn hex_upper(n: u8) -> u8 {
             match n {
                 0..=9 => b'0' + n,
                 10..=15 => b'A' + (n - 10),
@@ -262,9 +263,35 @@ pub trait ReferralProvider<AccountId> {
     fn sponsor_of(who: &AccountId) -> Option<AccountId>;
     /// 受控向上遍历，最多 `max_hops` 层。
     fn ancestors(who: &AccountId, max_hops: u32) -> alloc::vec::Vec<AccountId>;
-    /// 函数级中文注释：该账户是否被标记为“封禁推荐人”。
+    /// 函数级中文注释：该账户是否被标记为"封禁推荐人"。
     /// - 用于计酬结算时将对应层的佣金归集至国库/平台账户。
     fn is_banned(who: &AccountId) -> bool;
+    
+    /// 函数级中文注释：通过推荐码查找归属账户。
+    /// - 用于其他模块（如 membership）验证推荐码有效性并获取推荐人账户。
+    /// - 参数：推荐码字节数组
+    /// - 返回：Some(账户) 如果推荐码存在，否则 None
+    fn find_account_by_code(code: &alloc::vec::Vec<u8>) -> Option<AccountId>;
+    
+    /// 函数级中文注释：获取账户的推荐码（如果已领取）。
+    /// - 用于前端查询用户的推荐码。
+    /// - 参数：账户ID
+    /// - 返回：Some(推荐码) 如果已领取，否则 None
+    fn get_referral_code(who: &AccountId) -> Option<alloc::vec::Vec<u8>>;
+    
+    /// 函数级中文注释：尝试自动为账户分配推荐码（静默失败）。
+    /// - 用于其他模块（如 membership）在用户购买会员后自动分配推荐码。
+    /// - 前置条件：账户必须已绑定推荐人（SponsorOf 存在）。
+    /// - 如果已有推荐码或成功分配，返回 true；否则返回 false。
+    /// - 静默失败设计：不影响调用方的主流程（如购买会员），用户可稍后手动领取。
+    fn try_auto_claim_code(who: &AccountId) -> bool;
+    
+    /// 函数级中文注释：内部绑定推荐关系（用于其他模块调用）。
+    /// - 用于其他模块（如 membership）在用户购买会员时自动绑定推荐关系。
+    /// - 参数：who - 被推荐人，sponsor - 推荐人
+    /// - 返回：成功或失败
+    /// - 约束：与 bind_sponsor 外部函数相同（防自荐、防环、一次性绑定）
+    fn bind_sponsor_internal(who: &AccountId, sponsor: &AccountId) -> Result<(), &'static str>;
 }
 
 impl<T: pallet::Config> ReferralProvider<T::AccountId> for Pallet<T> {
@@ -276,5 +303,132 @@ impl<T: pallet::Config> ReferralProvider<T::AccountId> for Pallet<T> {
     }
     fn is_banned(who: &T::AccountId) -> bool {
         <pallet::BannedSponsors<T>>::contains_key(who)
+    }
+    
+    /// 函数级中文注释：通过推荐码查找账户实现。
+    /// - 将输入的推荐码转换为 BoundedVec，然后查询 OwnerOfCode 存储。
+    fn find_account_by_code(code: &alloc::vec::Vec<u8>) -> Option<T::AccountId> {
+        use frame_support::{BoundedVec, traits::ConstU32};
+        // 转换为 BoundedVec
+        let bounded_code = BoundedVec::<u8, ConstU32<16>>::try_from(code.clone()).ok()?;
+        // 查询归属账户
+        <pallet::OwnerOfCode<T>>::get(&bounded_code)
+    }
+    
+    /// 函数级中文注释：获取账户推荐码实现。
+    /// - 从 CodeOf 存储中读取推荐码，并转换为普通 Vec。
+    fn get_referral_code(who: &T::AccountId) -> Option<alloc::vec::Vec<u8>> {
+        <pallet::CodeOf<T>>::get(who).map(|bounded| bounded.into_inner())
+    }
+    
+    /// 函数级中文注释：自动分配推荐码实现。
+    /// - 如果已有推荐码，直接返回 true。
+    /// - 如果未绑定 sponsor，返回 false（不符合领取条件）。
+    /// - 尝试生成唯一推荐码（8位大写HEX），最多重试8次。
+    /// - 成功分配后发出 ReferralCodeAssigned 事件。
+    fn try_auto_claim_code(who: &T::AccountId) -> bool {
+        use codec::Encode;
+        use frame_support::{BoundedVec, traits::ConstU32};
+        
+        // 如果已有推荐码，返回成功
+        if <pallet::CodeOf<T>>::contains_key(who) {
+            return true;
+        }
+        
+        // 如果没有绑定 sponsor，返回失败
+        if !<pallet::SponsorOf<T>>::contains_key(who) {
+            return false;
+        }
+        
+        // 尝试生成推荐码（复用 claim_default_code 的逻辑）
+        let mut salt: u8 = 0;
+        while salt < 8 {
+            let mut bytes = who.encode();
+            bytes.push(salt);
+            let hash = sp_core::hashing::blake2_256(&bytes);
+            
+            // 生成 8 位大写 HEX
+            let mut code_bytes: [u8; 8] = [0u8; 8];
+            for i in 0..4 {
+                let b = hash[i];
+                code_bytes[i * 2] = Pallet::<T>::hex_upper(b >> 4);
+                code_bytes[i * 2 + 1] = Pallet::<T>::hex_upper(b & 0x0F);
+            }
+            
+            if let Ok(bv) = BoundedVec::<u8, ConstU32<16>>::try_from(code_bytes.to_vec()) {
+                if !<pallet::OwnerOfCode<T>>::contains_key(&bv) {
+                    // 分配推荐码
+                    <pallet::CodeOf<T>>::insert(who, &bv);
+                    <pallet::OwnerOfCode<T>>::insert(&bv, who.clone());
+                    
+                    // 发出事件
+                    Pallet::<T>::deposit_event(pallet::Event::ReferralCodeAssigned {
+                        who: who.clone(),
+                        code: bv,
+                    });
+                    
+                    return true;
+                }
+            }
+            
+            salt = salt.saturating_add(1);
+        }
+        
+        // 8次尝试都失败，返回 false（静默失败）
+        false
+    }
+    
+    /// 函数级中文注释：内部绑定推荐关系实现。
+    /// - 复用 bind_sponsor 外部函数的逻辑，但不需要签名验证。
+    /// - 进行完整的验证：防自荐、防环、一次性绑定、未暂停。
+    fn bind_sponsor_internal(who: &T::AccountId, sponsor: &T::AccountId) -> Result<(), &'static str> {
+        use frame_support::traits::Get;
+        
+        // 检查系统是否暂停
+        if <pallet::Paused<T>>::get() {
+            return Err("System paused");
+        }
+        
+        // 检查是否自荐
+        if who == sponsor {
+            return Err("Self sponsor not allowed");
+        }
+        
+        // 检查是否已绑定
+        if <pallet::SponsorOf<T>>::contains_key(who) {
+            return Err("Already bound");
+        }
+        
+        // 环检测：向上遍历 sponsor 链
+        let max_hops = T::MaxHops::get();
+        let mut cursor = Some(sponsor.clone());
+        let mut hops: u32 = 0;
+        while let Some(cur) = cursor {
+            if cur == *who {
+                return Err("Cycle detected");
+            }
+            if hops >= max_hops {
+                break;
+            }
+            cursor = <pallet::SponsorOf<T>>::get(&cur);
+            hops = hops.saturating_add(1);
+        }
+        
+        // 绑定关系
+        <pallet::SponsorOf<T>>::insert(who, sponsor);
+        <pallet::BoundAt<T>>::insert(who, <frame_system::Pallet<T>>::block_number());
+        
+        // 维护反向索引
+        let _ = <pallet::ReferralsOf<T>>::try_mutate(sponsor, |v| {
+            v.try_push(who.clone()).map_err(|_| "Referrals limit reached")
+        })?;
+        
+        // 发出事件
+        Pallet::<T>::deposit_event(pallet::Event::SponsorBound {
+            who: who.clone(),
+            sponsor: sponsor.clone(),
+        });
+        
+        Ok(())
     }
 }

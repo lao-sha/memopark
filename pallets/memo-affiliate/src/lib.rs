@@ -67,10 +67,6 @@ pub mod pallet {
         type BlocksPerWeek: Get<u32>;
         /// 托管 PalletId（统一托管账户，不分周期）
         type EscrowPalletId: Get<frame_support::PalletId>;
-        /// 黑洞账户
-        type BurnAccount: Get<Self::AccountId>;
-        /// 国库账户
-        type TreasuryAccount: Get<Self::AccountId>;
         /// 搜索上限（防御性）
         #[pallet::constant]
         type MaxSearchHops: Get<u32>;
@@ -82,12 +78,6 @@ pub mod pallet {
         type PerLevelNeed: Get<u32>;
         /// 分层比例（bps 数组），长度建议为 MaxLevels（例如 [2000,1000,400×13] = 82%）
         type LevelRatesBps: Get<&'static [u16]>;
-        /// 销毁比例（bps，默认 1000=10%）
-        #[pallet::constant]
-        type BurnBps: Get<u16>;
-        /// 国库基础比例（bps，默认 1500=15%）
-        #[pallet::constant]
-        type TreasuryBps: Get<u16>;
     }
 
     #[pallet::pallet]
@@ -178,14 +168,6 @@ pub mod pallet {
         BoundedVec<T::AccountId, ConstU32<200_000>>,
         ValueQuery,
     >;
-
-    /// 函数级中文注释：本周累计销毁金额（记账）。
-    #[pallet::storage]
-    pub type BurnAccrued<T: Config> = StorageValue<_, (u32, BalanceOf<T>), ValueQuery>;
-
-    /// 函数级中文注释：本周累计国库金额（记账，含未匹配层数）。
-    #[pallet::storage]
-    pub type TreasuryAccrued<T: Config> = StorageValue<_, (u32, BalanceOf<T>), ValueQuery>;
 
     /// 函数级中文注释：结算进度光标（分页结算）。
     #[pallet::storage]
@@ -299,19 +281,18 @@ pub mod pallet {
         /// - max_pay: 本次最多支付的账户数量（不含 burn/treasury）
         #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
+        /// 函数级中文注释：分页结算指定周的推荐奖励
+        /// 注意：销毁和国库已移至多路分账系统，此函数仅结算推荐奖励
         pub fn settle(origin: OriginFor<T>, cycle: u32, max_pay: u32) -> DispatchResult {
             let _ = ensure_signed(origin)?; // 允许任何人触发结算
             let list = EntitledAccounts::<T>::get(cycle).into_inner();
-            ensure!(
-                !list.is_empty()
-                    || BurnAccrued::<T>::get().0 == cycle
-                    || TreasuryAccrued::<T>::get().0 == cycle,
-                Error::<T>::NothingToSettle
-            );
+            ensure!(!list.is_empty(), Error::<T>::NothingToSettle);
 
             let mut cursor = SettleCursor::<T>::get(cycle);
             let src = BudgetSourceAccount::<T>::get();
             let mut paid: u32 = 0;
+            
+            // 分页支付账户奖励
             while (cursor as usize) < list.len() && paid < max_pay {
                 let who = &list[cursor as usize];
                 let amt = Entitlement::<T>::take(cycle, who);
@@ -328,22 +309,8 @@ pub mod pallet {
             }
             SettleCursor::<T>::insert(cycle, cursor);
 
-            // 若账户清单已结完，则支付 burn/treasury 并清理索引
+            // 若账户清单已结完，清理索引
             if (cursor as usize) >= list.len() {
-                let (_, burn_amt) = BurnAccrued::<T>::take();
-                if !burn_amt.is_zero() {
-                    let _ =
-                        T::Currency::transfer(&src, &T::BurnAccount::get(), burn_amt, KeepAlive);
-                }
-                let (_, trea_amt) = TreasuryAccrued::<T>::take();
-                if !trea_amt.is_zero() {
-                    let _ = T::Currency::transfer(
-                        &src,
-                        &T::TreasuryAccount::get(),
-                        trea_amt,
-                        KeepAlive,
-                    );
-                }
                 EntitledAccounts::<T>::remove(cycle);
                 SettleCursor::<T>::remove(cycle);
                 CycleRewardUsed::<T>::remove(cycle);
@@ -486,12 +453,10 @@ pub mod pallet {
             let max_levels = T::MaxLevels::get();
             let per_need = T::PerLevelNeed::get();
             let rates = T::LevelRatesBps::get();
-            let burn_bps = T::BurnBps::get() as u32;
-            let tres_bps = T::TreasuryBps::get() as u32;
 
-            // 基础比例预算
+            // 函数级中文注释：基础金额（现在是 100% 用于推荐奖励分配）
+            // 注意：销毁和国库已移至多路分账系统，此函数仅处理推荐奖励分配
             let base: BalanceOf<T> = amount;
-            let mut treasury_extra: BalanceOf<T> = 0u32.into();
             // 非压缩：固定距离逐层分配
             let mut up_opt = <Self as ReferralView<T>>::sponsor_of(who);
             for layer in 1..=max_levels {
@@ -507,7 +472,8 @@ pub mod pallet {
                     Some(ref up) => {
                         let active = ActiveUntilWeek::<T>::get(up) >= cur_week;
                         let can_take = (DirectActiveCount::<T>::get(up) / per_need) >= layer;
-                        // 若该层推荐人被封禁/不满足门槛/预算已达上限，则将份额归入国库累积（treasury_extra）
+                        // 函数级中文注释：若该层推荐人被封禁/不满足门槛/预算已达上限，则该层份额被忽略
+                        // （不再累计到国库，由多路分账系统统一处理剩余资金）
                         let banned = <T as Config>::Referrals::is_banned(up);
                         let stake_ok = {
                             let min_stake = MinStakeForReward::<T>::get();
@@ -535,9 +501,7 @@ pub mod pallet {
                             } else {
                                 let used = CycleRewardUsed::<T>::get(cur_week);
                                 let allowed = cap.saturating_sub(used);
-                                if allowed.is_zero() {
-                                    treasury_extra += share;
-                                } else {
+                                if !allowed.is_zero() {
                                     let alloc = if share > allowed { allowed } else { share };
                                     if !alloc.is_zero() {
                                         Entitlement::<T>::mutate(cur_week, up, |v| *v += alloc);
@@ -556,37 +520,22 @@ pub mod pallet {
                                             amount: alloc,
                                         });
                                     }
-                                    if share > allowed {
-                                        treasury_extra += share - allowed;
-                                    }
+                                    // 函数级中文注释：超出预算的部分被忽略（不累计到国库）
                                 }
                             }
-                        } else {
-                            treasury_extra += share;
                         }
+                        // 函数级中文注释：不合格的份额被忽略（不累计到国库）
                         // 上溯到下一层祖先
                         up_opt = <Self as ReferralView<T>>::sponsor_of(up);
                     }
                     None => {
-                        treasury_extra += share;
+                        // 函数级中文注释：没有上级，份额被忽略
                     }
                 }
             }
 
-            // 其他两部分：burn 与 treasury 基础 + 未匹配层数
-            let burn = base / 10_000u32.into() * (burn_bps as u32).into();
-            let mut trea = base / 10_000u32.into() * (tres_bps as u32).into();
-            trea += treasury_extra;
-            BurnAccrued::<T>::mutate(|x| {
-                x.0 = cur_week;
-                x.1 += burn;
-            });
-            TreasuryAccrued::<T>::mutate(|x| {
-                x.0 = cur_week;
-                x.1 += trea;
-            });
-
-            // 托管：上游应已将金额转入统一托管账户；此处仅记录事件
+            // 函数级中文注释：发出托管记录事件
+            // 注意：销毁和国库已移至多路分账系统，此处仅记录推荐奖励分配
             Self::deposit_event(Event::EscrowRecorded {
                 cycle: cur_week,
                 who: who.clone(),

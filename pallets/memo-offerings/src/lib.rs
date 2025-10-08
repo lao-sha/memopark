@@ -160,6 +160,12 @@ pub mod pallet {
         type Catalog: SacrificeCatalog<Self::AccountId, u64, u128, BlockNumberFor<Self>>;
         /// 函数级中文注释：消费回调，由消费侧 Pallet 实现（如 memo-pet）。
         type Consumer: EffectConsumer<Self::AccountId>;
+        /// 函数级中文注释：黑洞账户（用于销毁 MEMO）。
+        /// 约定：使用全零地址或特定 PalletId 派生的不可访问账户。
+        type BurnAccount: Get<Self::AccountId>;
+        /// 函数级中文注释：国库账户（用于平台财政收入）。
+        /// 约定：使用 PalletId("py/trsry") 派生的托管账户。
+        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     /// 函数级中文注释：通用余额类型别名，便于在本 Pallet 内部进行从 u128 到链上 Balance 的安全饱和转换。
@@ -295,9 +301,16 @@ pub mod pallet {
 
     // ====== 多路分账（可治理）======
     /// 函数级中文注释：路由项（最多 5 条）。
-    /// - kind：0=SubjectFunding（派生主题资金账户），1=SpecificAccount（固定账户）。
-    /// - account：当 kind=1 时必填；其余为 None。
-    /// - share：Permill 分配比例。
+    /// 路由类型（kind）说明：
+    /// - 0 = SubjectFunding：派生主题资金账户（墓地/宠物管理者收益）
+    /// - 1 = SpecificAccount：指定固定账户（联盟计酬/平台费等）
+    /// - 2 = Burn：销毁（发送到黑洞账户）
+    /// - 3 = Treasury：国库（发送到财政账户）
+    ///
+    /// 字段说明：
+    /// - kind：路由类型代码（0-3）
+    /// - account：当 kind=1 时必填，指定收款账户；其余类型为 None
+    /// - share：Permill 分配比例（0-1,000,000，100% = 1,000,000）
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct RouteEntry<T: Config> {
@@ -808,11 +821,15 @@ pub mod pallet {
             for (kind, acc, ppm) in routes.into_iter() {
                 let pm = Permill::from_parts(ppm.min(1_000_000));
                 sum = sum.saturating_add(pm.deconstruct() as u32);
-                // kind 校验：1=SpecificAccount 必须提供账户；0=SubjectFunding 忽略 account
+                // 函数级中文注释：验证 kind-account 匹配规则
+                // - kind=0 (SubjectFunding): account 忽略（自动派生）
+                // - kind=1 (SpecificAccount): account 必填
+                // - kind=2 (Burn): account 忽略（使用配置的 BurnAccount）
+                // - kind=3 (Treasury): account 忽略（使用配置的 TreasuryAccount）
                 match (kind, &acc) {
-                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),
-                    (0, _) | (1, Some(_)) => {}
-                    _ => return Err(Error::<T>::BadRouteEntry.into()),
+                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),  // kind=1 必须有账户
+                    (0, _) | (1, Some(_)) | (2, _) | (3, _) => {}              // 合法组合
+                    _ => return Err(Error::<T>::BadRouteEntry.into()),          // 非法 kind
                 }
                 list.try_push(RouteEntry::<T> {
                     kind,
@@ -842,11 +859,15 @@ pub mod pallet {
             for (kind, acc, ppm) in routes.into_iter() {
                 let pm = Permill::from_parts(ppm.min(1_000_000));
                 sum = sum.saturating_add(pm.deconstruct() as u32);
-                // kind 校验：1=SpecificAccount 必须提供账户；0=SubjectFunding 忽略 account
+                // 函数级中文注释：验证 kind-account 匹配规则
+                // - kind=0 (SubjectFunding): account 忽略（自动派生）
+                // - kind=1 (SpecificAccount): account 必填
+                // - kind=2 (Burn): account 忽略（使用配置的 BurnAccount）
+                // - kind=3 (Treasury): account 忽略（使用配置的 TreasuryAccount）
                 match (kind, &acc) {
-                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),
-                    (0, _) | (1, Some(_)) => {}
-                    _ => return Err(Error::<T>::BadRouteEntry.into()),
+                    (1, None) => return Err(Error::<T>::BadRouteEntry.into()),  // kind=1 必须有账户
+                    (0, _) | (1, Some(_)) | (2, _) | (3, _) => {}              // 合法组合
+                    _ => return Err(Error::<T>::BadRouteEntry.into()),          // 非法 kind
                 }
                 list.try_push(RouteEntry::<T> {
                     kind,

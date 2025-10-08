@@ -11,15 +11,20 @@
 - 新增：`BannedSponsors: AccountId -> ()`（封禁推荐人，仅影响计酬归集）
 
 ### 推荐码（集中治理）
-- 统一归口：推荐码的生成、长度、黑名单与“一次性/是否允许重领”等策略，全部在本模块（referrals）集中治理与实现；其他模块（如 affiliate）不再承载推荐码策略，降低耦合与维护成本。
-- 存储：
+- **统一归口**：推荐码的生成、长度、黑名单与"一次性/是否允许重领"等策略，全部在本模块（referrals）集中治理与实现；其他模块（如 membership、affiliate）不再承载推荐码策略，降低耦合与维护成本。
+- **存储**：
   - `CodeOf{AccountId -> BoundedVec<u8,16>}`：账户默认推荐码（一次性领取）。
   - `OwnerOfCode{BoundedVec<u8,16> -> AccountId}`：规范化码的归属索引。
-- 事件：
+- **事件**：
   - `ReferralCodeAssigned{ who, code }`：首次分配默认码（8位大写HEX）。
-- 外部函数：
+- **外部函数**：
   - `claim_default_code()`：仅当已绑定 sponsor 时可领取；发生冲突自动重试（最多8次）。
   - 若需进一步策略（长度/黑名单/是否允许重领）治理，可追加：`set_code_policy(length?, allow_reassign?)`、`set_code_blacklist(code, banned)` 与事件 `CodePolicyUpdated/CodeBlacklistSet`（最小实现已可上线）。
+- **Trait 接口（供其他模块使用）**：
+  - `find_account_by_code(code)`: 通过推荐码查找账户
+  - `get_referral_code(who)`: 获取账户的推荐码
+  - `try_auto_claim_code(who)`: 自动为账户分配推荐码（静默失败）
+  - `bind_sponsor_internal(who, sponsor)`: 内部绑定推荐关系（供其他模块调用）
 
 ## 事件
 - `SponsorBound { who, sponsor }`

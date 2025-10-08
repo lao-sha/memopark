@@ -907,6 +907,10 @@ impl pallet_memo_offerings::Config for Runtime {
     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 memo-pet 接管。
     type Consumer = NoopConsumer;
+    /// 函数级中文注释：黑洞账户（用于销毁 MEMO）
+    type BurnAccount = BurnAccount;
+    /// 函数级中文注释：国库账户（用于平台财政收入）
+    type TreasuryAccount = TreasuryAccount;
 }
 
 /// 函数级详细中文注释：供奉收款路由实现
@@ -945,7 +949,12 @@ impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationR
     }
 }
 
-/// 函数级中文注释：解析路由表，将 SubjectFunding/SpecificAccount 映射为实际账户与份额。
+/// 函数级中文注释：解析路由表，将路由项映射为实际账户与份额
+/// 支持 4 种路由类型：
+/// - kind=0: SubjectFunding（派生主题账户）
+/// - kind=1: SpecificAccount（指定账户）
+/// - kind=2: Burn（黑洞账户）
+/// - kind=3: Treasury（国库账户）
 fn resolve_table<I>(
     target: (u8, u64),
     table: I,
@@ -956,6 +965,7 @@ where
     use pallet_memo_offerings::pallet::RouteEntry;
     const DOMAIN_GRAVE: u8 = 1;
     let mut out: alloc::vec::Vec<(AccountId, sp_runtime::Permill)> = alloc::vec::Vec::new();
+    
     for RouteEntry {
         kind,
         account,
@@ -963,6 +973,7 @@ where
     } in table.into_iter()
     {
         match (kind, account) {
+            // kind=0: SubjectFunding - 派生主题资金账户
             (0, _) => {
                 if target.0 == DOMAIN_GRAVE {
                     if let Some(primary_id) =
@@ -978,8 +989,27 @@ where
                         }
                     }
                 }
+                // TODO: 扩展支持宠物域（domain=3）
             }
-            (1, Some(acc)) => out.push((acc, share)),
+            
+            // kind=1: SpecificAccount - 使用指定账户
+            (1, Some(acc)) => {
+                out.push((acc, share));
+            }
+            
+            // kind=2: Burn - 销毁到黑洞账户
+            (2, _) => {
+                let burn_account = <Runtime as pallet_memo_offerings::Config>::BurnAccount::get();
+                out.push((burn_account, share));
+            }
+            
+            // kind=3: Treasury - 转入国库账户
+            (3, _) => {
+                let treasury_account = <Runtime as pallet_memo_offerings::Config>::TreasuryAccount::get();
+                out.push((treasury_account, share));
+            }
+            
+            // 其他情况忽略
             _ => {}
         }
     }
@@ -1918,8 +1948,11 @@ impl pallet_memo_ipfs::Config for Runtime {
     type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
     type MinCapacityGiB = frame_support::traits::ConstU32<100>; // 至少 100 GiB 示例
     type WeightInfo = ();
-    /// 函数级中文注释：为"逝者主题资金账户"绑定 PalletId（可复用 escrow 的 PalletId 也可新设）
-    type SubjectPalletId = EscrowPalletId;
+    /// 函数级中文注释：使用独立的主题资金 PalletId，语义清晰，职责单一。
+    /// - 派生逝者资金账户：SubjectPalletId.into_sub_account_truncating((1, subject_id))
+    /// - 与 OTC 托管、联盟计酬托管完全隔离，各司其职
+    /// - 未来可扩展到墓地(domain=2)、陵园(domain=3)等其他业务域
+    type SubjectPalletId = SubjectPalletId;
     /// 函数级中文注释：绑定逝者域常量（domain=1），用于 (domain, subject_id) 稳定派生。
     type DeceasedDomain = ConstU8<1>;
     /// 函数级中文注释：OwnerProvider 适配器，将 subject_id→owner 从 pallet-deceased 读取
@@ -1958,6 +1991,13 @@ parameter_types! {
     pub const AffiliateMaxHops: u32 = 10;
     /// 函数级中文注释：佣金池 PalletId，用于派生模块资金账户。
     pub const AffiliatePalletId: PalletId = PalletId(*b"affiliat");
+    
+    /// 函数级中文注释：主题资金 PalletId，用于派生各域主题的资金子账户。
+    /// - domain=1: 逝者（deceased）
+    /// - domain=2: 墓地（grave）- 未来扩展
+    /// - domain=3: 陵园（cemetery）- 未来扩展
+    /// - 每个 (domain, subject_id) 对应一个独立的子账户，实现资金天然隔离
+    pub const SubjectPalletId: PalletId = PalletId(*b"subjects");
 }
 
 /// 函数级中文注释：佣金池账户解析器——由 PalletId 派生稳定账户地址。
@@ -1987,11 +2027,8 @@ impl pallet_memo_affiliate::Config for Runtime {
     type Referrals = pallet_memo_referrals::Pallet<Runtime>;
     /// 周对应区块数
     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
-    /// 托管 PalletId
-    type EscrowPalletId = EscrowPalletId;
-    /// 黑洞与国库
-    type BurnAccount = BurnAccount;
-    type TreasuryAccount = PlatformAccount;
+    /// 函数级中文注释：托管 PalletId - 使用独立的联盟计酬托管账户，与 OTC 托管隔离
+    type EscrowPalletId = AffiliatePalletId;
     /// 防御性搜索上限
     type MaxSearchHops = frame_support::traits::ConstU32<10_000>;
     /// 结算最大层级与阈值
@@ -1999,8 +2036,6 @@ impl pallet_memo_affiliate::Config for Runtime {
     type PerLevelNeed = frame_support::traits::ConstU32<3>;
     /// 比例（bps）：每层不等比
     type LevelRatesBps = LevelRatesArray;
-    type BurnBps = frame_support::traits::ConstU16<1000>; // 10%
-    type TreasuryBps = frame_support::traits::ConstU16<800>; // 8%
 }
 
 // 运行时可读默认值说明（前端读取 storage）：

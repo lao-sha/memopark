@@ -24,10 +24,29 @@
 
 ## 计费生命周期（新增）
 
-设计目标：上传与计费解耦；以链上请求为付费起点；从“主体派生资金账户”自动扣费，事件可审计、治理可控。
+设计目标：上传与计费解耦；以链上请求为付费起点；从"主体派生资金账户"自动扣费，事件可审计、治理可控。
 
-- 主体资金账户：`subject_account = SubjectPalletId.into_sub_account_truncating((owner, subject_id))`（不可签名，仅托管/扣费）。
- - 主体资金账户（更新）：推荐使用稳定派生：`subject_account = SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))`；逝者域 `domain=1`。
+### 主题资金账户架构
+
+**独立 PalletId 设计：**
+- 使用专属的 `SubjectPalletId (*b"subjects")` 派生主题资金子账户
+- 与 OTC 托管（`EscrowPalletId`）、联盟计酬（`AffiliatePalletId`）完全隔离
+- 语义清晰，职责单一，易于扩展
+
+**账户派生方式：**
+- **派生公式**：`subject_account = SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))`
+- **逝者账户**：`domain=1`，例如 `(1, 1)` 表示逝者1的资金账户
+- **墓地账户**：`domain=2`（未来扩展）
+- **陵园账户**：`domain=3`（未来扩展）
+- **特性**：派生账户无私钥，不可签名，仅用于托管与扣费
+
+**架构优势：**
+- ✅ **语义清晰**：`SubjectPalletId` 专门用于主题资金，不与其他业务混淆
+- ✅ **职责单一**：每个域的资金独立管理，各司其职
+- ✅ **资金隔离**：每个主题都有独立的资金账户，天然隔离
+- ✅ **易于扩展**：可以轻松添加新的业务域（墓地、陵园等）
+
+**使用流程：**
 - 两步法：用户先向主体资金账户充值；再调用 `request_pin_for_deceased(subject_id, ...)` 固化进入生命周期。
 - 周期扣费：按周（可配置）从主体账户扣 MEMO，失败进入宽限，超期过期。
 
@@ -60,6 +79,55 @@
 #### 只读视图函数（新增）
 - `derive_subject_account_for_deceased(subject_id: u64) -> AccountId`：返回稳定派生的逝者主题资金账户地址。
 - `derive_subject_account(domain: u8, subject_id: u64) -> AccountId`：返回任意 `(domain, subject_id)` 的主题资金账户地址。
+
+**前端集成示例（TypeScript）：**
+
+```typescript
+import { encodeAddress, blake2AsU8a } from '@polkadot/util-crypto';
+import { stringToU8a, u8aConcat } from '@polkadot/util';
+
+/**
+ * 派生主题资金子账户地址
+ * @param palletId - PalletId 字符串（8字节）'subjects'
+ * @param domain - 域编码（u8）1=逝者, 2=墓地, 3=陵园
+ * @param subjectId - 主题ID（u64）
+ * @returns 派生的账户地址
+ */
+function deriveSubjectAccount(palletId: string, domain: number, subjectId: number): string {
+    // 1. PalletId 前缀：'modl' + palletId (padded to 8 bytes)
+    const palletIdBytes = stringToU8a('modl' + palletId.padEnd(8, '\0'));
+    
+    // 2. Domain (u8)
+    const domainBytes = new Uint8Array([domain]);
+    
+    // 3. SubjectId (u64, little-endian)
+    const subjectIdBytes = new Uint8Array(8);
+    new DataView(subjectIdBytes.buffer).setBigUint64(0, BigInt(subjectId), true);
+    
+    // 4. 拼接并哈希
+    const combined = u8aConcat(palletIdBytes, domainBytes, subjectIdBytes);
+    const hash = blake2AsU8a(combined, 256);
+    
+    // 5. 编码为 SS58 地址
+    return encodeAddress(hash, 42);
+}
+
+// 便捷函数：派生逝者资金账户
+function deriveDeceasedFundingAccount(subjectId: number): string {
+    return deriveSubjectAccount('subjects', 1, subjectId);
+}
+
+// 使用示例
+const address = deriveDeceasedFundingAccount(1); // 逝者1的资金账户
+console.log('逝者1资金账户:', address);
+
+// 查询余额
+const { data } = await api.query.system.account(address);
+const balance = data.free;
+
+// 充值到逝者资金账户
+await api.tx.balances.transferKeepAlive(address, amount).signAndSend(signer);
+```
 
 #### 只读查询（前端建议直读）
 - `PinBilling{cid_hash}` → `(next_charge_at, unit_price_snapshot, state)`：state=0 Active/1 Grace/2 Expired。

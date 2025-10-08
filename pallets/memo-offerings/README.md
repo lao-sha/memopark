@@ -52,7 +52,12 @@
 - 叠加：`amount ≥ MinOfferAmount` 与 `OfferWindow/OfferMaxInWindow` 滑动窗口
 - 目标级限频：`OfferRateByTarget[(domain,id)]` 与账户级并行控制
 - 专属主体校验：当目录项 `exclusive_subjects: Vec<(domain,u64)>` 非空时，要求 `target==(domain,u64)` 命中其一；支持人类逝者域与宠物域
- - 路由表校验：最多 5 条，`∑Permill ≤ 100%`，且 `kind=SpecificAccount(1)` 必须提供 `account`
+ - 路由表校验：最多 5 条，`∑Permill ≤ 100%`
+ - 路由类型（kind）：
+   - `0 = SubjectFunding`：派生主题资金账户（墓地/宠物管理者收益）
+   - `1 = SpecificAccount`：指定固定账户（联盟计酬/平台费等），必须提供 `account`
+   - `2 = Burn`：销毁到黑洞账户（通缩机制）
+   - `3 = Treasury`：转入国库账户（平台运营）
  - 兜底：按路由分配后剩余部分（含不足 100% 或舍入）根据 `RouteRemainderToDefault` 策略回退到默认收款账户
 
 ## 与 memo-sacrifice 的集成
