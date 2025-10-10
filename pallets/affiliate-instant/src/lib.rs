@@ -460,6 +460,126 @@ pub mod pallet {
 		Ok(())
 	}
 
+	/// 函数级详细中文注释：纯推荐链分配（简化版，职责转移后使用）
+	/// - 专用于职责转移后的场景（offerings 已经处理了固定费用）
+	/// - amount 已经是扣除固定费用后的金额（如90,000）
+	/// - 仅负责推荐链分配，100%基于 amount
+	///
+	/// # 参数
+	/// - `buyer`: 购买者账户
+	/// - `amount`: 可分配总额（已扣除固定费用）
+	/// - `escrow_account`: 资金来源账户（托管账户）
+	///
+	/// # 返回
+	/// - `Ok(())`: 分配成功
+	/// - `Err`: 转账失败或其他错误
+	pub fn instant_distribute_pure_referral(
+		buyer: &T::AccountId,
+		amount: BalanceOf<T>,
+		escrow_account: &T::AccountId,
+	) -> DispatchResult {
+		// 函数级中文注释：1. 获取推荐链（最多15层）
+		let referral_chain = T::ReferralProvider::get_sponsor_chain(buyer, 15);
+		
+		// 函数级中文注释：2. 准备分配变量
+		let mut total_distributed_amount = BalanceOf::<T>::zero();
+		let mut treasury_extra = BalanceOf::<T>::zero(); // 无效层级和失败转账金额
+		let percents = LevelPercents::<T>::get();
+		
+		// 函数级中文注释：3. 逐层分配（100%基于 amount）
+		for (level_index, ancestor) in referral_chain.iter().enumerate() {
+			let level_num = (level_index + 1) as u8;
+			
+			// 检查是否超出配置的层级
+			if level_index >= percents.len() {
+				break;
+			}
+			
+			// 函数级中文注释：验证推荐人是否为有效会员
+			if !T::MembershipProvider::is_member_valid(ancestor) {
+				// 无效会员，该层份额并入国库
+				let level_percent = percents[level_index];
+				let level_amount = Self::percent_of(amount, level_percent);
+				treasury_extra = treasury_extra.saturating_add(level_amount);
+				continue;
+			}
+			
+			// 函数级中文注释：获取会员可拿代数
+			let member_generations = T::MembershipProvider::get_member_generations(ancestor)
+				.unwrap_or(0);
+			
+			// 函数级中文注释：如果该层超过会员可拿代数，跳过并将份额并入国库
+			if level_num > member_generations {
+				let level_percent = percents[level_index];
+				let level_amount = Self::percent_of(amount, level_percent);
+				treasury_extra = treasury_extra.saturating_add(level_amount);
+				continue;
+			}
+			
+			// 函数级中文注释：计算该层分成金额
+			let level_percent = percents[level_index];
+			let level_amount = Self::percent_of(amount, level_percent);
+			
+			// 函数级中文注释：即时转账
+			match T::Currency::transfer(
+				escrow_account,
+				ancestor,
+				level_amount,
+				ExistenceRequirement::KeepAlive,
+			) {
+				Ok(_) => {
+					total_distributed_amount = total_distributed_amount.saturating_add(level_amount);
+					
+					// 函数级中文注释：发出事件
+					Self::deposit_event(Event::RewardDistributed {
+						to: ancestor.clone(),
+						level: level_num,
+						amount: level_amount,
+						buyer: buyer.clone(),
+					});
+				},
+				Err(_) => {
+					// 函数级中文注释：转账失败，该层份额并入国库
+					treasury_extra = treasury_extra.saturating_add(level_amount);
+				},
+			}
+		}
+		
+		// 函数级中文注释：4. 未分配的部分并入国库
+		let undistributed = amount.saturating_sub(total_distributed_amount);
+		let total_treasury = treasury_extra.saturating_add(undistributed);
+		
+		// 函数级中文注释：5. 转账到国库（如有）
+		if !total_treasury.is_zero() {
+			T::Currency::transfer(
+				escrow_account,
+				&T::TreasuryAccount::get(),
+				total_treasury,
+				ExistenceRequirement::KeepAlive,
+			)?;
+			
+			// 函数级中文注释：发出无效层级转国库事件
+			Self::deposit_event(Event::InvalidLevelToTreasury {
+				amount: total_treasury,
+			});
+		}
+		
+		// 函数级中文注释：6. 更新统计
+		TotalDistributed::<T>::mutate(|total| {
+			*total = total.saturating_add(total_distributed_amount);
+		});
+		
+		// 函数级中文注释：7. 发出完成事件
+		Self::deposit_event(Event::DistributionCompleted {
+			buyer: buyer.clone(),
+			original_price: amount,
+			actual_paid: amount,
+			total_distributed: total_distributed_amount,
+		});
+		
+		Ok(())
+	}
+
 	/// 函数级中文注释：纯推荐链分配（100%给推荐链，无 Burn/Treasury/Storage）
 	/// - 专用于会员购买等特殊场景
 	/// - amount 全部用于推荐链分配
@@ -623,23 +743,21 @@ pub mod pallet {
 
 // 函数级中文注释：实现 InstantAffiliateProvider trait，供 pallet-affiliate-config 调用
 impl<T: pallet::Config> pallet_affiliate_config::InstantAffiliateProvider<T::AccountId, pallet::BalanceOf<T>> for pallet::Pallet<T> {
-	/// 函数级中文注释：实现即时分配接口（从托管账户转账）
+	/// 函数级详细中文注释：实现即时分配接口（职责转移后使用简化版本）
+	/// - 职责转移后，offerings 已经处理了固定费用（销毁、国库、存储）
+	/// - amount 是托管账户收到的金额（已扣除固定费用，如90,000）
+	/// - 仅需分配推荐奖励
 	fn distribute_instant(
 		buyer: &T::AccountId,
 		amount: pallet::BalanceOf<T>,
 		escrow_account: &T::AccountId,
 	) -> frame_support::dispatch::DispatchResult {
-		// 函数级中文注释：调用现有的 instant_distribute 函数
-		// 参数说明：
-		// - buyer: 购买者账户
-		// - original_price: 原价（等同于 amount）
-		// - actual_paid: 实付金额（等同于 amount）
-		// - escrow_account: 资金来源账户（托管账户）
-		Self::instant_distribute(
+		// 函数级中文注释：调用简化版的纯推荐分配函数
+		// 注意：amount 已经是扣除固定费用后的金额（如90,000）
+		Self::instant_distribute_pure_referral(
 			buyer,
-			amount,          // original_price
-			amount,          // actual_paid
-			escrow_account,  // 从托管账户转账
+			amount,
+			escrow_account,
 		)
 	}
 	

@@ -18,13 +18,19 @@
 - **事件**：
   - `ReferralCodeAssigned{ who, code }`：首次分配默认码（8位大写HEX）。
 - **外部函数**：
-  - `claim_default_code()`：仅当已绑定 sponsor 时可领取；发生冲突自动重试（最多8次）。
+  - `claim_default_code()`：✅ **仅限年费会员**申请推荐码
+    - 前置1：必须是有效年费会员（购买会员且未过期）
+    - 前置2：必须已绑定推荐人（sponsor）
+    - 发生冲突自动重试（最多8次）
   - 若需进一步策略（长度/黑名单/是否允许重领）治理，可追加：`set_code_policy(length?, allow_reassign?)`、`set_code_blacklist(code, banned)` 与事件 `CodePolicyUpdated/CodeBlacklistSet`（最小实现已可上线）。
 - **Trait 接口（供其他模块使用）**：
   - `find_account_by_code(code)`: 通过推荐码查找账户
   - `get_referral_code(who)`: 获取账户的推荐码
   - `try_auto_claim_code(who)`: 自动为账户分配推荐码（静默失败）
   - `bind_sponsor_internal(who, sponsor)`: 内部绑定推荐关系（供其他模块调用）
+- **会员验证**：
+  - 通过 `MembershipProvider` trait 验证会员有效性
+  - 只有年费会员才能申请推荐码，增强会员权益价值
 
 ## 事件
 - `SponsorBound { who, sponsor }`

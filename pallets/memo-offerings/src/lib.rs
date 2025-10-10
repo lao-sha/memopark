@@ -40,18 +40,20 @@ pub mod pallet {
 
     /// 函数级中文注释：供奉提交后的回调接口，用于统计或联动积分。
     pub trait OnOfferingCommitted<AccountId> {
-        /// 函数级中文注释：供奉落账后的回调。
+        /// 函数级详细中文注释：供奉落账后的回调。
         /// - target: (domain_code, id)
         /// - kind_code: 供奉规格编码
         /// - who: 供奉发起者
         /// - amount: 实际成功转账的金额（若无转账则为 None）
-        /// - duration_weeks: 若为 Timed 供奉，则以“周”为单位的时长；Instant 则为 None。
+        /// - duration_weeks: 若为 Timed 供奉，则以"周"为单位的时长；Instant 则为 None。
+        /// - routed: 路由分账记录，每个元素为 (账户, 金额)，记录了资金流向
         fn on_offering(
             target: (u8, u64),
             kind_code: u8,
             who: &AccountId,
             amount: Option<u128>,
             duration_weeks: Option<u32>,
+            routed: alloc::vec::Vec<(AccountId, u128)>,
         );
     }
 
@@ -68,10 +70,25 @@ pub mod pallet {
         fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, Permill)>;
     }
 
+    /// 函数级中文注释：会员信息提供者接口（用于供奉折扣验证）
+    /// - 由 pallet-membership 实现
+    /// - 供奉购买时检查会员状态并应用折扣
+    pub trait MembershipProvider<AccountId> {
+        /// 函数级中文注释：检查账户是否为有效会员
+        /// - 返回 true 表示账户是有效会员（已购买且未过期）
+        /// - 返回 false 表示不是会员或会员已过期
+        fn is_valid_member(who: &AccountId) -> bool;
+        
+        /// 函数级中文注释：获取会员折扣比例（0-100）
+        /// - 返回折扣百分比，例如：30 表示30%（3折）
+        /// - 供奉最终价格 = 原价 × 折扣比例 / 100
+        fn get_discount() -> u8;
+    }
+
     /// 函数级中文注释：祭祀品目录只读接口（由 runtime 提供实现，指向 memo-sacrifice）。
     /// - spec_of：读取 (fixed_price, unit_price_per_week, enabled, is_vip_exclusive, exclusive_subjects)
     /// - can_purchase：校验可购（结合会员态）
-    /// - effect_of：读取可选“消费效果”定义（例如宠物道具效果），由消费侧解释与应用
+    /// - effect_of：读取可选"消费效果"定义（例如宠物道具效果），由消费侧解释与应用
     pub trait SacrificeCatalog<AccountId, SacrificeId, Balance, BlockNumber> {
         fn spec_of(
             id: SacrificeId,
@@ -160,6 +177,20 @@ pub mod pallet {
         type Catalog: SacrificeCatalog<Self::AccountId, u64, u128, BlockNumberFor<Self>>;
         /// 函数级中文注释：消费回调，由消费侧 Pallet 实现（如 memo-pet）。
         type Consumer: EffectConsumer<Self::AccountId>;
+        /// 函数级中文注释：会员信息提供者（用于供奉折扣验证）
+        /// - 由 pallet-membership 实现
+        /// - 供奉购买时检查会员状态并应用折扣
+        type MembershipProvider: MembershipProvider<Self::AccountId>;
+        /// 函数级详细中文注释：联盟计酬托管账户
+        /// - 供奉资金将先转入此托管账户
+        /// - 再由 pallet-affiliate-instant 从托管账户分配给推荐人
+        /// - 这样确保资金流向可控且推荐奖励能正常发放
+        type AffiliateEscrowAccount: Get<Self::AccountId>;
+        /// 函数级详细中文注释：存储费用账户
+        /// - 用于接收供奉产生的存储费用（通常为2%）
+        /// - 独立于国库账户，便于资金分类和审计
+        /// - 可配置为专用账户或复用国库账户
+        type StorageAccount: Get<Self::AccountId>;
         /// 函数级中文注释：黑洞账户（用于销毁 MEMO）。
         /// 约定：使用全零地址或特定 PalletId 派生的不可访问账户。
         type BurnAccount: Get<Self::AccountId>;
@@ -650,38 +681,53 @@ pub mod pallet {
                 Error::<T>::TooMany
             );
             OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
-            // 供奉为付费动作：要求 amount ≥ MinOfferAmount，并完成实际转账
+            
+            // 函数级中文注释：计算原价（根据供奉类型）
+            let original_price = match &spec.kind {
+                OfferingKind::Instant => {
+                    FixedPriceOf::<T>::get(kind_code).ok_or(Error::<T>::AmountRequired)?
+                }
+                OfferingKind::Timed { .. } => {
+                    let u = UnitPricePerWeekOf::<T>::get(kind_code).ok_or(Error::<T>::AmountRequired)?;
+                    let d = duration.ok_or(Error::<T>::DurationRequired)? as u128;
+                    u.saturating_mul(d)
+                }
+            };
+            
+            // 函数级中文注释：应用会员折扣（年费会员3折）
+            let final_price = if T::MembershipProvider::is_valid_member(&who) {
+                let discount_percent = T::MembershipProvider::get_discount() as u128; // 30 (3折)
+                original_price.saturating_mul(discount_percent) / 100
+            } else {
+                original_price
+            };
+            
+            // 函数级中文注释：验证用户提供的 amount 是否匹配最终价格
             let amt = amount.ok_or(Error::<T>::AmountRequired)?;
             ensure!(
                 amt >= MinOfferAmountParam::<T>::get(),
                 Error::<T>::AmountTooLow
             );
-            // 定价校验：Instant → fixed；Timed → unit×duration
-            match &spec.kind {
-                OfferingKind::Instant => {
-                    if let Some(p) = FixedPriceOf::<T>::get(kind_code) {
-                        ensure!(amt == p, Error::<T>::AmountTooLow);
-                    }
-                }
-                OfferingKind::Timed { .. } => {
-                    if let Some(u) = UnitPricePerWeekOf::<T>::get(kind_code) {
-                        let d = duration.ok_or(Error::<T>::DurationRequired)? as u128;
-                        let expect = u.saturating_mul(d);
-                        ensure!(amt == expect, Error::<T>::AmountTooLow);
-                    }
-                }
-            }
-            // 分账路由：优先使用 DonationRouter，按 MaxRouteSplits 裁剪；剩余根据 RouteRemainderToDefault 策略回退
+            ensure!(amt == final_price, Error::<T>::AmountTooLow);
+            
+            // 函数级详细中文注释：【职责转移方案】通过 DonationRouter 多路分账
+            // - offerings 负责固定分账（销毁、国库、存储）
+            // - affiliate 仅负责推荐分配（基于托管账户收到的金额）
+            // - 优势：职责分离、配置灵活、审计透明
             let mut remainder_u128: u128 = amt;
             let mut routed: alloc::vec::Vec<(T::AccountId, u128)> = alloc::vec::Vec::new();
-            let mut shares = T::DonationRouter::route(target, amt);
-            // 裁剪条数上限
+            let shares = T::DonationRouter::route(target, amt);
+            
+            // 函数级中文注释：裁剪路由条数（最多5个路由规则）
             let max_splits = MaxRouteSplits::<T>::get().max(0);
-            if shares.len() as u32 > max_splits {
-                shares.truncate(max_splits as usize);
-            }
-            // 执行转账（超额部分由 remainder 承担）
-            for (acc, pm) in shares.into_iter() {
+            let shares_trimmed = if shares.len() as u32 > max_splits {
+                shares.into_iter().take(max_splits as usize).collect()
+            } else {
+                shares
+            };
+            
+            // 函数级中文注释：按路由表逐个转账
+            for (acc, pm) in shares_trimmed.into_iter() {
                 let part_u128: u128 = pm * amt; // Permill * u128 → u128
                 if part_u128 == 0 {
                     continue;
@@ -691,19 +737,26 @@ pub mod pallet {
                     break;
                 }
                 let bal: BalanceOf<T> = transfer_u128.saturated_into();
+                
+                // 函数级中文注释：执行转账
                 T::Currency::transfer(&who, &acc, bal, ExistenceRequirement::KeepAlive)?;
+                
                 routed.push((acc, transfer_u128));
                 remainder_u128 = remainder_u128.saturating_sub(transfer_u128);
                 if remainder_u128 == 0 {
                     break;
                 }
             }
-            // 处理回退：根据策略决定是否回退到默认收款账户
+            
+            // 函数级中文注释：处理剩余金额（根据 RouteRemainderToDefault 配置）
             if remainder_u128 > 0 && RouteRemainderToDefault::<T>::get() {
                 let dest = T::DonationResolver::account_for(target);
                 let bal: BalanceOf<T> = remainder_u128.saturated_into();
                 T::Currency::transfer(&who, &dest, bal, ExistenceRequirement::KeepAlive)?;
+                routed.push((dest, remainder_u128));
+                remainder_u128 = 0;
             }
+            
             let settled_amount: Option<u128> = Some(amt);
             // 将输入 media 转换为受上限约束的 BoundedVec<MediaItem>
             let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
@@ -735,15 +788,16 @@ pub mod pallet {
                 id,
                 target,
                 gross: amt,
-                shares: routed,
+                shares: routed.clone(), // 克隆以供后续 Hook 使用
                 remainder: remainder_u128,
             });
-            // 传递以“周”为单位的有效期：Instant=None，Timed=Some(duration)
+            // 传递以"周"为单位的有效期：Instant=None，Timed=Some(duration)
             let duration_weeks: Option<u32> = match &spec.kind {
                 OfferingKind::Instant => None,
                 OfferingKind::Timed { .. } => duration,
             };
-            T::OnOffering::on_offering(target, kind_code, &who, settled_amount, duration_weeks);
+            // 函数级中文注释：调用 Hook 并传递路由分账记录
+            T::OnOffering::on_offering(target, kind_code, &who, settled_amount, duration_weeks, routed);
             Self::deposit_event(Event::OfferingCommitted {
                 id,
                 target,
@@ -1118,23 +1172,33 @@ pub mod pallet {
                 Error::<T>::TooMany
             );
             OfferRateByTarget::<T>::insert(target, (t_start, t_cnt.saturating_add(1)));
-            // 计算应付金额
-            let amount: u128 = if let Some(p) = fixed {
+            
+            // 函数级中文注释：计算原价
+            let original_price: u128 = if let Some(p) = fixed {
                 p
             } else {
                 let u = unit.ok_or(Error::<T>::AmountRequired)?;
                 let d = duration_weeks.ok_or(Error::<T>::DurationRequired)? as u128;
                 u.saturating_mul(d)
             };
-            if amount > 0 {
+            
+            // 函数级中文注释：应用会员折扣（年费会员3折）
+            let final_price = if T::MembershipProvider::is_valid_member(&who) {
+                let discount_percent = T::MembershipProvider::get_discount() as u128; // 30 (3折)
+                original_price.saturating_mul(discount_percent) / 100
+            } else {
+                original_price
+            };
+            
+            if final_price > 0 {
                 ensure!(
-                    amount >= MinOfferAmountParam::<T>::get(),
+                    final_price >= MinOfferAmountParam::<T>::get(),
                     Error::<T>::AmountTooLow
                 );
             }
             let dest = T::DonationResolver::account_for(target);
-            if amount > 0 {
-                let amt_balance: BalanceOf<T> = amount.saturated_into();
+            if final_price > 0 {
+                let amt_balance: BalanceOf<T> = final_price.saturated_into();
                 T::Currency::transfer(&who, &dest, amt_balance, ExistenceRequirement::KeepAlive)?;
             }
             let mut items: BoundedVec<MediaItem<T>, T::MaxMediaPerOffering> = Default::default();
@@ -1153,7 +1217,7 @@ pub mod pallet {
                 who: who.clone(),
                 target,
                 kind_code: 0,
-                amount: Some(amount),
+                amount: Some(final_price),
                 media: items,
                 duration: duration_weeks,
                 time: now,
@@ -1162,13 +1226,19 @@ pub mod pallet {
             OfferingsByTarget::<T>::try_mutate(target, |v| {
                 v.try_push(id).map_err(|_| Error::<T>::TooMany)
             })?;
-            T::OnOffering::on_offering(target, 0, &who, Some(amount), duration_weeks);
+            // 函数级中文注释：offer_by_sacrifice 直接转账，构造简单的路由记录
+            let routed_simple = if final_price > 0 {
+                alloc::vec![(dest.clone(), final_price)]
+            } else {
+                alloc::vec![]
+            };
+            T::OnOffering::on_offering(target, 0, &who, Some(final_price), duration_weeks, routed_simple);
             Self::deposit_event(Event::OfferingCommittedBySacrifice {
                 id,
                 target,
                 sacrifice_id,
                 who,
-                amount,
+                amount: final_price,
                 duration_weeks,
                 block: now,
             });

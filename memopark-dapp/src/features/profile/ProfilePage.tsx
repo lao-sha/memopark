@@ -76,14 +76,7 @@ const ProfilePage: React.FC = () => {
   useEffect(() => { refreshCode() // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addr])
 
-  const onClaimCode = async () => {
-    try {
-      setCodeLoading(true)
-      const hash = await signAndSendLocalFromKeystore('memoReferrals','claimDefaultCode',[])
-      message.success(`已提交领取：${hash}`)
-      setTimeout(()=>refreshCode(),800)
-    } catch (e:any) { message.error(e?.message||'领取失败') } finally { setCodeLoading(false) }
-  }
+  // ✅ 已移除 onClaimCode 函数：现在只有年费会员才能申请推荐码，购买会员后自动分配
 
   const copyShare = async () => {
     try {
@@ -155,9 +148,26 @@ const ProfilePage: React.FC = () => {
                   <Button onClick={refreshCode} loading={codeLoading}>刷新</Button>
                 </Space>
               ) : (
-                <Space>
-                  <Alert type="info" showIcon message="尚未领取默认推荐码。仅当您已绑定推荐人时可领取。" />
-                  <Button type="primary" onClick={onClaimCode} loading={codeLoading}>领取默认码</Button>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Alert 
+                    type="warning" 
+                    showIcon 
+                    message="✅ 只有年费会员才能申请推荐码" 
+                    description="购买年费会员后，系统将自动为您分配推荐码。拥有推荐码后，您可以推荐他人购买会员并获得推荐奖励。"
+                  />
+                  <Button 
+                    type="primary" 
+                    onClick={() => {
+                      // ✅ 跳转到会员购买页面
+                      window.location.hash = '#/membership/purchase'
+                    }}
+                    block
+                  >
+                    立即购买会员
+                  </Button>
+                  <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                    💡 提示：购买会员后推荐码会自动生成，无需手动领取
+                  </Typography.Text>
                 </Space>
               )}
           </Card>

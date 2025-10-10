@@ -1,17 +1,21 @@
-import React, { useCallback, useState } from 'react'
-import { Button, Flex, Modal, Form, InputNumber, message, Typography } from 'antd'
+import React, { useCallback, useState, useEffect } from 'react'
+import { Button, Flex, Modal, Form, InputNumber, message, Typography, Tag } from 'antd'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { mapDispatchErrorMessage } from '../../lib/errors'
 import TransactionConfirmModal, { type TransactionInfo } from '../../components/transaction/TransactionConfirmModal'
 import OfferingCardSelector, { OFFERINGS, type OfferingItem } from '../../components/offering/OfferingCardSelector'
+import { useWallet } from '../../providers/WalletProvider'
+import { getApi } from '../../lib/polkadot'
 
 /**
  * 函数级详细中文注释：纪念馆动作栏（供奉/扫墓）重构版
  * - 使用新的TransactionConfirmModal替代window.prompt
  * - 使用卡片式供品选择器替代下拉框
  * - 优化交互流程和视觉呈现
+ * - 添加会员折扣显示（年费会员3折）
  */
 export default function ActionsBar({ graveId }: { graveId: number }) {
+  const wallet = useWallet()
   const [openOffer, setOpenOffer] = useState(false)
   const [selectedOffering, setSelectedOffering] = useState<OfferingItem | null>(null)
   const [duration, setDuration] = useState<number>(1)
@@ -19,6 +23,43 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [pendingTx, setPendingTx] = useState<TransactionInfo | null>(null)
   const [confirmHandler, setConfirmHandler] = useState<((pwd: string) => Promise<string>) | null>(null)
+  const [isMember, setIsMember] = useState(false)
+  const [membershipLoading, setMembershipLoading] = useState(false)
+
+  /**
+   * 函数级中文注释：查询用户会员状态
+   * - 在打开供奉Modal时检查
+   */
+  useEffect(() => {
+    const checkMembershipStatus = async () => {
+      if (!wallet.current) return
+      
+      try {
+        setMembershipLoading(true)
+        const api = await getApi()
+        const currentBlock = await api.query.system.number()
+        const memberData = await api.query.membership.members(wallet.current) as any
+        
+        if (memberData && memberData.isSome) {
+          const member = memberData.unwrap()
+          const validUntil = Number(member.validUntil.toString())
+          const currentBlockNum = Number(currentBlock.toString())
+          setIsMember(validUntil > currentBlockNum)
+        } else {
+          setIsMember(false)
+        }
+      } catch (error) {
+        console.error('检查会员状态失败:', error)
+        setIsMember(false)
+      } finally {
+        setMembershipLoading(false)
+      }
+    }
+
+    if (openOffer) {
+      checkMembershipStatus()
+    }
+  }, [openOffer, wallet.current])
 
   /**
    * 打开供奉选择Modal
@@ -38,18 +79,30 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
   }
 
   /**
-   * 计算总金额
+   * 函数级中文注释：计算原价（不含折扣）
    */
-  const calculateAmount = (): string => {
-    if (!selectedOffering) return '0'
+  const calculateOriginalAmount = (): number => {
+    if (!selectedOffering) return 0
     if (selectedOffering.id === 19) {
       // 自定义供品
-      return customAmount || '0'
+      return Number(customAmount) || 0
     }
     if (selectedOffering.duration) {
-      return String(selectedOffering.price * duration)
+      return selectedOffering.price * duration
     }
-    return String(selectedOffering.price)
+    return selectedOffering.price
+  }
+
+  /**
+   * 函数级中文注释：计算最终价格（应用会员折扣）
+   * - 年费会员享受3折优惠（30%）
+   */
+  const calculateFinalAmount = (): number => {
+    const original = calculateOriginalAmount()
+    if (isMember && selectedOffering?.id !== 19) { // 自定义供品不打折
+      return original * 0.3 // 3折
+    }
+    return original
   }
 
   /**
@@ -66,22 +119,26 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
       return
     }
 
-    const amount = calculateAmount()
-    const amountBigInt = BigInt(Number(amount) * 1e12) // 转换为最小单位
+    const originalAmount = calculateOriginalAmount()
+    const finalAmount = calculateFinalAmount()
+    const amountBigInt = BigInt(Math.floor(finalAmount * 1e12)) // 转换为最小单位
 
     // 构建交易信息
     const txInfo: TransactionInfo = {
       title: `供奉${selectedOffering.name}`,
-      description: `为墓地 #${graveId} 供奉${selectedOffering.name}${selectedOffering.duration ? ` ${duration}${selectedOffering.unit}` : ''}`,
+      description: `为墓地 #${graveId} 供奉${selectedOffering.name}${selectedOffering.duration ? ` ${duration}${selectedOffering.unit}` : ''}${isMember && selectedOffering.id !== 19 ? ' (会员3折)' : ''}`,
       icon: selectedOffering.icon,
-      amount: `${amount} MEMO`,
+      amount: `${finalAmount.toFixed(3)} MEMO${isMember && selectedOffering.id !== 19 ? ` (原价 ${originalAmount} MEMO)` : ''}`,
       gasFee: '~0.001 MEMO',
-      total: `${(Number(amount) + 0.001).toFixed(3)} MEMO`,
+      total: `${(finalAmount + 0.001).toFixed(3)} MEMO`,
       target: `墓地 #${graveId}`,
       metadata: {
         graveId,
         kind: selectedOffering.id,
-        duration: selectedOffering.duration ? duration : null
+        duration: selectedOffering.duration ? duration : null,
+        isMember,
+        originalAmount,
+        finalAmount
       }
     }
 
@@ -230,6 +287,19 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
               </Form.Item>
             )}
 
+            {/* 会员折扣提示 */}
+            {isMember && selectedOffering.id !== 19 && (
+              <div style={{
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: 'var(--radius-sm)',
+                marginTop: 12
+              }}>
+                <Tag color="gold" style={{ marginRight: 8 }}>会员专享</Tag>
+                <span style={{ color: '#fff', fontWeight: 600 }}>享受3折优惠</span>
+              </div>
+            )}
+
             {/* 金额预览 */}
             <div style={{
               display: 'flex',
@@ -240,15 +310,29 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
               marginTop: 12
             }}>
               <span style={{ color: 'var(--color-text-secondary)' }}>
-                总计
+                {isMember && selectedOffering.id !== 19 ? '会员价' : '总计'}
               </span>
-              <span style={{
-                fontSize: 20,
-                fontWeight: 'bold',
-                color: 'var(--color-primary)'
-              }}>
-                {calculateAmount()} MEMO
-              </span>
+              <div style={{ textAlign: 'right' }}>
+                {/* 显示原价（会员有折扣时） */}
+                {isMember && selectedOffering.id !== 19 && (
+                  <div style={{
+                    fontSize: 14,
+                    color: 'var(--color-text-tertiary)',
+                    textDecoration: 'line-through',
+                    marginBottom: 4
+                  }}>
+                    原价 {calculateOriginalAmount()} MEMO
+                  </div>
+                )}
+                {/* 最终价格 */}
+                <span style={{
+                  fontSize: 20,
+                  fontWeight: 'bold',
+                  color: isMember && selectedOffering.id !== 19 ? '#f5222d' : 'var(--color-primary)'
+                }}>
+                  {calculateFinalAmount().toFixed(3)} MEMO
+                </span>
+              </div>
             </div>
 
             {/* 确认按钮 */}

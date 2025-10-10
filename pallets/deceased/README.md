@@ -1,8 +1,8 @@
 # Deceased Pallet
 
 - 设计说明：
-  - 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计，不参与权限与派生。
-  - 资金派生与计费：依赖 `(domain, subject_id)` 稳定派生（与 `creator/owner` 解耦）。
+  - 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计；不参与权限派生，但用于资金托管账户派生以保证稳定性。
+  - 资金派生与计费：主题资金账户（SubjectFunding）基于 `(creator, deceased_id)` 派生，确保 owner 转移时账户地址不变，保持资金连续性。
 
 - 迁移策略（开发阶段）：
   - 当前主网未上线，采用“零迁移”策略：`on_runtime_upgrade` 仅写入 `STORAGE_VERSION`，不进行 translate。

@@ -9,6 +9,7 @@ import { uploadToIpfs } from '../../lib/ipfs'
 import { signAndSendLocalWithPassword as _s } from '../../lib/polkadot-safe'
 import OwnerChangeLogInline from './components/OwnerChangeLogInline'
 import { ApiPromise } from '@polkadot/api'
+import OfferingSubjectAccount from '../../components/OfferingSubjectAccount'
 
 /**
  * 函数级详细中文注释：墓地详情页（移动端）
@@ -1140,6 +1141,7 @@ const GraveDetailPage: React.FC = () => {
         onCancel={()=> { setDetailOpen(false); setDetailItem(null) }}
         footer={<Button type="primary" onClick={()=> { setDetailOpen(false); }}>关闭</Button>}
         centered
+        width={720}
       >
         {detailItem ? (
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
@@ -1164,6 +1166,13 @@ const GraveDetailPage: React.FC = () => {
               <Typography.Text code copyable>{detailItem.token || '-'}</Typography.Text>
             </div>
             {graveId!=null && <div><Typography.Text type="secondary">所属墓位ID：</Typography.Text>{graveId}</div>}
+            
+            <Divider style={{ margin: '12px 0' }} />
+            
+            {/* 供奉主题资金账户 */}
+            <Card size="small" title="供奉主题资金账户" style={{ marginTop: 8 }}>
+              <OfferingSubjectAccount deceasedId={detailItem.id} showBalance={true} />
+            </Card>
           </Space>
         ) : null}
       </Modal>

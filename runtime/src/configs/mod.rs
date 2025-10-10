@@ -907,6 +907,18 @@ impl pallet_memo_offerings::Config for Runtime {
     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 memo-pet 接管。
     type Consumer = NoopConsumer;
+    /// 函数级中文注释：会员信息提供者（用于供奉折扣验证）
+    type MembershipProvider = OfferingsMembershipProviderAdapter;
+    /// 函数级详细中文注释：联盟计酬托管账户
+    /// - 供奉资金将全额转入此托管账户
+    /// - 再由 pallet-affiliate-instant 从托管账户统一分配
+    /// - 确保资金流向可控且推荐奖励能正常发放
+    type AffiliateEscrowAccount = AffiliateEscrowAccount;
+    /// 函数级详细中文注释：去中心化存储费用账户
+    /// - 用于接收供奉产生的去中心化存储费用（通常为2%）
+    /// - 支付 IPFS 及未来其他去中心化存储方案的成本
+    /// - 通过路由表配置分配比例
+    type StorageAccount = DecentralizedStorageAccount;
     /// 函数级中文注释：黑洞账户（用于销毁 MEMO）
     type BurnAccount = BurnAccount;
     /// 函数级中文注释：国库账户（用于平台财政收入）
@@ -937,9 +949,10 @@ impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationR
                 pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
             {
                 if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
-                    let owner = d.owner.clone();
+                    // 函数级中文注释：降级逻辑也使用 creator 确保账户稳定性
+                    let creator = d.creator.clone();
                     let subject_acc =
-                        EscrowPalletId::get().into_sub_account_truncating((owner, primary_id));
+                        EscrowPalletId::get().into_sub_account_truncating((creator, primary_id));
                     let bps = pallet_memo_offerings::pallet::SubjectBps::<Runtime>::get();
                     return alloc::vec::Vec::from([(subject_acc, bps)]);
                 }
@@ -982,9 +995,12 @@ where
                         if let Some(d) =
                             pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id)
                         {
-                            let owner = d.owner.clone();
+                            // 函数级中文注释：使用 creator（不可变）而非 owner（可变），确保主题账户地址永久稳定
+                            // - creator 创建后永不改变，即使 owner 通过治理转移，主题账户地址也不变
+                            // - 保证资金连续性：owner 转移前后的供奉都进入同一主题账户
+                            let creator = d.creator.clone();
                             let subject_acc = EscrowPalletId::get()
-                                .into_sub_account_truncating((owner, primary_id));
+                                .into_sub_account_truncating((creator, primary_id));
                             out.push((subject_acc, share));
                         }
                     }
@@ -1274,15 +1290,17 @@ impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId>
 /// 函数级中文注释：当供奉落账时，将其按 grave 维度写入账本模块。
 pub struct GraveOfferingHook;
 impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
-    /// 供奉 Hook：由 `pallet-memorial-offerings` 在供奉确认后调用。
-    /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）。
+    /// 函数级详细中文注释：供奉 Hook（职责转移后版本）
+    /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）
     /// - 携带金额（若 Some）则累计到排行榜；Timed 的持续周数用于标记有效供奉周期
+    /// - routed: 路由分账记录，用于提取 Affiliate 托管账户的金额
     fn on_offering(
         target: (u8, u64),
         kind_code: u8,
         who: &AccountId,
         amount: Option<u128>,
         duration_weeks: Option<u32>,
+        routed: alloc::vec::Vec<(AccountId, u128)>,
     ) {
         const DOMAIN_GRAVE: u8 = 1;
         if target.0 == DOMAIN_GRAVE {
@@ -1314,18 +1332,25 @@ impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOffe
                     now,
                     duration_weeks,
                 );
-                // 1.5) 联盟计酬分配：当存在入金时，将本次消费按联盟规则分配
-                // 函数级中文注释：【核心修改】调用统一分配入口，动态路由到 instant 或 weekly
-                // 资金已通过多路分账存入 pallet-affiliate 托管账户，
-                // 由 pallet-affiliate-config 根据当前模式（Instant/Weekly）动态分配
-                if let Some(pay) = amt {
-                    let _ = pallet_affiliate_config::Pallet::<Runtime>::distribute_rewards(
-                        who,
-                        pay,
-                        Some(target),
-                        now,
-                        duration_weeks,
-                    );
+                // 函数级详细中文注释：1.5) 联盟计酬分配（职责转移后版本）
+                // - 从 routed 列表中提取 Affiliate 托管账户收到的金额
+                // - 该金额已经是扣除固定费用后的金额（如90,000）
+                // - 由 pallet-affiliate-config 根据当前模式（Instant/Weekly）动态分配
+                if should_mark {
+                    let affiliate_escrow = AffiliateEscrowAccount::get();
+                    if let Some(affiliate_amount) = routed.iter()
+                        .find(|(acc, _)| acc == &affiliate_escrow)
+                        .map(|(_, amt)| *amt)
+                    {
+                        let affiliate_balance: Balance = affiliate_amount as Balance;
+                        let _ = pallet_affiliate_config::Pallet::<Runtime>::distribute_rewards(
+                            who,
+                            affiliate_balance,
+                            Some(target),
+                            now,
+                            duration_weeks,
+                        );
+                    }
                 }
             }
             // 3) 累计到逝者总额：若墓位绑定了 primary_deceased_id 则累加（不含押金，amount 已为实付）
@@ -1434,16 +1459,65 @@ impl sp_core::Get<AccountId> for PlatformAccount {
     }
 }
 
-/// 函数级中文注释：黑洞账户（无私钥）
-/// - 选用全 0 公钥对应的 AccountId32；无法从私钥推导签名，链上仅可接收，不可支出。
-/// - 作为 MEMO 销毁地址使用：向该地址转账即等于销毁。
+/// 函数级详细中文注释：语义化黑洞账户（dead = 已销毁）
+/// 
+/// 设计原理：
+/// - 使用后4位为 0x0000dead 的地址，前28位为0
+/// - "dead" 在加密货币社区表示"死亡/销毁"，语义清晰直观
+/// - 符合以太坊生态惯例（如 0x000...dead），便于跨生态用户理解
+/// - 无人掌握该地址的私钥，因此资金只进不出，等价于永久销毁
+/// 
+/// 地址表示：
+/// - 十六进制: 0x0000000000000000000000000000000000000000000000000000000000000dead
+/// - 二进制后4字节: 0x00 0x00 0xde 0xad
+/// - "dead" 的十进制值: 57005
+/// - SS58 (Format=42): 需要实际计算（使用 encodeAddress）
+/// 
+/// 语义优势：
+/// - ✅ 一眼识别：看到 "dead" 立即理解是销毁地址
+/// - ✅ 记忆简单：比全0地址更容易记住
+/// - ✅ 跨生态兼容：与 EVM 生态惯例一致
+/// - ✅ 专业形象：展示对行业惯例的理解
+/// 
+/// 安全性保证：
+/// - ✅ 无私钥：理论上不可能生成对应的私钥（SHA256 碰撞难度 2^256）
+/// - ✅ 只进不出：可以接收代币，但永远无法签名交易转出
+/// - ✅ 完全透明：链上任何人可查询该账户余额，验证累计销毁量
+/// - ✅ 安全性等同：与全0地址安全性完全相同
+/// 
+/// 审计方式：
+/// ```javascript
+/// // 方法1: 通过地址生成
+/// const { encodeAddress } = require('@polkadot/keyring');
+/// const bytes = new Uint8Array(32);
+/// bytes[28] = 0x00; bytes[29] = 0x00; bytes[30] = 0xde; bytes[31] = 0xad;
+/// const burnAddress = encodeAddress(bytes, 42);
+/// const accountInfo = await api.query.system.account(burnAddress);
+/// console.log('累计销毁:', accountInfo.data.free.toString(), 'MEMO');
+/// 
+/// // 方法2: 直接查询（地址需要先计算）
+/// const burnAddress = 'CALCULATED_ADDRESS'; // 从链端获取
+/// const accountInfo = await api.query.system.account(burnAddress);
+/// ```
+/// 
+/// 行业对比：
+/// - 以太坊: 0x000...dead（广泛使用）
+/// - Moonbeam: 0x000...dead（EVM 兼容链）
+/// - Memopark: 0x000...0dead ✅（兼顾 Substrate 与 EVM 惯例）
+/// 
+/// 使用场景：
+/// - 供奉分账中的销毁部分（3%）
+/// - 其他需要永久锁定代币的场景
+/// - 通缩机制的核心实现
 pub struct BurnAccount;
 impl sp_core::Get<AccountId> for BurnAccount {
-    /// 函数级中文注释：使用固定字节串 b"memo/burn" 前 32 字节生成 AccountId（无私钥）。
+    /// 函数级详细中文注释：返回后4位为 0x0000dead 的黑洞账户
+    /// - 前28字节：全0（0x00）
+    /// - 后4字节：0x00 0x00 0xde 0xad（"dead"）
     fn get() -> AccountId {
         let mut bytes = [0u8; 32];
-        const SEED: &[u8; 9] = b"memo/burn";
-        bytes[..SEED.len()].copy_from_slice(SEED);
+        // 后4字节设为 0x0000dead
+        bytes[28..32].copy_from_slice(&[0x00, 0x00, 0xde, 0xad]);
         sp_core::crypto::AccountId32::new(bytes).into()
     }
 }
@@ -1932,6 +2006,10 @@ impl pallet_memo_referrals::Config for Runtime {
     type MaxHops = RefMaxHops;
     /// 函数级中文注释：反向索引容量上限。
     type MaxReferralsPerAccount = RefMaxChildren;
+    /// 函数级中文注释：会员信息提供者（用于验证推荐码申请资格）
+    /// - 用于 claim_default_code() 验证用户是否为有效会员
+    /// - 由 pallet-membership 提供实现
+    type MembershipProvider = ReferralsMembershipProviderAdapter;
 }
 
 // （已下线）memo-endowment（基金会）配置块移除
@@ -2037,6 +2115,24 @@ impl pallet_affiliate::Config for Runtime {
 parameter_types! {
     /// 函数级中文注释：联盟计酬托管账户地址（供 weekly 使用）
     pub AffiliateEscrowAccount: AccountId = AffiliatePalletId::get().into_account_truncating();
+    
+    /// 函数级详细中文注释：去中心化存储费用账户 PalletId
+    /// - 用于接收供奉产生的去中心化存储费用（IPFS + 未来扩展）
+    /// - 独立于国库账户，便于资金分类和审计
+    /// - ⚠️ 破坏式调整：PalletId 从 py/storg 改为 py/dstor（主网未上线，允许调整）
+    /// - PalletId 必须是 8 字节，py/dstor = Decentralized Storage
+    pub DecentralizedStoragePalletId: PalletId = PalletId(*b"py/dstor");
+}
+
+/// 函数级详细中文注释：去中心化存储费用账户地址
+/// - 接收供奉产生的存储费用（通常为2%）
+/// - 用于支付 IPFS 存储成本及未来其他去中心化存储方案（Arweave、Filecoin等）
+/// - 资金用途：IPFS 节点运维、存储空间扩展、多副本备份、跨链存储桥接
+pub struct DecentralizedStorageAccount;
+impl sp_core::Get<AccountId> for DecentralizedStorageAccount {
+    fn get() -> AccountId {
+        DecentralizedStoragePalletId::get().into_account_truncating()
+    }
 }
 
 /// ============================================================================
@@ -2099,32 +2195,69 @@ impl pallet_affiliate_instant::Config for Runtime {
     type StorageAccount = TreasuryAccount;
 }
 
-/// 函数级中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-instant 的 ReferralProvider trait
-pub struct InstantReferralProviderAdapter;
-impl pallet_affiliate_instant::ReferralProvider<AccountId> for InstantReferralProviderAdapter {
-    /// 函数级中文注释：获取推荐链（祖先列表）
-    fn get_sponsor_chain(_who: &AccountId, _max_depth: u8) -> alloc::vec::Vec<AccountId> {
-        // 函数级中文注释：临时返回空列表
-        // TODO: 实际应该从 pallet-memo-referrals 获取完整推荐链
-        alloc::vec::Vec::new()
+/// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-referrals 的 MembershipProvider trait
+/// - 用于推荐码申请时检查会员状态
+pub struct ReferralsMembershipProviderAdapter;
+impl pallet_memo_referrals::MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
+    /// 函数级中文注释：检查账户是否为有效会员
+    /// - 调用 pallet-membership 的 is_member_valid 方法
+    fn is_valid_member(who: &AccountId) -> bool {
+        pallet_membership::Pallet::<Runtime>::is_member_valid(who)
     }
 }
 
-/// 函数级中文注释：适配器 - 将 Membership 适配到 pallet-affiliate-instant 的 MembershipProvider trait
-pub struct InstantMembershipProviderAdapter;
-impl pallet_affiliate_instant::MembershipProvider<AccountId> for InstantMembershipProviderAdapter {
-    /// 函数级中文注释：检查是否为有效会员
-    fn is_member_valid(_who: &AccountId) -> bool {
-        // 函数级中文注释：临时返回 true
-        // TODO: 实际应该从 pallet-membership 检查会员有效性
-        true
+/// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-offerings 的 MembershipProvider trait
+/// - 用于供奉购买时检查会员状态并应用折扣
+/// - 年费会员享受 3 折优惠（30%）
+pub struct OfferingsMembershipProviderAdapter;
+impl pallet_memo_offerings::pallet::MembershipProvider<AccountId> for OfferingsMembershipProviderAdapter {
+    /// 函数级中文注释：检查账户是否为有效会员
+    /// - 调用 pallet-membership 的 is_member_valid 方法
+    fn is_valid_member(who: &AccountId) -> bool {
+        pallet_membership::Pallet::<Runtime>::is_member_valid(who)
     }
     
-    /// 函数级中文注释：获取会员可拿代数
-    fn get_member_generations(_who: &AccountId) -> Option<u8> {
-        // 函数级中文注释：临时返回最大层级15
-        // TODO: 实际应该从 pallet-membership 获取会员等级对应的代数
-        Some(15)
+    /// 函数级中文注释：获取会员折扣比例
+    /// - 固定返回 30 表示 30%（3折）
+    /// - 供奉最终价格 = 原价 × 30 / 100
+    fn get_discount() -> u8 {
+        30 // 3折（30%）
+    }
+}
+
+/// 函数级详细中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-instant 的 ReferralProvider trait
+/// - 用于即时分成系统获取推荐链
+/// - 从购买者向上遍历，返回最多 max_depth 层的推荐人列表
+pub struct InstantReferralProviderAdapter;
+impl pallet_affiliate_instant::ReferralProvider<AccountId> for InstantReferralProviderAdapter {
+    /// 函数级详细中文注释：获取推荐链（祖先列表，从近到远）
+    /// - 调用 pallet-memo-referrals 的 ancestors 函数
+    /// - 返回从直接推荐人到最顶层推荐人的有序列表
+    /// - 用于供奉分成时逐层分配奖励
+    fn get_sponsor_chain(who: &AccountId, max_depth: u8) -> alloc::vec::Vec<AccountId> {
+        pallet_memo_referrals::Pallet::<Runtime>::ancestors(who, max_depth as u32)
+    }
+}
+
+/// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-affiliate-instant 的 MembershipProvider trait
+/// - 用于即时分成系统验证推荐人会员资格
+/// - 只有有效会员才能获得推荐奖励
+pub struct InstantMembershipProviderAdapter;
+impl pallet_affiliate_instant::MembershipProvider<AccountId> for InstantMembershipProviderAdapter {
+    /// 函数级详细中文注释：检查是否为有效会员
+    /// - 调用 pallet-membership 的 is_member_valid 方法
+    /// - 验证会员是否已购买且未过期
+    /// - 无效会员的推荐奖励转入国库
+    fn is_member_valid(who: &AccountId) -> bool {
+        pallet_membership::Pallet::<Runtime>::is_member_valid(who)
+    }
+    
+    /// 函数级详细中文注释：获取会员可拿代数
+    /// - 调用 pallet-membership 获取会员等级对应的推荐层级数
+    /// - Year1: 6代, Year3: 9代, Year5: 12代, Year10: 15代
+    /// - 超出代数的层级奖励转入国库
+    fn get_member_generations(who: &AccountId) -> Option<u8> {
+        pallet_membership::Pallet::<Runtime>::get_member_generations(who)
     }
 }
 
@@ -2246,6 +2379,61 @@ parameter_types! { pub const MaxQueued: u32 = 100; }
 parameter_types! { pub const AlarmInterval: BlockNumber = 10; }
 
 // 方案B：已移除 referenda 配置
+
+/// 函数级详细中文注释：初始化供奉路由表（职责转移方案 + SubjectFunding）
+/// - 设置默认的资金分配规则（2024-10-10 调整版）：
+///   * SubjectFunding 2%（主题账户，给逝者家属）
+///   * 销毁 3%（通缩机制）
+///   * 国库 3%（平台运营）
+///   * 去中心化存储费用 2%（IPFS 及未来扩展）
+///   * 推荐分配 90%（强激励推荐网络扩张）
+/// - 调整说明：大幅提升推荐激励（80%→90%），削减 SubjectFunding（10%→2%）和 Burn（5%→3%）
+/// - 治理后续可通过 setRouteTableGlobal 调整
+/// - 应在 Runtime 升级或初始化时调用
+#[allow(dead_code)]
+pub fn initialize_offering_routes() {
+    use pallet_memo_offerings::RouteEntry;
+    use sp_runtime::Permill;
+    use frame_support::BoundedVec;
+    
+    let routes = alloc::vec![
+        // kind=0: SubjectFunding（主题资金账户 2%）- 基于 creator 派生，给逝者家属使用
+        RouteEntry {
+            kind: 0,
+            account: None,
+            share: Permill::from_percent(2),
+        },
+        // kind=2: Burn（销毁 3%）- 通缩机制
+        RouteEntry {
+            kind: 2,
+            account: None,
+            share: Permill::from_percent(3),
+        },
+        // kind=3: Treasury（国库 3%）- 平台运营资金
+        RouteEntry {
+            kind: 3,
+            account: None,
+            share: Permill::from_percent(3),
+        },
+        // kind=1: SpecificAccount - DecentralizedStorageAccount（去中心化存储费用 2%）
+        RouteEntry {
+            kind: 1,
+            account: Some(DecentralizedStorageAccount::get()),
+            share: Permill::from_percent(2),
+        },
+        // kind=1: SpecificAccount - Affiliate（推荐分配 90%）- 强激励推荐网络
+        RouteEntry {
+            kind: 1,
+            account: Some(AffiliateEscrowAccount::get()),
+            share: Permill::from_percent(90),
+        },
+    ];
+    
+    let bounded_routes: BoundedVec<RouteEntry<Runtime>, frame_support::traits::ConstU32<5>> = 
+        routes.try_into().unwrap_or_default(); // 如果失败则使用空表
+    
+    pallet_memo_offerings::RouteTableGlobal::<Runtime>::put(bounded_routes);
+}
 
 // ========= FeeGuard（仅手续费账户保护） =========
 impl pallet_fee_guard::pallet::Config for Runtime {

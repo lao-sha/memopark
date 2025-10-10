@@ -56,6 +56,8 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/forwarder/session', component: lazy(() => import('./features/forwarder/ForwarderSessionPage')) },
   { match: h => h === '#/ipfs/billing', component: lazy(() => import('./features/ipfs/BillingAdminPage')) },
   { match: h => h.startsWith('#/ref'), component: lazy(() => import('./features/referrals/ReferralBindPage')) },
+  { match: h => h === '#/membership/purchase', component: lazy(() => import('./features/membership/MembershipPurchasePage')) },
+  { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
 ];
 
 // UI 组件展示页仅在开发模式暴露

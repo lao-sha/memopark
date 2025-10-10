@@ -12,6 +12,8 @@ pub mod pallet {
     use frame_support::traits::ConstU32;
     use frame_support::{pallet_prelude::*, traits::StorageVersion};
     use frame_system::pallet_prelude::*;
+    /// 函数级中文注释：导入 MembershipProvider trait，用于会员验证
+    use super::MembershipProvider;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
@@ -26,6 +28,10 @@ pub mod pallet {
         /// 函数级中文注释：每个推荐人最多可拥有的直接下级数量（反向索引容量上限，防状态膨胀）
         #[pallet::constant]
         type MaxReferralsPerAccount: Get<u32>;
+        /// 函数级中文注释：会员信息提供者（用于验证推荐码申请资格）
+        /// - 供 claim_default_code() 验证用户是否为有效会员
+        /// - 由 pallet-membership 实现
+        type MembershipProvider: super::MembershipProvider<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -107,6 +113,10 @@ pub mod pallet {
         AlreadyHasCode,
         /// 函数级中文注释：推荐码生成冲突（多次重试仍冲突）。
         CodeCollision,
+        /// 函数级中文注释：不是有效会员，无法申请推荐码。
+        /// - 只有购买年费会员后才能申请推荐码
+        /// - 会员过期后也无法申请推荐码
+        NotMember,
     }
 
     // 说明：临时允许 warnings 以通过全局 -D warnings；后续将以 WeightInfo 基准权重替换常量权重
@@ -181,14 +191,23 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：领取“唯一默认推荐码”（一次性，不可重复）。
-        /// - 前置：必须已绑定推荐人（SponsorOf 存在）。
-        /// - 生成：blake2_256(account_id||salt)→前4字节→8位大写 HEX；冲突时 salt 自增重试（最多8次）。
+        /// 函数级详细中文注释：领取"唯一默认推荐码"（一次性，不可重复）。
+        /// - 前置1：必须是有效年费会员（购买会员且未过期）
+        /// - 前置2：必须已绑定推荐人（SponsorOf 存在）
+        /// - 生成：blake2_256(account_id||salt)→前4字节→8位大写 HEX；冲突时 salt 自增重试（最多8次）
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(10_000)]
         pub fn claim_default_code(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // ✅ 新增：验证用户是否为有效会员（只有年费会员才能申请推荐码）
+            ensure!(
+                T::MembershipProvider::is_valid_member(&who),
+                Error::<T>::NotMember
+            );
+            
+            // 原有验证：必须已绑定推荐人
             ensure!(SponsorOf::<T>::contains_key(&who), Error::<T>::NotEligible);
             ensure!(!CodeOf::<T>::contains_key(&who), Error::<T>::AlreadyHasCode);
             let mut salt: u8 = 0;
@@ -255,6 +274,16 @@ pub mod pallet {
             }
         }
     }
+}
+
+/// 函数级中文注释：会员信息提供者接口
+/// - 供推荐码申请时验证会员有效性
+/// - 由 pallet-membership 实现
+pub trait MembershipProvider<AccountId> {
+    /// 检查账户是否为有效会员
+    /// - 返回 true 表示账户是有效会员（已购买且未过期）
+    /// - 返回 false 表示不是会员或会员已过期
+    fn is_valid_member(who: &AccountId) -> bool;
 }
 
 /// 函数级中文注释：对外提供统一的推荐关系读取接口，供计酬等模块解耦引用。
