@@ -56,6 +56,7 @@ pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
 pallet-memo-bridge = { path = "../pallets/memo-bridge", default-features = false }
 pallet-pricing = { path = "../pallets/pricing", default-features = false }
 pallet-otc-claim = { path = "../pallets/otc-claim", default-features = false }
+pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -129,6 +130,7 @@ std = [
     "pallet-memo-bridge/std",
     "pallet-pricing/std",
     "pallet-otc-claim/std",
+    "pallet-storage-treasury/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",

@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// 函数级中文注释：允许未使用的导入（SaturatedConversion trait提供saturated_into方法）
+#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -7,10 +9,18 @@ pub use pallet::*;
 use frame_support::weights::Weight;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::AtLeast32BitUnsigned;
+use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
 use sp_std::vec::Vec;
 // use sp_runtime::Saturating;
 use sp_core::hashing::blake2_256;
+
+// 函数级中文注释：导入log用于记录自动pin失败的警告
+extern crate log;
+// 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
+extern crate pallet_memo_ipfs;
+
+// 函数级中文注释：导入IpfsPinner trait以便使用其方法
+use pallet_memo_ipfs::IpfsPinner;
 
 /// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
 /// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
@@ -151,9 +161,36 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
 
         /// 函数级中文注释：治理起源（内容治理轨道/委员会白名单/Root 等）。
-        /// - 用于本 Pallet 的治理专用接口（gov*），执行“失钥救济/内容治理类 C/U/D”。
+        /// - 用于本 Pallet 的治理专用接口（gov*），执行"失钥救济/内容治理类 C/U/D"。
         /// - 建议在 Runtime 中绑定为 EitherOfDiverse<Root, EnsureContentSigner>，与其他内容域保持一致。
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        /// 函数级详细中文注释：IPFS自动pin提供者，供逝者CID自动固定
+        /// 
+        /// 集成目标：
+        /// - main_image_cid: 逝者主图自动pin
+        /// - name_full_cid: 逝者全名自动pin
+        /// 
+        /// 使用场景：
+        /// - create_deceased: 创建时自动pin
+        /// - update_deceased: 更新时pin新CID
+        /// - set_main_image: 单独设置主图时pin
+        /// 
+        /// 注意：
+        /// - Balance类型需要与IpfsPinner兼容
+        /// - 由Runtime注入实现：pallet_memo_ipfs::Pallet<Runtime>
+        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+
+        /// 函数级中文注释：余额类型（用于存储费用支付）
+        /// - 必须与Currency的Balance类型一致
+        /// - 用于IpfsPinner::pin_cid_for_deceased的price参数
+        type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+
+        /// 函数级中文注释：默认IPFS存储单价（每副本每月，单位为Balance最小单位）
+        /// - 建议值：1 MEMO = 1_000_000_000_000（12位小数）
+        /// - 用于自动pin时的费用估算
+        #[pallet::constant]
+        type DefaultStoragePrice: Get<Self::Balance>;
     }
 
     #[pallet::storage]
@@ -572,6 +609,9 @@ pub mod pallet {
                 Some(v) => Some(BoundedVec::try_from(v).map_err(|_| Error::<T>::BadInput)?),
                 None => None,
             };
+            
+            // 函数级中文注释：提前克隆CID用于后续自动pin（避免move问题）
+            let cid_for_pin = name_full_cid_bv.as_ref().map(|bv| bv.clone().into_inner());
 
             let mut links_bv: BoundedVec<
                 BoundedVec<u8, <T as pallet::Config>::StringLimit>,
@@ -706,6 +746,33 @@ pub mod pallet {
 
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
 
+            // 函数级详细中文注释：自动pin name_full_cid到IPFS（如果提供）
+            // - 使用triple-charge机制：IpfsPoolAccount → SubjectFunding(deceased_id) → Caller
+            // - 副本数：3（默认）
+            // - 价格：使用DefaultStoragePrice
+            // - 失败不阻塞逝者创建（仅记录警告事件）
+            if let Some(cid_vec) = cid_for_pin {
+                let deceased_id_u64: u64 = id.saturated_into::<u64>();
+                let price = T::DefaultStoragePrice::get();
+                
+                // 尝试自动pin，失败不影响逝者创建
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    who.clone(),
+                    deceased_id_u64,
+                    cid_vec,
+                    price,
+                    3, // 默认3副本
+                ) {
+                    // 记录警告事件，治理可稍后修复
+                    log::warn!(
+                        target: "deceased",
+                        "Auto-pin name_full_cid failed for deceased {:?}: {:?}",
+                        deceased_id_u64,
+                        e
+                    );
+                }
+            }
+
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
             // 最近活跃：创建即记录
             Self::touch_last_active(id);
@@ -732,6 +799,15 @@ pub mod pallet {
             links: Option<Vec<Vec<u8>>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // 函数级中文注释：提取name_full_cid用于后续自动pin
+            // - Some(Some(vec)): 设置新CID，需要pin
+            // - Some(None): 清空，不pin
+            // - None: 不修改，不pin
+            let cid_to_pin: Option<Vec<u8>> = match &name_full_cid {
+                Some(Some(v)) => Some(v.clone()),
+                _ => None,
+            };
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 ensure!(d.owner == who, Error::<T>::NotAuthorized);
@@ -882,6 +958,30 @@ pub mod pallet {
                 Ok(())
             })?;
 
+            // 函数级详细中文注释：自动pin更新的name_full_cid到IPFS
+            // - 仅在提供了新的CID时执行（Some(Some(vec))）
+            // - 使用triple-charge机制
+            // - 失败不阻塞更新操作（容错处理）
+            if let Some(cid_vec) = cid_to_pin {
+                let deceased_id_u64: u64 = id.saturated_into::<u64>();
+                let price = T::DefaultStoragePrice::get();
+                
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    who.clone(),
+                    deceased_id_u64,
+                    cid_vec,
+                    price,
+                    3, // 默认3副本
+                ) {
+                    log::warn!(
+                        target: "deceased",
+                        "Auto-pin name_full_cid failed for deceased {:?}: {:?}",
+                        deceased_id_u64,
+                        e
+                    );
+                }
+            }
+
             Self::deposit_event(Event::DeceasedUpdated(id));
             Self::touch_last_active(id);
             Ok(())
@@ -986,6 +1086,10 @@ pub mod pallet {
         ) -> DispatchResult {
             let is_root = ensure_root(origin.clone()).is_ok();
             let who = ensure_signed(origin.clone()).ok();
+            
+            // 保存cid的副本用于后续自动pin
+            let cid_for_pin = cid.clone();
+            
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 if !is_root {
@@ -998,6 +1102,52 @@ pub mod pallet {
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
+
+            // 函数级详细中文注释：自动pin main_image_cid到IPFS
+            // - 使用triple-charge机制
+            // - 失败不阻塞设置主图操作（容错处理）
+            // - 优先使用signed caller，Root调用时需从DeceasedOf获取owner
+            if let Some(w) = who.as_ref() {
+                let deceased_id_u64: u64 = id.saturated_into::<u64>();
+                let price = T::DefaultStoragePrice::get();
+                
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    w.clone(),
+                    deceased_id_u64,
+                    cid_for_pin.clone(),
+                    price,
+                    3, // 默认3副本
+                ) {
+                    log::warn!(
+                        target: "deceased",
+                        "Auto-pin main_image_cid failed for deceased {:?}: {:?}",
+                        deceased_id_u64,
+                        e
+                    );
+                }
+            } else if is_root {
+                // Root调用时，从DeceasedOf读取owner作为caller
+                if let Some(d) = DeceasedOf::<T>::get(id) {
+                    let deceased_id_u64: u64 = id.saturated_into::<u64>();
+                    let price = T::DefaultStoragePrice::get();
+                    
+                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                        d.owner,
+                        deceased_id_u64,
+                        cid_for_pin,
+                        price,
+                        3, // 默认3副本
+                    ) {
+                        log::warn!(
+                            target: "deceased",
+                            "Auto-pin main_image_cid failed for deceased {:?}: {:?}",
+                            deceased_id_u64,
+                            e
+                        );
+                    }
+                }
+            }
+
             // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
             // 事件维持，便于前端平滑过渡。
             Self::deposit_event(Event::MainImageUpdated(id, true));

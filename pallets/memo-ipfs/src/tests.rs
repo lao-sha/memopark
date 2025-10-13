@@ -39,6 +39,27 @@ parameter_types! {
     pub const SubjectPalletId: frame_support::PalletId = frame_support::PalletId(*b"ipfs/sub");
     pub const EndowmentPrincipalId: frame_support::PalletId = frame_support::PalletId(*b"end/prin");
     pub const EndowmentYieldId: frame_support::PalletId = frame_support::PalletId(*b"end/yild");
+    pub const DeceasedDomain: u8 = 1;
+    pub IpfsPoolPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/ipfs+");
+    pub OperatorEscrowPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/opesc");
+    pub const MonthlyPublicFeeQuota: Balance = 100_000_000_000_000; // 100 MEMO
+    pub const QuotaResetPeriod: BlockNumber = 100; // 简化为 100 块用于测试
+}
+
+pub struct IpfsPoolAccount;
+impl sp_core::Get<AccountId> for IpfsPoolAccount {
+    fn get() -> AccountId {
+        use sp_runtime::traits::AccountIdConversion;
+        IpfsPoolPalletId::get().into_account_truncating()
+    }
+}
+
+pub struct OperatorEscrowAccount;
+impl sp_core::Get<AccountId> for OperatorEscrowAccount {
+    fn get() -> AccountId {
+        use sp_runtime::traits::AccountIdConversion;
+        OperatorEscrowPalletId::get().into_account_truncating()
+    }
 }
 
 impl frame_system::Config for Test {
@@ -112,7 +133,7 @@ impl crate::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Balance = Balance;
-    type Endowment = Endowment;
+    type FeeCollector = IpfsPoolAccount; // 简化测试
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
     type MaxCidHashLen = IpfsMaxCidHashLen;
     type MaxPeerIdLen = frame_support::traits::ConstU32<64>;
@@ -120,7 +141,12 @@ impl crate::Config for Test {
     type MinCapacityGiB = frame_support::traits::ConstU32<1>;
     type WeightInfo = ();
     type SubjectPalletId = SubjectPalletId;
+    type DeceasedDomain = DeceasedDomain;
     type OwnerProvider = OwnerMap;
+    type IpfsPoolAccount = IpfsPoolAccount;
+    type OperatorEscrowAccount = OperatorEscrowAccount;
+    type MonthlyPublicFeeQuota = MonthlyPublicFeeQuota;
+    type QuotaResetPeriod = QuotaResetPeriod;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -148,8 +174,8 @@ fn run_to_block(n: BlockNumber) {
 fn charge_due_respects_limit_and_requeues() {
     new_test_ext().execute_with(|| {
         // 设置参数：每周=10 块，宽限=5 块，max_per_block=1
-        Ipfs::set_billing_params(
-            RuntimeOrigin::root(),
+        crate::Pallet::<Test>::set_billing_params(
+            frame_system::RawOrigin::Root.into(),
             Some(100),
             Some(10),
             Some(5),
@@ -179,7 +205,7 @@ fn charge_due_respects_limit_and_requeues() {
         // 前进到区块 10
         run_to_block(10);
         // limit=10 但受 MaxChargePerBlock=1 限制，应只处理一个
-        assert_ok!(Ipfs::charge_due(RuntimeOrigin::root(), 10));
+        assert_ok!(crate::Pallet::<Test>::charge_due(frame_system::RawOrigin::Root.into(), 10));
         // 一个被推进到 20，另一个仍在 10 的队列或已放回
         let (n1, _, _s1) = <crate::pallet::PinBilling<Test>>::get(cid1).unwrap();
         let (n2, _, _s2) = <crate::pallet::PinBilling<Test>>::get(cid2).unwrap();
@@ -192,8 +218,8 @@ fn charge_due_respects_limit_and_requeues() {
 fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
     new_test_ext().execute_with(|| {
         // 单价较大以制造不足
-        Ipfs::set_billing_params(
-            RuntimeOrigin::root(),
+        crate::Pallet::<Test>::set_billing_params(
+            frame_system::RawOrigin::Root.into(),
             Some(1_000_000_000_000_000),
             Some(10),
             Some(5),
@@ -212,14 +238,171 @@ fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
         });
         run_to_block(10);
         // 第一次不足 → 进入 Grace，next=10+5=15
-        assert_ok!(Ipfs::charge_due(RuntimeOrigin::root(), 1));
+        assert_ok!(crate::Pallet::<Test>::charge_due(frame_system::RawOrigin::Root.into(), 1));
         let (next, _u, state) = <crate::pallet::PinBilling<Test>>::get(cid).unwrap();
         assert_eq!(state, 1);
         assert_eq!(next, 15);
         // 到 15 再次处理 → 过期
         run_to_block(15);
-        assert_ok!(Ipfs::charge_due(RuntimeOrigin::root(), 1));
+        assert_ok!(crate::Pallet::<Test>::charge_due(frame_system::RawOrigin::Root.into(), 1));
         let (_n2, _u2, s2) = <crate::pallet::PinBilling<Test>>::get(cid).unwrap();
         assert_eq!(s2, 2);
+    });
+}
+
+// ========================================
+// 三重扣款机制测试（v3.0）
+// ========================================
+
+/// 测试场景 1：配额内，Pool 充足（免费）
+#[test]
+fn triple_charge_from_pool_with_quota() {
+    new_test_ext().execute_with(|| {
+        let caller: AccountId = 1;
+        let deceased_id: u64 = 100;
+        let amount: Balance = 50_000_000_000_000; // 50 MEMO
+        
+        // 给 IpfsPoolAccount 充值
+        let pool_account = IpfsPoolAccount::get();
+        let _ = <Test as crate::Config>::Currency::deposit_creating(&pool_account, 1_000_000_000_000_000); // 1000 MEMO
+        
+        // 执行三重扣款
+        let result = crate::Pallet::<Test>::triple_charge_storage_fee(&caller, deceased_id, amount);
+        
+        // 断言：从 Pool 扣款成功
+        assert_ok!(result, 0);
+        
+        // 验证余额变化
+        let escrow_account = OperatorEscrowAccount::get();
+        assert_eq!(<Test as crate::Config>::Currency::free_balance(&escrow_account), amount);
+        
+        // 验证配额使用
+        let (used, _) = <crate::pallet::PublicFeeQuotaUsage<Test>>::get(deceased_id);
+        assert_eq!(used, amount);
+    });
+}
+
+/// 测试场景 2：超配额，Subject 充足
+#[test]
+fn triple_charge_from_subject_over_quota() {
+    new_test_ext().execute_with(|| {
+        let caller: AccountId = 1;
+        let deceased_id: u64 = 100;
+        let amount: Balance = 50_000_000_000_000; // 50 MEMO
+        
+        // 给 IpfsPoolAccount 充值
+        let pool_account = IpfsPoolAccount::get();
+        let _ = <Test as crate::Config>::Currency::deposit_creating(&pool_account, 1_000_000_000_000_000); // 1000 MEMO
+        
+        // 设置配额已用 95 MEMO（剩余 5 MEMO）
+        let reset_block = System::block_number() + QuotaResetPeriod::get();
+        <crate::pallet::PublicFeeQuotaUsage<Test>>::insert(
+            deceased_id,
+            (95_000_000_000_000u128, reset_block),
+        );
+        
+        // 给 SubjectFunding 充值
+        let subject_account = crate::Pallet::<Test>::derive_subject_funding_account(deceased_id);
+        let _ = <Test as crate::Config>::Currency::deposit_creating(&subject_account, 200_000_000_000_000); // 200 MEMO
+        
+        // 执行三重扣款
+        let result = crate::Pallet::<Test>::triple_charge_storage_fee(&caller, deceased_id, amount);
+        
+        // 断言：从 Subject 扣款成功
+        assert_ok!(result, 1);
+        
+        // 验证余额变化
+        let escrow_account = OperatorEscrowAccount::get();
+        assert_eq!(<Test as crate::Config>::Currency::free_balance(&escrow_account), amount);
+        assert_eq!(
+            <Test as crate::Config>::Currency::free_balance(&subject_account),
+            200_000_000_000_000 - amount
+        );
+    });
+}
+
+/// 测试场景 3：新用户，Caller 自费
+#[test]
+fn triple_charge_from_caller_fallback() {
+    new_test_ext().execute_with(|| {
+        let caller: AccountId = 1;
+        let deceased_id: u64 = 100;
+        let amount: Balance = 50_000_000_000_000; // 50 MEMO
+        
+        // IpfsPoolAccount 余额为 0（不充值）
+        // SubjectFunding 余额为 0（不充值）
+        // Caller 有充足余额（在 genesis 中已设置为 1_000_000_000_000）
+        
+        let caller_balance_before = <Test as crate::Config>::Currency::free_balance(&caller);
+        
+        // 执行三重扣款
+        let result = crate::Pallet::<Test>::triple_charge_storage_fee(&caller, deceased_id, amount);
+        
+        // 断言：从 Caller 扣款成功
+        assert_ok!(result, 2);
+        
+        // 验证余额变化
+        let escrow_account = OperatorEscrowAccount::get();
+        assert_eq!(<Test as crate::Config>::Currency::free_balance(&escrow_account), amount);
+        assert_eq!(
+            <Test as crate::Config>::Currency::free_balance(&caller),
+            caller_balance_before - amount
+        );
+    });
+}
+
+/// 测试场景 4：三账户都不足
+#[test]
+fn triple_charge_all_three_accounts_insufficient() {
+    new_test_ext().execute_with(|| {
+        let caller: AccountId = 999; // 使用未充值的账户
+        let deceased_id: u64 = 100;
+        let amount: Balance = 50_000_000_000_000; // 50 MEMO
+        
+        // IpfsPoolAccount 余额为 0
+        // SubjectFunding 余额为 0
+        // Caller 余额为 0（999 账户未在 genesis 中设置）
+        
+        // 执行三重扣款
+        let result = crate::Pallet::<Test>::triple_charge_storage_fee(&caller, deceased_id, amount);
+        
+        // 断言：所有账户都不足，返回错误
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            crate::pallet::Error::<Test>::AllThreeAccountsInsufficientBalance.into()
+        );
+    });
+}
+
+/// 测试场景 5：配额重置
+#[test]
+fn triple_charge_quota_reset() {
+    new_test_ext().execute_with(|| {
+        let caller: AccountId = 1;
+        let deceased_id: u64 = 100;
+        let amount: Balance = 50_000_000_000_000; // 50 MEMO
+        
+        // 给 IpfsPoolAccount 充值
+        let pool_account = IpfsPoolAccount::get();
+        let _ = <Test as crate::Config>::Currency::deposit_creating(&pool_account, 1_000_000_000_000_000); // 1000 MEMO
+        
+        // 设置配额已用 95 MEMO，并设置重置块为当前块（应触发重置）
+        let current_block = System::block_number();
+        <crate::pallet::PublicFeeQuotaUsage<Test>>::insert(
+            deceased_id,
+            (95_000_000_000_000u128, current_block),
+        );
+        
+        // 执行三重扣款
+        let result = crate::Pallet::<Test>::triple_charge_storage_fee(&caller, deceased_id, amount);
+        
+        // 断言：配额已重置，从 Pool 扣款成功
+        assert_ok!(result, 0);
+        
+        // 验证配额已重置
+        let (used, reset_block) = <crate::pallet::PublicFeeQuotaUsage<Test>>::get(deceased_id);
+        assert_eq!(used, amount); // 重置后只用了 50 MEMO
+        assert_eq!(reset_block, current_block + QuotaResetPeriod::get());
     });
 }

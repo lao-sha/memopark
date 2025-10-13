@@ -255,7 +255,7 @@ use alloc::vec;
 
 // Local module imports
 use super::{
-    AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, Nonce, PalletInfo, Runtime,
+    AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, MemoIpfs, Nonce, PalletInfo, Runtime,
     RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
     System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
 };
@@ -263,6 +263,7 @@ use super::{
 // ===== Forwarder 集成所需的适配与类型 =====
 use pallet_forwarder::ForwarderAuthorizer;
 use sp_runtime::traits::IdentityLookup;
+
 
 /// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
 pub struct AuthorizerAdapter;
@@ -578,6 +579,11 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxCarouselItems = frame_support::traits::ConstU32<20>;
     type MaxTitleLen = frame_support::traits::ConstU32<64>;
     type MaxLinkLen = frame_support::traits::ConstU32<128>;
+    // ============= IPFS自动Pin配置 =============
+    /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
+    type IpfsPinner = MemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
 
 // ===== deceased 配置 =====
@@ -667,6 +673,11 @@ impl pallet_deceased::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
+    // ============= IPFS自动Pin配置 =============
+    /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
+    type IpfsPinner = MemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
 
 // ===== deceased-data 配置 =====
@@ -808,6 +819,11 @@ impl pallet_deceased_media::Config for Runtime {
     type ComplaintDeposit = DataMediaDeposit;
     type ArbitrationAccount = TreasuryAccount;
     type ComplaintPeriod = MediaComplaintPeriod;
+    // ============= IPFS自动Pin配置 =============
+    /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
+    type IpfsPinner = MemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
 
 // ===== deceased-text 配置 =====
@@ -831,6 +847,11 @@ impl pallet_deceased_text::Config for Runtime {
     type ComplaintDeposit = DataMediaDeposit;
     type ArbitrationAccount = TreasuryAccount;
     type ComplaintPeriod = MediaComplaintPeriod;
+    // ============= IPFS自动Pin配置 =============
+    /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
+    type IpfsPinner = MemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
 // ========= OriginRestriction 过滤器与配置 =========
 /// 函数级中文注释：基础调用过滤器；当前读取 origin-restriction 的全局开关（allow_all=true 放行全部）。
@@ -1428,6 +1449,11 @@ impl pallet_evidence::Config for Runtime {
     /// 函数级中文注释：授权用户与密钥长度上限（与前端 RSA-2048/SPKI 长度匹配）。
     type MaxAuthorizedUsers = frame_support::traits::ConstU32<64>;
     type MaxKeyLen = frame_support::traits::ConstU32<4096>;
+    // ============= IPFS自动Pin配置 =============
+    /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
+    type IpfsPinner = MemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
 impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for AllowAllEvidenceAuthorizer {
     fn is_authorized(_ns: [u8; 8], _who: &AccountId) -> bool {
@@ -2021,8 +2047,11 @@ impl pallet_memo_ipfs::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Balance = Balance;
-    /// 函数级中文注释：Endowment 下线后，费用接收账户改为国库账户解析器。
-    type FeeCollector = TreasuryAccount;
+    /// 函数级详细中文注释：费用接收账户改为存储专用账户
+    /// - 修改前：使用 TreasuryAccount（费用进入国库，与其他资金混合）
+    /// - 修改后：使用 DecentralizedStorageAccount（费用进入存储专用账户，专款专用）
+    /// - 优势：存储费用独立管理、审计清晰、与 pallet-storage-treasury 打通
+    type FeeCollector = DecentralizedStorageAccount;
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
     type MaxCidHashLen = IpfsMaxCidHashLen;
     type MaxPeerIdLen = frame_support::traits::ConstU32<128>;
@@ -2038,6 +2067,23 @@ impl pallet_memo_ipfs::Config for Runtime {
     type DeceasedDomain = ConstU8<1>;
     /// 函数级中文注释：OwnerProvider 适配器，将 subject_id→owner 从 pallet-deceased 读取
     type OwnerProvider = DeceasedOwnerAdapter;
+    
+    // ⭐ 新增：双重扣款配置
+    /// 函数级中文注释：IPFS 池账户（公共费用来源）
+    /// - 由 pallet-storage-treasury 定期补充（供奉路由 2% × 50%）
+    /// - 用于为 deceased 提供免费配额
+    type IpfsPoolAccount = IpfsPoolAccount;
+    
+    /// 函数级中文注释：运营者托管账户（服务费接收方）
+    /// - 接收所有 pin 服务费用
+    /// - 待运营者完成任务后基于 SLA 分配
+    type OperatorEscrowAccount = OperatorEscrowAccount;
+    
+    /// 函数级中文注释：每月公共费用配额（100 MEMO）
+    type MonthlyPublicFeeQuota = MonthlyPublicFeeQuota;
+    
+    /// 函数级中文注释：配额重置周期（28 天）
+    type QuotaResetPeriod = QuotaResetPeriod;
 }
 
 /// 函数级详细中文注释：逝者 owner 只读适配器
@@ -2134,6 +2180,130 @@ impl sp_core::Get<AccountId> for DecentralizedStorageAccount {
         DecentralizedStoragePalletId::get().into_account_truncating()
     }
 }
+
+// ============================================================================
+// 存储费用专用账户管理层配置 (pallet-storage-treasury)
+// ============================================================================
+parameter_types! {
+    // 函数级详细中文注释：存储费用自动分配周期
+    // - 每隔 100_800 区块（约 7 天）自动执行一次路由分配
+    // - 按 6 秒/块计算：100_800 块 = 604,800 秒 = 7 天
+    // - 可通过治理调整分配频率
+    pub const StorageDistributionPeriod: BlockNumber = 100_800;
+    
+    // 函数级详细中文注释：存储服务运营者池 PalletId 定义
+    // - IPFS 运营者池：py/ipfs+ (8字节)
+    // - Arweave 运营者池：py/arwve (8字节)
+    // - 节点运维激励池：py/nodes (8字节)
+    // - 使用 PalletId 派生确保地址唯一且可预测
+    pub IpfsPoolPalletId: PalletId = PalletId(*b"py/ipfs+");
+    pub ArweavePoolPalletId: PalletId = PalletId(*b"py/arwve");
+    pub NodeMaintenancePoolPalletId: PalletId = PalletId(*b"py/nodes");
+}
+
+/// 函数级详细中文注释：IPFS 运营者池账户
+/// - 接收存储费用路由分配的 50%
+/// - 从 IpfsPoolPalletId 派生，确保地址唯一性
+/// - 无私钥控制，通过 pallet 逻辑或治理管理
+pub struct IpfsPoolAccount;
+impl sp_core::Get<AccountId> for IpfsPoolAccount {
+    fn get() -> AccountId {
+        IpfsPoolPalletId::get().into_account_truncating()
+    }
+}
+
+/// 函数级详细中文注释：Arweave 运营者池账户
+/// - 接收存储费用路由分配的 30%
+/// - 从 ArweavePoolPalletId 派生，用于永久存储备份
+/// - 无私钥控制，通过 pallet 逻辑或治理管理
+pub struct ArweavePoolAccount;
+impl sp_core::Get<AccountId> for ArweavePoolAccount {
+    fn get() -> AccountId {
+        ArweavePoolPalletId::get().into_account_truncating()
+    }
+}
+
+/// 函数级详细中文注释：节点运维激励池账户
+/// - 接收存储费用路由分配的 20%
+/// - 从 NodeMaintenancePoolPalletId 派生，用于基础设施维护
+/// - 无私钥控制，通过 pallet 逻辑或治理管理
+pub struct NodeMaintenancePoolAccount;
+impl sp_core::Get<AccountId> for NodeMaintenancePoolAccount {
+    fn get() -> AccountId {
+        NodeMaintenancePoolPalletId::get().into_account_truncating()
+    }
+}
+
+parameter_types! {
+    /// 函数级中文注释：运营者托管账户 PalletId
+    /// 
+    /// 用途：
+    /// - 接收所有 IPFS pin 服务费用
+    /// - 待运营者完成任务后基于 SLA 分配
+    /// - py/opesc (8字节)
+    pub OperatorEscrowPalletId: PalletId = PalletId(*b"py/opesc");
+    
+    /// 函数级中文注释：每月公共费用配额
+    /// 
+    /// 说明：
+    /// - 每个 deceased 每月可使用的免费额度
+    /// - 100 MEMO ≈ 10,000 GiB/月（假设 0.01 MEMO/GiB）
+    /// - 可通过治理调整
+    pub const MonthlyPublicFeeQuota: Balance = 100 * crate::UNIT;
+    
+    /// 函数级中文注释：配额重置周期
+    /// 
+    /// 说明：
+    /// - 100,800 区块/周 × 4 = 403,200 区块 ≈ 28 天
+    /// - 配额每月自动重置
+    pub const QuotaResetPeriod: BlockNumber = 100_800 * 4;
+}
+
+/// 函数级中文注释：运营者托管账户
+/// 
+/// 用途：
+/// - 接收从 IPFS 池或 SubjectFunding 扣除的费用
+/// - 待运营者完成 pin 任务后基于 SLA 考核分配
+/// - 无私钥控制，通过 pallet 逻辑或治理管理
+pub struct OperatorEscrowAccount;
+impl sp_core::Get<AccountId> for OperatorEscrowAccount {
+    fn get() -> AccountId {
+        OperatorEscrowPalletId::get().into_account_truncating()
+    }
+}
+
+/// 函数级详细中文注释：存储费用专用账户管理模块配置
+/// - 负责收集、管理和分配去中心化存储相关的资金
+/// - 与国库账户、推荐账户完全隔离，资金用途明确
+/// - 采用路由表机制，委员会治理分配规则
+/// - 每周自动执行资金分配，无需人工干预
+impl pallet_storage_treasury::Config for Runtime {
+    /// 运行时事件类型
+    type RuntimeEvent = RuntimeEvent;
+    
+    /// 货币类型（用于转账）
+    type Currency = Balances;
+    
+    /// 函数级中文注释：存储费用专用 PalletId
+    /// - 使用与 DecentralizedStorageAccount 相同的 PalletId
+    /// - 确保派生的账户地址一致
+    type StoragePalletId = DecentralizedStoragePalletId;
+    
+    /// 函数级详细中文注释：治理权限
+    /// - Root | 技术委员会 2/3
+    /// - 可以修改路由表、提取资金
+    /// - 确保存储费用分配的民主决策
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
+    >;
+    
+    /// 函数级详细中文注释：自动分配周期
+    /// - 每 7 天（100_800 区块）自动执行一次路由分配
+    /// - 从托管账户按路由表比例分配给各存储服务商
+    type DistributionPeriod = StorageDistributionPeriod;
+}
+
 
 /// ============================================================================
 /// 联盟计酬周结算分配层配置 (pallet-affiliate-weekly)
@@ -2379,6 +2549,36 @@ parameter_types! { pub const MaxQueued: u32 = 100; }
 parameter_types! { pub const AlarmInterval: BlockNumber = 10; }
 
 // 方案B：已移除 referenda 配置
+
+/// 函数级详细中文注释：初始化存储费用路由表
+/// - 设置默认的存储费用分配规则：
+///   * IPFS 运营者池 50%（去中心化存储主力）
+///   * Arweave 运营者池 30%（永久存储备份）
+///   * 节点运维激励 20%（基础设施维护）
+/// - 总计 100%，所有存储费用都会自动分配
+/// - 使用 PalletId 派生账户，确保地址唯一性和可预测性
+/// - 治理后续可通过 set_storage_route_table 调整
+/// - 应在 Runtime 升级或初始化时调用
+#[allow(dead_code)]
+pub fn initialize_storage_routes() {
+    use sp_runtime::Permill;
+    
+    // 使用 PalletId 派生的账户地址
+    // - IpfsPoolAccount: 从 py/ipfs+ 派生
+    // - ArweavePoolAccount: 从 py/arwve 派生
+    // - NodeMaintenancePoolAccount: 从 py/nodes 派生
+    let routes = alloc::vec![
+        (0u8, IpfsPoolAccount::get(),          Permill::from_percent(50)),  // IPFS 50%
+        (1u8, ArweavePoolAccount::get(),       Permill::from_percent(30)),  // Arweave 30%
+        (3u8, NodeMaintenancePoolAccount::get(), Permill::from_percent(20)),  // 节点运维 20%
+    ];
+    
+    // 调用 set_storage_route_table 设置路由表
+    let _ = pallet_storage_treasury::Pallet::<Runtime>::set_storage_route_table(
+        frame_system::RawOrigin::Root.into(),
+        routes,
+    );
+}
 
 /// 函数级详细中文注释：初始化供奉路由表（职责转移方案 + SubjectFunding）
 /// - 设置默认的资金分配规则（2024-10-10 调整版）：

@@ -11,6 +11,10 @@ sp-runtime = { workspace = true }
 sp-core = { workspace = true }
 frame-support = { workspace = true }
 frame-system = { workspace = true }
+log = { workspace = true }
+
+# 函数级中文注释：pallet-memo-ipfs依赖用于IpfsPinner trait
+pallet-memo-ipfs = { path = "../memo-ipfs", default-features = false }
 
 [features]
 default = ["std"]
@@ -21,6 +25,8 @@ std = [
   "sp-core/std",
   "frame-support/std",
   "frame-system/std",
+  "log/std",
+  "pallet-memo-ipfs/std",
 ]
 
 

@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(deprecated)]
+// 函数级中文注释：允许未使用的导入（trait方法调用）
+#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -8,7 +10,13 @@ pub use pallet::*;
 use alloc::vec::Vec;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::{AtLeast32BitUnsigned, Saturating};
+use sp_runtime::traits::{AtLeast32BitUnsigned, Saturating, SaturatedConversion};
+
+// 函数级中文注释：导入log用于记录自动pin失败的警告
+extern crate log;
+// 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
+extern crate pallet_memo_ipfs;
+use pallet_memo_ipfs::IpfsPinner;
 
 /// 函数级中文注释：访问 `pallet-deceased` 的抽象接口，保持低耦合。
 /// - `deceased_exists`：校验逝者存在。
@@ -188,6 +196,27 @@ pub mod pallet {
         /// 函数级中文注释：观察/成熟期（区块数）。
         #[pallet::constant]
         type ComplaintPeriod: Get<BlockNumberFor<Self>>;
+        
+        // ============= IPFS自动Pin相关配置 =============
+        /// 函数级详细中文注释：IPFS自动pin提供者，供媒体uri自动固定
+        /// 
+        /// 集成目标：
+        /// - uri (Photo/Video/Audio): 媒体文件CID自动pin
+        /// - thumbnail_uri: 缩略图CID自动pin（可选）
+        /// 
+        /// 使用场景：
+        /// - add_media: 添加媒体时自动pin
+        /// - update_media: 更新uri时pin新CID
+        /// 
+        /// 注意：由Runtime注入实现（pallet_memo_ipfs::Pallet<Runtime>）
+        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        
+        /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
+        type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：默认IPFS存储单价（每副本每月）
+        #[pallet::constant]
+        type DefaultStoragePrice: Get<Self::Balance>;
     }
 
     #[pallet::storage]
@@ -959,6 +988,11 @@ pub mod pallet {
                 2 => MediaKind::Audio,
                 _ => return Err(Error::<T>::BadInput.into()),
             };
+            
+            // 函数级中文注释：提前克隆uri和thumbnail_uri用于后续自动pin
+            let uri_for_pin = uri.clone();
+            let thumb_for_pin = thumbnail_uri.clone();
+            
             let uri_bv: BoundedVec<_, T::StringLimit> =
                 BoundedVec::try_from(uri).map_err(|_| Error::<T>::BadInput)?;
             let thumb_bv = match thumbnail_uri {
@@ -1012,6 +1046,46 @@ pub mod pallet {
                         MediaDeposits::<T>::insert(id, (who.clone(), dep));
                         MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
                     }
+                    
+                    // 函数级详细中文注释：自动pin主uri到IPFS（Photo）
+                    // - 使用triple-charge机制
+                    // - 失败不阻塞媒体添加（容错处理）
+                    let deceased_id_u64: u64 = album.deceased_id.into();
+                    let price = T::DefaultStoragePrice::get();
+                    
+                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                        who.clone(),
+                        deceased_id_u64,
+                        uri_for_pin.clone(),
+                        price,
+                        3, // 默认3副本
+                    ) {
+                        log::warn!(
+                            target: "deceased_media",
+                            "Auto-pin uri failed for media {:?}: {:?}",
+                            id,
+                            e
+                        );
+                    }
+                    
+                    // 函数级中文注释：自动pin缩略图（如果提供）
+                    if let Some(thumb_vec) = thumb_for_pin.clone() {
+                        if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                            who.clone(),
+                            deceased_id_u64,
+                            thumb_vec,
+                            price,
+                            3,
+                        ) {
+                            log::warn!(
+                                target: "deceased_media",
+                                "Auto-pin thumbnail_uri failed for media {:?}: {:?}",
+                                id,
+                                e
+                            );
+                        }
+                    }
+                    
                     Self::deposit_event(Event::MediaAdded(id));
                     Ok(())
                 }
@@ -1062,6 +1136,46 @@ pub mod pallet {
                         MediaDeposits::<T>::insert(id, (who.clone(), dep));
                         MediaMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
                     }
+                    
+                    // 函数级详细中文注释：自动pin主uri到IPFS（Video/Audio）
+                    // - 使用triple-charge机制
+                    // - 失败不阻塞媒体添加（容错处理）
+                    let deceased_id_u64: u64 = vs.deceased_id.into();
+                    let price = T::DefaultStoragePrice::get();
+                    
+                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                        who.clone(),
+                        deceased_id_u64,
+                        uri_for_pin,
+                        price,
+                        3, // 默认3副本
+                    ) {
+                        log::warn!(
+                            target: "deceased_media",
+                            "Auto-pin uri failed for media {:?}: {:?}",
+                            id,
+                            e
+                        );
+                    }
+                    
+                    // 函数级中文注释：自动pin缩略图（如果提供）
+                    if let Some(thumb_vec) = thumb_for_pin {
+                        if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                            who.clone(),
+                            deceased_id_u64,
+                            thumb_vec,
+                            price,
+                            3,
+                        ) {
+                            log::warn!(
+                                target: "deceased_media",
+                                "Auto-pin thumbnail_uri failed for media {:?}: {:?}",
+                                id,
+                                e
+                            );
+                        }
+                    }
+                    
                     Self::deposit_event(Event::MediaAddedToVideoCollection(id, vsid));
                     Ok(())
                 }
@@ -1084,6 +1198,11 @@ pub mod pallet {
             order_index: Option<u32>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // 函数级中文注释：提前保存uri和thumbnail_uri用于后续自动pin
+            let uri_for_pin = uri.clone();
+            let thumb_for_pin = thumbnail_uri.clone();
+            
             MediaOf::<T>::try_mutate(media_id, |maybe| -> DispatchResult {
                 let m = maybe.as_mut().ok_or(Error::<T>::MediaNotFound)?;
                 ensure!(m.owner == who, Error::<T>::NotAuthorized);
@@ -1134,9 +1253,55 @@ pub mod pallet {
                 }
                 m.updated = <frame_system::Pallet<T>>::block_number();
                 m.version = m.version.saturating_add(1);
-                Self::deposit_event(Event::VersionRecorded(2u8, media_id.into(), m.version, who));
+                Self::deposit_event(Event::VersionRecorded(2u8, media_id.into(), m.version, who.clone()));
                 Ok(())
             })?;
+            
+            // 函数级详细中文注释：自动pin更新的uri和thumbnail_uri到IPFS
+            // - 仅在提供了新CID时执行
+            // - 使用triple-charge机制
+            // - 失败不阻塞更新操作（容错处理）
+            if let Some(m) = MediaOf::<T>::get(media_id) {
+                let deceased_id_u64: u64 = m.deceased_id.into();
+                let price = T::DefaultStoragePrice::get();
+                
+                // Pin主uri（如果提供）
+                if let Some(new_uri) = uri_for_pin {
+                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                        who.clone(),
+                        deceased_id_u64,
+                        new_uri,
+                        price,
+                        3,
+                    ) {
+                        log::warn!(
+                            target: "deceased_media",
+                            "Auto-pin updated uri failed for media {:?}: {:?}",
+                            media_id,
+                            e
+                        );
+                    }
+                }
+                
+                // Pin缩略图（如果提供新值）
+                if let Some(Some(new_thumb)) = thumb_for_pin {
+                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                        who.clone(),
+                        deceased_id_u64,
+                        new_thumb,
+                        price,
+                        3,
+                    ) {
+                        log::warn!(
+                            target: "deceased_media",
+                            "Auto-pin updated thumbnail_uri failed for media {:?}: {:?}",
+                            media_id,
+                            e
+                        );
+                    }
+                }
+            }
+            
             Self::deposit_event(Event::MediaUpdated(media_id));
             Ok(())
         }

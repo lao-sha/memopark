@@ -13,6 +13,10 @@ frame-system = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 frame-benchmarking = { workspace = true, default-features = false, optional = true }
+log = { workspace = true, default-features = false }
+
+# 函数级中文注释：pallet-memo-ipfs依赖用于IpfsPinner trait
+pallet-memo-ipfs = { path = "../memo-ipfs", default-features = false }
 ## 已移除：pallet-authorizer 依赖
 
 [features]
@@ -25,7 +29,8 @@ std = [
   "sp-runtime/std",
   "sp-core/std",
   "frame-benchmarking/std",
-  
+  "log/std",
+  "pallet-memo-ipfs/std",
 ]
 
 # 启用运行时基准

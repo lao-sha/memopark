@@ -1,9 +1,16 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// 函数级中文注释：允许未使用的导入（trait方法调用）
+#![allow(unused_imports)]
 
 extern crate alloc;
 
 // 模块引入：权重接口定义
 pub mod weights;
+
+// 函数级中文注释：导入log用于记录自动pin失败的警告
+extern crate log;
+// 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
+extern crate pallet_memo_ipfs;
 
 // 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
 // 作用：便于 runtime 以 `pallet_memo_grave::Call` 等路径引用，同时满足集成宏的默认部件查找。
@@ -24,6 +31,8 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{SaturatedConversion, Saturating};
+    use sp_runtime::traits::AtLeast32BitUnsigned;
+    use pallet_memo_ipfs::IpfsPinner;
     // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
@@ -135,6 +144,30 @@ pub mod pallet {
         /// 轮播图链接最大长度。
         #[pallet::constant]
         type MaxLinkLen: Get<u32>;
+        
+        // ============= IPFS自动Pin相关配置 =============
+        /// 函数级详细中文注释：IPFS自动pin提供者，供墓位音频CID自动固定
+        /// 
+        /// 集成目标：
+        /// - AudioOf[grave_id]: 墓位背景音乐CID自动pin
+        /// - AudioOptions: 公共音频目录CID自动pin（治理添加时）
+        /// - PrivateAudioOptionsOf: 私有音频候选CID自动pin
+        /// - AudioPlaylistOf: 播放列表CID批量pin
+        /// 
+        /// 使用场景：
+        /// - set_audio: 设置墓位音频时自动pin
+        /// - set_audio_via_governance: 治理设置音频时自动pin
+        /// - add_audio_option: 添加公共音频时自动pin（治理）
+        /// - add_private_audio_option: 添加私有音频时自动pin
+        /// - set_audio_playlist: 设置播放列表时批量pin
+        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        
+        /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
+        type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：默认IPFS存储单价（每副本每月）
+        #[pallet::constant]
+        type DefaultStoragePrice: Get<Self::Balance>;
     }
 
     /// 函数级中文注释：余额类型别名，便于在常量与函数中使用链上 Balance 类型。
@@ -914,7 +947,33 @@ pub mod pallet {
                 ensure!(who == g.owner, Error::<T>::NotOwner);
                 Ok(())
             })?;
+            
+            // 函数级中文注释：提前克隆cid用于后续自动pin
+            let cid_for_pin: Vec<u8> = cid.clone().into_inner();
+            
             AudioCidOf::<T>::insert(id, cid);
+            
+            // 函数级详细中文注释：自动pin墓位音频CID到IPFS
+            // - 使用grave的主逝者ID（如有），否则使用grave_id作为deceased_id
+            // - 失败不阻塞音频设置（容错处理）
+            let deceased_id_u64 = PrimaryDeceasedOf::<T>::get(id).unwrap_or(id);
+            let price = T::DefaultStoragePrice::get();
+            
+            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                who.clone(),
+                deceased_id_u64,
+                cid_for_pin,
+                price,
+                3, // 默认3副本
+            ) {
+                log::warn!(
+                    target: "memo_grave",
+                    "Auto-pin audio cid failed for grave {:?}: {:?}",
+                    id,
+                    e
+                );
+            }
+            
             Self::deposit_event(Event::AudioSet { id });
             Ok(())
         }

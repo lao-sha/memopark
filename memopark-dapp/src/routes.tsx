@@ -58,6 +58,7 @@ export const routes: RouteItem[] = [
   { match: h => h.startsWith('#/ref'), component: lazy(() => import('./features/referrals/ReferralBindPage')) },
   { match: h => h === '#/membership/purchase', component: lazy(() => import('./features/membership/MembershipPurchasePage')) },
   { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
+  { match: h => h === '#/storage-treasury', component: lazy(() => import('./features/storage-treasury/StorageTreasuryDashboard')) },
 ];
 
 // UI 组件展示页仅在开发模式暴露

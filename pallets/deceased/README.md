@@ -1,12 +1,39 @@
 # Deceased Pallet
 
-- 设计说明：
-  - 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计；不参与权限派生，但用于资金托管账户派生以保证稳定性。
-  - 资金派生与计费：主题资金账户（SubjectFunding）基于 `(creator, deceased_id)` 派生，确保 owner 转移时账户地址不变，保持资金连续性。
+## 核心特性
 
-- 迁移策略（开发阶段）：
-  - 当前主网未上线，采用“零迁移”策略：`on_runtime_upgrade` 仅写入 `STORAGE_VERSION`，不进行 translate。
-  - 如需结构调整，请清链/重启以应用最新结构；主网前再补充精确迁移逻辑。
+### 1. 基础功能
+- 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计；不参与权限派生，但用于资金托管账户派生以保证稳定性。
+- 资金派生与计费：主题资金账户（SubjectFunding）基于 `(creator, deceased_id)` 派生，确保 owner 转移时账户地址不变，保持资金连续性。
+
+### 2. IPFS自动Pin集成 ✅
+
+本模块已集成**自动IPFS pin**功能，支持以下CID字段：
+
+#### 自动pin的CID字段
+
+| 字段 | 触发extrinsic | 说明 |
+|------|--------------|------|
+| `name_full_cid` | `create_deceased` | 创建逝者时自动pin完整姓名CID |
+| `name_full_cid` | `update_deceased` | 更新姓名时自动pin新CID |
+| `main_image_cid` | `set_main_image` | 设置主图时自动pin图片CID |
+
+#### 扣费机制（三重扣款）
+
+自动pin使用**Triple-Charge机制**，优先级顺序：
+1. **IpfsPoolAccount（公共池）**：优先扣取，有月度额度限制
+2. **SubjectFunding（逝者专户）**：池不足时从专户扣取
+3. **Caller（调用者）**：前两者都不足时从调用者账户扣取
+
+**特点**：
+- 副本数：默认3副本
+- 存储价格：使用`DefaultStoragePrice`配置（1 MEMO/副本/月）
+- 失败容错：pin失败不阻塞业务操作，仅记录warning日志
+
+### 3. 迁移策略（开发阶段）
+
+- 当前主网未上线，采用"零迁移"策略：`on_runtime_upgrade` 仅写入 `STORAGE_VERSION`，不进行 translate。
+- 如需结构调整，请清链/重启以应用最新结构；主网前再补充精确迁移逻辑。
 
 ## Config 示例
 
@@ -20,11 +47,17 @@ impl pallet_deceased::Config for Runtime {
     type MaxLinks = DeceasedMaxLinks;
     type GraveProvider = GraveProviderAdapter; // 由 runtime 实现
     type WeightInfo = ();
+    
     /// 治理起源（Root | 内容委员会阈值），用于 gov* 接口
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
         ContentAtLeast2of3
     >;
+    
+    // ✅ 新增：IPFS自动pin支持
+    type IpfsPinner = PalletMemoIpfs;
+    type Balance = Balance;
+    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>; // 1 MEMO/副本/月
 }
 ```
 

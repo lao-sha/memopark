@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(deprecated)]
+// 函数级中文注释：允许未使用的导入（trait方法调用）
+#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -8,7 +10,13 @@ pub use pallet::*;
 use alloc::vec::Vec;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::{AtLeast32BitUnsigned, Saturating};
+use sp_runtime::traits::{AtLeast32BitUnsigned, Saturating, SaturatedConversion};
+
+// 函数级中文注释：导入log用于记录自动pin失败的警告
+extern crate log;
+// 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
+extern crate pallet_memo_ipfs;
+use pallet_memo_ipfs::IpfsPinner;
 
 /// 函数级中文注释：访问 `pallet-deceased` 的抽象接口（低耦合）。
 pub trait DeceasedAccess<AccountId, DeceasedId> {
@@ -108,6 +116,28 @@ pub mod pallet {
         type ArbitrationAccount: Get<Self::AccountId>;
         #[pallet::constant]
         type ComplaintPeriod: Get<BlockNumberFor<Self>>;
+        
+        // ============= IPFS自动Pin相关配置 =============
+        /// 函数级详细中文注释：IPFS自动pin提供者，供文本cid自动固定
+        /// 
+        /// 集成目标：
+        /// - TextRecord.cid: 文本记录（Article/Message）CID自动pin
+        /// - Life.cid: 生平记录CID自动pin
+        /// - Eulogy.cid: 悼词记录CID自动pin
+        /// 
+        /// 使用场景：
+        /// - set_article: 设置文章时自动pin
+        /// - add_message: 添加留言时自动pin
+        /// - create_life/update_life: 创建/更新生平时自动pin
+        /// - create_eulogy/update_eulogy: 创建/更新悼词时自动pin
+        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        
+        /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
+        type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：默认IPFS存储单价（每副本每月）
+        #[pallet::constant]
+        type DefaultStoragePrice: Get<Self::Balance>;
     }
 
     #[pallet::storage]
@@ -290,6 +320,9 @@ pub mod pallet {
                 Error::<T>::NotAuthorized
             );
 
+            // 函数级中文注释：提前克隆cid用于后续自动pin
+            let cid_for_pin = cid.clone();
+            
             let cid_bv: BoundedVec<_, T::StringLimit> =
                 BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             let title_bv = match title {
@@ -328,6 +361,28 @@ pub mod pallet {
                 TextDeposits::<T>::insert(id, (who.clone(), dep));
                 TextMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
             }
+            
+            // 函数级详细中文注释：自动pin文章CID到IPFS
+            // - 使用triple-charge机制
+            // - 失败不阻塞文章设置（容错处理）
+            let deceased_id_u64: u64 = deceased_id.into();
+            let price = T::DefaultStoragePrice::get();
+            
+            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                who.clone(),
+                deceased_id_u64,
+                cid_for_pin,
+                price,
+                3, // 默认3副本
+            ) {
+                log::warn!(
+                    target: "deceased_text",
+                    "Auto-pin article cid failed for text {:?}: {:?}",
+                    id,
+                    e
+                );
+            }
+            
             Self::deposit_event(Event::ArticleSet(id, deceased_id, who));
             Ok(())
         }
@@ -596,6 +651,10 @@ pub mod pallet {
                 T::DeceasedProvider::deceased_exists(deceased_id),
                 Error::<T>::DeceasedNotFound
             );
+            
+            // 函数级中文注释：提前克隆cid用于后续自动pin
+            let cid_for_pin = cid.clone();
+            
             let cid_bv: BoundedVec<_, T::StringLimit> =
                 BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             let title_bv = match title {
@@ -628,6 +687,28 @@ pub mod pallet {
                 TextDeposits::<T>::insert(id, (who.clone(), dep));
                 TextMaturity::<T>::insert(id, now + T::ComplaintPeriod::get());
             }
+            
+            // 函数级详细中文注释：自动pin留言CID到IPFS
+            // - 使用triple-charge机制
+            // - 失败不阻塞留言添加（容错处理）
+            let deceased_id_u64: u64 = deceased_id.into();
+            let price = T::DefaultStoragePrice::get();
+            
+            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                who.clone(),
+                deceased_id_u64,
+                cid_for_pin,
+                price,
+                3, // 默认3副本
+            ) {
+                log::warn!(
+                    target: "deceased_text",
+                    "Auto-pin message cid failed for text {:?}: {:?}",
+                    id,
+                    e
+                );
+            }
+            
             Self::deposit_event(Event::MessageAdded(id, deceased_id, who));
             Ok(())
         }
@@ -837,6 +918,10 @@ pub mod pallet {
                 LifeOf::<T>::get(deceased_id).is_none(),
                 Error::<T>::BadInput
             );
+            
+            // 函数级中文注释：提前克隆cid用于后续自动pin
+            let cid_for_pin = cid.clone();
+            
             let bv: BoundedVec<_, T::StringLimit> =
                 BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
             let now = <frame_system::Pallet<T>>::block_number();
@@ -851,6 +936,28 @@ pub mod pallet {
                 last_editor: None,
             };
             LifeOf::<T>::insert(deceased_id, life);
+            
+            // 函数级详细中文注释：自动pin生平CID到IPFS
+            // - 使用triple-charge机制
+            // - 失败不阻塞生平创建（容错处理）
+            let deceased_id_u64: u64 = deceased_id.into();
+            let price = T::DefaultStoragePrice::get();
+            
+            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                who.clone(),
+                deceased_id_u64,
+                cid_for_pin,
+                price,
+                3, // 默认3副本
+            ) {
+                log::warn!(
+                    target: "deceased_text",
+                    "Auto-pin life cid failed for deceased {:?}: {:?}",
+                    deceased_id,
+                    e
+                );
+            }
+            
             Self::deposit_event(Event::LifeCreated(deceased_id, who));
             Ok(())
         }
@@ -865,6 +972,10 @@ pub mod pallet {
             cid: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // 函数级中文注释：提前克隆cid用于后续自动pin
+            let cid_for_pin = cid.clone();
+            
             LifeOf::<T>::try_mutate(deceased_id, |maybe| -> DispatchResult {
                 let life = maybe.as_mut().ok_or(Error::<T>::BadInput)?;
                 let bv: BoundedVec<_, T::StringLimit> =
@@ -890,6 +1001,28 @@ pub mod pallet {
                 }
                 Ok(())
             })?;
+            
+            // 函数级详细中文注释：自动pin更新的生平CID到IPFS
+            // - 使用triple-charge机制
+            // - 失败不阻塞生平更新（容错处理）
+            let deceased_id_u64: u64 = deceased_id.into();
+            let price = T::DefaultStoragePrice::get();
+            
+            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                who.clone(),
+                deceased_id_u64,
+                cid_for_pin,
+                price,
+                3, // 默认3副本
+            ) {
+                log::warn!(
+                    target: "deceased_text",
+                    "Auto-pin updated life cid failed for deceased {:?}: {:?}",
+                    deceased_id,
+                    e
+                );
+            }
+            
             Ok(())
         }
 

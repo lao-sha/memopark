@@ -377,4 +377,10 @@ pub mod runtime {
 
     #[runtime::pallet_index(45)]
     pub type MarketMaker = pallet_market_maker;
+
+    /// 函数级中文注释：存储费用专用账户管理模块
+    /// - 负责收集、管理和分配去中心化存储相关的资金
+    /// - 与国库账户、推荐账户完全隔离，资金用途明确
+    #[runtime::pallet_index(46)]
+    pub type StorageTreasury = pallet_storage_treasury;
 }

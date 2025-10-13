@@ -1,9 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// 函数级中文注释：允许未使用的导入（trait方法调用）
+#![allow(unused_imports)]
 
 extern crate alloc;
 
 pub use pallet::*;
 use sp_core::Get;
+
+// 函数级中文注释：导入log用于记录自动pin失败的警告
+extern crate log;
+// 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
+extern crate pallet_memo_ipfs;
+use pallet_memo_ipfs::IpfsPinner;
 
 // 函数级中文注释：权重模块导入，提供 WeightInfo 接口用于基于输入规模计算交易权重。
 #[cfg(feature = "runtime-benchmarks")]
@@ -26,7 +34,7 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_core::blake2_256;
     use sp_core::H256;
-    use sp_runtime::traits::Saturating;
+    use sp_runtime::traits::{Saturating, AtLeast32BitUnsigned};
 
     /// 函数级中文注释：共享证据（媒体）记录结构，存储跨域使用的图片/视频/文档的 IPFS CID（或哈希）。
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -88,6 +96,29 @@ pub mod pallet {
         type MaxListLen: Get<u32>;
         type WeightInfo: WeightInfo;
         type FamilyVerifier: FamilyRelationVerifier<Self::AccountId>;
+        
+        // ============= IPFS自动Pin相关配置 =============
+        /// 函数级详细中文注释：IPFS自动pin提供者，供证据CID自动固定
+        /// 
+        /// 集成目标：
+        /// - imgs: 图片证据CID列表自动pin
+        /// - vids: 视频证据CID列表自动pin
+        /// - docs: 文档证据CID列表自动pin
+        /// 
+        /// 使用场景：
+        /// - commit: 提交证据时自动pin所有CID
+        /// 
+        /// 注意：
+        /// - 证据通常关联到deceased_id（通过target_id）
+        /// - 由Runtime注入实现（pallet_memo_ipfs::Pallet<Runtime>）
+        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        
+        /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
+        type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：默认IPFS存储单价（每副本每月）
+        #[pallet::constant]
+        type DefaultStoragePrice: Get<Self::Balance>;
     }
 
     #[pallet::pallet]
@@ -406,6 +437,71 @@ pub mod pallet {
                 }
             }
 
+            // 函数级详细中文注释：自动pin所有证据CID到IPFS
+            // - 遍历imgs、vids、docs三个列表
+            // - 对每个CID调用pin_cid_for_grave
+            // - target_id视为deceased_id（证据通常关联逝者）
+            // - 失败不阻塞证据提交（容错处理）
+            let deceased_id_u64 = target_id;
+            let price = T::DefaultStoragePrice::get();
+            
+            // Pin所有图片CID
+            for cid_bv in ev.imgs.iter() {
+                let cid_vec: Vec<u8> = cid_bv.clone().into_inner();
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    who.clone(),
+                    deceased_id_u64,
+                    cid_vec,
+                    price,
+                    3, // 默认3副本
+                ) {
+                    log::warn!(
+                        target: "evidence",
+                        "Auto-pin img cid failed for evidence {:?}: {:?}",
+                        id,
+                        e
+                    );
+                }
+            }
+            
+            // Pin所有视频CID
+            for cid_bv in ev.vids.iter() {
+                let cid_vec: Vec<u8> = cid_bv.clone().into_inner();
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    who.clone(),
+                    deceased_id_u64,
+                    cid_vec,
+                    price,
+                    3,
+                ) {
+                    log::warn!(
+                        target: "evidence",
+                        "Auto-pin vid cid failed for evidence {:?}: {:?}",
+                        id,
+                        e
+                    );
+                }
+            }
+            
+            // Pin所有文档CID
+            for cid_bv in ev.docs.iter() {
+                let cid_vec: Vec<u8> = cid_bv.clone().into_inner();
+                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                    who.clone(),
+                    deceased_id_u64,
+                    cid_vec,
+                    price,
+                    3,
+                ) {
+                    log::warn!(
+                        target: "evidence",
+                        "Auto-pin doc cid failed for evidence {:?}: {:?}",
+                        id,
+                        e
+                    );
+                }
+            }
+            
             // 只读方法移至模块外部以避免 non_local_definitions 警告在 -D warnings 下被提升为错误。
             Self::deposit_event(Event::EvidenceCommitted {
                 id,

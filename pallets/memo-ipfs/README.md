@@ -1,8 +1,154 @@
 # pallet-memo-ipfs
 
-存储业务与 Offchain Worker（OCW）骨架：
+## 💰 三重扣款机制（v3.0）
 
-- 用户通过 `request_pin` 一次性付费，金额通过 Endowment 接口打到基金会。
+**核心特性**：初次 pin 请求使用三重扣款，优先使用公共费用池，其次逝者专属资金，最后调用者自费；周期扣款使用双重扣款
+
+### 扣款优先级
+
+#### 初次 Pin 请求（三重扣款）
+
+```
+request_pin_for_deceased(subject_id, ...)
+    ↓
+1️⃣ 优先从 IpfsPoolAccount 扣款（配额限制）
+    ├─ 检查月度配额：100 MEMO/deceased
+    ├─ 检查池余额是否充足
+    └─ ✅ 成功 → 转到 OperatorEscrowAccount
+         ↓ ❌ 失败
+2️⃣ 从 SubjectFunding 扣款
+    ├─ 派生账户：(creator, deceased_id)
+    └─ ✅ 成功 → 转到 OperatorEscrowAccount
+         ↓ ❌ 失败
+3️⃣ 从调用者账户扣款（fallback，自费）
+    ├─ 调用者账户：msg.sender
+    └─ ✅ 成功 → 转到 OperatorEscrowAccount
+         ↓ ❌ 失败
+4️⃣ 返回 Error::AllThreeAccountsInsufficientBalance
+```
+
+#### 周期扣款（双重扣款）
+
+```
+charge_due() / on_initialize
+    ↓
+1️⃣ 优先从 IpfsPoolAccount 扣款（配额限制）
+    └─ ✅ 成功 → 转到 OperatorEscrowAccount
+         ↓ ❌ 失败
+2️⃣ 从 SubjectFunding 扣款
+    └─ ✅ 成功 → 转到 OperatorEscrowAccount
+         ↓ ❌ 失败
+3️⃣ 进入宽限期（Grace）或标记过期（Expired）
+```
+
+**注意**：周期扣款不使用调用者 fallback，因为没有调用者上下文
+
+### 账户说明
+
+| 账户 | PalletId/派生规则 | 用途 | 地址示例 |
+|------|------------------|------|---------|
+| **IpfsPoolAccount** | `py/ipfs+` | 公共费用池，由供奉路由分配 50% | `5Fm7k7uj...` |
+| **SubjectFunding** | `(domain, creator, deceased_id)` | 逝者专属资金，家属充值 | 派生地址 |
+| **Caller** | msg.sender | 调用者账户，fallback 自费 | 用户地址 |
+| **OperatorEscrowAccount** | `py/opesc` | 运营者托管，待 SLA 考核分配 | `5EYa...` |
+
+### 配额规则
+
+| 项目 | 配置值 | 说明 |
+|------|--------|------|
+| 月度配额 | 100 MEMO | 每个 deceased 每月的免费额度 |
+| 重置周期 | 28 天 | 约 403,200 区块 |
+| 计算方式 | 累计扣费 | 按实际扣费金额累计 |
+
+### 使用示例
+
+**示例 1：配额内使用（免费）**
+
+```rust
+// deceased_id = 1
+// 本月已用配额：0 MEMO
+// 本次费用：50 MEMO
+// IpfsPoolAccount 余额：1000 MEMO
+
+request_pin_for_deceased(1, cid_hash, 5000, 3, 50 * UNIT)
+// ✅ 从 IpfsPoolAccount 扣款 50 MEMO
+// ✅ 转到 OperatorEscrowAccount
+// 剩余配额：50 MEMO
+```
+
+**示例 2：超出配额，使用专属资金**
+
+```rust
+// deceased_id = 1
+// 本月已用配额：95 MEMO
+// 本次费用：50 MEMO
+// 配额剩余：5 MEMO < 50 MEMO
+// SubjectFunding 余额：100 MEMO
+
+request_pin_for_deceased(1, cid_hash, 5000, 3, 50 * UNIT)
+// ❌ 配额不足
+// ✅ 从 SubjectFunding 扣款 50 MEMO
+// ✅ 转到 OperatorEscrowAccount
+```
+
+**示例 3：新用户，直接自费（友好）**
+
+```rust
+// IpfsPoolAccount 余额：0 MEMO（新链）
+// SubjectFunding 余额：0 MEMO（未充值）
+// Caller 余额：200 MEMO
+
+request_pin_for_deceased(1, cid_hash, 5000, 3, 50 * UNIT)
+// ❌ IpfsPoolAccount 不足
+// ❌ SubjectFunding 不足
+// ✅ 从 Caller 扣款 50 MEMO（自费）
+// ✅ 转到 OperatorEscrowAccount
+// 💡 前端提示：建议充值到 SubjectFunding 享受配额优惠
+```
+
+**示例 4：三账户都不足（失败）**
+
+```rust
+// IpfsPoolAccount 余额：0 MEMO
+// SubjectFunding 余额：0 MEMO
+// Caller 余额：10 MEMO < 50 MEMO
+
+request_pin_for_deceased(1, cid_hash, 5000, 3, 50 * UNIT)
+// ❌ Error::AllThreeAccountsInsufficientBalance
+```
+
+### 资金流向
+
+```
+供奉收入 → DecentralizedStorageAccount
+    ↓（每 7 天分配 50%）
+IpfsPoolAccount
+    ↓（pin 服务扣款，配额限制）
+OperatorEscrowAccount（托管）
+    ↓（SLA 考核后分配）
+运营者 A/B/C
+
+或
+
+用户充值 → SubjectFunding
+    ↓（pin 服务扣款）
+OperatorEscrowAccount（托管）
+    ↓（SLA 考核后分配）
+运营者 A/B/C
+
+或
+
+Caller（自费） → OperatorEscrowAccount（托管）
+    ↓（SLA 考核后分配）
+运营者 A/B/C
+```
+
+---
+
+## 存储业务与 Offchain Worker（OCW）骨架
+
+- 用户通过 `request_pin_for_deceased` 发起 pin 请求，使用三重扣款机制（IpfsPool → SubjectFunding → Caller）
+- 周期扣款使用双重扣款机制（IpfsPool → SubjectFunding），无 caller fallback
 - 运营者（矿工）需 `join_operator` 并质押，活跃状态方可上报；上报/探测与 SLA 统计绑定。
 - OCW 调用 ipfs-cluster API 完成 `POST /pins`（携带 allocations）与后续巡检/修复；指数退避与全局锁防抖。
 - OCW 使用节点 keystore 的 `KeyTypeId = b"ipfs"` 专用密钥签名上报 `mark_pinned/mark_pin_failed/report_probe`。
