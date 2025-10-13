@@ -74,6 +74,13 @@ pub struct Application<AccountId, Balance> {
     pub created_at: u32,          // 质押时间（秒）
     pub info_deadline: u32,       // 资料提交截止（秒）
     pub review_deadline: u32,     // 审核截止（秒）
+    // 🆕 2025-10-13: 新增首购功能相关字段
+    pub epay_gateway: BoundedVec<u8, ConstU32<128>>,  // epay支付网关地址
+    pub epay_pid: BoundedVec<u8, ConstU32<64>>,       // epay商户ID (PID)
+    pub epay_key: BoundedVec<u8, ConstU32<64>>,       // epay商户密钥
+    pub first_purchase_pool: Balance,                  // 首购资金池总额
+    pub first_purchase_used: Balance,                  // 已使用的首购资金
+    pub users_served: u32,                             // 已服务的用户数量
 }
 ```
 
@@ -99,6 +106,24 @@ pub enum ApplicationStatus {
 `StorageValue<u64>`
 
 下一个可用的 mm_id
+
+### 🆕 ActiveMarketMakers
+`StorageMap<u64, Application>`
+
+**新增于 2025-10-13**：存储已批准的活跃做市商
+
+- 批准后从 Applications 迁移到这里
+- 用于首购功能快速查询可用做市商
+- mm_id → Application（状态为 Active）
+
+### 🆕 FirstPurchaseRecords
+`StorageDoubleMap<u64, AccountId, ()>`
+
+**新增于 2025-10-13**：首购使用记录
+
+- (mm_id, buyer_account) → ()
+- 防止同一买家重复使用首购服务
+- 统计做市商服务的用户数量
 
 ## 可调用接口
 
@@ -128,10 +153,15 @@ pub fn submit_info(
     private_cid: Vec<u8>,
     fee_bps: u16,
     min_amount: BalanceOf<T>,
+    // 🆕 新增参数
+    epay_gateway: Vec<u8>,
+    epay_pid: Vec<u8>,
+    epay_key: Vec<u8>,
+    first_purchase_pool: BalanceOf<T>,
 ) -> DispatchResult
 ```
 
-**功能**：提交做市商资料
+**功能**：提交做市商资料（**2025-10-13 扩展**）
 
 **参数**：
 - `mm_id`: 申请编号
@@ -139,8 +169,16 @@ pub fn submit_info(
 - `private_cid`: 私密资料根 CID（明文，内容加密）
 - `fee_bps`: 费率（0-10000 bps，即 0%-100%）
 - `min_amount`: 最小下单额
+- 🆕 `epay_gateway`: epay支付网关地址（如：https://epay.example.com）
+- 🆕 `epay_pid`: epay商户ID
+- 🆕 `epay_key`: epay商户密钥
+- 🆕 `first_purchase_pool`: 首购资金池总额（必须 ≥ MinFirstPurchasePool）
 
 **权限**：申请人本人
+
+**验证**：
+- epay配置不能为空
+- 首购资金池必须 ≥ MinFirstPurchasePool
 
 **效果**：
 - 状态变更为 `PendingReview`
@@ -155,10 +193,15 @@ pub fn update_info(
     private_root_cid: Option<Cid>,
     fee_bps: Option<u16>,
     min_amount: Option<BalanceOf<T>>,
+    // 🆕 新增参数
+    epay_gateway: Option<Vec<u8>>,
+    epay_pid: Option<Vec<u8>>,
+    epay_key: Option<Vec<u8>>,
+    first_purchase_pool: Option<BalanceOf<T>>,
 ) -> DispatchResult
 ```
 
-**功能**：更新申请资料（审核前可修改）
+**功能**：更新申请资料（审核前可修改）（**2025-10-13 扩展**）
 
 **参数**：
 - `mm_id`: 申请编号
@@ -166,6 +209,10 @@ pub fn update_info(
 - `private_root_cid`: 私密资料根 CID（None 表示不修改）
 - `fee_bps`: 费率（None 表示不修改）
 - `min_amount`: 最小下单额（None 表示不修改）
+- 🆕 `epay_gateway`: epay支付网关地址（None 表示不修改）
+- 🆕 `epay_pid`: epay商户ID（None 表示不修改）
+- 🆕 `epay_key`: epay商户密钥（None 表示不修改）
+- 🆕 `first_purchase_pool`: 首购资金池总额（None 表示不修改）
 
 **权限**：申请人本人
 
@@ -173,9 +220,13 @@ pub fn update_info(
 - `DepositLocked`：可修改，需在资料提交截止时间（`info_deadline`）前
 - `PendingReview`：可修改，需在审核截止时间（`review_deadline`）前
 
+**验证**：
+- 🆕 epay配置如果提供，不能为空
+- 🆕 首购资金池如果提供，必须 ≥ MinFirstPurchasePool
+
 **效果**：
 - 更新指定字段（参数为 None 的字段不修改）
-- 如果从 `DepositLocked` 状态修改且所有必需字段都已填写，自动变更为 `PendingReview`
+- 如果从 `DepositLocked` 状态修改且所有必需字段都已填写（包括epay配置和首购资金池），自动变更为 `PendingReview`
 - 发出 `InfoUpdated` 事件
 
 **注意事项**：
@@ -189,7 +240,7 @@ pub fn update_info(
 pub fn approve(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
 ```
 
-**功能**：批准做市商申请
+**功能**：批准做市商申请（**2025-10-13 扩展**）
 
 **权限**：Root 或 委员会 2/3 多数
 - **Root 通道**：Sudo 账户可直接批准（紧急情况）
@@ -198,10 +249,18 @@ pub fn approve(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
   2. 其他成员投票：`council.vote(proposalHash, index, true)`
   3. 达到阈值后执行：`council.close(proposalHash, index, weightBound, lengthBound)`
 
+**🆕 新增验证**（2025-10-13）：
+- 验证epay配置完整性（gateway、pid、key不能为空）
+- 验证首购资金池 ≥ MinFirstPurchasePool
+- 转移首购资金到资金池账户
+
 **效果**：
 - 状态变更为 `Active`
 - 押金转为长期质押
+- 🆕 首购资金转移到资金池账户（派生账户：PalletId + mm_id）
+- 🆕 从 Applications 迁移到 ActiveMarketMakers 存储
 - 发出 `Approved` 事件
+- 🆕 发出 `FirstPurchasePoolFunded` 事件
 
 ### reject
 ```rust
@@ -258,6 +317,23 @@ pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
 ### MaxPairs
 最大交易对数量（预留）
 
+### 🆕 MinFirstPurchasePool
+**新增于 2025-10-13**：首购资金池最小金额（示例：10000 MEMO）
+
+- 做市商必须质押至少这么多的首购资金
+- 防止资金池过小导致首购服务中断
+
+### 🆕 FirstPurchaseAmount
+**新增于 2025-10-13**：每次首购转账金额（推荐：100 MEMO）
+
+- 新用户首次购买时，从做市商资金池转账的固定金额
+
+### 🆕 PalletId
+**新增于 2025-10-13**：Pallet ID（推荐：`b"mm/pool!"`）
+
+- 用于派生首购资金池账户地址
+- 格式：PalletId + mm_id → 派生子账户
+
 ## 前端集成
 
 ### 申请页面
@@ -281,6 +357,25 @@ pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
 - 解密提示和审查流程指引
 
 **优化记录**：
+- ✅ **2025-10-13**: 添加首购功能支持
+  - **需求**：为新用户提供首购服务，做市商需要配置 epay 支付网关和首购资金池
+  - **实现方案**：
+    - 扩展 `Application` 结构，添加 `epay_gateway`、`epay_pid`、`epay_key`、`first_purchase_pool`、`first_purchase_used`、`users_served` 字段
+    - 修改 `submit_info` 和 `update_info` 接口，支持提交和修改 epay 配置和首购资金池
+    - 修改 `approve` 接口，验证 epay 配置并转移首购资金到资金池账户（派生账户：PalletId + mm_id）
+    - 新增 `ActiveMarketMakers` 存储，批准后从 Applications 迁移
+    - 新增 `FirstPurchaseRecords` 存储，记录首购使用情况
+    - 定义 `MarketMakerProvider` trait，供 `pallet-otc-order` OCW 使用
+    - 实现 `select_available_market_maker()`、`get_market_maker_info()`、`record_first_purchase_usage()` 等接口
+  - **改进效果**：
+    - ✅ 低耦合设计：通过 trait 接口与 pallet-otc-order 交互
+    - ✅ 资金安全：首购资金存储在派生账户，做市商无法直接提取
+    - ✅ 防重复领取：FirstPurchaseRecords 记录每个买家的首购使用情况
+    - ✅ 智能选择：自动选择资金充足且余额最高的做市商
+    - ✅ 统计完善：记录已使用资金和服务用户数
+  - **新增事件**：`FirstPurchasePoolFunded`、`FirstPurchaseServed`
+  - **新增错误**：`InvalidEpayGateway`、`InvalidEpayPid`、`InvalidEpayKey`、`InsufficientFirstPurchasePool`、`EpayConfigTooLong`、`InsufficientPoolBalance`、`MarketMakerNotActive`、`AlreadyUsedFirstPurchase`
+  - **新增配置**：`MinFirstPurchasePool`、`FirstPurchaseAmount`、`PalletId`
 - ✅ **2025-10-06**: 添加 `update_info` 接口支持审核前修改资料
   - **需求**：做市商在审核成功前，需要能够修改申请资料（质押金额、费率、最小下单额等）
   - **实现方案**：
@@ -357,6 +452,20 @@ Expired { mm_id: u64 }
 ```
 申请过期
 
+### 🆕 FirstPurchasePoolFunded
+**新增于 2025-10-13**
+```rust
+FirstPurchasePoolFunded { mm_id: u64, pool_account: AccountId, amount: Balance }
+```
+首购资金已转入资金池账户
+
+### 🆕 FirstPurchaseServed
+**新增于 2025-10-13**
+```rust
+FirstPurchaseServed { mm_id: u64, buyer: AccountId, amount: Balance }
+```
+首购服务已完成（由 pallet-otc-order OCW 调用）
+
 ## 错误
 
 - `AlreadyExists`: 申请人已有待处理申请
@@ -369,6 +478,14 @@ Expired { mm_id: u64 }
 - `InvalidFee`: 费率超出范围
 - `BadSlashRatio`: 扣罚比例超出限制
 - `MinDepositNotMet`: 押金低于最小值
+- 🆕 `InvalidEpayGateway`: epay网关地址无效或为空
+- 🆕 `InvalidEpayPid`: epay商户ID无效或为空
+- 🆕 `InvalidEpayKey`: epay商户密钥无效或为空
+- 🆕 `InsufficientFirstPurchasePool`: 首购资金池金额不足
+- 🆕 `EpayConfigTooLong`: epay配置字段过长
+- 🆕 `InsufficientPoolBalance`: 做市商资金池余额不足
+- 🆕 `MarketMakerNotActive`: 做市商未激活
+- 🆕 `AlreadyUsedFirstPurchase`: 买家已经使用过首购服务
 
 ## 治理机制
 
@@ -430,9 +547,53 @@ await api.tx.sudo.sudo(
 5. **扣罚上限**：驳回扣罚比例可配置，防止过度惩罚
 6. **去中心化治理**：推荐使用委员会提案流程，避免单点信任
 
-## 与 pallet-otc-maker 的关系
+## 🆕 MarketMakerProvider Trait
 
-`pallet-otc-maker` 通过只读依赖本 pallet：
+**新增于 2025-10-13**：供其他 pallet（如 `pallet-otc-order`）使用
+
+```rust
+pub trait MarketMakerProvider<AccountId, Balance> {
+    /// 获取做市商信息（epay配置、资金池状态）
+    fn get_market_maker_info(mm_id: u64) -> Option<MarketMakerInfo>;
+    
+    /// 选择可用的做市商（资金充足且余额最高）
+    fn select_available_market_maker() -> Option<u64>;
+    
+    /// 派生首购资金池账户地址
+    fn first_purchase_pool_account(mm_id: u64) -> AccountId;
+    
+    /// 记录首购服务使用（由 OCW 调用）
+    fn record_first_purchase_usage(mm_id: u64, buyer: &AccountId, amount: Balance) -> Result<(), &'static str>;
+    
+    /// 检查买家是否已使用过首购服务
+    fn has_used_first_purchase(mm_id: u64, buyer: &AccountId) -> bool;
+}
+```
+
+**使用示例**（在 pallet-otc-order 中）：
+```rust
+// 在 Config 中声明依赖
+type MarketMakerProvider: pallet_market_maker::MarketMakerProvider<Self::AccountId, Self::Balance>;
+
+// 在 OCW 中使用
+let mm_id = T::MarketMakerProvider::select_available_market_maker()
+    .ok_or("No available market maker")?;
+let mm_info = T::MarketMakerProvider::get_market_maker_info(mm_id)
+    .ok_or("Market maker not found")?;
+let pool_account = T::MarketMakerProvider::first_purchase_pool_account(mm_id);
+T::MarketMakerProvider::record_first_purchase_usage(mm_id, &buyer, amount)?;
+```
+
+## 与其他 Pallet 的关系
+
+### pallet-otc-order（首购 OCW）
+**新增于 2025-10-13**：
+- 通过 `MarketMakerProvider` trait 查询做市商信息
+- 使用 `select_available_market_maker()` 选择做市商
+- 使用 `get_market_maker_info()` 获取 epay 配置
+- 使用 `record_first_purchase_usage()` 记录首购服务
+
+### pallet-otc-maker（传统 OTC）
 - 读取 `Applications` 查询做市商状态
 - 检查 `status == Active` 判断是否可接单
 - **不直接处理押金和治理逻辑**
