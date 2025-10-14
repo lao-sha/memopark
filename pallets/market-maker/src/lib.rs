@@ -61,6 +61,10 @@ pub mod pallet {
         fn approve() -> Weight;
         fn reject() -> Weight;
         fn expire() -> Weight;
+        fn request_withdrawal() -> Weight;
+        fn execute_withdrawal() -> Weight;
+        fn cancel_withdrawal() -> Weight;
+        fn emergency_withdrawal() -> Weight;
     }
 
     impl WeightInfo for () {
@@ -83,6 +87,18 @@ pub mod pallet {
             Weight::zero()
         }
         fn expire() -> Weight {
+            Weight::zero()
+        }
+        fn request_withdrawal() -> Weight {
+            Weight::zero()
+        }
+        fn execute_withdrawal() -> Weight {
+            Weight::zero()
+        }
+        fn cancel_withdrawal() -> Weight {
+            Weight::zero()
+        }
+        fn emergency_withdrawal() -> Weight {
             Weight::zero()
         }
     }
@@ -135,6 +151,20 @@ pub mod pallet {
         /// - 格式：b"mm/pool!" + 做市商账户地址
         #[pallet::constant]
         type PalletId: Get<frame_support::PalletId>;
+        
+        /// 🆕 函数级详细中文注释：资金池提取冷却期（秒）
+        /// - 做市商申请提取后，需要等待的时间
+        /// - 推荐设置为 7 天 = 604800 秒
+        /// - 用于防止恶意快速提取，给治理和用户反应时间
+        #[pallet::constant]
+        type WithdrawalCooldown: Get<u32>;
+        
+        /// 🆕 函数级详细中文注释：最小保留资金池余额
+        /// - 提取后资金池必须保留的最小余额
+        /// - 确保有足够资金继续提供首购服务
+        /// - 推荐设置为 1000 MEMO
+        #[pallet::constant]
+        type MinPoolBalance: Get<BalanceOf<Self>>;
     }
 
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -145,6 +175,31 @@ pub mod pallet {
         Rejected,
         Cancelled,
         Expired,
+    }
+
+    /// 🆕 函数级详细中文注释：提取请求状态
+    #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub enum WithdrawalStatus {
+        /// 待执行（冷却期中）
+        Pending,
+        /// 已执行
+        Executed,
+        /// 已取消
+        Cancelled,
+    }
+
+    /// 🆕 函数级详细中文注释：资金池提取请求
+    /// - 记录提取申请的时间、金额、状态
+    #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub struct WithdrawalRequest<Balance> {
+        /// 申请提取的金额
+        pub amount: Balance,
+        /// 申请时间（秒）
+        pub requested_at: u32,
+        /// 可执行时间（秒）= requested_at + WithdrawalCooldown
+        pub executable_at: u32,
+        /// 请求状态
+        pub status: WithdrawalStatus,
     }
 
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -169,6 +224,10 @@ pub mod pallet {
         pub first_purchase_pool: Balance,
         /// 🆕 已使用的首购资金
         pub first_purchase_used: Balance,
+        /// 🆕 冻结的首购资金（提取申请中）
+        pub first_purchase_frozen: Balance,
+        /// 🆕 服务暂停状态
+        pub service_paused: bool,
         /// 🆕 已服务的用户数量
         pub users_served: u32,
     }
@@ -205,6 +264,19 @@ pub mod pallet {
         Blake2_128Concat, u64,        // mm_id
         Blake2_128Concat, T::AccountId, // buyer
         (),
+        OptionQuery,
+    >;
+
+    /// 🆕 函数级详细中文注释：资金池提取请求记录
+    /// - mm_id -> WithdrawalRequest
+    /// - 每个做市商同时只能有一个待处理的提取请求
+    /// - 执行或取消后删除记录
+    #[pallet::storage]
+    pub type WithdrawalRequests<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // mm_id
+        WithdrawalRequest<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -247,6 +319,31 @@ pub mod pallet {
             buyer: T::AccountId,
             amount: BalanceOf<T>,
         },
+        /// 🆕 提取请求已提交
+        WithdrawalRequested {
+            mm_id: u64,
+            owner: T::AccountId,
+            amount: BalanceOf<T>,
+            executable_at: u32,
+            pause_service: bool,
+        },
+        /// 🆕 提取已执行
+        WithdrawalExecuted {
+            mm_id: u64,
+            owner: T::AccountId,
+            amount: BalanceOf<T>,
+        },
+        /// 🆕 提取请求已取消
+        WithdrawalCancelled {
+            mm_id: u64,
+            owner: T::AccountId,
+        },
+        /// 🆕 紧急提取（治理）
+        EmergencyWithdrawal {
+            mm_id: u64,
+            recipient: T::AccountId,
+            amount: BalanceOf<T>,
+        },
     }
 
     #[pallet::error]
@@ -277,6 +374,22 @@ pub mod pallet {
         MarketMakerNotActive,
         /// 🆕 买家已经使用过首购服务
         AlreadyUsedFirstPurchase,
+        /// 🆕 提取请求已存在
+        WithdrawalRequestExists,
+        /// 🆕 提取请求不存在
+        WithdrawalRequestNotFound,
+        /// 🆕 冷却期未结束
+        WithdrawalCooldownNotExpired,
+        /// 🆕 可提取余额不足
+        InsufficientWithdrawableBalance,
+        /// 🆕 提取后余额低于最小值
+        BelowMinPoolBalance,
+        /// 🆕 提取请求状态无效
+        InvalidWithdrawalStatus,
+        /// 🆕 不是做市商所有者
+        NotOwner,
+        /// 🆕 做市商未激活
+        NotActive,
     }
 
     #[pallet::pallet]
@@ -333,6 +446,8 @@ pub mod pallet {
                     // 🆕 初始化首购资金池字段
                     first_purchase_pool: BalanceOf::<T>::zero(),
                     first_purchase_used: BalanceOf::<T>::zero(),
+                    first_purchase_frozen: BalanceOf::<T>::zero(),
+                    service_paused: false,
                     users_served: 0,
                 },
             );
@@ -676,6 +791,260 @@ pub mod pallet {
             Self::deposit_event(Event::Expired { mm_id });
             Ok(())
         }
+
+        /// 🆕 函数级详细中文注释：申请提取资金池余额
+        /// - 只有做市商本人可以调用
+        /// - 提交后进入冷却期（默认7天）
+        /// - 同一时间只能有一个待处理的提取请求
+        /// - pause_service: 是否暂停首购服务（可选）
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::request_withdrawal())]
+        pub fn request_withdrawal(
+            origin: OriginFor<T>,
+            mm_id: u64,
+            amount: BalanceOf<T>,
+            pause_service: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 检查做市商是否存在且为Active状态
+            let app = ActiveMarketMakers::<T>::get(mm_id)
+                .ok_or(Error::<T>::NotFound)?;
+            ensure!(app.owner == who, Error::<T>::NotOwner);
+            ensure!(
+                app.status == ApplicationStatus::Active,
+                Error::<T>::NotActive
+            );
+            
+            // 检查是否已有待处理的提取请求
+            ensure!(
+                !WithdrawalRequests::<T>::contains_key(mm_id),
+                Error::<T>::WithdrawalRequestExists
+            );
+            
+            // 计算可提取余额 = 总额 - 已用 - 已冻结
+            let available = app.first_purchase_pool
+                .saturating_sub(app.first_purchase_used)
+                .saturating_sub(app.first_purchase_frozen);
+            ensure!(amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
+            ensure!(amount <= available, Error::<T>::InsufficientWithdrawableBalance);
+            
+            // 检查提取后余额是否满足最小要求
+            let remaining = available.saturating_sub(amount);
+            ensure!(
+                remaining >= T::MinPoolBalance::get(),
+                Error::<T>::BelowMinPoolBalance
+            );
+            
+            // 计算可执行时间
+            let now = frame_system::Pallet::<T>::block_number()
+                .saturated_into::<u32>();
+            let executable_at = now.saturating_add(T::WithdrawalCooldown::get());
+            
+            // 冻结申请的金额并设置服务状态
+            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
+                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
+                app.first_purchase_frozen = app.first_purchase_frozen
+                    .saturating_add(amount);
+                if pause_service {
+                    app.service_paused = true;
+                }
+                Ok::<(), DispatchError>(())
+            })?;
+            
+            // 创建提取请求
+            let request = WithdrawalRequest {
+                amount,
+                requested_at: now,
+                executable_at,
+                status: WithdrawalStatus::Pending,
+            };
+            
+            WithdrawalRequests::<T>::insert(mm_id, request);
+            
+            Self::deposit_event(Event::WithdrawalRequested {
+                mm_id,
+                owner: who,
+                amount,
+                executable_at,
+                pause_service,
+            });
+            
+            Ok(())
+        }
+
+        /// 🆕 函数级详细中文注释：执行提取资金池余额
+        /// - 只有做市商本人可以调用
+        /// - 必须在冷却期结束后才能执行
+        /// - 从派生账户转账到做市商账户
+        #[pallet::call_index(8)]
+        #[pallet::weight(T::WeightInfo::execute_withdrawal())]
+        pub fn execute_withdrawal(
+            origin: OriginFor<T>,
+            mm_id: u64,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 检查做市商身份
+            let app = ActiveMarketMakers::<T>::get(mm_id)
+                .ok_or(Error::<T>::NotFound)?;
+            ensure!(app.owner == who, Error::<T>::NotOwner);
+            
+            // 获取提取请求
+            let request = WithdrawalRequests::<T>::get(mm_id)
+                .ok_or(Error::<T>::WithdrawalRequestNotFound)?;
+            ensure!(
+                request.status == WithdrawalStatus::Pending,
+                Error::<T>::InvalidWithdrawalStatus
+            );
+            
+            // 检查冷却期是否已结束
+            let now = frame_system::Pallet::<T>::block_number()
+                .saturated_into::<u32>();
+            ensure!(
+                now >= request.executable_at,
+                Error::<T>::WithdrawalCooldownNotExpired
+            );
+            
+            // 从派生账户转账到做市商账户
+            let pool_account = Self::first_purchase_pool_account(mm_id);
+            T::Currency::transfer(
+                &pool_account,
+                &who,
+                request.amount,
+                frame_support::traits::ExistenceRequirement::AllowDeath,
+            )?;
+            
+            // 更新资金池：减少总额和冻结金额
+            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
+                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
+                app.first_purchase_pool = app.first_purchase_pool
+                    .saturating_sub(request.amount);
+                app.first_purchase_frozen = app.first_purchase_frozen
+                    .saturating_sub(request.amount);
+                Ok::<(), DispatchError>(())
+            })?;
+            
+            // 删除提取请求记录
+            WithdrawalRequests::<T>::remove(mm_id);
+            
+            Self::deposit_event(Event::WithdrawalExecuted {
+                mm_id,
+                owner: who,
+                amount: request.amount,
+            });
+            
+            Ok(())
+        }
+
+        /// 🆕 函数级详细中文注释：取消提取请求
+        /// - 只有做市商本人可以调用
+        /// - 可以在冷却期内随时取消
+        /// - 解冻资金并恢复服务状态
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::cancel_withdrawal())]
+        pub fn cancel_withdrawal(
+            origin: OriginFor<T>,
+            mm_id: u64,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 检查做市商身份
+            let app = ActiveMarketMakers::<T>::get(mm_id)
+                .ok_or(Error::<T>::NotFound)?;
+            ensure!(app.owner == who, Error::<T>::NotOwner);
+            
+            // 检查提取请求是否存在
+            let request = WithdrawalRequests::<T>::get(mm_id)
+                .ok_or(Error::<T>::WithdrawalRequestNotFound)?;
+            ensure!(
+                request.status == WithdrawalStatus::Pending,
+                Error::<T>::InvalidWithdrawalStatus
+            );
+            
+            // 解冻金额并恢复服务
+            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
+                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
+                app.first_purchase_frozen = app.first_purchase_frozen
+                    .saturating_sub(request.amount);
+                app.service_paused = false; // 恢复服务
+                Ok::<(), DispatchError>(())
+            })?;
+            
+            // 删除提取请求
+            WithdrawalRequests::<T>::remove(mm_id);
+            
+            Self::deposit_event(Event::WithdrawalCancelled {
+                mm_id,
+                owner: who,
+            });
+            
+            Ok(())
+        }
+
+        /// 🆕 函数级详细中文注释：紧急提取资金池（治理权限）
+        /// - 只能由治理委员会调用
+        /// - 绕过冷却期，立即执行
+        /// - 用于异常情况处理（如做市商账户丢失、系统升级等）
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::emergency_withdrawal())]
+        pub fn emergency_withdrawal(
+            origin: OriginFor<T>,
+            mm_id: u64,
+            recipient: T::AccountId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 检查做市商是否存在
+            ensure!(
+                ActiveMarketMakers::<T>::contains_key(mm_id),
+                Error::<T>::NotFound
+            );
+            
+            // 从派生账户转账
+            let pool_account = Self::first_purchase_pool_account(mm_id);
+            let pool_balance = T::Currency::free_balance(&pool_account);
+            
+            // 确保请求的金额不超过余额
+            let actual_amount = if amount > pool_balance {
+                pool_balance
+            } else {
+                amount
+            };
+            
+            T::Currency::transfer(
+                &pool_account,
+                &recipient,
+                actual_amount,
+                frame_support::traits::ExistenceRequirement::AllowDeath,
+            )?;
+            
+            // 更新资金池总额（如果还有记录）
+            let _ = ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
+                if let Some(app) = maybe_app.as_mut() {
+                    app.first_purchase_pool = app.first_purchase_pool
+                        .saturating_sub(actual_amount);
+                    // 如果有冻结金额也要相应减少
+                    if app.first_purchase_frozen > BalanceOf::<T>::zero() {
+                        app.first_purchase_frozen = app.first_purchase_frozen
+                            .saturating_sub(actual_amount);
+                    }
+                }
+                Ok::<(), DispatchError>(())
+            });
+            
+            // 清除待处理的提取请求（如果有）
+            WithdrawalRequests::<T>::remove(mm_id);
+            
+            Self::deposit_event(Event::EmergencyWithdrawal {
+                mm_id,
+                recipient,
+                amount: actual_amount,
+            });
+            
+            Ok(())
+        }
     }
     
     /// 🆕 函数级详细中文注释：辅助函数实现
@@ -685,7 +1054,7 @@ pub mod pallet {
         /// - 格式：PalletId("mm/pool!") + mm_id
         /// - 每个做市商有独立的资金池账户
         pub fn first_purchase_pool_account(mm_id: u64) -> T::AccountId {
-            use frame_support::traits::AccountIdConversion;
+            use sp_runtime::traits::AccountIdConversion;
             T::PalletId::get().into_sub_account_truncating(mm_id)
         }
         
@@ -757,19 +1126,27 @@ pub mod pallet {
         }
         
         fn select_available_market_maker() -> Option<u64> {
-            use sp_arithmetic::traits::Zero;
-            
             // 遍历活跃做市商，选择资金充足且余额最高的
             ActiveMarketMakers::<T>::iter()
                 .filter(|(_, app)| {
                     // 状态必须是Active
                     app.status == ApplicationStatus::Active &&
-                    // 剩余资金必须足够一次首购
-                    app.first_purchase_pool.saturating_sub(app.first_purchase_used) >= T::FirstPurchaseAmount::get()
+                    // 🆕 服务未暂停
+                    !app.service_paused &&
+                    // 🆕 计算实际可用余额 = 总额 - 已用 - 冻结
+                    {
+                        let available = app.first_purchase_pool
+                            .saturating_sub(app.first_purchase_used)
+                            .saturating_sub(app.first_purchase_frozen);
+                        // 可用余额必须足够一次首购
+                        available >= T::FirstPurchaseAmount::get()
+                    }
                 })
                 .max_by_key(|(_, app)| {
-                    // 按剩余资金排序，选择最多的
-                    app.first_purchase_pool.saturating_sub(app.first_purchase_used)
+                    // 🆕 按实际可用资金排序，选择最多的
+                    app.first_purchase_pool
+                        .saturating_sub(app.first_purchase_used)
+                        .saturating_sub(app.first_purchase_frozen)
                 })
                 .map(|(mm_id, _)| mm_id)
         }
