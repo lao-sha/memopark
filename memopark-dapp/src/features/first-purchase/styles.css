@@ -1,0 +1,32 @@
+/**
+ * 首购功能样式
+ */
+
+.first-purchase-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.first-purchase-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.payment-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .first-purchase-container {
+    padding: 16px;
+  }
+  
+  .first-purchase-card,
+  .payment-card {
+    border-radius: 8px;
+  }
+}
+
