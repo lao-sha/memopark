@@ -17,6 +17,13 @@ import CommitteesPage from './pages/Committees'
 import ArbitrationPage from './pages/Arbitration'
 import GraveGovernancePage from './pages/GraveGovernance'
 import ParkGovernancePage from './pages/ParkGovernance'
+import OperatorManagement from './pages/OperatorManagement'
+import MarketMakerGovernance from './pages/MarketMakerGovernance'
+import MarketMakerQuickApproval from './pages/MarketMakerQuickApproval'
+import MarketMakerListing from './pages/MarketMakerListing'
+import TreasuryCommittee from './pages/TreasuryCommittee'
+import RecoverWallet from './pages/Wallet/Recover'
+import ManageWallet from './pages/Wallet/Manage'
 
 /**
  * 主应用组件
@@ -25,10 +32,13 @@ import ParkGovernancePage from './pages/ParkGovernance'
 function App() {
   return (
     <Routes>
-      {/* 空白布局（登录页等） */}
+      {/* 空白布局（登录页、钱包管理等） */}
       <Route path="/login" element={<BlankLayout />}>
         <Route index element={<div>登录页（待实现）</div>} />
       </Route>
+
+      {/* 钱包恢复（独立页面，不需要创建钱包功能） */}
+      <Route path="/wallet/recover" element={<RecoverWallet />} />
 
       {/* 主布局 */}
       <Route path="/" element={<BasicLayout />}>
@@ -78,6 +88,11 @@ function App() {
           <Route index element={<CommitteesPage />} />
         </Route>
 
+        {/* 财务委员会 */}
+        <Route path="treasury-committee">
+          <Route index element={<TreasuryCommittee />} />
+        </Route>
+
         {/* 仲裁管理 */}
         <Route path="arbitration">
           <Route index element={<ArbitrationPage />} />
@@ -97,6 +112,29 @@ function App() {
         <Route path="tracks">
           <Route index element={<TracksPage />} />
         </Route>
+
+        {/* 运营者管理 */}
+        <Route path="operator-management">
+          <Route index element={<OperatorManagement />} />
+        </Route>
+
+        {/* 做市商治理审批 */}
+        <Route path="market-maker-governance">
+          <Route index element={<MarketMakerGovernance />} />
+        </Route>
+
+        {/* 做市商快速审批 */}
+        <Route path="market-maker-quick-approval">
+          <Route index element={<MarketMakerQuickApproval />} />
+        </Route>
+
+        {/* 做市商创建挂单 */}
+        <Route path="market-maker-listing">
+          <Route index element={<MarketMakerListing />} />
+        </Route>
+
+        {/* 钱包管理（在主布局中） */}
+        <Route path="wallet/manage" element={<ManageWallet />} />
 
         {/* 设置 */}
         <Route path="settings">

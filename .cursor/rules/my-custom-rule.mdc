@@ -14,7 +14,7 @@ alwaysApply: true
 8、设计项目修改源代码过程中，必须检查是否有冗余源代码，并提出修改方案
 9、设计项目修改源代码过程中，主网没有上线，现在零迁移，无需迁移逻辑，允许破坏式调整
 10、前端设计源代码全部放在 C:\Users\Administrator\Documents\memopark\memopark-dapp
-11、前端技术栈与约束：React 18 + TypeScript + Ant Design 5；移动端、网页端、桌面端自适应。
+11、前端memopark-dapp技术栈与约束：React 18 + TypeScript + Ant Design 5；移动端、网页端、桌面端自适应。
 12、前端设计尽量用组件化设计
 13、设计修改pallet源代码时，必须同时优化设计前端页面，保持前端后端同步，前端写清楚使用说明
 14、检查修改前端用户操作的合理性、便利性
@@ -30,3 +30,4 @@ alwaysApply: true
 23、项目根目录下的新创建的 .md 文件，放到项目根目录下的docs文件夹
 24、全局链上直连，暂时忽略Subsquid
 25、全局UI颜色方案要和欢迎、创建钱包、恢复钱包的风格一致
+26、前端memopark-governance使用网页端页面，不是移动端

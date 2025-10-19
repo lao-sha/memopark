@@ -20,6 +20,7 @@ interface WalletContextType {
   api: ApiPromise | null;
   accounts: InjectedAccountWithMeta[];
   selectedAccount: InjectedAccountWithMeta | null;
+  currentAccount: InjectedAccountWithMeta | null; // 兼容bridge组件: currentAccount别名
   isConnected: boolean;
   isLoading: boolean;
   connectWallet: () => Promise<void>;
@@ -191,6 +192,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     api,
     accounts,
     selectedAccount,
+    currentAccount: selectedAccount, // 兼容bridge组件: currentAccount别名
     isConnected,
     isLoading,
     connectWallet,
@@ -212,3 +214,10 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     </WalletContext.Provider>
   );
 };
+
+/**
+ * 函数级详细中文注释：Polkadot钱包Hook别名
+ * - 兼容旧代码中使用usePolkadot的组件
+ * - 实际调用useWallet
+ */
+export const usePolkadot = useWallet;

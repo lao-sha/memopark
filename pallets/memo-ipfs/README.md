@@ -143,6 +143,233 @@ Caller（自费） → OperatorEscrowAccount（托管）
 运营者 A/B/C
 ```
 
+### 运营者奖励分配机制
+
+**概念澄清**：
+- **OperatorEscrowAccount**：运营者托管账户（无私钥，由 PalletId `py/opesc` 派生）
+- **运营者账户**：各个挖矿节点通过 `join_operator` 注册的个人账户
+- **资金流向**：用户付费 → OperatorEscrowAccount（托管） → 分配给各运营者
+
+**分配方式：按存储量×可靠性加权分配**
+
+#### 权重计算公式
+
+```
+运营者权重 = pinned_bytes × reliability_factor
+
+reliability_factor = probe_ok / (probe_ok + probe_fail)
+
+如果 probe_ok + probe_fail = 0（新运营者），则使用默认值 50%
+```
+
+#### 分配规则
+
+| 项目 | 说明 |
+|------|------|
+| **触发方式** | 治理 Origin 调用 `distribute_to_operators(max_amount)` |
+| **分配对象** | 仅状态为 Active(0) 的运营者 |
+| **分配比例** | 运营者收益 = 总金额 × (运营者权重 / 所有运营者权重之和) |
+| **最低要求** | pinned_bytes > 0（权重为 0 的运营者不参与分配） |
+| **建议频率** | 每周执行一次 |
+
+#### 使用示例
+
+**示例 1：三个运营者的分配**
+
+```
+运营者A: pinned_bytes=1000 GB, probe_ok=90, probe_fail=10
+    → reliability = 90/(90+10) = 0.9
+    → weight = 1000 × 0.9 = 900
+
+运营者B: pinned_bytes=500 GB, probe_ok=80, probe_fail=20
+    → reliability = 80/(80+20) = 0.8
+    → weight = 500 × 0.8 = 400
+
+运营者C: pinned_bytes=300 GB, probe_ok=50, probe_fail=50
+    → reliability = 50/(50+50) = 0.5
+    → weight = 300 × 0.5 = 150
+
+total_weight = 900 + 400 + 150 = 1450
+
+假设 OperatorEscrowAccount 余额 = 1450 MEMO
+    → A 获得: 1450 × (900/1450) = 900 MEMO
+    → B 获得: 1450 × (400/1450) = 400 MEMO
+    → C 获得: 1450 × (150/1450) = 150 MEMO
+```
+
+**示例 2：调用分配接口**
+
+```rust
+// 治理调用：分配托管账户中的全部余额
+api.tx.memoIpfs.distributeToOperators(0)
+    .signAndSend(sudoAccount);
+
+// 或者：只分配指定金额（如 10000 MEMO）
+api.tx.memoIpfs.distributeToOperators(10000 * UNIT)
+    .signAndSend(sudoAccount);
+```
+
+#### 事件
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `OperatorRewarded` | `operator`, `amount`, `weight`, `total_weight` | 单个运营者获得奖励 |
+| `RewardDistributed` | `total_amount`, `operator_count`, `average_weight` | 完成一轮分配的汇总信息 |
+
+#### 注册为运营者
+
+如果您的 memopark 挖矿服务器想要获得奖励，需要先注册为运营者：
+
+```rust
+// 1. 调用 join_operator 注册
+api.tx.memoIpfs.joinOperator(
+    peer_id,           // IPFS peer ID
+    capacity_gib,      // 声明的存储容量（GiB）
+    endpoint_hash,     // 集群端点哈希
+    cert_fingerprint,  // 证书指纹（可选）
+    bond_amount        // 保证金（至少 MinOperatorBond）
+).signAndSend(minerAccount);
+
+// 2. OCW 会定期探测并更新 SLA 统计
+// 3. 完成 pin 任务后上报 mark_pinned
+// 4. 等待治理定期调用 distribute_to_operators 获得奖励
+```
+
+---
+
+## 🎯 智能运营者选择与副本管理（v4.0）
+
+### 核心特性
+
+1. **智能运营者选择**：按权重优先分配给高质量节点
+2. **动态副本数支持**：允许不同文件使用不同副本数
+3. **自动副本补充**：OCW 检测副本不足时自动补充
+
+### 智能选择算法
+
+**权重计算公式**：
+
+```
+权重 = 可用容量比例 × 可靠性
+
+可用容量比例 = (capacity_gib - pinned_bytes/GiB) / capacity_gib
+可靠性 = probe_ok / (probe_ok + probe_fail)
+```
+
+**选择策略**：
+1. 计算所有活跃运营者的综合权重
+2. 按权重从高到低排序
+3. 优先选择权重高、容量充足、可靠性高的运营者
+4. 确保负载均衡（避免单个运营者过载）
+
+### 推荐副本数配置
+
+| 等级 | 用途 | 推荐副本数 | 可靠性 | 使用场景 |
+|------|------|-----------|--------|---------|
+| Level 0 | 临时文件 | 2 | 99.99% | 缓存、草稿 |
+| Level 1 ✅ | 一般文件 | 3 | 99.9999% | 大多数文件（默认） |
+| Level 2 | 重要文件 | 5 | 99.99999999% | 照片、视频、音频 |
+| Level 3 | 关键文件 | 7 | 99.9999999999999% | 遗嘱、证据、法律文件 |
+
+### 新增接口
+
+#### 治理接口：设置副本数配置
+
+```rust
+// 设置推荐副本数
+api.tx.memoIpfs.setReplicasConfig(
+    Some(2),  // Level 0: 临时文件
+    Some(3),  // Level 1: 一般文件 ✅ 默认
+    Some(5),  // Level 2: 重要文件
+    Some(7),  // Level 3: 关键文件
+    Some(2),  // 最小副本数阈值（触发自动补充）
+).signAndSend(sudoAccount);
+```
+
+#### 查询接口：获取推荐副本数
+
+```rust
+// 在代码中获取推荐副本数
+let replicas = Pallet::<T>::get_recommended_replicas(1); // 返回 3
+```
+
+### 自动副本补充
+
+**工作流程**：
+
+1. **OCW 巡检**：定期检查所有 Pin 状态
+2. **检测不足**：发现副本数低于预期值
+3. **智能选择**：使用智能算法选择新的运营者
+4. **自动补充**：将新运营者添加到分配列表
+5. **触发 Pin**：向新运营者发起 Pin 请求
+
+**示例场景**：
+
+```
+初始状态:
+  文件A → 运营者A、运营者B、运营者C (3 个副本)
+
+运营者B 离线:
+  文件A → 运营者A ✓、运营者B ✗、运营者C ✓ (只剩 2 个)
+
+OCW 检测并补充:
+  1. 检测到副本不足（2 < 3）
+  2. 智能选择运营者D（权重最高）
+  3. 更新分配：运营者A、运营者B、运营者C、运营者D
+  4. 向运营者D 发起 Pin 请求
+
+最终状态:
+  文件A → 运营者A ✓、运营者C ✓、运营者D ✓ (恢复到 3 个)
+```
+
+### 使用建议
+
+#### 1. 为不同类型文件选择合适的副本数
+
+```rust
+// 遗嘱文件（关键）
+api.tx.memoIpfs.requestPinForDeceased(
+    deceased_id,
+    cid_hash,
+    size_bytes,
+    7,  // Level 3: 关键文件
+    price
+);
+
+// 照片视频（重要）
+api.tx.memoIpfs.requestPinForDeceased(
+    deceased_id,
+    cid_hash,
+    size_bytes,
+    5,  // Level 2: 重要文件
+    price
+);
+
+// 一般文件（推荐）
+api.tx.memoIpfs.requestPinForDeceased(
+    deceased_id,
+    cid_hash,
+    size_bytes,
+    3,  // Level 1: 一般文件 ✅ 默认
+    price
+);
+```
+
+#### 2. 监控副本健康状态
+
+关注以下事件：
+- `ReplicaDegraded(cid_hash, operator)`: 副本降级
+- `ReplicaRepaired(cid_hash, operator)`: 副本修复
+- `AssignmentCreated(cid_hash, count)`: 新增运营者
+- `OperatorDegradationAlert(operator, count)`: 运营者频繁降级警告
+
+#### 3. 定期审计副本分配
+
+使用查询接口检查：
+- `PinAssignments`: 每个文件分配给哪些运营者
+- `PinSuccess`: 哪些运营者已成功 Pin
+- `OperatorSla`: 运营者的 SLA 统计
+
 ---
 
 ## 存储业务与 Offchain Worker（OCW）骨架

@@ -15,7 +15,9 @@ import {
   SafetyOutlined,
   FileProtectOutlined,
   SolutionOutlined,
-  ToolOutlined
+  ToolOutlined,
+  DatabaseOutlined,
+  WalletOutlined
 } from '@ant-design/icons'
 import { useWallet } from '@/contexts/Wallet'
 import WalletConnect from '@/components/WalletConnect'
@@ -31,7 +33,7 @@ export default function BasicLayout() {
   const [collapsed, setCollapsed] = React.useState(false)
   const navigate = useNavigate()
   const location = useLocation()
-  const { activeAccount, accounts, setActiveAccount, disconnect } = useWallet()
+  const { activeAccount, accounts, setActiveAccount } = useWallet()
 
   // 菜单项
   const menuItems = [
@@ -93,7 +95,8 @@ export default function BasicLayout() {
       icon: <TeamOutlined />,
       label: '委员会',
       children: [
-        { key: '/committees', label: '全部委员会' }
+        { key: '/committees', label: '全部委员会' },
+        { key: '/treasury-committee', label: '财务委员会' }
       ]
     },
     {
@@ -102,7 +105,24 @@ export default function BasicLayout() {
       label: '治理工具',
       children: [
         { key: '/grave-governance', label: '墓地治理' },
-        { key: '/park-governance', label: '陵园治理' }
+        { key: '/park-governance', label: '陵园治理' },
+        { key: '/market-maker-governance', label: '做市商审批' },
+        { key: '/market-maker-quick-approval', label: '做市商快速审批' },
+        { key: '/market-maker-listing', label: '做市商创建挂单' }
+      ]
+    },
+    {
+      key: '/operator-management',
+      icon: <DatabaseOutlined />,
+      label: '运营者管理'
+    },
+    {
+      key: '/wallet-menu',
+      icon: <WalletOutlined />,
+      label: '钱包管理',
+      children: [
+        { key: '/wallet/manage', label: '我的钱包' },
+        { key: '/wallet/recover', label: '恢复钱包' }
       ]
     },
     {
@@ -113,15 +133,12 @@ export default function BasicLayout() {
   ]
 
   // 账户下拉菜单
-  const accountMenuItems: any[] = accounts.map(acc => ({
-    key: acc.address,
+  const accountMenuItems: any[] = accounts.map((address: string) => ({
+    key: address,
     label: (
-      <div onClick={() => setActiveAccount(acc.address)}>
-        <div style={{ fontWeight: activeAccount === acc.address ? 'bold' : 'normal' }}>
-          {acc.meta.name || '未命名账户'}
-        </div>
-        <div style={{ fontSize: 12, color: '#999' }}>
-          {acc.address.slice(0, 8)}...{acc.address.slice(-8)}
+      <div onClick={() => setActiveAccount(address)}>
+        <div style={{ fontSize: 11, color: '#999', fontFamily: 'monospace' }}>
+          {address.slice(0, 10)}...{address.slice(-10)}
         </div>
       </div>
     )
@@ -130,11 +147,10 @@ export default function BasicLayout() {
   accountMenuItems.push(
     { type: 'divider', key: 'divider' },
     {
-      key: 'disconnect',
-      label: '断开连接',
-      icon: <LogoutOutlined />,
-      danger: true,
-      onClick: disconnect
+      key: 'manage-wallets',
+      label: '管理钱包',
+      icon: <WalletOutlined />,
+      onClick: () => navigate('/wallet/manage')
     }
   )
 

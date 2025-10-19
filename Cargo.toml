@@ -35,7 +35,6 @@ members = [
     "pallets/evidence",
     "pallets/memo-ipfs",
     "pallets/memo-pet",
-    "pallets/memo-bridge",
     "pallets/memo-sacrifice",
     "pallets/origin-restriction",
     "pallets/fee-guard",

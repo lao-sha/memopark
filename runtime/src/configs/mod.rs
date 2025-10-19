@@ -1203,38 +1203,9 @@ impl sp_core::Get<AccountId> for TreasuryAccount {
         TreasuryPalletId::get().into_account_truncating()
     }
 }
-// ===== memo-bridge（MEMO↔ETH）运行时配置 =====
-parameter_types! {
-    /// 函数级中文注释：桥托管账户 PalletId
-    pub const BridgePalletId: PalletId = PalletId(*b"m/bridge");
-    /// 函数级中文注释：最小锁定额（示例：0.01 UNIT）
-    pub const BridgeMinLock: Balance = 10_000_000_000;
-}
-impl pallet_memo_bridge::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type FeeCollector = TreasuryAccount;
-    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
-        frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
-    >;
-    type MinLock = BridgeMinLock;
-    type BridgePalletId = BridgePalletId;
-    /// 函数级中文注释：绑定价格源为 Pricing Pallet
-    type PriceFeed = pallet_pricing::Pallet<Runtime>;
-    /// 函数级中文注释：价格最大允许陈旧秒数（示例：300秒）。
-    type MaxPriceAgeSecs = frame_support::traits::ConstU64<300>;
-    /// 函数级中文注释：以太坊地址最长 64 字节（hex/多格式冗余预留）。
-    type MaxEthAddrLen = frame_support::traits::ConstU32<64>;
-    /// 函数级中文注释：证据 CID 最大长度沿用全局 GraveMaxCidLen。
-    type MaxCidLen = GraveMaxCidLen;
-}
-
 // ===== pricing 配置 =====
-parameter_types! { pub const PricingMaxFeeders: u32 = 16; }
 impl pallet_pricing::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type MaxFeeders = PricingMaxFeeders;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -1554,12 +1525,9 @@ impl sp_core::Get<AccountId> for BurnAccount {
 parameter_types! {
     pub const OtcMaxCidLen: u32 = 64;
 }
-impl pallet_otc_maker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type MaxCidLen = OtcMaxCidLen;
-    // 基于 Identity 的 KYC 适配器
-    type Kyc = KycByIdentity;
-}
+// 函数级中文注释：移除 pallet_otc_maker 配置
+// - 功能已被 pallet-market-maker 完全替代
+// - 没有实际使用，避免冗余
 
 // ===== market-maker 配置 =====
 parameter_types! {
@@ -1573,6 +1541,16 @@ parameter_types! {
     pub const MarketMakerRejectSlashBpsMax: u16 = 10_000;
     /// 函数级中文注释：最大交易对数量（预留）
     pub const MarketMakerMaxPairs: u32 = 10;
+    /// 函数级中文注释：首购资金池最小金额（10000 MEMO = 10,000 * UNIT）
+    pub const MarketMakerMinFirstPurchasePool: Balance = 10_000_000_000_000_000; // 10000 MEMO (10^16)
+    /// 函数级中文注释：每次首购转账金额（100 MEMO = 100 * UNIT）
+    pub const MarketMakerFirstPurchaseAmount: Balance = 100_000_000_000_000; // 100 MEMO (10^14)
+    /// 函数级中文注释：做市商 Pallet ID（用于派生首购资金池账户）
+    pub const MarketMakerPalletId: frame_support::PalletId = frame_support::PalletId(*b"mm/pool!");
+    /// 函数级中文注释：资金池提取冷却期（7 天 = 604800 秒）
+    pub const MarketMakerWithdrawalCooldown: u32 = 604_800;
+    /// 函数级中文注释：最小保留资金池余额（1000 MEMO）
+    pub const MarketMakerMinPoolBalance: Balance = 1_000_000_000_000_000_000; // 1000 UNIT
 }
 
 impl pallet_market_maker::Config for Runtime {
@@ -1591,38 +1569,22 @@ impl pallet_market_maker::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
+    type MinFirstPurchasePool = MarketMakerMinFirstPurchasePool;
+    type FirstPurchaseAmount = MarketMakerFirstPurchaseAmount;
+    type PalletId = MarketMakerPalletId;
+    type WithdrawalCooldown = MarketMakerWithdrawalCooldown;
+    type MinPoolBalance = MarketMakerMinPoolBalance;
+    // 🆕 2025-10-19：溢价范围限制
+    type MaxPremiumBps = frame_support::traits::ConstI16<500>;  // +5%
+    type MinPremiumBps = frame_support::traits::ConstI16<-500>; // -5%
 }
 
 // ===== KYC 适配器（基于 pallet-identity 的 judgement） =====
-pub struct KycByIdentity;
-/// 函数级中文注释：KYC 适配器同时实现 memo-grave 与 otc-maker 所需的 Provider 接口。
-impl pallet_memo_grave::pallet::KycProvider<AccountId> for KycByIdentity {
-    fn is_verified(who: &AccountId) -> bool {
-        use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
-        if let Some(reg) = IdOf::<Runtime>::get(who) {
-            return reg
-                .judgements
-                .iter()
-                .any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
-        }
-        false
-    }
-}
-impl pallet_otc_maker::pallet::KycProvider<AccountId> for KycByIdentity {
-    /// 函数级中文注释：判断账户是否已通过 KYC
-    /// - 读取 identity::IdentityOf，检测存在且含有正向 judgement（如 KnownGood/Reasonable）。
-    fn is_verified(who: &AccountId) -> bool {
-        use pallet_identity::{pallet::IdentityOf as IdOf, Judgement};
-        if let Some(reg) = IdOf::<Runtime>::get(who) {
-            // 只要存在非负向的 judgement 即视为通过（可按需收紧）
-            return reg
-                .judgements
-                .iter()
-                .any(|(_, j)| matches!(j, Judgement::KnownGood | Judgement::Reasonable));
-        }
-        false
-    }
-}
+// 函数级中文注释：KYC 适配器已移除
+// - pallet-otc-maker 已废弃
+// - pallet-memo-hall 未被 runtime 使用
+// - pallet-memo-grave 定义了 KycProvider 但未实际使用
+// - 如果未来需要 KYC，可以在此重新实现
 
 // ===== identity 配置与参数 =====
 parameter_types! {
@@ -1709,11 +1671,9 @@ impl pallet_otc_listing::Config for Runtime {
     type MaxCidLen = OtcMaxCidLen;
     /// 函数级中文注释：托管接口对接，用于库存模式在创建挂单时锁入 Maker 库存
     type Escrow = pallet_escrow::Pallet<Runtime>;
-    /// 每块最多处理的过期挂单数
+    /// 函数级中文注释：每块最多处理的过期挂单数
     type MaxExpiringPerBlock = frame_support::traits::ConstU32<100>;
-    /// 启用 KYC 校验
-    type RequireKyc = frame_support::traits::ConstBool<true>;
-    /// 创建挂单限频窗口（块）
+    /// 函数级中文注释：创建挂单限频窗口（块）
     type CreateWindow = ConstU32<600>;
     /// 窗口内最多创建数
     type CreateMaxInWindow = ConstU32<5>;
@@ -1723,12 +1683,48 @@ impl pallet_otc_listing::Config for Runtime {
     type ListingBond = OtcListingBond;
     /// 费用接收账户
     type FeeReceiver = OtcFeeReceiver;
-    /// 价格源：绑定 Pricing Pallet
-    type PriceFeed = pallet_pricing::Pallet<Runtime>;
-    /// 最大允许 spread（bps）
+    /// 函数级中文注释：已改为 USDT 直接报价，不再使用价格源
+    /// 最大允许 spread（bps，保留用于未来扩展）
     type MaxSpreadBps = frame_support::traits::ConstU16<5000>; // 50% 示例
+    /// 函数级中文注释：归档阈值（150天 ≈ 5个月）
+    type ArchiveThresholdDays = ConstU32<150>;
+    /// 函数级中文注释：每次自动清理的最大挂单数
+    type MaxCleanupPerBlock = ConstU32<50>;
 }
-parameter_types! { pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS; }
+parameter_types! { 
+    pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS;
+    pub const OtcOrderMinFirstPurchaseAmount: Balance = 10_000_000_000_000_000; // 10 MEMO
+    pub const OtcOrderMaxFirstPurchaseAmount: Balance = 1_000_000_000_000_000_000; // 1000 MEMO
+}
+
+// 函数级中文注释：法币网关授权账户（用于调用首购接口）
+// 这是一个特殊的账户，由链下服务控制，用于触发首购交易
+pub struct FiatGatewayAccount;
+impl Get<AccountId> for FiatGatewayAccount {
+    fn get() -> AccountId {
+        // 使用固定的公钥派生账户地址
+        // 格式：b"fiat_gateway" 的 blake2_256 哈希作为账户ID
+        use sp_core::crypto::AccountId32;
+        AccountId32::from([
+            0x66, 0x69, 0x61, 0x74, 0x5f, 0x67, 0x61, 0x74, 0x65,
+            0x77, 0x61, 0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00
+        ])
+    }
+}
+
+// 函数级中文注释：法币网关托管账户（用于存放待分发的MEMO）
+// 这个账户持有所有待分发给首购用户的MEMO代币
+pub struct FiatGatewayTreasuryAccount;
+impl Get<AccountId> for FiatGatewayTreasuryAccount {
+    fn get() -> AccountId {
+        // 使用 PalletId 派生子账户
+        use sp_runtime::traits::AccountIdConversion;
+        frame_support::PalletId(*b"fiat/tsy").into_account_truncating()
+    }
+}
+
 impl pallet_otc_order::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
@@ -1742,6 +1738,22 @@ impl pallet_otc_order::Config for Runtime {
     type OpenMaxInWindow = ConstU32<30>;
     type PaidWindow = ConstU32<600>;
     type PaidMaxInWindow = ConstU32<100>;
+    /// 函数级中文注释：法币网关相关配置
+    type FiatGatewayAccount = FiatGatewayAccount;
+    type FiatGatewayTreasuryAccount = FiatGatewayTreasuryAccount;
+    type MinFirstPurchaseAmount = OtcOrderMinFirstPurchaseAmount;
+    type MaxFirstPurchaseAmount = OtcOrderMaxFirstPurchaseAmount;
+    /// 函数级中文注释：会员和推荐关系提供者
+    type MembershipProvider = ReferralsMembershipProviderAdapter;
+    type ReferralProvider = pallet_memo_referrals::Pallet<Runtime>;
+    /// 函数级中文注释：联盟计酬分配器
+    type AffiliateDistributor = pallet_affiliate_config::Pallet<Runtime>;
+    /// 函数级中文注释：归档阈值（150天 ≈ 5个月）
+    type ArchiveThresholdDays = ConstU32<150>;
+    /// 函数级中文注释：每次自动清理的最大订单数
+    type MaxCleanupPerBlock = ConstU32<50>;
+    /// 🆕 2025-10-19：TRON交易哈希保留期（约180天，假设12秒/区块）
+    type TronTxHashRetentionPeriod = ConstU32<2592000>;
 }
 
 parameter_types! { pub const EscrowPalletId: frame_support::PalletId = frame_support::PalletId(*b"otc/escw"); }
@@ -2302,6 +2314,55 @@ impl pallet_storage_treasury::Config for Runtime {
     /// - 每 7 天（100_800 区块）自动执行一次路由分配
     /// - 从托管账户按路由表比例分配给各存储服务商
     type DistributionPeriod = StorageDistributionPeriod;
+}
+
+
+/// ============================================================================
+/// 极简桥接模块配置 (pallet-simple-bridge)
+/// ============================================================================
+
+/// 函数级详细中文注释：SimpleBridge 配置实现
+/// - MVP 设计：只支持 MEMO → USDT (TRC20) 兑换
+/// - 固定汇率：0.5 USDT/MEMO（桥接服务端配置）
+/// - 托管模式：MEMO 锁定在桥接账户
+/// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
+impl pallet_simple_bridge::Config for Runtime {
+    /// 运行时事件类型
+    type RuntimeEvent = RuntimeEvent;
+    
+    /// 兑换超时时间：30 分钟 = 1800 秒 / 6 秒/块 = 300 块
+    type SwapTimeout = frame_support::traits::ConstU32<300>;
+    
+    /// 函数级中文注释：归档阈值（150天 ≈ 5个月）
+    type ArchiveThresholdDays = ConstU32<150>;
+    
+    /// 函数级中文注释：每次自动清理的最大兑换记录数
+    type MaxCleanupPerBlock = ConstU32<50>;
+    
+    // ========== OCW 配置 ==========
+    
+    /// 函数级中文注释：OCW 验证失败阈值
+    /// 超过此次数后，订单从队列中移除，需要人工干预
+    type MaxVerificationFailures = ConstU32<5>;
+    
+    /// 函数级中文注释：每个区块最多验证的订单数
+    /// 防止 OCW 执行时间过长
+    type MaxOrdersPerBlock = ConstU32<10>;
+    
+    /// 🆕 2025-10-19：TRON交易哈希保留期（约180天，假设12秒/区块）
+    type TronTxHashRetentionPeriod = ConstU32<2592000>;
+    
+    /// 函数级中文注释：OCW 兑换订单超时时长（区块数）
+    /// 做市商不发币或 OCW 验证失败，买家可申诉退款
+    /// 30 分钟 = 1800 秒 / 6 秒/块 = 300 块
+    type OcwSwapTimeoutBlocks = ConstU32<300>;
+    
+    /// 函数级中文注释：OCW 最小兑换金额
+    /// 100 MEMO（12位小数）
+    type OcwMinSwapAmount = ConstU128<100_000_000_000_000>;
+    
+    /// 函数级中文注释：无签名交易优先级
+    type UnsignedPriority = ConstU64<100>;
 }
 
 

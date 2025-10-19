@@ -1,239 +1,579 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-/// 函数级中文注释：价格提供者通用 trait
-/// - 仅负责读价与状态判断；不触碰资金。
-pub trait PriceProvider {
-    /// 函数级中文注释：返回当前报价（分子/分母/时间戳）；None 表示暂不可用
-    fn current_price() -> Option<(u128, u128, u64)>;
-    /// 函数级中文注释：基于链上 now 与 staleness 配置判断是否陈旧
-    fn is_stale(now_seconds: u64) -> bool;
-}
-
 pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{pallet_prelude::*, traits::Get};
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::SaturatedConversion;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// 函数级中文注释：事件类型绑定到运行时事件
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        /// 函数级中文注释：最大喂价账户数上限（用于 Feeders BoundedVec 容量）
-        type MaxFeeders: Get<u32>;
     }
 
-    /// 函数级中文注释：将当前区块号按 6 秒/块估算为秒数（无需依赖 timestamp）。
-    fn now_seconds<T: Config>() -> u64 {
-        <frame_system::Pallet<T>>::block_number().saturated_into::<u64>() * 6
-    }
-
+    /// 函数级中文注释：订单快照（用于循环缓冲区）
+    /// 记录单笔订单的时间、价格和数量，用于后续计算滑动窗口均价
     #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
-    pub struct SpotPrice {
-        /// 函数级中文注释：价格分子（ETH/MEMO 的 ETH 数量分子，定点比率）
-        pub price_num: u128,
-        /// 函数级中文注释：价格分母（ETH/MEMO 的 MEMO 数量分母，定点比率）
-        pub price_den: u128,
-        /// 函数级中文注释：上次更新时间（秒）
-        pub last_updated: u64,
+    pub struct OrderSnapshot {
+        /// 订单时间戳（Unix 时间戳，毫秒）
+        pub timestamp: u64,
+        /// USDT 单价（精度 10^6，即 1,000,000 = 1 USDT）
+        pub price_usdt: u64,
+        /// MEMO 数量（精度 10^12，即 1,000,000,000,000 = 1 MEMO）
+        pub memo_qty: u128,
     }
 
+    /// 函数级中文注释：价格聚合数据
+    /// 维护最近累计 1,000,000 MEMO 的订单统计信息
     #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
-    pub struct Params {
-        /// 函数级中文注释：价格过期阈值（秒）；超过视为陈旧
-        pub stale_seconds: u32,
-        /// 函数级中文注释：单次跳变上限（万分比）。0 表示不限制。
-        pub max_jump_bps: u32,
-        /// 函数级中文注释：暂停开关（暂停时拒绝 set_price）
-        pub paused: bool,
+    pub struct PriceAggregateData {
+        /// 累计 MEMO 数量（精度 10^12）
+        pub total_memo: u128,
+        /// 累计 USDT 金额（精度 10^6）
+        pub total_usdt: u128,
+        /// 订单数量
+        pub order_count: u32,
+        /// 最旧订单索引（循环缓冲区指针，0-9999）
+        pub oldest_index: u32,
+        /// 最新订单索引（循环缓冲区指针，0-9999）
+        pub newest_index: u32,
     }
 
-    #[pallet::storage]
-    #[pallet::getter(fn price)]
-    pub type Price<T> = StorageValue<_, SpotPrice, ValueQuery>;
+    /// 函数级中文注释：MEMO 市场统计信息
+    /// 综合 OTC 和 Bridge 两个市场的价格和交易数据
+    #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+    pub struct MarketStats {
+        /// OTC 均价（精度 10^6）
+        pub otc_price: u64,
+        /// Bridge 均价（精度 10^6）
+        pub bridge_price: u64,
+        /// 加权平均价格（精度 10^6）
+        pub weighted_price: u64,
+        /// 简单平均价格（精度 10^6）
+        pub simple_avg_price: u64,
+        /// OTC 交易量（精度 10^12）
+        pub otc_volume: u128,
+        /// Bridge 交易量（精度 10^12）
+        pub bridge_volume: u128,
+        /// 总交易量（精度 10^12）
+        pub total_volume: u128,
+        /// OTC 订单数
+        pub otc_order_count: u32,
+        /// Bridge 兑换数
+        pub bridge_swap_count: u32,
+    }
 
+    /// 函数级中文注释：OTC 订单价格聚合数据
+    /// 维护最近累计 1,000,000 MEMO 的 OTC 订单统计
     #[pallet::storage]
-    #[pallet::getter(fn params)]
-    pub type PricingParams<T> = StorageValue<_, Params, ValueQuery, DefaultParams>;
+    #[pallet::getter(fn otc_aggregate)]
+    pub type OtcPriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
+
+    /// 函数级中文注释：OTC 订单历史循环缓冲区
+    /// 存储最多 10,000 笔订单快照，通过索引 0-9999 循环使用
+    #[pallet::storage]
+    pub type OtcOrderRingBuffer<T> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,  // 索引 0-9999
+        OrderSnapshot,
+    >;
+
+    /// 函数级中文注释：Bridge 兑换价格聚合数据
+    /// 维护最近累计 1,000,000 MEMO 的桥接兑换统计
+    #[pallet::storage]
+    #[pallet::getter(fn bridge_aggregate)]
+    pub type BridgePriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
+
+    /// 函数级中文注释：Bridge 兑换历史循环缓冲区
+    /// 存储最多 10,000 笔兑换快照，通过索引 0-9999 循环使用
+    #[pallet::storage]
+    pub type BridgeOrderRingBuffer<T> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,  // 索引 0-9999
+        OrderSnapshot,
+    >;
+
+    /// 函数级中文注释：冷启动阈值（可治理调整）
+    /// 当 OTC 和 Bridge 的交易量都低于此阈值时，使用默认价格
+    /// 默认值：100,000,000 MEMO（1亿，精度 10^12）
+    #[pallet::storage]
+    #[pallet::getter(fn cold_start_threshold)]
+    pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery, DefaultColdStartThreshold>;
 
     #[pallet::type_value]
-    pub fn DefaultParams() -> Params {
-        Params {
-            stale_seconds: 600,
-            max_jump_bps: 5_000,
-            paused: false,
-        }
+    pub fn DefaultColdStartThreshold() -> u128 {
+        100_000_000u128 * 1_000_000_000_000u128 // 1亿MEMO
     }
 
+    /// 函数级中文注释：默认价格（可治理调整）
+    /// 用于冷启动阶段的价格锚点
+    /// 默认值：1（0.000001 USDT/MEMO，精度 10^6）
+    /// 注：实际要求 0.0000007，但受精度限制，向上取整为 1
     #[pallet::storage]
-    pub type Feeders<T: Config> =
-        StorageValue<_, BoundedVec<T::AccountId, T::MaxFeeders>, ValueQuery>;
+    #[pallet::getter(fn default_price)]
+    pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery, DefaultPriceValue>;
+
+    #[pallet::type_value]
+    pub fn DefaultPriceValue() -> u64 {
+        1u64 // 0.000001 USDT/MEMO
+        // 注：用户要求 0.0000007，但精度 10^6 下为 0.7，向上取整为 1（最小精度单位）
+    }
+
+    /// 函数级中文注释：冷启动退出标记（单向锁定）
+    /// 一旦达到阈值并退出冷启动，此标记永久为 true，不再回退到默认价格
+    /// 这避免了在阈值附近价格剧烈波动的问题
+    #[pallet::storage]
+    #[pallet::getter(fn cold_start_exited)]
+    pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// 函数级中文注释：价格更新事件（包含新价格与时间戳）
-        PriceUpdated {
-            price_num: u128,
-            price_den: u128,
-            last_updated: u64,
+        /// 函数级中文注释：OTC 订单添加到价格聚合
+        OtcOrderAdded {
+            timestamp: u64,
+            price_usdt: u64,
+            memo_qty: u128,
+            new_avg_price: u64,
         },
-        /// 函数级中文注释：参数更新事件
-        ParamsUpdated {
-            stale_seconds: u32,
-            max_jump_bps: u32,
+        /// 函数级中文注释：Bridge 兑换添加到价格聚合
+        BridgeSwapAdded {
+            timestamp: u64,
+            price_usdt: u64,
+            memo_qty: u128,
+            new_avg_price: u64,
         },
-        /// 函数级中文注释：喂价账户更新
-        FeedersUpdated,
-        /// 函数级中文注释：暂停/恢复
-        Paused { on: bool },
+        /// 函数级中文注释：冷启动参数更新事件
+        ColdStartParamsUpdated {
+            threshold: Option<u128>,
+            default_price: Option<u64>,
+        },
+        /// 函数级中文注释：冷启动退出事件（标志性事件，市场进入正常定价阶段）
+        ColdStartExited {
+            final_threshold: u128,
+            otc_volume: u128,
+            bridge_volume: u128,
+            market_price: u64,
+        },
     }
 
     #[pallet::error]
     pub enum Error<T> {
-        /// 函数级中文注释：当前已暂停
-        Paused,
-        /// 函数级中文注释：无权限喂价（非治理且非白名单）
-        NotAuthorized,
-        /// 函数级中文注释：价格跳变超过阈值
-        ExcessiveJump,
-        /// 函数级中文注释：价格分母为零非法
-        ZeroDenominator,
+        /// 函数级中文注释：冷启动已退出，无法再调整冷启动参数
+        ColdStartAlreadyExited,
     }
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
-    #[pallet::call]
+    /// 函数级中文注释：Pallet 辅助方法（聚合数据管理）
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：治理/白名单喂价接口
-        /// - 校验：未暂停；若存在旧价且设置了 max_jump_bps>0，则限制单次相对跳变幅度
-        /// - 事件：PriceUpdated
-        #[pallet::call_index(0)]
-        #[allow(deprecated)]
-        #[pallet::weight({0})]
-        pub fn set_price(origin: OriginFor<T>, price_num: u128, price_den: u128) -> DispatchResult {
-            ensure!(price_den != 0, Error::<T>::ZeroDenominator);
-            let p = PricingParams::<T>::get();
-            ensure!(!p.paused, Error::<T>::Paused);
-            // 授权：Root 直接通过；否则要求 Signed 且在 feeders 白名单
-            let mut authorized = false;
-            if frame_system::EnsureRoot::<T::AccountId>::try_origin(origin.clone()).is_ok() {
-                authorized = true;
-            } else if let Ok(who) = ensure_signed(origin) {
-                let feeders = Feeders::<T>::get();
-                if feeders.iter().any(|a| a == &who) {
-                    authorized = true;
+        /// 函数级详细中文注释：添加 OTC 订单到价格聚合
+        /// 
+        /// # 参数
+        /// - `timestamp`: 订单时间戳（Unix 毫秒）
+        /// - `price_usdt`: USDT 单价（精度 10^6）
+        /// - `memo_qty`: MEMO 数量（精度 10^12）
+        /// 
+        /// # 逻辑
+        /// 1. 读取当前聚合数据
+        /// 2. 如果累计超过 1,000,000 MEMO，删除最旧的订单直到满足限制
+        /// 3. 添加新订单到循环缓冲区
+        /// 4. 更新聚合统计数据
+        /// 5. 发出事件
+        pub fn add_otc_order(
+            timestamp: u64,
+            price_usdt: u64,
+            memo_qty: u128,
+        ) -> DispatchResult {
+            let mut agg = OtcPriceAggregate::<T>::get();
+            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 MEMO（精度 10^12）
+            
+            // 如果添加后超过限制，删除最旧的订单
+            let mut new_total = agg.total_memo.saturating_add(memo_qty);
+            while new_total > limit && agg.order_count > 0 {
+                if let Some(oldest) = OtcOrderRingBuffer::<T>::take(agg.oldest_index) {
+                    // 从聚合数据中减去
+                    agg.total_memo = agg.total_memo.saturating_sub(oldest.memo_qty);
+                    let oldest_usdt = (oldest.memo_qty / 1_000_000_000_000u128)
+                        .saturating_mul(oldest.price_usdt as u128);
+                    agg.total_usdt = agg.total_usdt.saturating_sub(oldest_usdt);
+                    agg.order_count = agg.order_count.saturating_sub(1);
+                    
+                    // 移动最旧索引
+                    agg.oldest_index = (agg.oldest_index + 1) % 10000;
+                    
+                    // 重新计算新总量
+                    new_total = agg.total_memo.saturating_add(memo_qty);
+                } else {
+                    break;
                 }
             }
-            ensure!(authorized, Error::<T>::NotAuthorized);
-            // 跳变阈值校验
-            let now = now_seconds::<T>();
-            let old = Price::<T>::get();
-            if p.max_jump_bps > 0 && old.price_den != 0 && old.price_num != 0 {
-                // 计算 |new/old - 1| <= max_jump_bps/10000
-                // 等价：|new_num*old_den - old_num*new_den| <= old_num*new_den * max_bps / 10000
-                let left = if price_num.saturating_mul(old.price_den)
-                    >= old.price_num.saturating_mul(price_den)
-                {
-                    price_num
-                        .saturating_mul(old.price_den)
-                        .saturating_sub(old.price_num.saturating_mul(price_den))
-                } else {
-                    old.price_num
-                        .saturating_mul(price_den)
-                        .saturating_sub(price_num.saturating_mul(old.price_den))
-                };
-                let base = old.price_num.saturating_mul(price_den);
-                let right = base.saturating_mul(p.max_jump_bps as u128) / 10_000u128;
-                ensure!(left <= right, Error::<T>::ExcessiveJump);
-            }
-            Price::<T>::put(super::SpotPrice {
-                price_num,
-                price_den,
-                last_updated: now,
+            
+            // 添加新订单到循环缓冲区
+            let new_index = if agg.order_count == 0 {
+                0
+            } else {
+                (agg.newest_index + 1) % 10000
+            };
+            
+            OtcOrderRingBuffer::<T>::insert(new_index, OrderSnapshot {
+                timestamp,
+                price_usdt,
+                memo_qty,
             });
-            Self::deposit_event(Event::PriceUpdated {
-                price_num,
-                price_den,
-                last_updated: now,
+            
+            // 更新聚合数据
+            let order_usdt = (memo_qty / 1_000_000_000_000u128)
+                .saturating_mul(price_usdt as u128);
+            agg.total_memo = agg.total_memo.saturating_add(memo_qty);
+            agg.total_usdt = agg.total_usdt.saturating_add(order_usdt);
+            agg.order_count = agg.order_count.saturating_add(1);
+            agg.newest_index = new_index;
+            
+            // 保存聚合数据
+            OtcPriceAggregate::<T>::put(agg.clone());
+            
+            // 计算新均价
+            let new_avg_price = Self::get_otc_average_price();
+            
+            // 发出事件
+            Self::deposit_event(Event::OtcOrderAdded {
+                timestamp,
+                price_usdt,
+                memo_qty,
+                new_avg_price,
             });
+            
             Ok(())
         }
 
-        /// 函数级中文注释：更新参数（仅 Root）
-        #[pallet::call_index(1)]
-        #[allow(deprecated)]
-        #[pallet::weight({0})]
-        pub fn set_params(
-            origin: OriginFor<T>,
-            stale_seconds: u32,
-            max_jump_bps: u32,
+        /// 函数级详细中文注释：添加 Bridge 兑换到价格聚合
+        /// 逻辑与 add_otc_order 相同，但操作 Bridge 相关的存储
+        pub fn add_bridge_swap(
+            timestamp: u64,
+            price_usdt: u64,
+            memo_qty: u128,
         ) -> DispatchResult {
-            frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
-            let mut pp = PricingParams::<T>::get();
-            pp.stale_seconds = stale_seconds;
-            pp.max_jump_bps = max_jump_bps;
-            PricingParams::<T>::put(pp.clone());
-            Self::deposit_event(Event::ParamsUpdated {
-                stale_seconds,
-                max_jump_bps,
-            });
-            Ok(())
-        }
-
-        /// 函数级中文注释：设置暂停开关（仅 Root）
-        #[pallet::call_index(2)]
-        #[allow(deprecated)]
-        #[pallet::weight({0})]
-        pub fn set_pause(origin: OriginFor<T>, on: bool) -> DispatchResult {
-            frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
-            let mut pp = PricingParams::<T>::get();
-            pp.paused = on;
-            PricingParams::<T>::put(pp);
-            Self::deposit_event(Event::Paused { on });
-            Ok(())
-        }
-
-        /// 函数级中文注释：维护喂价白名单（仅 Root）
-        #[pallet::call_index(3)]
-        #[allow(deprecated)]
-        #[pallet::weight({0})]
-        pub fn set_feeders(origin: OriginFor<T>, feeders: Vec<T::AccountId>) -> DispatchResult {
-            frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
-            let mut bv: BoundedVec<T::AccountId, T::MaxFeeders> = BoundedVec::default();
-            for a in feeders {
-                let _ = bv.try_push(a);
+            let mut agg = BridgePriceAggregate::<T>::get();
+            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 MEMO
+            
+            // 删除旧订单直到满足限制
+            let mut new_total = agg.total_memo.saturating_add(memo_qty);
+            while new_total > limit && agg.order_count > 0 {
+                if let Some(oldest) = BridgeOrderRingBuffer::<T>::take(agg.oldest_index) {
+                    agg.total_memo = agg.total_memo.saturating_sub(oldest.memo_qty);
+                    let oldest_usdt = (oldest.memo_qty / 1_000_000_000_000u128)
+                        .saturating_mul(oldest.price_usdt as u128);
+                    agg.total_usdt = agg.total_usdt.saturating_sub(oldest_usdt);
+                    agg.order_count = agg.order_count.saturating_sub(1);
+                    agg.oldest_index = (agg.oldest_index + 1) % 10000;
+                    new_total = agg.total_memo.saturating_add(memo_qty);
+                } else {
+                    break;
+                }
             }
-            Feeders::<T>::put(bv);
-            Self::deposit_event(Event::FeedersUpdated);
+            
+            // 添加新订单
+            let new_index = if agg.order_count == 0 {
+                0
+            } else {
+                (agg.newest_index + 1) % 10000
+            };
+            
+            BridgeOrderRingBuffer::<T>::insert(new_index, OrderSnapshot {
+                timestamp,
+                price_usdt,
+                memo_qty,
+            });
+            
+            // 更新聚合数据
+            let order_usdt = (memo_qty / 1_000_000_000_000u128)
+                .saturating_mul(price_usdt as u128);
+            agg.total_memo = agg.total_memo.saturating_add(memo_qty);
+            agg.total_usdt = agg.total_usdt.saturating_add(order_usdt);
+            agg.order_count = agg.order_count.saturating_add(1);
+            agg.newest_index = new_index;
+            
+            BridgePriceAggregate::<T>::put(agg.clone());
+            
+            let new_avg_price = Self::get_bridge_average_price();
+            
+            Self::deposit_event(Event::BridgeSwapAdded {
+                timestamp,
+                price_usdt,
+                memo_qty,
+                new_avg_price,
+            });
+            
             Ok(())
+        }
+
+        /// 函数级详细中文注释：获取 OTC 订单均价（USDT/MEMO，精度 10^6）
+        /// 
+        /// # 返回
+        /// - `u64`: 均价（精度 10^6），0 表示无数据
+        /// 
+        /// # 计算公式
+        /// 均价 = 总 USDT / 总 MEMO
+        ///      = total_usdt / (total_memo / 10^12)
+        ///      = (total_usdt * 10^12) / total_memo
+        pub fn get_otc_average_price() -> u64 {
+            let agg = OtcPriceAggregate::<T>::get();
+            if agg.total_memo == 0 {
+                return 0;
+            }
+            // 均价 = (total_usdt * 10^12) / total_memo
+            let avg = agg.total_usdt
+                .saturating_mul(1_000_000_000_000u128)
+                .checked_div(agg.total_memo)
+                .unwrap_or(0);
+            avg as u64
+        }
+
+        /// 函数级详细中文注释：获取 Bridge 兑换均价（USDT/MEMO，精度 10^6）
+        pub fn get_bridge_average_price() -> u64 {
+            let agg = BridgePriceAggregate::<T>::get();
+            if agg.total_memo == 0 {
+                return 0;
+            }
+            let avg = agg.total_usdt
+                .saturating_mul(1_000_000_000_000u128)
+                .checked_div(agg.total_memo)
+                .unwrap_or(0);
+            avg as u64
+        }
+
+        /// 函数级详细中文注释：获取 OTC 聚合统计信息
+        /// 返回：(累计MEMO, 累计USDT, 订单数, 均价)
+        pub fn get_otc_stats() -> (u128, u128, u32, u64) {
+            let agg = OtcPriceAggregate::<T>::get();
+            let avg = Self::get_otc_average_price();
+            (agg.total_memo, agg.total_usdt, agg.order_count, avg)
+        }
+
+        /// 函数级详细中文注释：获取 Bridge 聚合统计信息
+        /// 返回：(累计MEMO, 累计USDT, 订单数, 均价)
+        pub fn get_bridge_stats() -> (u128, u128, u32, u64) {
+            let agg = BridgePriceAggregate::<T>::get();
+            let avg = Self::get_bridge_average_price();
+            (agg.total_memo, agg.total_usdt, agg.order_count, avg)
+        }
+
+        /// 函数级详细中文注释：获取 MEMO 市场参考价格（简单平均 + 冷启动保护）
+        /// 
+        /// # 算法
+        /// - 冷启动阶段：如果两个市场交易量都未达阈值，返回默认价格
+        /// - 正常阶段：
+        ///   - 如果两个市场都有数据：(OTC均价 + Bridge均价) / 2
+        ///   - 如果只有一个市场有数据：使用该市场的均价
+        ///   - 如果都无数据：返回默认价格（兜底）
+        /// 
+        /// # 返回
+        /// - `u64`: USDT/MEMO 价格（精度 10^6）
+        /// 
+        /// # 用途
+        /// - 前端显示参考价格
+        /// - 价格偏离度计算
+        /// - 简单的市场概览
+        pub fn get_memo_reference_price() -> u64 {
+            // 冷启动检查
+            if !ColdStartExited::<T>::get() {
+                let threshold = ColdStartThreshold::<T>::get();
+                let otc_agg = OtcPriceAggregate::<T>::get();
+                let bridge_agg = BridgePriceAggregate::<T>::get();
+                
+                // 如果两个市场都未达阈值，使用默认价格
+                if otc_agg.total_memo < threshold && bridge_agg.total_memo < threshold {
+                    return DefaultPrice::<T>::get();
+                }
+                
+                // 达到阈值，退出冷启动
+                ColdStartExited::<T>::put(true);
+                
+                // 发出退出冷启动事件
+                let market_price = Self::calculate_weighted_average();
+                Self::deposit_event(Event::ColdStartExited {
+                    final_threshold: threshold,
+                    otc_volume: otc_agg.total_memo,
+                    bridge_volume: bridge_agg.total_memo,
+                    market_price,
+                });
+            }
+            
+            // 正常市场价格计算
+            let otc_avg = Self::get_otc_average_price();
+            let bridge_avg = Self::get_bridge_average_price();
+            
+            match (otc_avg, bridge_avg) {
+                (0, 0) => DefaultPrice::<T>::get(),  // 无数据时返回默认价格
+                (0, b) => b,                         // 只有 Bridge
+                (o, 0) => o,                         // 只有 OTC
+                (o, b) => (o + b) / 2,              // 简单平均
+            }
+        }
+
+        /// 函数级详细中文注释：获取 MEMO 市场价格（加权平均 + 冷启动保护）
+        /// 
+        /// # 算法
+        /// - 冷启动阶段：如果两个市场交易量都未达阈值，返回默认价格
+        /// - 正常阶段：加权平均 = (OTC总USDT + Bridge总USDT) / (OTC总MEMO + Bridge总MEMO)
+        /// 
+        /// # 优点
+        /// - 考虑交易量权重，更准确反映市场情况
+        /// - 大交易量市场的价格权重更高
+        /// - 符合市值加权指数的计算方式
+        /// - 冷启动保护避免初期价格为0或被操纵
+        /// 
+        /// # 返回
+        /// - `u64`: USDT/MEMO 价格（精度 10^6）
+        /// 
+        /// # 用途
+        /// - 资产估值（钱包总值计算）
+        /// - 清算价格参考
+        /// - 市场指数计算
+        pub fn get_memo_market_price_weighted() -> u64 {
+            // 冷启动检查
+            if !ColdStartExited::<T>::get() {
+                let threshold = ColdStartThreshold::<T>::get();
+                let otc_agg = OtcPriceAggregate::<T>::get();
+                let bridge_agg = BridgePriceAggregate::<T>::get();
+                
+                // 如果两个市场都未达阈值，使用默认价格
+                if otc_agg.total_memo < threshold && bridge_agg.total_memo < threshold {
+                    return DefaultPrice::<T>::get();
+                }
+                
+                // 达到阈值，退出冷启动
+                ColdStartExited::<T>::put(true);
+                
+                // 发出退出冷启动事件
+                let market_price = Self::calculate_weighted_average();
+                Self::deposit_event(Event::ColdStartExited {
+                    final_threshold: threshold,
+                    otc_volume: otc_agg.total_memo,
+                    bridge_volume: bridge_agg.total_memo,
+                    market_price,
+                });
+            }
+            
+            // 正常市场价格计算
+            Self::calculate_weighted_average()
+        }
+        
+        /// 函数级详细中文注释：内部辅助函数 - 计算加权平均价格
+        /// 不包含冷启动逻辑，纯粹的数学计算
+        fn calculate_weighted_average() -> u64 {
+            let otc_agg = OtcPriceAggregate::<T>::get();
+            let bridge_agg = BridgePriceAggregate::<T>::get();
+            
+            let total_memo = otc_agg.total_memo.saturating_add(bridge_agg.total_memo);
+            if total_memo == 0 {
+                return DefaultPrice::<T>::get(); // 无数据时返回默认价格
+            }
+            
+            // 加权平均 = 总USDT / 总MEMO
+            let total_usdt = otc_agg.total_usdt.saturating_add(bridge_agg.total_usdt);
+            let avg = total_usdt
+                .saturating_mul(1_000_000_000_000u128)
+                .checked_div(total_memo)
+                .unwrap_or(0);
+            
+            avg as u64
+        }
+
+        /// 函数级详细中文注释：获取完整的 MEMO 市场统计信息
+        /// 
+        /// # 返回
+        /// `MarketStats` 结构，包含：
+        /// - OTC 和 Bridge 各自的均价
+        /// - 加权平均价格和简单平均价格
+        /// - 各市场的交易量和订单数
+        /// - 总交易量
+        /// 
+        /// # 用途
+        /// - 市场概况 Dashboard
+        /// - 价格比较和分析
+        /// - 交易量统计
+        /// - API 查询接口
+        pub fn get_market_stats() -> MarketStats {
+            let otc_agg = OtcPriceAggregate::<T>::get();
+            let bridge_agg = BridgePriceAggregate::<T>::get();
+            
+            let otc_price = Self::get_otc_average_price();
+            let bridge_price = Self::get_bridge_average_price();
+            let weighted_price = Self::get_memo_market_price_weighted();
+            let simple_avg_price = Self::get_memo_reference_price();
+            
+            MarketStats {
+                otc_price,
+                bridge_price,
+                weighted_price,
+                simple_avg_price,
+                otc_volume: otc_agg.total_memo,
+                bridge_volume: bridge_agg.total_memo,
+                total_volume: otc_agg.total_memo.saturating_add(bridge_agg.total_memo),
+                otc_order_count: otc_agg.order_count,
+                bridge_swap_count: bridge_agg.order_count,
+            }
         }
     }
 
-    impl<T: Config> super::PriceProvider for Pallet<T> {
-        /// 函数级中文注释：返回当前报价（若尚未设置则返回 None）
-        fn current_price() -> Option<(u128, u128, u64)> {
-            let p = Price::<T>::get();
-            if p.price_den == 0 || p.price_num == 0 {
-                None
-            } else {
-                Some((p.price_num, p.price_den, p.last_updated))
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：治理调整冷启动参数
+        /// 
+        /// # 参数
+        /// - `origin`: 必须是 Root 权限
+        /// - `threshold`: 可选，新的冷启动阈值（MEMO数量，精度10^12）
+        /// - `default_price`: 可选，新的默认价格（USDT/MEMO，精度10^6）
+        /// 
+        /// # 限制
+        /// - 只能在冷启动期间调整（ColdStartExited = false）
+        /// - 一旦退出冷启动，无法再调整这些参数
+        /// 
+        /// # 事件
+        /// - `ColdStartParamsUpdated`: 参数更新成功
+        /// 
+        /// # 错误
+        /// - `ColdStartAlreadyExited`: 已退出冷启动，无法调整参数
+        #[pallet::call_index(0)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(1, 2))]
+        pub fn set_cold_start_params(
+            origin: OriginFor<T>,
+            threshold: Option<u128>,
+            default_price: Option<u64>,
+        ) -> DispatchResult {
+            frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
+            
+            // 验证：只能在冷启动期间调整
+            ensure!(
+                !ColdStartExited::<T>::get(), 
+                Error::<T>::ColdStartAlreadyExited
+            );
+            
+            // 更新阈值
+            if let Some(t) = threshold {
+                ColdStartThreshold::<T>::put(t);
             }
-        }
-        /// 函数级中文注释：判断是否陈旧：`now - last_updated > stale_seconds`
-        fn is_stale(now_seconds: u64) -> bool {
-            let pp = PricingParams::<T>::get();
-            let pr = Price::<T>::get();
-            if pr.last_updated == 0 {
-                return true;
+            
+            // 更新默认价格
+            if let Some(p) = default_price {
+                DefaultPrice::<T>::put(p);
             }
-            let stale = pp.stale_seconds as u64;
-            now_seconds.saturating_sub(pr.last_updated) > stale
+            
+            // 发出事件
+            Self::deposit_event(Event::ColdStartParamsUpdated {
+                threshold,
+                default_price,
+            });
+            
+            Ok(())
         }
     }
 }

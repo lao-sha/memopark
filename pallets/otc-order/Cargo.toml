@@ -17,11 +17,15 @@ sp-runtime = { workspace = true }
 sp-core = { workspace = true }
 sp-std = { workspace = true }
 pallet-balances = { workspace = true }
+pallet-timestamp = { workspace = true }
 pallet-escrow = { path = "../escrow", default-features = false }
 pallet-pricing = { path = "../pricing", default-features = false }
 pallet-otc-listing = { path = "../otc-listing", default-features = false }
 pallet-evidence = { path = "../evidence", default-features = false }
 pallet-arbitration = { path = "../arbitration", default-features = false }
+pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
+pallet-affiliate-config = { path = "../affiliate-config", default-features = false }
+pallet-market-maker = { path = "../market-maker", default-features = false }
 
 [features]
 default = ["std"]
@@ -34,11 +38,15 @@ std = [
     "sp-core/std",
     "sp-std/std",
     "pallet-balances/std",
+    "pallet-timestamp/std",
     "pallet-escrow/std",
     "pallet-pricing/std",
     "pallet-otc-listing/std",
     "pallet-evidence/std",
     "pallet-arbitration/std",
+    "pallet-memo-referrals/std",
+    "pallet-affiliate-config/std",
+    "pallet-market-maker/std",
 ]
 
 

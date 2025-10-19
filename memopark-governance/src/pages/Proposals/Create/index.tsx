@@ -12,7 +12,7 @@ import {
   message,
   Descriptions
 } from 'antd'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '@/contexts/Api'
 import { useWallet } from '@/contexts/Wallet'
 import { useCouncilMembers } from '@/hooks/useCouncilMembers'
@@ -24,10 +24,15 @@ import { formatAddress } from '@/utils/format'
 /**
  * 创建提案页面
  * 参考：Polkadot.js Apps packages/page-council/src/Overview/Propose.tsx
+ * 
+ * 支持 URL 参数预填充：
+ * - ?mmId=1 - 预选申请编号
+ * - ?type=approve|reject - 预选提案类型
  */
 export default function CreateProposal() {
   const [form] = Form.useForm()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { api, isReady } = useApi()
   const { activeAccount } = useWallet()
   const { isCurrentMember } = useCouncilMembers()
@@ -36,6 +41,36 @@ export default function CreateProposal() {
   const [proposalType, setProposalType] = useState<'approve' | 'reject'>('approve')
   const [pendingApplications, setPendingApplications] = useState<Application[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
+
+  /**
+   * 函数级详细中文注释：解析 URL 参数并预填充表单
+   * - 支持 ?mmId=1 预选申请编号
+   * - 支持 ?type=approve|reject 预选提案类型
+   */
+  useEffect(() => {
+    const mmIdParam = searchParams.get('mmId')
+    const typeParam = searchParams.get('type')
+    
+    const updates: any = {}
+    
+    if (mmIdParam) {
+      const mmIdNum = Number(mmIdParam)
+      if (Number.isInteger(mmIdNum) && mmIdNum >= 0) {
+        updates.mmId = mmIdNum
+        console.log('[URL参数] 预选 mmId:', mmIdNum)
+      }
+    }
+    
+    if (typeParam === 'approve' || typeParam === 'reject') {
+      updates.proposalType = typeParam
+      setProposalType(typeParam)
+      console.log('[URL参数] 预选提案类型:', typeParam)
+    }
+    
+    if (Object.keys(updates).length > 0) {
+      form.setFieldsValue(updates)
+    }
+  }, [searchParams, form])
 
   /**
    * 加载待审申请列表
@@ -78,19 +113,47 @@ export default function CreateProposal() {
 
       const { mmId, slashBps, threshold } = values
 
+      // 🔧 参数类型转换和验证
+      const mmIdNum = Number(mmId)
+      const thresholdNum = Number(threshold)
+      
+      if (!Number.isInteger(mmIdNum) || mmIdNum < 0) {
+        throw new Error(`申请编号无效: ${mmId}`)
+      }
+      
+      if (!Number.isInteger(thresholdNum) || thresholdNum < 1) {
+        throw new Error(`投票阈值无效: ${threshold}`)
+      }
+
+      // 🔧 驳回时验证扣罚比例
+      let slashBpsNum = 0
+      if (proposalType === 'reject') {
+        slashBpsNum = Number(slashBps || 0)
+        if (!Number.isInteger(slashBpsNum) || slashBpsNum < 0 || slashBpsNum > 10000) {
+          throw new Error(`扣罚比例无效: ${slashBps}，必须在 0-10000 范围内`)
+        }
+      }
+
+      // 🔍 调试日志：打印参数
+      console.group('📤 [创建提案] 参数详情')
+      console.log('提案类型:', proposalType)
+      console.log('mmId:', mmIdNum, '(u64)')
+      console.log('阈值:', thresholdNum)
+      if (proposalType === 'reject') {
+        console.log('扣罚比例:', slashBpsNum, 'bps (u16)')
+      }
+      console.groupEnd()
+
       // 构造内部调用
       let innerCall
       if (proposalType === 'approve') {
-        innerCall = (api.tx as any).marketMaker.approve(mmId)
+        innerCall = (api.tx as any).marketMaker.approve(mmIdNum)
       } else {
-        innerCall = (api.tx as any).marketMaker.reject(mmId, slashBps || 0)
+        innerCall = (api.tx as any).marketMaker.reject(mmIdNum, slashBpsNum)
       }
 
       // 计算提案哈希
       const proposalHash = innerCall.method.hash.toHex()
-      console.log('[提案] 类型:', proposalType)
-      console.log('[提案] mmId:', mmId)
-      console.log('[提案] 阈值:', threshold)
       console.log('[提案] 哈希:', proposalHash)
 
       // 检查提案是否已存在

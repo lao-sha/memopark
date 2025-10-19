@@ -1,0 +1,1107 @@
+import React from 'react'
+import { Card, Form, Input, InputNumber, Button, message, Alert, Spin, Descriptions, Tag, Space, Typography, Divider, Modal, Tabs } from 'antd'
+import { SettingOutlined, SaveOutlined, ReloadOutlined, ArrowLeftOutlined, CheckCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { getApi } from '../../lib/polkadot'
+import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { ApiPromise } from '@polkadot/api'
+
+const { Title, Text, Paragraph } = Typography
+const { TabPane } = Tabs
+
+/**
+ * 函数级详细中文注释：做市商桥接服务配置管理页面
+ * 设计目标：
+ * 1）提供桥接服务配置管理（TRON地址、最大兑换额、手续费率）
+ * 2）支持重新启用已禁用的桥接服务
+ * 3）提供业务配置管理（资料CID、OTC费率、最小下单额）
+ * 4）统一的配置管理入口，提升用户体验
+ */
+
+/**
+ * 函数级详细中文注释：做市商信息数据结构
+ */
+interface MarketMakerInfo {
+  mmId: number
+  owner: string
+  status: string
+  direction: number  // 🆕 2025-10-19：业务方向（0=Buy, 1=Sell, 2=BuyAndSell）
+  tronAddress: string  // 🆕 2025-10-19：统一TRON地址（OTC收款 + Bridge发款）
+  publicCid: string
+  privateCid: string
+  feeBps: number
+  buyPremiumBps: number  // 🆕 2025-10-19：Buy溢价（基点）
+  sellPremiumBps: number // 🆕 2025-10-19：Sell溢价（基点）
+  minAmount: string
+}
+
+/**
+ * 函数级详细中文注释：桥接服务配置数据结构
+ */
+interface BridgeServiceConfig {
+  makerAccount: string
+  tronAddress: string
+  maxSwapAmount: number
+  feeRateBps: number
+  enabled: boolean
+  totalSwaps: number
+  totalVolume: string
+  successCount: number
+  avgTimeSeconds: number
+  deposit: string
+}
+
+/**
+ * 函数级详细中文注释：解析字节数组为字符串
+ */
+function bytesToString(bytes: any): string {
+  if (!bytes) return ''
+  if (typeof bytes === 'string') return bytes
+  if (Array.isArray(bytes)) {
+    try {
+      return new TextDecoder().decode(new Uint8Array(bytes))
+    } catch (e) {
+      return ''
+    }
+  }
+  return ''
+}
+
+export default function MakerBridgeConfigPage() {
+  const [bridgeForm] = Form.useForm()
+  const [infoForm] = Form.useForm()
+  const [loading, setLoading] = React.useState<boolean>(false)
+  const [loadingData, setLoadingData] = React.useState<boolean>(false)
+  const [api, setApi] = React.useState<ApiPromise | null>(null)
+  const [marketMakerInfo, setMarketMakerInfo] = React.useState<MarketMakerInfo | null>(null)
+  const [bridgeService, setBridgeService] = React.useState<BridgeServiceConfig | null>(null)
+  const [error, setError] = React.useState<string>('')
+
+  /**
+   * 函数级详细中文注释：初始化 API 连接
+   */
+  React.useEffect(() => {
+    const initApi = async () => {
+      try {
+        const apiInstance = await getApi()
+        setApi(apiInstance)
+      } catch (e: any) {
+        setError('API 连接失败：' + (e?.message || ''))
+      }
+    }
+    initApi()
+  }, [])
+
+  /**
+   * 函数级详细中文注释：加载做市商信息和桥接服务配置
+   */
+  const loadMakerData = React.useCallback(async () => {
+    if (!api) return
+    
+    try {
+      setLoadingData(true)
+      setError('')
+      
+      // 检查 pallet 是否存在
+      if (!(api.query as any).marketMaker) {
+        setError('pallet-market-maker 不存在')
+        return
+      }
+
+      // 获取当前登录账户地址
+      const currentAddress = localStorage.getItem('mp.current')
+      
+      if (!currentAddress) {
+        setError('未找到当前登录账户，请先登录')
+        return
+      }
+
+      // 查询 ActiveMarketMakers 找到当前账户的做市商ID
+      const entries = await (api.query as any).marketMaker.activeMarketMakers.entries()
+      
+      let foundMmId: number | null = null
+      let foundApp: any = null
+      
+      for (const [key, value] of entries) {
+        const mmId = key.args[0].toNumber()
+        const app = value.toJSON() as any
+        
+        if (app.owner && app.owner.toLowerCase() === currentAddress.toLowerCase() && app.status === 'Active') {
+          foundMmId = mmId
+          foundApp = app
+          break
+        }
+      }
+      
+      if (foundMmId === null || !foundApp) {
+        setError('您不是已激活的做市商，或者您的申请尚未通过审核')
+        return
+      }
+
+      // 解析做市商基础信息
+      const info: MarketMakerInfo = {
+        mmId: foundMmId,
+        owner: foundApp.owner || '',
+        status: foundApp.status || 'Unknown',
+        direction: foundApp.direction !== undefined ? Number(foundApp.direction) : 2, // 🆕 2025-10-19：解析业务方向，默认为2（BuyAndSell）
+        tronAddress: bytesToString(foundApp.tronAddress),  // 🆕 2025-10-19：解析TRON地址
+        publicCid: bytesToString(foundApp.publicCid),
+        privateCid: bytesToString(foundApp.privateCid),
+        feeBps: foundApp.feeBps || 0,
+        buyPremiumBps: foundApp.buyPremiumBps !== undefined ? Number(foundApp.buyPremiumBps) : 0,  // 🆕 2025-10-19：解析Buy溢价
+        sellPremiumBps: foundApp.sellPremiumBps !== undefined ? Number(foundApp.sellPremiumBps) : 0, // 🆕 2025-10-19：解析Sell溢价
+        minAmount: foundApp.minAmount || '0',
+      }
+      
+      setMarketMakerInfo(info)
+      
+      // 填充业务配置表单
+      infoForm.setFieldsValue({
+        tron_address: info.tronAddress,          // 🆕 2025-10-19：填充TRON地址
+        public_cid: info.publicCid,
+        private_cid: info.privateCid,
+        fee_bps: info.feeBps,
+        buy_premium_bps: info.buyPremiumBps,    // 🆕 2025-10-19：填充Buy溢价
+        sell_premium_bps: info.sellPremiumBps,  // 🆕 2025-10-19：填充Sell溢价
+        min_amount: Number(BigInt(info.minAmount) / BigInt(1e12)),
+      })
+
+      // 查询桥接服务配置
+      const bridgeData = await (api.query as any).marketMaker.bridgeServices(foundMmId)
+      
+      if (bridgeData.isSome) {
+        const bridge = bridgeData.unwrap().toJSON() as any
+        
+        const serviceConfig: BridgeServiceConfig = {
+          makerAccount: bridge.makerAccount || '',
+          tronAddress: bytesToString(bridge.tronAddress),
+          maxSwapAmount: bridge.maxSwapAmount || 0,
+          feeRateBps: bridge.feeRateBps || 0,
+          enabled: bridge.enabled || false,
+          totalSwaps: bridge.totalSwaps || 0,
+          totalVolume: bridge.totalVolume || '0',
+          successCount: bridge.successCount || 0,
+          avgTimeSeconds: bridge.avgTimeSeconds || 0,
+          deposit: bridge.deposit || '0',
+        }
+        
+        setBridgeService(serviceConfig)
+        
+        // 填充桥接服务配置表单
+        bridgeForm.setFieldsValue({
+          tron_address: serviceConfig.tronAddress,
+          max_swap_amount: serviceConfig.maxSwapAmount / 1e6, // 转换为 USDT
+          fee_rate_bps: serviceConfig.feeRateBps,
+        })
+      } else {
+        setBridgeService(null)
+      }
+      
+    } catch (e: any) {
+      console.error('[配置管理] 加载失败:', e)
+      setError('加载做市商信息失败：' + (e?.message || '未知错误'))
+    } finally {
+      setLoadingData(false)
+    }
+  }, [api, bridgeForm, infoForm])
+
+  /**
+   * 函数级详细中文注释：当 API 连接成功后，加载配置信息
+   */
+  React.useEffect(() => {
+    if (api) {
+      loadMakerData()
+    }
+  }, [api, loadMakerData])
+
+  /**
+   * 函数级详细中文注释：更新桥接服务配置
+   */
+  const onUpdateBridgeService = async (values: any) => {
+    if (!api || !marketMakerInfo) {
+      message.error('API 未初始化或做市商信息未加载')
+      return
+    }
+
+    if (!bridgeService) {
+      message.error('桥接服务未启用，请先启用桥接服务')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
+    try {
+      // 构造参数（Option 类型）
+      let tronAddressParam = null
+      let maxSwapAmountParam = null
+      let feeRateBpsParam = null
+
+      // TRON 地址（如果提供且与当前值不同）
+      if (values.tron_address && values.tron_address.trim() !== '' && values.tron_address !== bridgeService.tronAddress) {
+        tronAddressParam = Array.from(new TextEncoder().encode(values.tron_address.trim()))
+      }
+
+      // 最大兑换额（如果提供且与当前值不同）
+      if (values.max_swap_amount !== undefined && values.max_swap_amount !== null) {
+        const maxSwapAmountUsdt = Number(values.max_swap_amount)
+        const maxSwapAmountValue = Math.floor(maxSwapAmountUsdt * 1e6) // 转换为精度 10^6
+        if (maxSwapAmountValue !== bridgeService.maxSwapAmount) {
+          maxSwapAmountParam = maxSwapAmountValue
+        }
+      }
+
+      // 手续费率（如果提供且与当前值不同）
+      if (values.fee_rate_bps !== undefined && values.fee_rate_bps !== null && values.fee_rate_bps !== '' && values.fee_rate_bps !== bridgeService.feeRateBps) {
+        feeRateBpsParam = Number(values.fee_rate_bps)
+      }
+
+      // 检查是否有实际变化
+      if (!tronAddressParam && !maxSwapAmountParam && !feeRateBpsParam) {
+        message.warning('没有检测到配置变更')
+        setLoading(false)
+        return
+      }
+
+      message.loading({ content: '正在签名并更新桥接服务配置...', key: 'update', duration: 0 })
+
+      // 签名并发送交易
+      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateBridgeService', [
+        marketMakerInfo.mmId,
+        tronAddressParam,
+        maxSwapAmountParam,
+        feeRateBpsParam
+      ])
+
+      message.success({
+        content: `桥接服务配置更新成功！交易哈希: ${hash}`,
+        key: 'update',
+        duration: 5
+      })
+
+      // 等待区块确认后重新加载信息
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      await loadMakerData()
+
+    } catch (e: any) {
+      console.error('更新桥接服务配置失败:', e)
+      message.error({ content: '更新桥接服务配置失败：' + (e?.message || '未知错误'), key: 'update', duration: 5 })
+      setError(e?.message || '更新桥接服务配置失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * 函数级详细中文注释：重新启用桥接服务
+   */
+  const onReEnableBridgeService = async () => {
+    if (!api || !marketMakerInfo) {
+      message.error('API 未初始化或做市商信息未加载')
+      return
+    }
+
+    if (!bridgeService) {
+      message.error('桥接服务不存在，请先启用桥接服务')
+      return
+    }
+
+    if (bridgeService.enabled) {
+      message.warning('桥接服务已启用，无需重新启用')
+      return
+    }
+
+    Modal.confirm({
+      title: '确认重新启用桥接服务？',
+      content: '重新启用后，用户将可以选择您进行桥接服务。',
+      okText: '确认启用',
+      cancelText: '取消',
+      onOk: async () => {
+        setLoading(true)
+        try {
+          message.loading({ content: '正在签名并重新启用桥接服务...', key: 'enable', duration: 0 })
+
+          const hash = await signAndSendLocalFromKeystore('marketMaker', 'reEnableBridgeService', [
+            marketMakerInfo.mmId
+          ])
+
+          message.success({
+            content: `桥接服务重新启用成功！交易哈希: ${hash}`,
+            key: 'enable',
+            duration: 5
+          })
+
+          await new Promise(resolve => setTimeout(resolve, 3000))
+          await loadMakerData()
+
+        } catch (e: any) {
+          console.error('重新启用桥接服务失败:', e)
+          message.error({ content: '重新启用桥接服务失败：' + (e?.message || '未知错误'), key: 'enable', duration: 5 })
+        } finally {
+          setLoading(false)
+        }
+      }
+    })
+  }
+
+  /**
+   * 函数级详细中文注释：禁用桥接服务
+   */
+  const onDisableBridgeService = async () => {
+    if (!api || !marketMakerInfo) {
+      message.error('API 未初始化或做市商信息未加载')
+      return
+    }
+
+    if (!bridgeService) {
+      message.error('桥接服务不存在')
+      return
+    }
+
+    if (!bridgeService.enabled) {
+      message.warning('桥接服务已禁用')
+      return
+    }
+
+    Modal.confirm({
+      title: '确认禁用桥接服务？',
+      content: '禁用后，用户将无法选择您进行桥接服务。已有的订单不受影响，但不会接收新订单。',
+      okText: '确认禁用',
+      cancelText: '取消',
+      onOk: async () => {
+        setLoading(true)
+        try {
+          message.loading({ content: '正在签名并禁用桥接服务...', key: 'disable', duration: 0 })
+
+          const hash = await signAndSendLocalFromKeystore('marketMaker', 'disableBridgeService', [
+            marketMakerInfo.mmId
+          ])
+
+          message.success({
+            content: `桥接服务已禁用！交易哈希: ${hash}`,
+            key: 'disable',
+            duration: 5
+          })
+
+          await new Promise(resolve => setTimeout(resolve, 3000))
+          await loadMakerData()
+
+        } catch (e: any) {
+          console.error('禁用桥接服务失败:', e)
+          message.error({ content: '禁用桥接服务失败：' + (e?.message || '未知错误'), key: 'disable', duration: 5 })
+        } finally {
+          setLoading(false)
+        }
+      }
+    })
+  }
+
+  /**
+   * 函数级详细中文注释：更新做市商业务配置
+   */
+  const onUpdateMakerInfo = async (values: any) => {
+    if (!api || !marketMakerInfo) {
+      message.error('API 未初始化或做市商信息未加载')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
+    try {
+      // 构造参数（Option 类型）
+      let publicCidParam = null
+      let privateCidParam = null
+      let feeBpsParam = null
+      let buyPremiumBpsParam = null  // 🆕 2025-10-19：Buy溢价参数
+      let sellPremiumBpsParam = null // 🆕 2025-10-19：Sell溢价参数
+      let minAmountParam = null
+      let tronAddressParam = null     // 🆕 2025-10-19：TRON地址参数
+
+      // 🆕 2025-10-19：TRON地址
+      if (values.tron_address && values.tron_address.trim() !== '' && values.tron_address.trim() !== marketMakerInfo.tronAddress) {
+        const tronAddr = values.tron_address.trim()
+        // 验证TRON地址格式
+        if (tronAddr.length !== 34 || !tronAddr.startsWith('T')) {
+          message.error('TRON地址格式无效（必须34字符，以T开头）')
+          setLoading(false)
+          return
+        }
+        tronAddressParam = Array.from(new TextEncoder().encode(tronAddr))
+      }
+
+      // 公开资料 CID
+      if (values.public_cid && values.public_cid.trim() !== '' && values.public_cid !== marketMakerInfo.publicCid) {
+        publicCidParam = Array.from(new TextEncoder().encode(values.public_cid.trim()))
+      }
+
+      // 私密资料 CID
+      if (values.private_cid && values.private_cid.trim() !== '' && values.private_cid !== marketMakerInfo.privateCid) {
+        privateCidParam = Array.from(new TextEncoder().encode(values.private_cid.trim()))
+      }
+
+      // OTC 费率
+      if (values.fee_bps !== undefined && values.fee_bps !== null && values.fee_bps !== '' && values.fee_bps !== marketMakerInfo.feeBps) {
+        feeBpsParam = Number(values.fee_bps)
+      }
+
+      // 🆕 2025-10-19：Buy溢价
+      if (values.buy_premium_bps !== undefined && values.buy_premium_bps !== null && values.buy_premium_bps !== '' && values.buy_premium_bps !== marketMakerInfo.buyPremiumBps) {
+        const buyPremium = Number(values.buy_premium_bps)
+        if (buyPremium < -500 || buyPremium > 500) {
+          message.error('Buy溢价超出范围（-500 ~ 500 bps）')
+          setLoading(false)
+          return
+        }
+        buyPremiumBpsParam = buyPremium
+      }
+
+      // 🆕 2025-10-19：Sell溢价
+      if (values.sell_premium_bps !== undefined && values.sell_premium_bps !== null && values.sell_premium_bps !== '' && values.sell_premium_bps !== marketMakerInfo.sellPremiumBps) {
+        const sellPremium = Number(values.sell_premium_bps)
+        if (sellPremium < -500 || sellPremium > 500) {
+          message.error('Sell溢价超出范围（-500 ~ 500 bps）')
+          setLoading(false)
+          return
+        }
+        sellPremiumBpsParam = sellPremium
+      }
+
+      // 最小下单额
+      if (values.min_amount !== undefined && values.min_amount !== null && values.min_amount !== '') {
+        const minAmountMemo = BigInt(Math.floor(values.min_amount * 1e12))
+        if (minAmountMemo.toString() !== marketMakerInfo.minAmount) {
+          minAmountParam = minAmountMemo.toString()
+        }
+      }
+
+      // 检查是否有实际变化
+      if (!publicCidParam && !privateCidParam && !feeBpsParam && !buyPremiumBpsParam && !sellPremiumBpsParam && !minAmountParam) {
+        message.warning('没有检测到配置变更')
+        setLoading(false)
+        return
+      }
+
+      message.loading({ content: '正在签名并更新业务配置...', key: 'update', duration: 0 })
+
+      // 签名并发送交易（🆕 2025-10-19：添加溢价参数和TRON地址参数）
+      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateMakerInfo', [
+        marketMakerInfo.mmId,
+        publicCidParam,
+        privateCidParam,
+        feeBpsParam,
+        buyPremiumBpsParam,   // 🆕 2025-10-19：Buy溢价
+        sellPremiumBpsParam,  // 🆕 2025-10-19：Sell溢价
+        minAmountParam,
+        tronAddressParam      // 🆕 2025-10-19：TRON地址
+      ])
+
+      message.success({
+        content: `业务配置更新成功！交易哈希: ${hash}`,
+        key: 'update',
+        duration: 5
+      })
+
+      // 等待区块确认后重新加载信息
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      await loadMakerData()
+
+    } catch (e: any) {
+      console.error('更新业务配置失败:', e)
+      message.error({ content: '更新业务配置失败：' + (e?.message || '未知错误'), key: 'update', duration: 5 })
+      setError(e?.message || '更新业务配置失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * 🆕 2025-10-19：更新做市商业务方向
+   */
+  const onUpdateDirection = async (newDirection: number) => {
+    if (!api || !marketMakerInfo) {
+      message.error('API 未初始化或做市商信息未加载')
+      return
+    }
+
+    if (newDirection === marketMakerInfo.direction) {
+      message.warning('新方向与当前方向相同，无需更新')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
+    try {
+      const directionNames = ['仅买入（Bridge）', '仅卖出（OTC）', '双向（OTC + Bridge）']
+      
+      message.loading({ 
+        content: `正在更新业务方向为：${directionNames[newDirection]}...`, 
+        key: 'direction', 
+        duration: 0 
+      })
+
+      // 签名并发送交易
+      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateDirection', [
+        marketMakerInfo.mmId,
+        newDirection
+      ])
+
+      message.success({
+        content: `业务方向更新成功！新方向：${directionNames[newDirection]}。交易哈希: ${hash}`,
+        key: 'direction',
+        duration: 5
+      })
+
+      // 等待区块确认后重新加载信息
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      await loadMakerData()
+
+    } catch (e: any) {
+      console.error('更新业务方向失败:', e)
+      message.error({ content: '更新业务方向失败：' + (e?.message || '未知错误'), key: 'direction', duration: 5 })
+      setError(e?.message || '更新业务方向失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * 函数级详细中文注释：返回到做市商列表
+   */
+  const handleBack = () => {
+    window.location.hash = '#/otc/create-mm'
+  }
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
+        padding: '60px 20px 20px',
+      }}
+    >
+      {/* 返回按钮 */}
+      <div style={{ 
+        position: 'absolute', 
+        top: '10px', 
+        left: '10px',
+        zIndex: 10,
+      }}>
+        <Button 
+          type="text" 
+          icon={<ArrowLeftOutlined />}
+          onClick={handleBack}
+          style={{ 
+            padding: '4px 8px',
+            background: 'rgba(255, 255, 255, 0.9)',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          返回
+        </Button>
+      </div>
+
+      {/* 主内容区域 */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <Card style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          <Title level={4}>
+            <SettingOutlined /> 做市商配置管理中心
+          </Title>
+
+          {!api && (
+            <Alert type="info" showIcon message="正在连接链上节点..." style={{ marginBottom: 12 }} />
+          )}
+
+          {error && (
+            <Alert 
+              type="error" 
+              showIcon 
+              message={error} 
+              style={{ marginBottom: 12 }} 
+              closable 
+              onClose={() => setError('')} 
+            />
+          )}
+
+          {loadingData && (
+            <Spin tip="正在加载做市商信息...">
+              <div style={{ minHeight: 400 }} />
+            </Spin>
+          )}
+
+          {!loadingData && marketMakerInfo && (
+            <>
+              {/* 做市商基础信息 */}
+              <Card 
+                title={
+                  <Space>
+                    <Text strong>做市商信息</Text>
+                    <Tag color="green">{marketMakerInfo.status}</Tag>
+                    <Tag color="blue">做市商 ID: {marketMakerInfo.mmId}</Tag>
+                  </Space>
+                }
+                size="small" 
+                style={{ marginBottom: 16 }}
+                extra={
+                  <Button 
+                    type="text" 
+                    icon={<ReloadOutlined />} 
+                    onClick={loadMakerData}
+                    loading={loadingData}
+                    size="small"
+                  >
+                    刷新
+                  </Button>
+                }
+              >
+                <Descriptions column={2} size="small" bordered>
+                  <Descriptions.Item label="账户地址" span={2}>
+                    <Text copyable={{ text: marketMakerInfo.owner }} ellipsis style={{ maxWidth: 800 }}>
+                      {marketMakerInfo.owner}
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="业务方向">
+                    {marketMakerInfo.direction === 0 && (
+                      <Space>
+                        <Tag color="green">🟢 仅买入</Tag>
+                        <Text type="secondary">仅Bridge（购买MEMO，支付USDT）</Text>
+                      </Space>
+                    )}
+                    {marketMakerInfo.direction === 1 && (
+                      <Space>
+                        <Tag color="red">🔴 仅卖出</Tag>
+                        <Text type="secondary">仅OTC（出售MEMO，收取USDT）</Text>
+                      </Space>
+                    )}
+                    {marketMakerInfo.direction === 2 && (
+                      <Space>
+                        <Tag color="orange">🟡 双向</Tag>
+                        <Text type="secondary">OTC + Bridge</Text>
+                      </Space>
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="操作">
+                    <Button 
+                      type="link" 
+                      size="small" 
+                      onClick={() => {
+                        Modal.confirm({
+                          title: '更新业务方向',
+                          content: (
+                            <div style={{ marginTop: 16 }}>
+                              <p>选择新的业务方向：</p>
+                              <div id="direction-selector" />
+                            </div>
+                          ),
+                          onOk: async () => {
+                            const selectedDirection = (window as any).__selectedDirection
+                            if (selectedDirection !== undefined && selectedDirection !== marketMakerInfo.direction) {
+                              await onUpdateDirection(selectedDirection)
+                            }
+                          },
+                          okText: '确认更新',
+                          cancelText: '取消',
+                        })
+                        
+                        // 动态插入方向选择器
+                        setTimeout(() => {
+                          const container = document.getElementById('direction-selector')
+                          if (container) {
+                            const directionNames = ['仅买入（Bridge）', '仅卖出（OTC）', '双向（OTC + Bridge）']
+                            const directionColors = ['green', 'red', 'orange']
+                            
+                            container.innerHTML = directionNames.map((name, index) => `
+                              <div style="margin: 8px 0; padding: 8px; border: 1px solid #d9d9d9; border-radius: 4px; cursor: pointer;" 
+                                   onclick="(window).__selectedDirection = ${index}; document.querySelectorAll('.direction-option').forEach(el => el.style.background = ''); this.style.background = '#e6f7ff';"
+                                   class="direction-option ${index === marketMakerInfo.direction ? 'selected' : ''}">
+                                <span style="display: inline-block; padding: 2px 8px; background: ${directionColors[index]}; color: white; border-radius: 4px; margin-right: 8px;">${name}</span>
+                              </div>
+                            `).join('')
+                            
+                            // 设置默认选中
+                            ;(window as any).__selectedDirection = marketMakerInfo.direction
+                          }
+                        }, 100)
+                      }}
+                    >
+                      修改方向
+                    </Button>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+
+              <Tabs defaultActiveKey="bridge">
+                {/* 桥接服务配置 */}
+                <TabPane tab="桥接服务配置" key="bridge">
+                  {bridgeService ? (
+                    <>
+                      {/* 当前桥接服务状态 */}
+                      <Card 
+                        title="当前桥接服务状态" 
+                        size="small" 
+                        style={{ marginBottom: 16 }}
+                      >
+                        <Descriptions column={2} size="small" bordered>
+                          <Descriptions.Item label="服务状态">
+                            {bridgeService.enabled ? (
+                              <Tag color="success" icon={<CheckCircleOutlined />}>已启用</Tag>
+                            ) : (
+                              <Tag color="error" icon={<StopOutlined />}>已禁用</Tag>
+                            )}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="做市商账户">
+                            <Text copyable ellipsis style={{ maxWidth: 300 }}>
+                              {bridgeService.makerAccount}
+                            </Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="TRON 地址">
+                            <Text copyable>{bridgeService.tronAddress}</Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="最大兑换额">
+                            {(bridgeService.maxSwapAmount / 1e6).toFixed(2)} USDT
+                          </Descriptions.Item>
+                          <Descriptions.Item label="手续费率">
+                            {(bridgeService.feeRateBps / 100).toFixed(2)}%
+                          </Descriptions.Item>
+                          <Descriptions.Item label="累计兑换笔数">
+                            {bridgeService.totalSwaps}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="累计交易量">
+                            {(BigInt(bridgeService.totalVolume) / BigInt(1e12)).toString()} MEMO
+                          </Descriptions.Item>
+                          <Descriptions.Item label="成功兑换数">
+                            {bridgeService.successCount}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="平均完成时间">
+                            {bridgeService.avgTimeSeconds} 秒
+                          </Descriptions.Item>
+                          <Descriptions.Item label="押金额度">
+                            {(BigInt(bridgeService.deposit) / BigInt(1e12)).toString()} MEMO
+                          </Descriptions.Item>
+                        </Descriptions>
+
+                        <Space style={{ marginTop: 16 }}>
+                          {bridgeService.enabled ? (
+                            <Button 
+                              danger
+                              onClick={onDisableBridgeService}
+                              loading={loading}
+                              disabled={!api}
+                            >
+                              禁用桥接服务
+                            </Button>
+                          ) : (
+                            <Button 
+                              type="primary"
+                              icon={<CheckCircleOutlined />}
+                              onClick={onReEnableBridgeService}
+                              loading={loading}
+                              disabled={!api}
+                            >
+                              重新启用桥接服务
+                            </Button>
+                          )}
+                        </Space>
+                      </Card>
+
+                      <Divider />
+
+                      {/* 桥接服务配置更新表单 */}
+                      <Form 
+                        form={bridgeForm} 
+                        layout="vertical" 
+                        onFinish={onUpdateBridgeService}
+                      >
+                        <Alert 
+                          type="info" 
+                          showIcon 
+                          style={{ marginBottom: 16 }} 
+                          message="配置更新说明" 
+                          description="只填写需要修改的字段，其他字段留空则保持不变。增加最大兑换额可能需要追加押金。"
+                        />
+
+                        <Form.Item 
+                          label="TRON 地址" 
+                          name="tron_address" 
+                          extra={`当前值：${bridgeService.tronAddress}（留空则不修改）`}
+                        >
+                          <Input 
+                            placeholder="例如：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"
+                            disabled={loading}
+                          />
+                        </Form.Item>
+
+                        <Form.Item 
+                          label="最大兑换额（USDT）" 
+                          name="max_swap_amount" 
+                          rules={[
+                            { type: 'number', min: 0, message: '最大兑换额必须大于 0' }
+                          ]}
+                          extra={`当前值：${(bridgeService.maxSwapAmount / 1e6).toFixed(2)} USDT（留空则不修改）`}
+                        >
+                          <InputNumber 
+                            min={0}
+                            precision={2}
+                            style={{ width: '100%' }}
+                            placeholder="例如：1000.00"
+                            disabled={loading}
+                          />
+                        </Form.Item>
+
+                        <Form.Item 
+                          label="手续费率（bps，万分比）" 
+                          name="fee_rate_bps" 
+                          rules={[
+                            { type: 'number', min: 5, max: 500, message: '手续费率范围：5-500 bps（0.05%-5%）' }
+                          ]}
+                          extra={`当前值：${bridgeService.feeRateBps} bps = ${(bridgeService.feeRateBps / 100).toFixed(2)}%（留空则不修改）`}
+                        >
+                          <InputNumber 
+                            min={5}
+                            max={500}
+                            precision={0}
+                            style={{ width: '100%' }}
+                            placeholder="例如：10（= 0.1%）"
+                            disabled={loading}
+                          />
+                        </Form.Item>
+
+                        <Button 
+                          type="primary" 
+                          htmlType="submit" 
+                          icon={<SaveOutlined />}
+                          loading={loading}
+                          disabled={!api}
+                          block
+                          size="large"
+                        >
+                          {loading ? '正在签名...' : '更新桥接服务配置'}
+                        </Button>
+                      </Form>
+
+                      <Alert 
+                        type="warning" 
+                        showIcon 
+                        style={{ marginTop: 16 }} 
+                        message="安全提示" 
+                        description={
+                          <>
+                            <p>• TRON 地址更换：热钱包升级时可更新</p>
+                            <p>• 最大兑换额：增加额度需要追加押金（押金 = 最大额度 × 100 MEMO）</p>
+                            <p>• 手续费率：调整费率需在 5-500 bps 范围内（0.05%-5%）</p>
+                            <p>• 配置更新后立即生效，请确保配置正确</p>
+                          </>
+                        }
+                      />
+                    </>
+                  ) : (
+                    <Alert 
+                      type="warning" 
+                      showIcon 
+                      message="桥接服务未启用" 
+                      description="您尚未启用桥接服务。请先在做市商申请页面启用桥接服务。"
+                    />
+                  )}
+                </TabPane>
+
+                {/* 业务配置 */}
+                <TabPane tab="业务配置" key="info">
+                  <Form 
+                    form={infoForm} 
+                    layout="vertical" 
+                    onFinish={onUpdateMakerInfo}
+                  >
+                    <Alert 
+                      type="info" 
+                      showIcon 
+                      style={{ marginBottom: 16 }} 
+                      message="配置更新说明" 
+                      description="只填写需要修改的字段，其他字段留空则保持不变。"
+                    />
+
+                    <Form.Item 
+                      label="公开资料 CID" 
+                      name="public_cid" 
+                      extra={`当前值：${marketMakerInfo.publicCid || '未配置'}（留空则不修改）`}
+                    >
+                      <Input 
+                        placeholder="例如：QmXXXXXXXXXXXXXXXXXXXXX"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Form.Item 
+                      label="私密资料 CID" 
+                      name="private_cid" 
+                      extra={`当前值：${marketMakerInfo.privateCid || '未配置'}（留空则不修改）`}
+                    >
+                      <Input 
+                        placeholder="例如：QmYYYYYYYYYYYYYYYYYYYY"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Form.Item 
+                      label="OTC 费率（bps，万分比）" 
+                      name="fee_bps" 
+                      rules={[
+                        { type: 'number', min: 10, max: 1000, message: 'OTC 费率范围：10-1000 bps（0.1%-10%）' }
+                      ]}
+                      extra={`当前值：${marketMakerInfo.feeBps} bps = ${(marketMakerInfo.feeBps / 100).toFixed(2)}%（留空则不修改）`}
+                    >
+                      <InputNumber 
+                        min={10}
+                        max={1000}
+                        precision={0}
+                        style={{ width: '100%' }}
+                        placeholder="例如：30（= 0.3%）"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Divider>🆕 溢价定价配置</Divider>
+                    <Alert 
+                      type="info" 
+                      showIcon 
+                      style={{ marginBottom: 16 }}
+                      message="溢价定价机制说明"
+                      description={
+                        <div style={{ fontSize: '12px' }}>
+                          <p style={{ margin: '4px 0' }}><strong>基准价</strong>：由pallet-pricing提供的市场加权均价</p>
+                          <p style={{ margin: '4px 0' }}><strong>Buy溢价（Bridge）</strong>：做市商购买MEMO的溢价，通常为负数（低于基准价）</p>
+                          <p style={{ margin: '4px 0' }}><strong>Sell溢价（OTC）</strong>：做市商出售MEMO的溢价，通常为正数（高于基准价）</p>
+                          <p style={{ margin: '4px 0', fontStyle: 'italic' }}>示例：基准价0.01 USDT，Buy溢价-200 bps (-2%) → 买价0.0098 USDT</p>
+                        </div>
+                      }
+                    />
+
+                    <Form.Item 
+                      label="Buy溢价（Bridge，bps）" 
+                      name="buy_premium_bps" 
+                      rules={[
+                        { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                      ]}
+                      extra={`当前值：${marketMakerInfo.buyPremiumBps} bps = ${(marketMakerInfo.buyPremiumBps / 100).toFixed(2)}%（留空则不修改）`}
+                    >
+                      <InputNumber 
+                        min={-500}
+                        max={500}
+                        step={10}
+                        precision={0}
+                        style={{ width: '100%' }}
+                        placeholder="例如：-200（-2%折价买入）"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Form.Item 
+                      label="Sell溢价（OTC，bps）" 
+                      name="sell_premium_bps" 
+                      rules={[
+                        { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                      ]}
+                      extra={`当前值：${marketMakerInfo.sellPremiumBps} bps = ${(marketMakerInfo.sellPremiumBps / 100).toFixed(2)}%（留空则不修改）`}
+                    >
+                      <InputNumber 
+                        min={-500}
+                        max={500}
+                        step={10}
+                        precision={0}
+                        style={{ width: '100%' }}
+                        placeholder="例如：+200（+2%溢价卖出）"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Form.Item 
+                      label="TRON地址" 
+                      name="tron_address" 
+                      rules={[
+                        { 
+                          validator: (_, value) => {
+                            if (!value || value.trim() === '') {
+                              return Promise.resolve() // 留空表示不修改
+                            }
+                            if (value.trim().length !== 34) {
+                              return Promise.reject(new Error('TRON地址必须为34字符'))
+                            }
+                            if (!value.trim().startsWith('T')) {
+                              return Promise.reject(new Error('TRON主网地址必须以T开头'))
+                            }
+                            const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{34}$/
+                            if (!base58Regex.test(value.trim())) {
+                              return Promise.reject(new Error('TRON地址包含非法字符（Base58编码）'))
+                            }
+                            return Promise.resolve()
+                          }
+                        }
+                      ]}
+                      extra={`当前值：${marketMakerInfo.tronAddress || '未设置'}（OTC收款 + Bridge发款，留空则不修改）`}
+                    >
+                      <Input 
+                        placeholder="例如：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"
+                        disabled={loading}
+                        maxLength={34}
+                        style={{ fontFamily: 'monospace' }}
+                      />
+                    </Form.Item>
+
+                    <Form.Item 
+                      label="最小下单额（MEMO）" 
+                      name="min_amount" 
+                      rules={[
+                        { type: 'number', min: 0, message: '最小下单额必须大于 0' }
+                      ]}
+                      extra={`当前值：${(BigInt(marketMakerInfo.minAmount) / BigInt(1e12)).toString()} MEMO（留空则不修改）`}
+                    >
+                      <InputNumber 
+                        min={0}
+                        precision={2}
+                        style={{ width: '100%' }}
+                        placeholder="例如：100.00"
+                        disabled={loading}
+                      />
+                    </Form.Item>
+
+                    <Button 
+                      type="primary" 
+                      htmlType="submit" 
+                      icon={<SaveOutlined />}
+                      loading={loading}
+                      disabled={!api}
+                      block
+                      size="large"
+                    >
+                      {loading ? '正在签名...' : '更新业务配置'}
+                    </Button>
+                  </Form>
+
+                  <Alert 
+                    type="warning" 
+                    showIcon 
+                    style={{ marginTop: 16 }} 
+                    message="安全提示" 
+                    description={
+                      <>
+                        <p>• 公开资料 CID：用于展示给用户的服务条款、介绍等</p>
+                        <p>• 私密资料 CID：用于治理审核的敏感信息</p>
+                        <p>• OTC 费率：调整费率需在 10-1000 bps 范围内（0.1%-10%）</p>
+                        <p>• Buy溢价：做市商购买MEMO的溢价，通常设为负值（折价买入，-500 ~ 500 bps）</p>
+                        <p>• Sell溢价：做市商出售MEMO的溢价，通常设为正值（溢价卖出，-500 ~ 500 bps）</p>
+                        <p>• 最小下单额：设置用户最小下单金额，用于业务策略调整</p>
+                        <p>• 配置更新后立即生效，请确保配置正确</p>
+                      </>
+                    }
+                  />
+                </TabPane>
+              </Tabs>
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  )
+}
+

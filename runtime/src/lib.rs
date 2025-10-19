@@ -265,8 +265,8 @@ pub mod runtime {
     #[runtime::pallet_index(8)]
     pub type Forwarder = pallet_forwarder;
 
-    #[runtime::pallet_index(9)]
-    pub type OtcMaker = pallet_otc_maker;
+    // 函数级中文注释：移除 pallet_otc_maker (index 9)
+    // - 功能已被 pallet-market-maker 完全替代，避免冗余
 
     #[runtime::pallet_index(10)]
     pub type OtcListing = pallet_otc_listing;
@@ -366,9 +366,6 @@ pub mod runtime {
     #[runtime::pallet_index(41)]
     pub type ContentGovernance = pallet_memo_content_governance;
 
-    #[runtime::pallet_index(42)]
-    pub type MemoBridge = pallet_memo_bridge;
-
     #[runtime::pallet_index(43)]
     pub type Pricing = pallet_pricing;
 
@@ -383,4 +380,12 @@ pub mod runtime {
     /// - 与国库账户、推荐账户完全隔离，资金用途明确
     #[runtime::pallet_index(46)]
     pub type StorageTreasury = pallet_storage_treasury;
+
+    /// 函数级中文注释：极简桥接模块（托管式 MEMO ↔ USDT TRC20）
+    /// - MVP 设计：只支持 MEMO → USDT 方向
+    /// - 固定汇率：0.5 USDT/MEMO（桥接服务端配置）
+    /// - 最小兑换：100 MEMO
+    /// - 托管模式：MEMO 锁定在桥接账户，服务发送 USDT
+    #[runtime::pallet_index(47)]
+    pub type SimpleBridge = pallet_simple_bridge;
 }

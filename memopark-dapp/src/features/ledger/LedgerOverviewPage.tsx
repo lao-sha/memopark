@@ -1,15 +1,14 @@
 import React from 'react'
 import { Alert, Card, Statistic, Row, Col, Typography, Tag } from 'antd'
-import { query } from '../../lib/graphql'
 import { ApiPromise } from '@polkadot/api'
 import { getApi } from '../../lib/polkadot'
 
 /**
- * 函数级详细中文注释：台账概览（链上最小统计 + 周活跃判定 + Subsquid 明细）
+ * 函数级详细中文注释：台账概览（链上最小统计 + 周活跃判定）
  * 前端操作方法：
  * - 输入墓位ID，自动读取链上累计次数/金额（通过 runtime storage 或 view 函数）
  * - 周活跃：调用 runtime `pallet-ledger::isCurrentWeekActive`（需要 runtime api 或链上辅助 view）
- * - 最近明细：通过 Subsquid 拉取 offerings 时间线
+ * - 全局链上直连模式，移除 Subsquid 依赖
  */
 const LedgerOverviewPage: React.FC = () => {
   const [graveId, setGraveId] = React.useState<string>('1')
@@ -18,6 +17,9 @@ const LedgerOverviewPage: React.FC = () => {
   const [active, setActive] = React.useState<boolean>(false)
   const [items, setItems] = React.useState<any[]>([])
 
+  /**
+   * 函数级中文注释：从链上加载台账数据
+   */
   const loadOnchain = React.useCallback(async () => {
     const api: ApiPromise = await getApi()
     // 读取 storage：TotalsByGrave / TotalMemoByGrave
@@ -32,9 +34,12 @@ const LedgerOverviewPage: React.FC = () => {
     setActive(false)
   }, [graveId])
 
+  /**
+   * 函数级中文注释：全局链上直连模式，暂时禁用 Subsquid 查询
+   */
   const loadSquid = React.useCallback(async () => {
-    const data = await query<{ offerings: any[] }>(`query Q($gid:BigInt!){ offerings(where:{domain_eq:1,targetId_eq:$gid}, orderBy:block_DESC, limit:20){ who kindCode amount block } }`, { gid: graveId })
-    setItems(data.offerings)
+    // 暂时禁用 Subsquid 查询
+    setItems([])
   }, [graveId])
 
   React.useEffect(()=>{ loadOnchain(); loadSquid() }, [loadOnchain, loadSquid])

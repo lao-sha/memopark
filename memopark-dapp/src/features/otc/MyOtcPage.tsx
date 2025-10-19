@@ -1,13 +1,13 @@
 import React from 'react'
 import { Alert, Tabs, List, Skeleton, Button, Tag, Typography, message } from 'antd'
-import { query } from '../../lib/graphql'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
- * 函数级详细中文注释：我的OTC（Subsquid + 链上操作）
+ * 函数级详细中文注释：我的OTC（全局链上直连）
  * 前端操作方法：
  * - 进入页面自动按 `owner` 过滤（从钱包地址或输入框获取，示例简化为本地状态）
- * - 取消挂单/标记已付：点击按钮后走 @polkadot/api 直发（示例留空，接前文 polkadot.ts）
+ * - 取消挂单/标记已付：点击按钮后走 @polkadot/api 直发
+ * - 全局链上直连模式，移除 Subsquid 依赖
  */
 const MyOtcPage: React.FC = () => {
   const [addr, setAddr] = React.useState<string>('')
@@ -15,17 +15,16 @@ const MyOtcPage: React.FC = () => {
   const [items, setItems] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(false)
 
+  /**
+   * 函数级中文注释：全局链上直连模式，暂时禁用 Subsquid 查询
+   */
   const load = React.useCallback(async () => {
     if (!addr) return
     setLoading(true)
     try {
-      if (tab === 'listings') {
-        const data = await query<{ listings: any[] }>(`query Q($maker:String!){ listings(where:{maker_eq:$maker}, orderBy: createdAt_DESC, limit: 50){ id base quote price total remaining partial expireAt active } }`, { maker: addr })
-        setItems(data.listings)
-      } else {
-        const data = await query<{ orders: any[] }>(`query Q($taker:String!){ orders(where:{taker_eq:$taker}, orderBy: createdAt_DESC, limit: 50){ id listingId price qty amount state createdAt expireAt } }`, { taker: addr })
-        setItems(data.orders)
-      }
+      // 暂时禁用 Subsquid 查询
+      setItems([])
+      message.info('当前采用全局链上直连模式，功能暂时禁用')
     } finally { setLoading(false) }
   }, [addr, tab])
 

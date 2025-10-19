@@ -5429,7 +5429,6 @@ dependencies = [
  "pallet-ledger",
  "pallet-market-maker",
  "pallet-membership",
- "pallet-memo-bridge",
  "pallet-memo-content-governance",
  "pallet-memo-grave",
  "pallet-memo-ipfs",
@@ -5441,9 +5440,9 @@ dependencies = [
  "pallet-origin-restriction",
  "pallet-otc-claim",
  "pallet-otc-listing",
- "pallet-otc-maker",
  "pallet-otc-order",
  "pallet-pricing",
+ "pallet-simple-bridge",
  "pallet-storage-treasury",
  "pallet-sudo",
  "pallet-template",
@@ -6383,6 +6382,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
  "sp-arithmetic",
@@ -6404,20 +6404,6 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-memo-bridge"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-balances",
- "pallet-pricing",
- "parity-scale-codec",
- "scale-info",
  "sp-runtime",
  "sp-std",
 ]
@@ -6611,12 +6597,16 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-affiliate-config",
  "pallet-arbitration",
  "pallet-balances",
  "pallet-escrow",
  "pallet-evidence",
+ "pallet-market-maker",
+ "pallet-memo-referrals",
  "pallet-otc-listing",
  "pallet-pricing",
+ "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6656,6 +6646,24 @@ dependencies = [
  "sp-staking",
  "sp-state-machine",
  "sp-trie",
+]
+
+[[package]]
+name = "pallet-simple-bridge"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-market-maker",
+ "pallet-pricing",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

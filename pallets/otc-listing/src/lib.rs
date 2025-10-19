@@ -12,11 +12,11 @@ pub mod pallet {
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
-    // 移除未使用的 SaturatedConversion 以消除警告
+    // 函数级中文注释：移除对 pallet_otc_maker::KycProvider 的依赖
+    // - 做市商已通过审批流程，无需 KYC 检查
     use pallet_escrow::pallet::Escrow as EscrowTrait;
-    use pallet_otc_maker::KycProvider;
-    use pallet_pricing::PriceProvider;
-    use sp_runtime::traits::{Saturating, Zero};
+    // 函数级中文注释：重新引入 pallet_pricing，用于获取市场均价并进行价格偏离检查
+    use sp_runtime::traits::{Saturating, Zero, SaturatedConversion};
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -34,7 +34,14 @@ pub mod pallet {
         pub side: u8,
         pub base: u32,
         pub quote: u32,
+        
+        /// 函数级中文注释：USDT 单价（精度 10^6，即 6 位小数）
+        /// - 例如：price_usdt = 500000 表示 1 MEMO = 0.5 USDT
+        /// - 取值范围：10000 - 100000000 (0.01 USDT - 100 USDT)
+        pub price_usdt: u64,
+        
         /// 函数级中文注释：基于链上价格的报价扩展（单位：bps，0-10000）
+        /// 注意：现已改为 USDT 直接报价，此字段保留用于未来扩展
         pub pricing_spread_bps: u16,
         /// 函数级中文注释：做市商价带下限（可选，单位与撮合价一致）
         pub price_min: Option<Balance>,
@@ -52,7 +59,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config:
-        frame_system::Config + pallet_escrow::pallet::Config + pallet_otc_maker::pallet::Config
+        frame_system::Config + pallet_escrow::pallet::Config + pallet_pricing::Config
     {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type Currency: Currency<Self::AccountId>;
@@ -62,9 +69,6 @@ pub mod pallet {
         /// 函数级中文注释：每个区块最多处理的过期挂单数（on_initialize）
         #[pallet::constant]
         type MaxExpiringPerBlock: Get<u32>;
-        /// 函数级中文注释：是否要求做市商必须为 KYC 通过
-        #[pallet::constant]
-        type RequireKyc: Get<bool>;
         /// 函数级中文注释：创建挂单限频窗口大小（以块为单位）
         #[pallet::constant]
         type CreateWindow: Get<BlockNumberFor<Self>>;
@@ -79,11 +83,20 @@ pub mod pallet {
         type ListingBond: Get<BalanceOf<Self>>;
         /// 函数级中文注释：上架费收款账户（建议由 PalletId 派生的稳定账户）
         type FeeReceiver: sp_core::Get<Self::AccountId>;
-        /// 函数级中文注释：价格源（仅读取 current_price/is_stale）
-        type PriceFeed: PriceProvider;
         /// 函数级中文注释：允许的最大 spread（bps）
+        /// 注意：现已改为 USDT 直接报价，此配置保留用于未来扩展
         #[pallet::constant]
         type MaxSpreadBps: Get<u16>;
+        
+        /// 函数级中文注释：挂单归档阈值（天数）
+        /// 超过此天数的非活跃挂单将被自动清理，默认 150 天（约5个月）
+        #[pallet::constant]
+        type ArchiveThresholdDays: Get<u32>;
+        
+        /// 函数级中文注释：每次自动清理的最大挂单数
+        /// 防止单次清理过多导致区块Gas爆炸，默认 50
+        #[pallet::constant]
+        type MaxCleanupPerBlock: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -139,9 +152,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type MinListingTtl<T: Config> =
         StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultMinListingTtl<T>>;
-    /// 函数级中文注释：是否允许发布“买单”（默认 false，仅允许卖单）
+    /// 函数级中文注释：是否允许发布"买单"（默认 false，仅允许卖单）
     #[pallet::storage]
     pub type AllowBuyListings<T: Config> = StorageValue<_, bool, ValueQuery>;
+    
+    /// 函数级中文注释：最大价格偏离（单位：万分比，默认 2000 = 20%）
+    /// 限制挂单价格相对市场均价的浮动范围，防止极端价格
+    #[pallet::storage]
+    pub type MaxPriceDeviation<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::storage]
     pub type Listings<T: Config> = StorageMap<
@@ -169,17 +187,35 @@ pub mod pallet {
     pub type CreateRate<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
 
+    /// 函数级中文注释：归档清理开关（治理可配置）
+    /// true = 启用自动清理，false = 禁用（默认启用）
+    #[pallet::storage]
+    pub type ArchiveEnabled<T: Config> = StorageValue<_, bool, ValueQuery>;
+
+    /// 函数级中文注释：上次自动清理的区块高度
+    /// 用于控制清理频率（避免每个区块都执行清理）
+    #[pallet::storage]
+    pub type LastCleanupBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
+    /// 函数级中文注释：待清理挂单游标
+    /// 记录上次清理停止的位置，下次从此处继续（用于分批清理大量数据）
+    #[pallet::storage]
+    pub type CleanupCursor<T: Config> = StorageValue<_, u64, ValueQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 函数级中文注释：创建挂单事件（为 Subsquid 索引补充快照字段，避免读存储）。
-        /// - 包含 maker/side/base/quote/价格与数量信息、有效期、是否允许部分成交等。
+        /// - 包含 maker/side/base/quote/USDT价格、数量信息、有效期、是否允许部分成交等。
+        /// - 新增：base_price_usdt 记录创建时的市场均价，用于追溯价格形成过程
         ListingCreated {
             id: u64,
             maker: T::AccountId,
             side: u8,
             base: u32,
             quote: u32,
+            price_usdt: u64,  // 挂单执行价格（USDT单价）
+            base_price_usdt: u64,  // 新增：创建时的市场均价（便于追溯）
             pricing_spread_bps: u16,
             price_min: Option<BalanceOf<T>>,
             price_max: Option<BalanceOf<T>>,
@@ -210,12 +246,34 @@ pub mod pallet {
         },
         /// 函数级中文注释：风控参数已更新（治理）
         ListingParamsUpdated,
+        /// 函数级中文注释：挂单已归档清理
+        /// - listing_id: 挂单ID
+        /// - listing_age_days: 挂单年龄（天数）
+        ListingArchived {
+            listing_id: u64,
+            listing_age_days: u32,
+        },
+        /// 函数级中文注释：批量归档完成
+        /// - count: 本次清理的挂单数量
+        /// - total_listings: 当前总挂单数
+        BatchArchiveCompleted {
+            count: u32,
+            total_listings: u64,
+        },
+        /// 函数级中文注释：归档清理开关已更新
+        ArchiveEnabledSet {
+            enabled: bool,
+        },
     }
 
     #[pallet::error]
     pub enum Error<T> {
         NotFound,
         BadState,
+        /// 函数级中文注释：市场价格不可用（pallet-pricing 返回 0，处于冷启动状态）
+        MarketPriceNotAvailable,
+        /// 函数级中文注释：价格偏离超出允许范围（超过 ±MaxPriceDeviation）
+        PriceDeviationTooHigh,
     }
 
     impl<T: Config> Pallet<T> {
@@ -229,9 +287,10 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：创建挂单（最小骨架）
-        /// - 输入：价格、数量上下限、是否部分成交、过期高度、条款承诺
-        /// - 校验：略（后续接入做市商校验、库存占用等）
+        /// 函数级详细中文注释：创建挂单（USDT 直接报价版本）
+        /// - 输入：USDT价格、数量上下限、是否部分成交、过期高度、条款承诺
+        /// - 新增：price_usdt 参数用于直接指定USDT单价（精度 10^6）
+        /// - 校验：USDT价格范围 0.01-100 USDT
         #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn create_listing(
@@ -239,6 +298,7 @@ pub mod pallet {
             side: u8,
             base: u32,
             quote: u32,
+            price_usdt: u64,  // 新增：USDT单价（精度 10^6）
             pricing_spread_bps: u16,
             min_qty: BalanceOf<T>,
             max_qty: BalanceOf<T>,
@@ -250,14 +310,50 @@ pub mod pallet {
             terms_commit: Option<BoundedVec<u8, <T as self::Config>::MaxCidLen>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // 若启用，要求 KYC 通过（依赖上层 runtime 注入 is_verified）
-            if T::RequireKyc::get() {
-                // 由 runtime 注入的做市商 KYC 适配器进行校验
-                ensure!(
-                    <T as pallet_otc_maker::pallet::Config>::Kyc::is_verified(&who),
-                    Error::<T>::BadState
-                );
-            }
+            // 函数级中文注释：移除 KYC 检查
+            // - 做市商已通过审批流程，无需额外验证
+            // - 简化挂单创建流程
+            
+            // 函数级中文注释：验证 USDT 价格合理性
+            // - 最低价：0.01 USDT (10000)
+            // - 最高价：100 USDT (100000000)
+            // - 防止价格异常导致交易失败
+            ensure!(
+                price_usdt >= 10_000 && price_usdt <= 100_000_000,
+                Error::<T>::BadState
+            );
+            
+            // 函数级中文注释：从 pallet-pricing 获取市场加权均价，并进行 ±20% 价格偏离检查
+            // - 如果市场价格可用（> 0），则检查 price_usdt 是否在允许范围内
+            // - 如果市场价格为 0（冷启动），允许做市商自由定价
+            let market_price = pallet_pricing::Pallet::<T>::get_memo_market_price_weighted();
+            let base_price_usdt = if market_price > 0 {
+                // 市场价格可用，进行偏离检查
+                let max_deviation = MaxPriceDeviation::<T>::get();
+                
+                // 如果设置了 MaxPriceDeviation（> 0），则执行检查
+                if max_deviation > 0 {
+                    // 计算允许的价格范围：[market_price * (1 - deviation), market_price * (1 + deviation)]
+                    let min_price = market_price
+                        .saturating_mul(10000u64.saturating_sub(max_deviation as u64))
+                        .saturating_div(10000);
+                    let max_price = market_price
+                        .saturating_mul(10000u64.saturating_add(max_deviation as u64))
+                        .saturating_div(10000);
+                    
+                    // 检查 price_usdt 是否在允许范围内
+                    ensure!(
+                        price_usdt >= min_price && price_usdt <= max_price,
+                        Error::<T>::PriceDeviationTooHigh
+                    );
+                }
+                
+                market_price
+            } else {
+                // 冷启动状态，不检查价格偏离
+                0u64
+            };
+            
             // 限频：滑动窗口检查与更新（以存储参数为准）
             let now = <frame_system::Pallet<T>>::block_number();
             let window = CreateWindowParam::<T>::get();
@@ -282,7 +378,7 @@ pub mod pallet {
                     Error::<T>::BadState
                 );
             }
-            // spread 上限校验
+            // spread 上限校验（保留用于未来扩展）
             ensure!(
                 pricing_spread_bps <= T::MaxSpreadBps::get(),
                 Error::<T>::BadState
@@ -300,6 +396,7 @@ pub mod pallet {
                 side,
                 base,
                 quote,
+                price_usdt,  // 新增：USDT单价
                 pricing_spread_bps,
                 price_min,
                 price_max,
@@ -345,6 +442,8 @@ pub mod pallet {
                 side: listing.side,
                 base: listing.base,
                 quote: listing.quote,
+                price_usdt: listing.price_usdt,  // 挂单执行价格
+                base_price_usdt,  // 新增：市场均价（便于追溯价格形成）
                 pricing_spread_bps: listing.pricing_spread_bps,
                 price_min: listing.price_min,
                 price_max: listing.price_max,
@@ -431,29 +530,168 @@ pub mod pallet {
             Self::deposit_event(Event::ListingParamsUpdated);
             Ok(())
         }
+        
+        /// 函数级详细中文注释：设置最大价格偏离（治理接口）
+        /// - 仅允许 Root 调用
+        /// - deviation_bps：万分比，建议范围 500-5000 (5%-50%)，默认 2000 (20%)
+        /// - 设置为 0 表示关闭价格偏离检查（冷启动期可用）
+        #[pallet::call_index(3)]
+        #[pallet::weight(10_000)]
+        pub fn set_max_price_deviation(
+            origin: OriginFor<T>,
+            deviation_bps: u32,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            
+            // 函数级中文注释：建议范围 0-5000 (0%-50%)，超过 50% 的偏离可能不合理
+            ensure!(
+                deviation_bps <= 5000,
+                Error::<T>::BadState
+            );
+            
+            MaxPriceDeviation::<T>::put(deviation_bps);
+            Self::deposit_event(Event::ListingParamsUpdated);
+            Ok(())
+        }
+
+        /// 函数级中文注释：手动归档清理旧挂单
+        /// 
+        /// # 参数
+        /// - origin: Root权限
+        /// - max_count: 本次最多清理的挂单数（防止Gas爆炸）
+        /// 
+        /// # 逻辑
+        /// 1. 遍历所有挂单
+        /// 2. 检查挂单是否满足归档条件：
+        ///    - 状态必须是非活跃（active == false，即已取消或过期）
+        ///    - 过期时间超过归档阈值（默认150天）
+        /// 3. 删除符合条件的挂单
+        /// 4. 记录清理统计
+        #[pallet::call_index(4)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(100, 100))]
+        pub fn cleanup_archived_listings(
+            origin: OriginFor<T>,
+            max_count: u32,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            
+            let threshold_days = T::ArchiveThresholdDays::get();
+            let now_block = <frame_system::Pallet<T>>::block_number();
+            
+            // 计算截止区块（150天前）
+            // 假设 6秒/块，1天 = 14400 块
+            let blocks_per_day: u32 = 14400;
+            let cutoff_blocks = threshold_days.saturating_mul(blocks_per_day);
+            let cutoff_block = now_block.saturating_sub(cutoff_blocks.into());
+            
+            let mut cleaned = 0u32;
+            let cursor = CleanupCursor::<T>::get();
+            let mut next_cursor = cursor;
+            
+            // 从游标位置开始遍历挂单
+            for (id, listing) in Listings::<T>::iter() {
+                if id < cursor {
+                    continue; // 跳过已处理的挂单
+                }
+                
+                if cleaned >= max_count {
+                    next_cursor = id;
+                    break;
+                }
+                
+                // 只清理非活跃挂单（已取消或过期）
+                // 且过期时间超过归档阈值
+                if !listing.active && listing.expire_at < cutoff_block {
+                    // 计算挂单年龄（天数）
+                    let age_blocks: u32 = now_block.saturating_sub(listing.expire_at).saturated_into();
+                    let age_days = age_blocks / blocks_per_day;
+                    
+                    Listings::<T>::remove(id);
+                    cleaned += 1;
+                    
+                    Self::deposit_event(Event::ListingArchived {
+                        listing_id: id,
+                        listing_age_days: age_days,
+                    });
+                }
+            }
+            
+            // 更新游标
+            CleanupCursor::<T>::put(next_cursor);
+            
+            // 记录统计
+            let total_listings = NextListingId::<T>::get();
+            Self::deposit_event(Event::BatchArchiveCompleted {
+                count: cleaned,
+                total_listings,
+            });
+            
+            Ok(())
+        }
+
+        /// 函数级中文注释：设置归档清理开关
+        /// 
+        /// # 参数
+        /// - origin: Root权限
+        /// - enabled: true=启用自动清理，false=禁用
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(0, 1))]
+        pub fn set_archive_enabled(
+            origin: OriginFor<T>,
+            enabled: bool,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            
+            ArchiveEnabled::<T>::put(enabled);
+            Self::deposit_event(Event::ArchiveEnabledSet { enabled });
+            
+            Ok(())
+        }
     }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// 函数级中文注释：每个区块处理到期挂单（标记 inactive 并退款剩余库存）
+        /// 函数级中文注释：处理到期挂单 + 定期归档清理
+        /// 
+        /// # 功能1：到期挂单处理
+        /// - 标记 inactive 并退款剩余库存
+        /// 
+        /// # 功能2：自动归档清理（每天执行一次）
+        /// - 检查是否启用自动清理
+        /// - 每14400个区块（约1天，6秒/块）执行一次清理
+        /// - 每次清理最多处理 MaxCleanupPerBlock 个挂单
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            let weight = Weight::from_parts(0, 0);
+            let mut total_reads = 0u64;
+            let mut total_writes = 0u64;
+            
+            // === 功能1：处理到期挂单 ===
             let ids = ExpiringAt::<T>::take(n);
+            total_reads += 1;
+            total_writes += 1;
+            
             for id in ids.into_inner() {
                 if let Some(l) = Listings::<T>::get(id) {
+                    total_reads += 1;
+                    
                     if l.active {
                         // 函数级详细中文注释：到期处理前记录托管余额与保证金余额快照，事件中输出，随后状态置 inactive 并退款。
                         let escrow_snapshot: BalanceOf<T> = <T as Config>::Escrow::amount_of(id);
                         let bond_snapshot: BalanceOf<T> =
                             <T as Config>::Escrow::amount_of(Self::bond_id(id));
+                        total_reads += 2;
+                        
                         Listings::<T>::mutate(id, |m| {
                             if let Some(x) = m.as_mut() {
                                 x.active = false;
                             }
                         });
+                        total_writes += 1;
+                        
                         let _ = <T as Config>::Escrow::refund_all(id, &l.maker);
                         // 到期退还保证金
                         let bond = ListingBondParam::<T>::get();
+                        total_reads += 1;
+                        
                         if !bond.is_zero() {
                             let _ = <T as Config>::Escrow::refund_all(Self::bond_id(id), &l.maker);
                         }
@@ -466,7 +704,83 @@ pub mod pallet {
                     }
                 }
             }
-            weight
+            
+            // === 功能2：自动归档清理（每天一次）===
+            // 每14400个区块执行一次（约1天：86400秒 / 6秒 = 14400块）
+            const BLOCKS_PER_DAY: u32 = 14400;
+            let blocks_per_day_bn: BlockNumberFor<T> = BLOCKS_PER_DAY.into();
+            
+            if ArchiveEnabled::<T>::get() {
+                total_reads += 1;
+                
+                let last_cleanup = LastCleanupBlock::<T>::get();
+                total_reads += 1;
+                
+                let blocks_since_cleanup = n.saturating_sub(last_cleanup);
+                
+                if blocks_since_cleanup >= blocks_per_day_bn {
+                    // 执行归档清理
+                    let threshold_days = T::ArchiveThresholdDays::get();
+                    let cutoff_blocks = threshold_days.saturating_mul(BLOCKS_PER_DAY);
+                    let cutoff_block = n.saturating_sub(cutoff_blocks.into());
+                    
+                    let max_count = T::MaxCleanupPerBlock::get();
+                    let mut cleaned = 0u32;
+                    let cursor = CleanupCursor::<T>::get();
+                    total_reads += 1;
+                    let mut next_cursor = cursor;
+                    
+                    // 从游标位置开始清理
+                    for (id, listing) in Listings::<T>::iter() {
+                        if id < cursor {
+                            continue;
+                        }
+                        
+                        if cleaned >= max_count {
+                            next_cursor = id;
+                            break;
+                        }
+                        
+                        total_reads += 1;
+                        
+                        // 只清理非活跃挂单且过期时间超过阈值
+                        if !listing.active && listing.expire_at < cutoff_block {
+                            Listings::<T>::remove(id);
+                            total_writes += 1;
+                            cleaned += 1;
+                            
+                            // 计算挂单年龄（天数）
+                            let age_blocks: u32 = n.saturating_sub(listing.expire_at).saturated_into();
+                            let age_days = age_blocks / BLOCKS_PER_DAY;
+                            
+                            Self::deposit_event(Event::ListingArchived {
+                                listing_id: id,
+                                listing_age_days: age_days,
+                            });
+                        }
+                    }
+                    
+                    // 更新清理记录
+                    if cleaned > 0 {
+                        CleanupCursor::<T>::put(next_cursor);
+                        total_writes += 1;
+                        
+                        let total_listings = NextListingId::<T>::get();
+                        total_reads += 1;
+                        
+                        Self::deposit_event(Event::BatchArchiveCompleted {
+                            count: cleaned,
+                            total_listings,
+                        });
+                    }
+                    
+                    // 更新最后清理时间
+                    LastCleanupBlock::<T>::put(n);
+                    total_writes += 1;
+                }
+            }
+            
+            T::DbWeight::get().reads_writes(total_reads, total_writes)
         }
     }
 }

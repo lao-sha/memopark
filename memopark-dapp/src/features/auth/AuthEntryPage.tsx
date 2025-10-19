@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Tabs } from 'antd'
 import WalletWelcomePage from './WalletWelcomePage'
-import LoginPage from './LoginPage'
 import CreateWalletPage from './CreateWalletPage'
 import RestoreWalletPage from './RestoreWalletPage'
 import HomePage from '../home/HomePage'
-import ProfilePage from '../profile/ProfilePage'
 import MyWalletPage from '../profile/MyWalletPage'
 import WalletManagePage from '../wallet/WalletManagePage'
 import { sessionManager } from '../../lib/sessionManager'
@@ -49,7 +47,7 @@ const AuthEntryPage: React.FC = () => {
       <Tabs
         activeKey={active}
         onChange={setActive}
-        destroyInactiveTabPane={true}
+        destroyOnHidden={true}
         items={[
           { 
             key: 'welcome', 
@@ -60,7 +58,6 @@ const AuthEntryPage: React.FC = () => {
             /> 
           },
           { key: 'restore', label: '恢复钱包', children: <RestoreWalletPage onSuccess={() => setActive('home')} onBack={() => setActive('welcome')} /> },
-          { key: 'login', label: '登录(旧)', children: <LoginPage onSuccess={() => setActive('home')} onNavigateCreate={() => setActive('create')} /> },
           { key: 'create', label: '创建钱包', children: <CreateWalletPage onCreated={() => setActive('wallet-manage')} /> },
           { key: 'transfer', label: '转账', children: <TransferPage /> },
           { key: 'create-grave', label: '创建墓地', children: <CreateGraveForm /> },
@@ -72,7 +69,6 @@ const AuthEntryPage: React.FC = () => {
           { key: 'deceased-create', label: '创建逝者', children: <CreateDeceasedForm /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },
           { key: 'home', label: '主页', children: <HomePage onLogout={() => setActive('welcome')} /> },
-          { key: 'profile', label: '个人中心(旧)', children: <ProfilePage /> },
           { key: 'my-wallet', label: '我的钱包', children: <MyWalletPage /> },
           { key: 'wallet-manage', label: '钱包管理', children: <WalletManagePage /> }
         ]}

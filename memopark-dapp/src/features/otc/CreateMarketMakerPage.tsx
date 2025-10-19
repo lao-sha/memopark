@@ -1,8 +1,8 @@
 import React from 'react'
-import { Card, Steps, Form, Input, InputNumber, Button, Space, Typography, Alert, Divider, message, Collapse, Tag, Modal, Descriptions, Spin } from 'antd'
-import { InfoCircleOutlined, CheckCircleOutlined, WarningOutlined, CopyOutlined, ArrowLeftOutlined, UnlockOutlined } from '@ant-design/icons'
+import { Card, Steps, Form, Input, InputNumber, Button, Space, Typography, Alert, Divider, message, Collapse, Tag, Modal, Descriptions, Spin, Radio } from 'antd'
+import { InfoCircleOutlined, CheckCircleOutlined, WarningOutlined, CopyOutlined, ArrowLeftOutlined, UnlockOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
-import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { signAndSendLocalFromKeystore, queryFreeBalance } from '../../lib/polkadot-safe'
 import { ApiPromise } from '@polkadot/api'
 import FileEncryptUpload from '../../components/FileEncryptUpload'
 
@@ -61,36 +61,123 @@ export default function CreateMarketMakerPage() {
   const [loadingConfig, setLoadingConfig] = React.useState<boolean>(false)
 
   /**
-   * 函数级详细中文注释：从 localStorage 恢复申请状态
-   * - 用于页面刷新后恢复进度
+   * 函数级详细中文注释：自动验证缓存有效性
+   * - 页面加载时从链上查询真实数据
+   * - 对比 localStorage 缓存，如果不一致则自动清除缓存
+   * - 如果链上无数据但缓存有数据，也自动清除缓存
+   * - 避免用户使用过期或错误的缓存数据
    */
   React.useEffect(() => {
-    const savedMmId = localStorage.getItem('mm_apply_id')
-    const savedDeadline = localStorage.getItem('mm_apply_deadline')
-    const savedStep = localStorage.getItem('mm_apply_step')
-    
-    if (savedMmId && savedDeadline && savedStep) {
-      const id = parseInt(savedMmId, 10)
-      const deadline = parseInt(savedDeadline, 10)
-      const step = parseInt(savedStep, 10)
-      
-      console.log('[恢复] mmId:', id, 'deadline:', deadline, 'step:', step)
-      
-      // 检查是否过期（超过 25 小时清除）
-      const now = Math.floor(Date.now() / 1000)
-      if (deadline > now) {
-        setMmId(id)
-        setDeadlineSec(deadline)
-        setCurrent(step)
-        message.info('已恢复上次申请进度')
-      } else {
-        // 清除过期数据
-        localStorage.removeItem('mm_apply_id')
-        localStorage.removeItem('mm_apply_deadline')
-        localStorage.removeItem('mm_apply_step')
+    if (!api) return
+
+    const autoValidateCache = async () => {
+      const currentAddress = localStorage.getItem('mp.current')
+      if (!currentAddress) {
+        console.log('⚠️ [自动验证] 未找到当前账户地址')
+        return
+      }
+
+      // 从 localStorage 读取缓存
+      const savedMmId = localStorage.getItem('mm_apply_id')
+      const savedDeadline = localStorage.getItem('mm_apply_deadline')
+      const savedStep = localStorage.getItem('mm_apply_step')
+
+      console.group('🔍 [自动验证缓存]')
+      console.log('缓存 mmId:', savedMmId)
+      console.log('缓存 deadline:', savedDeadline)
+      console.log('缓存 step:', savedStep)
+
+      try {
+        // 从链上查询真实的 mmId
+        const ownerIndexOpt = await (api.query as any).marketMaker?.ownerIndex(currentAddress)
+        
+        if (ownerIndexOpt && ownerIndexOpt.isSome) {
+          // 链上有申请记录
+          const chainMmId = Number(ownerIndexOpt.unwrap().toString())
+          console.log('链上 mmId:', chainMmId)
+
+          // 验证缓存是否与链上一致
+          if (savedMmId && Number(savedMmId) === chainMmId) {
+            console.log('✅ 缓存有效，使用缓存数据')
+            // 缓存有效，使用缓存
+            const id = parseInt(savedMmId, 10)
+            const deadline = parseInt(savedDeadline || '0', 10)
+            const step = parseInt(savedStep || '0', 10)
+
+            // 检查是否过期（超过 25 小时清除）
+            const now = Math.floor(Date.now() / 1000)
+            if (deadline > now) {
+              setMmId(id)
+              setDeadlineSec(deadline)
+              setCurrent(step)
+              console.log('✅ 缓存未过期，已恢复进度')
+            } else {
+              console.log('⚠️ 缓存已过期，但链上数据仍然有效，使用链上数据')
+              // 缓存过期但链上数据仍有效，清除缓存使用链上数据
+              localStorage.removeItem('mm_apply_id')
+              localStorage.removeItem('mm_apply_deadline')
+              localStorage.removeItem('mm_apply_step')
+              setMmId(chainMmId)
+              message.info('检测到缓存已过期，已使用最新链上数据', 3)
+            }
+          } else {
+            console.log('⚠️ 缓存无效（mmId 不一致），自动清除缓存，使用链上数据')
+            // 缓存无效，清除缓存并使用链上数据
+            localStorage.removeItem('mm_apply_id')
+            localStorage.removeItem('mm_apply_deadline')
+            localStorage.removeItem('mm_apply_step')
+
+            setMmId(chainMmId)
+            setDeadlineSec(0)
+            setCurrent(0)
+
+            message.warning('检测到缓存数据与链上不一致，已自动清除缓存并使用最新链上数据', 4)
+          }
+        } else {
+          // 链上没有申请记录
+          console.log('ℹ️ 链上无申请记录')
+
+          if (savedMmId) {
+            console.log('⚠️ 链上无数据但有缓存，自动清除无效缓存')
+            // 链上没有数据但缓存有，清除缓存
+            localStorage.removeItem('mm_apply_id')
+            localStorage.removeItem('mm_apply_deadline')
+            localStorage.removeItem('mm_apply_step')
+
+            setMmId(null)
+            setDeadlineSec(0)
+            setCurrent(0)
+            setAppDetails(null)
+
+            message.warning('检测到无效缓存（链上无对应申请），已自动清除', 3)
+          } else {
+            console.log('✅ 链上无数据，缓存也无数据，正常（首次申请）')
+          }
+        }
+      } catch (e) {
+        console.error('❌ [自动验证] 查询失败:', e)
+        // 查询失败时，仍然尝试使用缓存（降级策略）
+        if (savedMmId && savedDeadline && savedStep) {
+          console.log('⚠️ 查询失败，降级使用缓存数据')
+          const id = parseInt(savedMmId, 10)
+          const deadline = parseInt(savedDeadline, 10)
+          const step = parseInt(savedStep, 10)
+
+          const now = Math.floor(Date.now() / 1000)
+          if (deadline > now) {
+            setMmId(id)
+            setDeadlineSec(deadline)
+            setCurrent(step)
+            console.log('⚠️ 使用缓存数据（链上查询失败）')
+          }
+        }
+      } finally {
+        console.groupEnd()
       }
     }
-  }, [])
+
+    autoValidateCache()
+  }, [api])
 
   /**
    * 函数级详细中文注释：初始化 API 连接
@@ -347,10 +434,14 @@ export default function CreateMarketMakerPage() {
   function formatMemoAmount(amount: number): string {
     if (!amount || amount <= 0) return '0'
     try {
-      // 使用 BigInt 避免精度丢失
+      // 🔧 修复大数精度丢失问题
       // MEMO 使用 12 位小数：1 MEMO = 1,000,000,000,000
+      // ❌ 错误：BigInt(Math.floor(amount * Math.pow(10, 12))) - 当 amount 很大时会精度丢失
+      // ✅ 正确：先转 BigInt 再乘法，避免 JavaScript Number 精度问题
       const decimals = 12
-      const raw = BigInt(Math.floor(amount * Math.pow(10, decimals)))
+      const amountInt = Math.floor(amount)  // 整数部分
+      const amountDec = Math.floor((amount - amountInt) * Math.pow(10, decimals))  // 小数部分
+      const raw = BigInt(amountInt) * BigInt(10 ** decimals) + BigInt(amountDec)
       return raw.toString()
     } catch (e) {
       console.error('formatMemoAmount error:', e)
@@ -391,8 +482,12 @@ export default function CreateMarketMakerPage() {
 
       message.loading({ content: '正在签名并提交质押...', key: 'deposit', duration: 0 })
 
+      // 🆕 2025-10-19：添加direction参数（0=Buy, 1=Sell, 2=BuyAndSell）
+      const direction = values.direction !== undefined ? values.direction : 2 // 默认双向
+      console.log('[质押] 业务方向:', direction, ['Buy', 'Sell', 'BuyAndSell'][direction])
+
       // 签名并发送交易（注意：Rust 蛇形命名在 JS 中转为驼峰）
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'lockDeposit', [depositAmount])
+      const hash = await signAndSendLocalFromKeystore('marketMaker', 'lockDeposit', [depositAmount, direction])
 
       message.success({ content: `质押提交成功！交易哈希: ${hash}`, key: 'deposit', duration: 3 })
 
@@ -463,20 +558,75 @@ export default function CreateMarketMakerPage() {
         }
       } catch (queryError: any) {
         console.error('[质押] 查询 mmId 失败:', queryError)
-        // 即使查询失败，也允许用户继续（使用占位 ID）
-        const fallbackId = Math.floor(Date.now() / 1000) % 100000
-        const tmpDeadline = Math.floor(Date.now() / 1000) + 86400
         
-        setMmId(fallbackId)
-        setDeadlineSec(tmpDeadline)
+        // ❌ 不再使用 fallback ID，因为会导致 NotFound 错误
+        // 改为：尝试通过 OwnerIndex 查询真实的 mmId
+        try {
+          const currentAddress = localStorage.getItem('mp.current')
+          if (currentAddress) {
+            const ownerIndexOpt = await (api.query as any).marketMaker.ownerIndex(currentAddress)
+            
+            if (ownerIndexOpt.isSome) {
+              const realMmId = Number(ownerIndexOpt.unwrap().toString())
+              console.log('[质押] 通过 OwnerIndex 找到 mmId:', realMmId)
+              
+              // 查询申请详情
+              const appOption = await (api.query as any).marketMaker.applications(realMmId)
+              if (appOption.isSome) {
+                const app = appOption.unwrap()
+                const appData = app.toJSON()
+                
+                setMmId(realMmId)
+                setDeadlineSec((appData as any).infoDeadline || 0)
+                
+                localStorage.setItem('mm_apply_id', String(realMmId))
+                localStorage.setItem('mm_apply_deadline', String((appData as any).infoDeadline || 0))
+                localStorage.setItem('mm_apply_step', '1')
+                
+                message.success('质押成功！mmId 已恢复，请继续提交资料')
+                setCurrent(1)
+                return
+              }
+            }
+          }
+        } catch (ownerQueryError: any) {
+          console.error('[质押] 通过 OwnerIndex 查询失败:', ownerQueryError)
+        }
         
-        // 持久化到 localStorage
-        localStorage.setItem('mm_apply_id', String(fallbackId))
-        localStorage.setItem('mm_apply_deadline', String(tmpDeadline))
-        localStorage.setItem('mm_apply_step', '1')
+        // 如果所有查询都失败，提示用户重试
+        message.error({
+          content: '质押可能成功，但无法查询 mmId。请刷新页面并检查链上状态，或联系技术支持。',
+          key: 'deposit',
+          duration: 10
+        })
         
-        message.warning('质押成功但无法查询详情，请手动记录交易哈希并联系客服')
-        setCurrent(1)
+        Modal.error({
+          title: '无法查询申请ID',
+          content: (
+            <div>
+              <p>质押交易已提交（交易哈希: {hash}），但无法查询生成的做市商ID。</p>
+              <p><strong>请按以下步骤操作：</strong></p>
+              <ol>
+                <li>刷新页面</li>
+                <li>打开浏览器控制台（F12）</li>
+                <li>执行以下命令查询您的 mmId：</li>
+              </ol>
+              <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 12 }}>
+{`const api = await getApi()
+const current = localStorage.getItem('mp.current')
+const opt = await api.query.marketMaker.ownerIndex(current)
+if (opt.isSome) {
+  const mmId = opt.unwrap().toNumber()
+  console.log('您的 mmId:', mmId)
+  localStorage.setItem('mm_apply_id', String(mmId))
+  location.reload()
+}`}
+              </pre>
+              <p>如果仍无法解决，请联系技术支持并提供交易哈希。</p>
+            </div>
+          ),
+          width: 600
+        })
       }
 
     } catch (e: any) {
@@ -490,8 +640,8 @@ export default function CreateMarketMakerPage() {
 
   /**
    * 函数级详细中文注释：提交资料（链上调用）
-   * - 签名调用 pallet-market-maker::submit_info(mm_id, public_root_cid, private_root_cid, fee_bps, min_amount)
-   * - 本地校验：CID 合法、费率/最小额有效
+   * - 签名调用 pallet-market-maker::submit_info(mm_id, public_root_cid, private_root_cid, fee_bps, min_amount, epay_gateway, epay_port, epay_pid, epay_key, first_purchase_pool)
+   * - 本地校验：CID 合法、费率/最小额有效、epay 配置完整
    */
   const onSubmitInfo = async (values: any) => {
     if (!api) {
@@ -512,7 +662,19 @@ export default function CreateMarketMakerPage() {
       console.log('[提交资料] mmId 类型:', typeof mmId)
       console.log('[提交资料] 表单值:', values)
 
-      const { public_root_cid, private_root_cid, fee_bps, min_amount } = values
+      const { 
+        public_root_cid, 
+        private_root_cid, 
+        fee_bps,
+        buy_premium_bps,  // 🆕 2025-10-19：Buy溢价
+        sell_premium_bps, // 🆕 2025-10-19：Sell溢价
+        min_amount,
+        epay_gateway,
+        epay_port,
+        epay_pid,
+        epay_key,
+        first_purchase_pool
+      } = values
 
       // 本地校验
       if (!isValidCid(public_root_cid)) throw new Error('公开资料 CID 非法或疑似加密（禁止 enc: 前缀）')
@@ -524,12 +686,79 @@ export default function CreateMarketMakerPage() {
       const minAmt = Number(min_amount)
       if (!(minAmt > 0)) throw new Error('最小下单额必须大于 0')
 
+      // 🆕 验证 epay 配置
+      if (!epay_gateway || epay_gateway.trim() === '') throw new Error('epay 支付网关地址不能为空')
+      if (epay_gateway.trim().length > 128) throw new Error('epay 支付网关地址超过 128 字节限制')
+      if (!epay_port || Number(epay_port) <= 0) throw new Error('epay 端口必须大于 0')
+      if (Number(epay_port) > 65535) throw new Error('epay 端口必须小于等于 65535')
+      if (!epay_pid || epay_pid.trim() === '') throw new Error('epay 商户ID不能为空')
+      if (epay_pid.trim().length > 64) throw new Error('epay 商户ID超过 64 字节限制')
+      if (!epay_key || epay_key.trim() === '') throw new Error('epay 商户密钥不能为空')
+      if (epay_key.trim().length > 64) throw new Error('epay 商户密钥超过 64 字节限制')
+      
+      const pool = Number(first_purchase_pool)
+      if (!(pool >= 10000)) throw new Error('首购资金池必须大于等于 10,000 MEMO（可服务约100个新用户）')
+
+      // 🆕 2025-10-19：验证TRON地址
+      const tron_address = values.tron_address?.trim() || ''
+      if (!tron_address || tron_address.length !== 34 || !tron_address.startsWith('T')) {
+        throw new Error('TRON地址格式无效（必须34字符，以T开头）')
+      }
+
       // 格式化参数
       const publicCid = Array.from(new TextEncoder().encode(public_root_cid))
       const privateCid = Array.from(new TextEncoder().encode(private_root_cid))
       const minAmountFormatted = formatMemoAmount(minAmt)
+      const tronAddressBytes = Array.from(new TextEncoder().encode(tron_address))  // 🆕 2025-10-19
+      const epayGatewayBytes = Array.from(new TextEncoder().encode(epay_gateway.trim()))
+      const epayPidBytes = Array.from(new TextEncoder().encode(epay_pid.trim()))
+      const epayKeyBytes = Array.from(new TextEncoder().encode(epay_key.trim()))
+      const poolFormatted = formatMemoAmount(pool)
+
+      // 🔍 余额检查：确保有足够余额 reserve 首购资金池
+      const currentAddress = localStorage.getItem('mp.current')
+      if (currentAddress && api) {
+        const accountInfo: any = await api.query.system.account(currentAddress)
+        const free = accountInfo?.data?.free?.toString?.() || '0'
+        const reserved = accountInfo?.data?.reserved?.toString?.() || '0'
+        const freeNum = Number(free) / 1e12
+        const reservedNum = Number(reserved) / 1e12
+        
+        console.group('💰 [余额检查]')
+        console.log('可用余额:', freeNum.toFixed(2), 'MEMO')
+        console.log('已锁定:', reservedNum.toFixed(2), 'MEMO')
+        console.log('需要锁定:', pool, 'MEMO（首购资金池）')
+        console.groupEnd()
+        
+        if (freeNum < pool) {
+          throw new Error(`余额不足：可用 ${freeNum.toFixed(2)} MEMO，但需要 ${pool} MEMO 作为首购资金池（已锁定保证金 ${reservedNum.toFixed(2)} MEMO）`)
+        }
+      }
+
+      // 🔍 调试日志：打印所有参数
+      console.group('📤 [submitInfo] 提交参数详情')
+      console.log('mmId:', mmId)
+      console.log('fee:', fee, '(u16)')
+      console.log('minAmt:', minAmt, 'MEMO → formatted:', minAmountFormatted)
+      console.log('pool:', pool, 'MEMO → formatted:', poolFormatted)
+      console.log('epay_gateway:', epay_gateway.trim(), '→ bytes:', epayGatewayBytes.length, '字节')
+      console.log('epay_port:', Number(epay_port), '(u16)')
+      console.log('epay_pid:', epay_pid.trim(), '→ bytes:', epayPidBytes.length, '字节')
+      console.log('epay_key:', epay_key.trim().slice(0, 10) + '***', '→ bytes:', epayKeyBytes.length, '字节')
+      console.log('publicCid length:', publicCid.length, '字节')
+      console.log('privateCid length:', privateCid.length, '字节')
+      console.groupEnd()
 
       message.loading({ content: '正在签名并提交资料...', key: 'submit', duration: 0 })
+
+      // 🆕 2025-10-19：验证溢价范围
+      const buyPremium = Number(buy_premium_bps)
+      const sellPremium = Number(sell_premium_bps)
+      if (!(buyPremium >= -500 && buyPremium <= 500)) throw new Error('Buy溢价超出范围（-500 ~ 500 bps）')
+      if (!(sellPremium >= -500 && sellPremium <= 500)) throw new Error('Sell溢价超出范围（-500 ~ 500 bps）')
+
+      console.log('[溢价配置] Buy溢价:', buyPremium, 'bps', `(${(buyPremium / 100).toFixed(2)}%)`)
+      console.log('[溢价配置] Sell溢价:', sellPremium, 'bps', `(${(sellPremium / 100).toFixed(2)}%)`)
 
       // 签名并发送交易
       const hash = await signAndSendLocalFromKeystore('marketMaker', 'submitInfo', [
@@ -537,7 +766,15 @@ export default function CreateMarketMakerPage() {
         publicCid,
         privateCid,
         fee,
-        minAmountFormatted
+        buyPremium,       // 🆕 2025-10-19：Buy溢价
+        sellPremium,      // 🆕 2025-10-19：Sell溢价
+        minAmountFormatted,
+        tronAddressBytes, // 🆕 2025-10-19：TRON地址
+        epayGatewayBytes,
+        Number(epay_port),
+        epayPidBytes,
+        epayKeyBytes,
+        poolFormatted
       ])
 
       message.success({
@@ -597,7 +834,7 @@ export default function CreateMarketMakerPage() {
 
   /**
    * 函数级详细中文注释：更新申请资料（链上调用）
-   * - 签名调用 pallet-market-maker::update_info(mm_id, public_cid?, private_cid?, fee_bps?, min_amount?)
+   * - 签名调用 pallet-market-maker::update_info(mm_id, public_cid?, private_cid?, fee_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    * - 允许在 DepositLocked 或 PendingReview 状态下调用
    */
@@ -618,7 +855,9 @@ export default function CreateMarketMakerPage() {
       
       // 检查是否至少修改了一个字段
       const hasChanges = values.public_root_cid || values.private_root_cid || 
-                        values.fee_bps !== undefined || values.min_amount !== undefined
+                        values.fee_bps !== undefined || values.min_amount !== undefined ||
+                        values.epay_gateway || values.epay_port !== undefined ||
+                        values.epay_pid || values.epay_key || values.first_purchase_pool !== undefined
       
       if (!hasChanges) {
         message.warning('请至少修改一个字段')
@@ -634,6 +873,11 @@ export default function CreateMarketMakerPage() {
       let privateCidParam = null
       let feeBpsParam = null
       let minAmountParam = null
+      let epayGatewayParam = null
+      let epayPortParam = null
+      let epayPidParam = null
+      let epayKeyParam = null
+      let firstPurchasePoolParam = null
 
       // 公开资料 CID（如果提供）
       if (values.public_root_cid) {
@@ -669,6 +913,48 @@ export default function CreateMarketMakerPage() {
         minAmountParam = formatMemoAmount(minAmt)
       }
 
+      // 🆕 epay 网关地址（如果提供）
+      if (values.epay_gateway && values.epay_gateway.trim() !== '') {
+        if (values.epay_gateway.trim().length > 128) {
+          throw new Error('epay 支付网关地址超过 128 字节限制')
+        }
+        epayGatewayParam = Array.from(new TextEncoder().encode(values.epay_gateway.trim()))
+      }
+
+      // 🆕 epay 端口（如果提供）
+      if (values.epay_port !== undefined && values.epay_port !== null && values.epay_port !== '') {
+        const port = Number(values.epay_port)
+        if (!(port > 0 && port <= 65535)) {
+          throw new Error('epay 端口范围：1-65535')
+        }
+        epayPortParam = port
+      }
+
+      // 🆕 epay 商户ID（如果提供）
+      if (values.epay_pid && values.epay_pid.trim() !== '') {
+        if (values.epay_pid.trim().length > 64) {
+          throw new Error('epay 商户ID超过 64 字节限制')
+        }
+        epayPidParam = Array.from(new TextEncoder().encode(values.epay_pid.trim()))
+      }
+
+      // 🆕 epay 商户密钥（如果提供）
+      if (values.epay_key && values.epay_key.trim() !== '') {
+        if (values.epay_key.trim().length > 64) {
+          throw new Error('epay 商户密钥超过 64 字节限制')
+        }
+        epayKeyParam = Array.from(new TextEncoder().encode(values.epay_key.trim()))
+      }
+
+      // 🆕 首购资金池（如果提供）
+      if (values.first_purchase_pool !== undefined && values.first_purchase_pool !== null && values.first_purchase_pool !== '') {
+        const pool = Number(values.first_purchase_pool)
+        if (!(pool > 0)) {
+          throw new Error('首购资金池必须大于 0')
+        }
+        firstPurchasePoolParam = formatMemoAmount(pool)
+      }
+
       message.loading({ content: '正在签名并更新资料...', key: 'update', duration: 0 })
 
       // 签名并发送交易
@@ -677,7 +963,12 @@ export default function CreateMarketMakerPage() {
         publicCidParam,
         privateCidParam,
         feeBpsParam,
-        minAmountParam
+        minAmountParam,
+        epayGatewayParam,
+        epayPortParam,
+        epayPidParam,
+        epayKeyParam,
+        firstPurchasePoolParam
       ])
 
       message.success({
@@ -737,6 +1028,72 @@ export default function CreateMarketMakerPage() {
       window.location.hash = '#/otc/order'
     } catch (e) {
       console.error('导航失败:', e)
+    }
+  }
+
+  /**
+   * 函数级详细中文注释：清除缓存并重新从链上拉取数据
+   * - 清除 localStorage 中的缓存数据
+   * - 重置页面状态
+   * - 重新从链上查询最新数据
+   */
+  const handleClearCacheAndRefresh = async () => {
+    try {
+      // 清除 localStorage 缓存
+      localStorage.removeItem('mm_apply_id')
+      localStorage.removeItem('mm_apply_deadline')
+      localStorage.removeItem('mm_apply_step')
+      
+      // 重置页面状态
+      setMmId(null)
+      setDeadlineSec(0)
+      setCurrent(0)
+      setAppDetails(null)
+      setError('')
+      
+      // 清空表单
+      form1.resetFields()
+      form2.resetFields()
+      
+      message.success('缓存已清除，正在从链上拉取最新数据...')
+      
+      // 重新加载配置和申请数据
+      if (api) {
+        await loadMarketMakerConfig()
+        
+        // 检查是否有当前用户的申请
+        const currentAddress = localStorage.getItem('mp.current')
+        if (currentAddress) {
+          try {
+            const ownerIndexOpt = await (api.query as any).marketMaker.ownerIndex(currentAddress)
+            if (ownerIndexOpt.isSome) {
+              const realMmId = Number(ownerIndexOpt.unwrap().toString())
+              console.log('[重新加载] 找到 mmId:', realMmId)
+              
+              // 加载申请详情
+              await loadApplicationDetails(realMmId)
+              
+              setMmId(realMmId)
+              
+              // 判断当前步骤
+              if (appDetails && appDetails.status === 'DepositLocked') {
+                setCurrent(1)
+                message.info('已恢复到第二步：提交资料')
+              } else {
+                setCurrent(0)
+                message.info('已加载最新链上数据')
+              }
+            } else {
+              message.info('当前账户没有待处理的申请，从头开始')
+            }
+          } catch (e) {
+            console.error('[重新加载] 查询失败:', e)
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('清除缓存失败:', e)
+      message.error('清除缓存失败：' + (e?.message || ''))
     }
   }
 
@@ -802,7 +1159,19 @@ export default function CreateMarketMakerPage() {
           margin: '0 auto',
         }}
       >
-        <Card style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+        <Card 
+          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+          extra={
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleClearCacheAndRefresh}
+              size="small"
+              type="link"
+            >
+              清除缓存并刷新
+            </Button>
+          }
+        >
           <Typography.Title level={5}>做市商申请（两步式：先质押 → 再提交资料）</Typography.Title>
 
           {!api && (
@@ -827,7 +1196,7 @@ export default function CreateMarketMakerPage() {
           {/* 步骤 1：质押保证金 */}
           {current === 0 && (
             <>
-              <Form form={form1} layout="vertical" onFinish={onDeposit} initialValues={{ deposit_amount: 1000 }}>
+              <Form form={form1} layout="vertical" onFinish={onDeposit} initialValues={{ deposit_amount: 1000, direction: 2 }}>
                 <Form.Item 
                   label="质押金额（MEMO）" 
                   name="deposit_amount" 
@@ -845,6 +1214,52 @@ export default function CreateMarketMakerPage() {
                     placeholder={config ? `最少 ${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} MEMO` : '请输入质押金额'}
                     disabled={loading}
                   />
+                </Form.Item>
+
+                {/* 🆕 2025-10-19：业务方向选择 */}
+                <Form.Item 
+                  label="业务方向" 
+                  name="direction" 
+                  rules={[{ required: true, message: '请选择业务方向' }]}
+                  extra={
+                    <Alert 
+                      type="info" 
+                      showIcon 
+                      style={{ marginTop: 8 }}
+                      message="业务方向说明"
+                      description={
+                        <div style={{ fontSize: '12px' }}>
+                          <p style={{ margin: '4px 0' }}><strong>🟢 仅买入（Buy）</strong>：只能做Bridge业务，购买MEMO，支付USDT</p>
+                          <p style={{ margin: '4px 0' }}><strong>🔴 仅卖出（Sell）</strong>：只能做OTC业务，出售MEMO，收取USDT</p>
+                          <p style={{ margin: '4px 0' }}><strong>🟡 双向（BuyAndSell）</strong>：可以做OTC和Bridge业务（推荐）</p>
+                          <p style={{ margin: '4px 0', fontStyle: 'italic' }}>💡 建议新手选择单向，资金压力小；大型做市商建议选择双向，提高流动性</p>
+                        </div>
+                      }
+                    />
+                  }
+                >
+                  <Radio.Group style={{ width: '100%' }} disabled={loading}>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Radio value={0} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+                        <Space>
+                          <Tag color="green">仅买入</Tag>
+                          <span>Bridge - 购买MEMO，支付USDT</span>
+                        </Space>
+                      </Radio>
+                      <Radio value={1} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+                        <Space>
+                          <Tag color="red">仅卖出</Tag>
+                          <span>OTC - 出售MEMO，收取USDT</span>
+                        </Space>
+                      </Radio>
+                      <Radio value={2} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px', background: '#fffbe6' }}>
+                        <Space>
+                          <Tag color="orange">双向（推荐）</Tag>
+                          <span>OTC + Bridge - 买卖双向</span>
+                        </Space>
+                      </Radio>
+                    </Space>
+                  </Radio.Group>
                 </Form.Item>
 
                 {/* 配置信息展示 */}
@@ -1253,6 +1668,64 @@ export default function CreateMarketMakerPage() {
                   />
                 </Form.Item>
 
+                {/* 🆕 2025-10-19：溢价定价机制 */}
+                <Divider>🆕 溢价定价配置</Divider>
+
+                <Alert 
+                  type="info" 
+                  showIcon 
+                  style={{ marginBottom: 16 }}
+                  message="溢价定价机制说明"
+                  description={
+                    <div style={{ fontSize: '12px' }}>
+                      <p style={{ margin: '4px 0' }}><strong>基准价</strong>：由pallet-pricing提供的市场加权均价</p>
+                      <p style={{ margin: '4px 0' }}><strong>Buy溢价（Bridge）</strong>：做市商购买MEMO的溢价，通常为负数（低于基准价）</p>
+                      <p style={{ margin: '4px 0' }}><strong>Sell溢价（OTC）</strong>：做市商出售MEMO的溢价，通常为正数（高于基准价）</p>
+                      <p style={{ margin: '4px 0', fontStyle: 'italic' }}>示例：基准价0.01 USDT，Buy溢价-200 bps (-2%) → 买价0.0098 USDT</p>
+                    </div>
+                  }
+                />
+
+                <Form.Item 
+                  label="Buy溢价（Bridge，bps）" 
+                  name="buy_premium_bps" 
+                  rules={[
+                    { required: true, message: '请输入Buy溢价' },
+                    { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                  ]}
+                  initialValue={0}
+                  extra="做市商购买MEMO的溢价。负数=折价买入（推荐），例如 -200 bps = -2%"
+                >
+                  <InputNumber 
+                    min={-500} 
+                    max={500} 
+                    step={10} 
+                    style={{ width: '100%' }}
+                    placeholder="例如 -200（-2%折价买入）"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label="Sell溢价（OTC，bps）" 
+                  name="sell_premium_bps" 
+                  rules={[
+                    { required: true, message: '请输入Sell溢价' },
+                    { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                  ]}
+                  initialValue={0}
+                  extra="做市商出售MEMO的溢价。正数=溢价卖出（推荐），例如 +200 bps = +2%"
+                >
+                  <InputNumber 
+                    min={-500} 
+                    max={500} 
+                    step={10} 
+                    style={{ width: '100%' }}
+                    placeholder="例如 +200（+2%溢价卖出）"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
                 <Form.Item 
                   label="最小下单额（MEMO）" 
                   name="min_amount" 
@@ -1283,6 +1756,178 @@ export default function CreateMarketMakerPage() {
                     disabled={loading}
                   />
                 </Form.Item>
+
+                <Divider>🆕 Epay 支付网关配置</Divider>
+
+                <Form.Item 
+                  label="Epay 支付网关地址" 
+                  name="epay_gateway" 
+                  rules={[
+                    { required: !appDetails, message: '请输入 epay 支付网关地址' },
+                    { type: 'string', message: '请输入有效的 URL 地址' }
+                  ]}
+                  extra="例如：http://111.170.145.41 或 https://epay.example.com"
+                >
+                  <Input 
+                    placeholder="例如：http://111.170.145.41"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label="Epay 支付网关端口" 
+                  name="epay_port" 
+                  rules={[
+                    { required: !appDetails, message: '请输入 epay 端口' },
+                    { type: 'number', min: 1, max: 65535, message: '端口范围：1-65535' }
+                  ]}
+                  extra="常用端口：80 (HTTP), 443 (HTTPS), 8080 (自定义)"
+                >
+                  <InputNumber 
+                    min={1}
+                    max={65535}
+                    precision={0}
+                    style={{ width: '100%' }}
+                    placeholder="例如：80"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label="Epay 商户ID (PID)" 
+                  name="epay_pid" 
+                  rules={[
+                    { required: !appDetails, message: '请输入 epay 商户ID' },
+                    { type: 'string', min: 1, message: '商户ID不能为空' }
+                  ]}
+                  extra="您的 epay 商户账号ID"
+                >
+                  <Input 
+                    placeholder="例如：123456"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label="Epay 商户密钥" 
+                  name="epay_key" 
+                  rules={[
+                    { required: !appDetails, message: '请输入 epay 商户密钥' },
+                    { type: 'string', min: 1, message: '商户密钥不能为空' }
+                  ]}
+                  extra="您的 epay 商户密钥（请妥善保管）"
+                >
+                  <Input.Password 
+                    placeholder="请输入商户密钥"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Divider orientation="left">🔐 TRON地址配置</Divider>
+
+                <Alert 
+                  type="info" 
+                  showIcon 
+                  style={{ marginBottom: 16 }} 
+                  message="📌 统一TRON地址说明" 
+                  description={
+                    <>
+                      <p><strong>用途：</strong>此TRON地址将用于所有USDT业务</p>
+                      <p>• <strong>OTC订单</strong>：买家向此地址转账USDT购买MEMO</p>
+                      <p>• <strong>Bridge订单</strong>：您从此地址向买家发送USDT</p>
+                      <p>• <strong>格式要求</strong>：34字符，以'T'开头的TRON主网地址</p>
+                      <p>• <strong>示例</strong>：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS</p>
+                      <p>• <strong>安全提示</strong>：请确保地址准确，避免资金损失</p>
+                    </>
+                  }
+                />
+
+                <Form.Item 
+                  label="TRON地址" 
+                  name="tron_address" 
+                  rules={[
+                    { required: !appDetails, message: '请输入TRON地址' },
+                    { 
+                      validator: (_, value) => {
+                        if (!value || value.trim() === '') {
+                          return Promise.reject(new Error('TRON地址不能为空'))
+                        }
+                        if (value.trim().length !== 34) {
+                          return Promise.reject(new Error('TRON地址必须为34字符'))
+                        }
+                        if (!value.trim().startsWith('T')) {
+                          return Promise.reject(new Error('TRON主网地址必须以T开头'))
+                        }
+                        // Base58字符验证（简化版）
+                        const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{34}$/
+                        if (!base58Regex.test(value.trim())) {
+                          return Promise.reject(new Error('TRON地址包含非法字符（Base58编码：排除0OIl）'))
+                        }
+                        return Promise.resolve()
+                      }
+                    }
+                  ]}
+                  extra="您的TRON主网地址（OTC收款 + Bridge发款），34字符，以'T'开头"
+                >
+                  <Input 
+                    placeholder="例如：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"
+                    disabled={loading}
+                    maxLength={34}
+                    style={{ fontFamily: 'monospace' }}
+                  />
+                </Form.Item>
+
+                <Divider orientation="left">💰 首购资金池配置</Divider>
+
+                <Form.Item 
+                  label="首购资金池（MEMO）" 
+                  name="first_purchase_pool" 
+                  rules={[
+                    { required: !appDetails, message: '请输入首购资金池金额' },
+                    { type: 'number', min: 10000, message: '首购资金池最少 10,000 MEMO（一万）' }
+                  ]}
+                  extra="用于为新用户提供首购服务的资金池（最少 10,000 MEMO = 一万 MEMO）"
+                >
+                  <InputNumber 
+                    min={10000}
+                    precision={2}
+                    step={1000}
+                    style={{ width: '100%' }}
+                    placeholder="例如：10000.00（一万）"
+                    disabled={loading}
+                  />
+                </Form.Item>
+
+                <Alert 
+                  type="warning" 
+                  showIcon 
+                  style={{ marginBottom: 12 }} 
+                  message="⚠️ 重要：首购资金池将在提交时立即锁定（reserve）" 
+                  description={
+                    <>
+                      <p><strong>资金锁定机制：</strong></p>
+                      <p>• 提交资料时，系统会<strong>立即锁定（reserve）对应金额的 MEMO</strong>（最少 10,000 MEMO）</p>
+                      <p>• 锁定期间资金不可转出或使用（与保证金机制相同）</p>
+                      <p>• <strong>审核通过后</strong>：资金解锁并转入专用资金池账户</p>
+                      <p>• <strong>驳回或取消后</strong>：资金自动解锁退还（首购资金池全额退还）</p>
+                      <p>• 请确保账户有足够的可用余额：<strong>保证金 + 首购资金池</strong></p>
+                    </>
+                  }
+                />
+                
+                <Alert 
+                  type="info" 
+                  showIcon 
+                  style={{ marginBottom: 12 }} 
+                  message="Epay 配置说明" 
+                  description={
+                    <>
+                      <p>• Epay 用于处理法币充值并自动转换为 MEMO</p>
+                      <p>• 首购资金池用于为新用户提供首次购买优惠</p>
+                      <p>• 配置提交后将由委员会审核验证</p>
+                    </>
+                  }
+                />
 
                 <Alert 
                   type="warning" 

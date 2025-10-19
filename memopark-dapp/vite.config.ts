@@ -6,6 +6,11 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   plugins: [
     react(),
     // 兼容浏览器环境的 Node 内置模块/全局变量（process、Buffer、crypto 等）

@@ -67,6 +67,8 @@ pub struct Application<AccountId, Balance> {
     pub owner: AccountId,          // 申请人地址
     pub deposit: Balance,          // 质押金额
     pub status: ApplicationStatus, // 申请状态
+    // 🆕 2025-10-19: 做市商业务方向
+    pub direction: Direction,      // 业务方向：Buy（仅Bridge）/Sell（仅OTC）/BuyAndSell（双向）
     pub public_cid: Cid,          // 公开资料根 CID
     pub private_cid: Cid,         // 私密资料根 CID
     pub fee_bps: u16,             // 费率（bps）
@@ -76,10 +78,13 @@ pub struct Application<AccountId, Balance> {
     pub review_deadline: u32,     // 审核截止（秒）
     // 🆕 2025-10-13: 新增首购功能相关字段
     pub epay_gateway: BoundedVec<u8, ConstU32<128>>,  // epay支付网关地址
+    pub epay_port: u16,                                // 🆕 2025-10-14: epay支付网关端口
     pub epay_pid: BoundedVec<u8, ConstU32<64>>,       // epay商户ID (PID)
     pub epay_key: BoundedVec<u8, ConstU32<64>>,       // epay商户密钥
     pub first_purchase_pool: Balance,                  // 首购资金池总额
     pub first_purchase_used: Balance,                  // 已使用的首购资金
+    pub first_purchase_frozen: Balance,                // 冻结的首购资金（提取申请中）
+    pub service_paused: bool,                          // 服务暂停状态
     pub users_served: u32,                             // 已服务的用户数量
 }
 ```
@@ -96,6 +101,33 @@ pub enum ApplicationStatus {
     Expired,         // 已过期
 }
 ```
+
+### Direction（业务方向）🆕 2025-10-19
+
+做市商业务方向枚举，用于限制做市商可以参与的业务类型：
+
+```rust
+pub enum Direction {
+    Buy = 0,        // 仅买入（仅Bridge）- 做市商购买MEMO，支付USDT
+    Sell = 1,       // 仅卖出（仅OTC）- 做市商出售MEMO，收取USDT
+    BuyAndSell = 2, // 双向（OTC + Bridge）- 既可以买入也可以卖出
+}
+```
+
+**业务范围说明**：
+
+| 方向 | 值 | 业务范围 | 说明 | 资金要求 |
+|------|---|----------|------|----------|
+| **Buy** | 0 | 仅Bridge | 做市商购买MEMO，支付USDT | USDT资金（TRON链）+ 押金 |
+| **Sell** | 1 | 仅OTC | 做市商出售MEMO，收取USDT | MEMO库存 + 保证金 |
+| **BuyAndSell** | 2 | OTC + Bridge | 双向业务（推荐） | MEMO库存 + USDT资金 + 保证金 + 押金 |
+
+**设计目标**：
+- **降低准入门槛**：单向做市商只需准备单一方向的资金，资金压力降低50%
+- **灵活性**：做市商可以专注擅长的业务方向
+- **风险管理**：可以根据市场行情灵活调整业务方向
+
+**默认值**：`BuyAndSell`（双向）
 
 ### OwnerIndex
 `StorageMap<AccountId, u64>`
@@ -127,22 +159,52 @@ pub enum ApplicationStatus {
 
 ## 可调用接口
 
-### lock_deposit
+### lock_deposit 🆕 2025-10-19：新增direction参数
 ```rust
-pub fn lock_deposit(origin: OriginFor<T>, deposit: BalanceOf<T>) -> DispatchResult
+pub fn lock_deposit(
+    origin: OriginFor<T>, 
+    deposit: BalanceOf<T>,
+    direction_u8: u8,  // 🆕 业务方向：0=Buy, 1=Sell, 2=BuyAndSell
+) -> DispatchResult
 ```
 
 **功能**：质押押金并生成 mm_id
 
 **参数**：
 - `deposit`: 质押金额（必须 ≥ MinDeposit）
+- `direction_u8`: 业务方向（🆕 2025-10-19）
+  - `0`: Buy - 仅买入（仅Bridge）
+  - `1`: Sell - 仅卖出（仅OTC）
+  - `2`: BuyAndSell - 双向（默认，推荐）
 
 **效果**：
 - 锁定申请人的 `deposit` 金额
 - 生成新的 mm_id
+- 🆕 设置业务方向（`direction`）
 - 设置 24 小时提交窗口（`info_deadline`）
 - 设置 7 天审核窗口（`review_deadline`）
 - 发出 `Applied` 事件
+
+**JavaScript 示例**：
+```javascript
+// 申请双向做市商
+await api.tx.marketMaker.lockDeposit(
+  depositAmount,  // 质押金额
+  2               // direction: BuyAndSell（双向）
+).signAndSend(account)
+
+// 申请仅买入（Bridge）做市商
+await api.tx.marketMaker.lockDeposit(
+  depositAmount,
+  0  // direction: Buy
+).signAndSend(account)
+
+// 申请仅卖出（OTC）做市商
+await api.tx.marketMaker.lockDeposit(
+  depositAmount,
+  1  // direction: Sell
+).signAndSend(account)
+```
 
 ### submit_info
 ```rust
@@ -155,13 +217,14 @@ pub fn submit_info(
     min_amount: BalanceOf<T>,
     // 🆕 新增参数
     epay_gateway: Vec<u8>,
+    epay_port: u16,
     epay_pid: Vec<u8>,
     epay_key: Vec<u8>,
     first_purchase_pool: BalanceOf<T>,
 ) -> DispatchResult
 ```
 
-**功能**：提交做市商资料（**2025-10-13 扩展**）
+**功能**：提交做市商资料（**2025-10-14 扩展**）
 
 **参数**：
 - `mm_id`: 申请编号
@@ -169,7 +232,8 @@ pub fn submit_info(
 - `private_cid`: 私密资料根 CID（明文，内容加密）
 - `fee_bps`: 费率（0-10000 bps，即 0%-100%）
 - `min_amount`: 最小下单额
-- 🆕 `epay_gateway`: epay支付网关地址（如：https://epay.example.com）
+- 🆕 `epay_gateway`: epay支付网关地址（如：http://111.170.145.41）
+- 🆕 `epay_port`: epay支付网关端口（如：80, 443, 8080等）
 - 🆕 `epay_pid`: epay商户ID
 - 🆕 `epay_key`: epay商户密钥
 - 🆕 `first_purchase_pool`: 首购资金池总额（必须 ≥ MinFirstPurchasePool）
@@ -177,7 +241,9 @@ pub fn submit_info(
 **权限**：申请人本人
 
 **验证**：
-- epay配置不能为空
+- epay网关地址不能为空
+- epay端口必须大于0
+- epay商户ID和密钥不能为空
 - 首购资金池必须 ≥ MinFirstPurchasePool
 
 **效果**：
@@ -195,13 +261,14 @@ pub fn update_info(
     min_amount: Option<BalanceOf<T>>,
     // 🆕 新增参数
     epay_gateway: Option<Vec<u8>>,
+    epay_port: Option<u16>,
     epay_pid: Option<Vec<u8>>,
     epay_key: Option<Vec<u8>>,
     first_purchase_pool: Option<BalanceOf<T>>,
 ) -> DispatchResult
 ```
 
-**功能**：更新申请资料（审核前可修改）（**2025-10-13 扩展**）
+**功能**：更新申请资料（审核前可修改）（**2025-10-14 扩展**）
 
 **参数**：
 - `mm_id`: 申请编号
@@ -210,6 +277,7 @@ pub fn update_info(
 - `fee_bps`: 费率（None 表示不修改）
 - `min_amount`: 最小下单额（None 表示不修改）
 - 🆕 `epay_gateway`: epay支付网关地址（None 表示不修改）
+- 🆕 `epay_port`: epay支付网关端口（None 表示不修改）
 - 🆕 `epay_pid`: epay商户ID（None 表示不修改）
 - 🆕 `epay_key`: epay商户密钥（None 表示不修改）
 - 🆕 `first_purchase_pool`: 首购资金池总额（None 表示不修改）
@@ -221,7 +289,9 @@ pub fn update_info(
 - `PendingReview`：可修改，需在审核截止时间（`review_deadline`）前
 
 **验证**：
-- 🆕 epay配置如果提供，不能为空
+- 🆕 epay网关地址如果提供，不能为空
+- 🆕 epay端口如果提供，必须大于0
+- 🆕 epay商户ID和密钥如果提供，不能为空
 - 🆕 首购资金池如果提供，必须 ≥ MinFirstPurchasePool
 
 **效果**：
@@ -300,6 +370,49 @@ pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
 - 删除申请记录
 - 发出 `Cancelled` 事件
 
+### update_epay_config
+**新增于 2025-10-14**
+
+```rust
+pub fn update_epay_config(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    epay_gateway: Option<Vec<u8>>,
+    epay_port: Option<u16>,
+    epay_pid: Option<Vec<u8>>,
+    epay_key: Option<Vec<u8>>,
+) -> DispatchResult
+```
+
+**功能**：更新epay支付网关配置（做市商自主修改）
+
+**参数**：
+- `mm_id`: 做市商编号
+- `epay_gateway`: epay支付网关地址（None 表示不修改）
+- `epay_port`: epay支付网关端口（None 表示不修改）
+- `epay_pid`: epay商户ID（None 表示不修改）
+- `epay_key`: epay商户密钥（None 表示不修改）
+
+**权限**：做市商本人
+
+**允许状态**：
+- 只能在 `Active` 状态下修改
+- 申请和审核阶段请使用 `update_info` 接口
+
+**验证**：
+- epay网关地址如果提供，不能为空
+- epay端口如果提供，必须大于0
+- epay商户ID和密钥如果提供，不能为空
+
+**效果**：
+- 更新指定字段（参数为 None 的字段不修改）
+- 发出 `EpayConfigUpdated` 事件
+
+**使用场景**：
+- 做市商更换支付网关服务商
+- 做市商更新商户密钥
+- 做市商调整网关端口配置
+
 ## 配置参数
 
 ### MinDeposit
@@ -365,13 +478,12 @@ pub fn cancel(origin: OriginFor<T>, mm_id: u64) -> DispatchResult
     - 修改 `approve` 接口，验证 epay 配置并转移首购资金到资金池账户（派生账户：PalletId + mm_id）
     - 新增 `ActiveMarketMakers` 存储，批准后从 Applications 迁移
     - 新增 `FirstPurchaseRecords` 存储，记录首购使用情况
-    - 定义 `MarketMakerProvider` trait，供 `pallet-otc-order` OCW 使用
-    - 实现 `select_available_market_maker()`、`get_market_maker_info()`、`record_first_purchase_usage()` 等接口
+    - 实现辅助函数 `record_first_purchase_usage()`、`has_used_first_purchase()`、`first_purchase_pool_account()` 等接口
   - **改进效果**：
-    - ✅ 低耦合设计：通过 trait 接口与 pallet-otc-order 交互
+    - ✅ 低耦合设计：通过公共存储和辅助函数与其他 pallet 交互
     - ✅ 资金安全：首购资金存储在派生账户，做市商无法直接提取
     - ✅ 防重复领取：FirstPurchaseRecords 记录每个买家的首购使用情况
-    - ✅ 智能选择：自动选择资金充足且余额最高的做市商
+    - ✅ 前端直查：前端可直接查询 ActiveMarketMakers 获取实时状态
     - ✅ 统计完善：记录已使用资金和服务用户数
   - **新增事件**：`FirstPurchasePoolFunded`、`FirstPurchaseServed`
   - **新增错误**：`InvalidEpayGateway`、`InvalidEpayPid`、`InvalidEpayKey`、`InsufficientFirstPurchasePool`、`EpayConfigTooLong`、`InsufficientPoolBalance`、`MarketMakerNotActive`、`AlreadyUsedFirstPurchase`
@@ -466,6 +578,13 @@ FirstPurchaseServed { mm_id: u64, buyer: AccountId, amount: Balance }
 ```
 首购服务已完成（由 pallet-otc-order OCW 调用）
 
+### 🆕 EpayConfigUpdated
+**新增于 2025-10-14**
+```rust
+EpayConfigUpdated { mm_id: u64, owner: AccountId }
+```
+做市商epay配置已更新
+
 ## 错误
 
 - `AlreadyExists`: 申请人已有待处理申请
@@ -479,6 +598,7 @@ FirstPurchaseServed { mm_id: u64, buyer: AccountId, amount: Balance }
 - `BadSlashRatio`: 扣罚比例超出限制
 - `MinDepositNotMet`: 押金低于最小值
 - 🆕 `InvalidEpayGateway`: epay网关地址无效或为空
+- 🆕 `InvalidEpayPort`: epay网关端口无效（必须大于0）**新增于 2025-10-14**
 - 🆕 `InvalidEpayPid`: epay商户ID无效或为空
 - 🆕 `InvalidEpayKey`: epay商户密钥无效或为空
 - 🆕 `InsufficientFirstPurchasePool`: 首购资金池金额不足
@@ -486,6 +606,8 @@ FirstPurchaseServed { mm_id: u64, buyer: AccountId, amount: Balance }
 - 🆕 `InsufficientPoolBalance`: 做市商资金池余额不足
 - 🆕 `MarketMakerNotActive`: 做市商未激活
 - 🆕 `AlreadyUsedFirstPurchase`: 买家已经使用过首购服务
+- 🆕 `NotOwner`: 不是做市商所有者
+- 🆕 `NotActive`: 做市商未激活
 
 ## 治理机制
 
@@ -547,51 +669,14 @@ await api.tx.sudo.sudo(
 5. **扣罚上限**：驳回扣罚比例可配置，防止过度惩罚
 6. **去中心化治理**：推荐使用委员会提案流程，避免单点信任
 
-## 🆕 MarketMakerProvider Trait
-
-**新增于 2025-10-13**：供其他 pallet（如 `pallet-otc-order`）使用
-
-```rust
-pub trait MarketMakerProvider<AccountId, Balance> {
-    /// 获取做市商信息（epay配置、资金池状态）
-    fn get_market_maker_info(mm_id: u64) -> Option<MarketMakerInfo>;
-    
-    /// 选择可用的做市商（资金充足且余额最高）
-    fn select_available_market_maker() -> Option<u64>;
-    
-    /// 派生首购资金池账户地址
-    fn first_purchase_pool_account(mm_id: u64) -> AccountId;
-    
-    /// 记录首购服务使用（由 OCW 调用）
-    fn record_first_purchase_usage(mm_id: u64, buyer: &AccountId, amount: Balance) -> Result<(), &'static str>;
-    
-    /// 检查买家是否已使用过首购服务
-    fn has_used_first_purchase(mm_id: u64, buyer: &AccountId) -> bool;
-}
-```
-
-**使用示例**（在 pallet-otc-order 中）：
-```rust
-// 在 Config 中声明依赖
-type MarketMakerProvider: pallet_market_maker::MarketMakerProvider<Self::AccountId, Self::Balance>;
-
-// 在 OCW 中使用
-let mm_id = T::MarketMakerProvider::select_available_market_maker()
-    .ok_or("No available market maker")?;
-let mm_info = T::MarketMakerProvider::get_market_maker_info(mm_id)
-    .ok_or("Market maker not found")?;
-let pool_account = T::MarketMakerProvider::first_purchase_pool_account(mm_id);
-T::MarketMakerProvider::record_first_purchase_usage(mm_id, &buyer, amount)?;
-```
-
 ## 与其他 Pallet 的关系
 
 ### pallet-otc-order（首购 OCW）
 **新增于 2025-10-13**：
-- 通过 `MarketMakerProvider` trait 查询做市商信息
-- 使用 `select_available_market_maker()` 选择做市商
-- 使用 `get_market_maker_info()` 获取 epay 配置
-- 使用 `record_first_purchase_usage()` 记录首购服务
+- 通过直接查询 `ActiveMarketMakers` 存储获取做市商信息
+- 使用辅助函数 `record_first_purchase_usage()` 记录首购服务
+- 使用辅助函数 `has_used_first_purchase()` 检查服务使用状态
+- 使用辅助函数 `first_purchase_pool_account()` 获取资金池账户
 
 ### pallet-otc-maker（传统 OTC）
 - 读取 `Applications` 查询做市商状态
@@ -607,6 +692,571 @@ T::MarketMakerProvider::record_first_purchase_usage(mm_id, &buyer, amount)?;
 - 编译：✅ 通过
 - 前端：✅ 审核页面已完成
 
+## 🆕 桥接服务功能（2025-10-19）
+
+做市商可以选择提供 Simple Bridge 兑换服务，为用户提供 MEMO → USDT（TRC20）的快速兑换通道。
+
+### 功能概述
+
+**核心价值**：
+- ✅ 去中心化桥接（多做市商竞争）
+- ✅ 市场化定价（费率竞争）
+- ✅ 押金保障（用户资金安全）
+- ✅ 24/7 自动化服务
+
+### 数据结构
+
+#### BridgeServiceConfig
+```rust
+pub struct BridgeServiceConfig<AccountId, Balance> {
+    pub maker_account: AccountId,           // 🆕 做市商账户（接收 MEMO）
+    pub tron_address: BoundedVec<u8, 64>,  // 🆕 做市商 TRON 地址（发送 USDT）
+    pub max_swap_amount: u64,               // 单笔最大兑换额（USDT，精度10^6）
+    pub fee_rate_bps: u32,                  // 手续费率（万分比，如 10 = 0.1%）
+    pub enabled: bool,                      // 服务启用状态
+    pub total_swaps: u64,                   // 累计兑换笔数
+    pub total_volume: Balance,              // 累计兑换量（MEMO，精度10^12）
+    pub success_count: u64,                 // 成功兑换数
+    pub avg_time_seconds: u64,              // 平均完成时间（秒）
+    pub deposit: Balance,                   // 押金额度（MEMO，精度10^12）
+}
+```
+
+**🆕 2025-10-19 优化**：
+- 新增 `maker_account` 字段：存储做市商账户（接收 MEMO）
+- 新增 `tron_address` 字段：存储做市商 TRON 地址（发送 USDT）
+- **优势**：买家无需手动输入做市商信息，系统自动查询，降低出错率
+
+### 存储项
+
+#### BridgeServices
+`StorageMap<u64, BridgeServiceConfig>`
+
+存储做市商的桥接服务配置：
+- Key: 做市商 ID
+- Value: 桥接服务配置
+
+### 可调用方法
+
+#### enable_bridge_service
+```rust
+pub fn enable_bridge_service(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    tron_address: BoundedVec<u8, ConstU32<64>>,  // 🆕 做市商 TRON 地址
+    max_swap_amount: u64,    // USDT，精度 10^6
+    fee_rate_bps: u32,       // 万分比，如 10 = 0.1%
+) -> DispatchResult
+```
+
+**功能**：做市商启用桥接服务
+
+**流程**：
+1. 验证做市商身份和状态（Active）
+2. 🆕 验证 TRON 地址格式（非空且长度 <= 64）
+3. 验证费率范围（5-500 bps = 0.05%-5%）
+4. 计算所需押金：`max_swap_amount × 100 × 1,000,000`
+5. 检查押金是否足够
+6. 🆕 存储做市商账户和 TRON 地址到配置中
+7. 发出 `BridgeServiceEnabled` 事件
+
+**示例**：
+```javascript
+// 做市商启用桥接服务
+// 最大单笔 1,000 USDT，手续费率 0.1%
+await api.tx.marketMaker.enableBridgeService(
+  1,                              // mm_id
+  "TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS",  // 🆕 TRON 地址
+  1_000_000_000,                 // max_swap_amount = 1,000 USDT（精度10^6）
+  10                              // fee_rate_bps = 0.1%
+).signAndSend(makerAccount);
+
+// 需要押金：100,000 MEMO
+```
+
+**押金计算**：
+```
+押金 = max_swap_amount × 100 × 1,000,000
+
+示例：
+- max_swap_amount = 1,000 USDT = 1,000,000,000（精度10^6）
+- 押金 = 1,000,000,000 × 100 × 1,000,000 / 1,000,000,000,000
+      = 100,000 MEMO
+```
+
+---
+
+#### disable_bridge_service
+```rust
+pub fn disable_bridge_service(
+    origin: OriginFor<T>,
+    mm_id: u64,
+) -> DispatchResult
+```
+
+**功能**：做市商禁用桥接服务
+
+**流程**：
+1. 验证做市商身份
+2. 更新服务状态为 disabled
+3. 发出 `BridgeServiceDisabled` 事件
+
+**示例**：
+```javascript
+// 做市商禁用桥接服务
+await api.tx.marketMaker.disableBridgeService(
+  1  // mm_id
+).signAndSend(makerAccount);
+```
+
+---
+
+#### re_enable_bridge_service 🆕
+
+```rust
+pub fn re_enable_bridge_service(
+    origin: OriginFor<T>,
+    mm_id: u64,
+) -> DispatchResult
+```
+
+**功能**：做市商重新启用桥接服务
+
+**流程**：
+1. 验证做市商身份和状态（Active）
+2. 验证桥接服务已禁用
+3. 更新服务状态为 enabled
+4. 发出 `BridgeServiceReEnabled` 事件
+
+**用途**：
+- ✅ 临时维护后恢复服务
+- ✅ 误操作后快速恢复
+- ✅ 无需治理介入
+
+**示例**：
+```javascript
+// 做市商重新启用桥接服务
+await api.tx.marketMaker.reEnableBridgeService(
+  1  // mm_id
+).signAndSend(makerAccount);
+```
+
+---
+
+#### update_bridge_service 🆕
+
+```rust
+pub fn update_bridge_service(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    tron_address: Option<BoundedVec<u8, ConstU32<64>>>,  // 可选更新 TRON地址
+    max_swap_amount: Option<u64>,                        // 可选更新最大兑换额
+    fee_rate_bps: Option<u32>,                           // 可选更新手续费率
+) -> DispatchResult
+```
+
+**功能**：更新桥接服务配置
+
+**流程**：
+1. 验证做市商身份和状态（Active）
+2. 验证桥接服务存在
+3. 根据参数更新相应配置：
+   - `tron_address`：更新 TRON 地址
+   - `max_swap_amount`：更新最大兑换额（增加额度需追加押金）
+   - `fee_rate_bps`：更新手续费率（5-500 bps）
+4. 发出相应事件
+
+**注意事项**：
+- ⚠️ 增加 `max_swap_amount` 可能需要追加押金
+- ⚠️ 减少 `max_swap_amount` 不退还押金
+- ✅ 至少提供一个参数进行更新
+
+**示例**：
+```javascript
+// 场景 1：更新 TRON 地址（热钱包升级）
+await api.tx.marketMaker.updateBridgeService(
+  1,                              // mm_id
+  "TNewAddress123...",            // 新 TRON 地址
+  null,                           // 不更新 max_swap_amount
+  null                            // 不更新 fee_rate_bps
+).signAndSend(makerAccount);
+
+// 场景 2：增加最大兑换额度（业务规模扩大）
+await api.tx.marketMaker.updateBridgeService(
+  1,                              // mm_id
+  null,                           // 不更新 TRON 地址
+  10_000_000_000,                 // 10,000 USDT（需追加押金）
+  null                            // 不更新 fee_rate_bps
+).signAndSend(makerAccount);
+
+// 场景 3：调整手续费率（市场竞争）
+await api.tx.marketMaker.updateBridgeService(
+  1,                              // mm_id
+  null,                           // 不更新 TRON 地址
+  null,                           // 不更新 max_swap_amount
+  5                               // 0.05% 手续费率
+).signAndSend(makerAccount);
+
+// 场景 4：一次性更新所有配置
+await api.tx.marketMaker.updateBridgeService(
+  1,                              // mm_id
+  "TNewAddress123...",            // 新 TRON 地址
+  5_000_000_000,                  // 5,000 USDT
+  10                              // 0.1% 手续费率
+).signAndSend(makerAccount);
+```
+
+---
+
+#### update_maker_info 🆕
+
+```rust
+pub fn update_maker_info(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    public_cid: Option<Cid>,           // 可选更新公开资料
+    private_cid: Option<Cid>,          // 可选更新私密资料
+    fee_bps: Option<u16>,              // 可选更新费率
+    min_amount: Option<BalanceOf<T>>,  // 可选更新最小下单额
+) -> DispatchResult
+```
+
+**功能**：更新做市商业务配置
+
+**流程**：
+1. 验证做市商身份和状态（Active）
+2. 根据参数更新相应配置：
+   - `public_cid`：更新公开资料（IPFS CID）
+   - `private_cid`：更新私密资料（IPFS CID）
+   - `fee_bps`：更新 OTC 费率（10-1000 bps = 0.1%-10%）
+   - `min_amount`：更新最小下单额（>= Currency::minimum_balance）
+3. 发出 `MakerInfoUpdated` 事件
+
+**用途**：
+- ✅ 更新服务条款（公开资料）
+- ✅ 调整 OTC 业务费率（应对市场竞争）
+- ✅ 调整最小下单额（业务策略调整）
+
+**示例**：
+```javascript
+// 场景 1：更新服务条款（公开资料）
+await api.tx.marketMaker.updateMakerInfo(
+  1,                              // mm_id
+  "QmNewPublicCID...",            // 新的公开资料 CID
+  null,                           // 不更新私密资料
+  null,                           // 不更新费率
+  null                            // 不更新最小下单额
+).signAndSend(makerAccount);
+
+// 场景 2：调整 OTC 费率（市场竞争）
+await api.tx.marketMaker.updateMakerInfo(
+  1,                              // mm_id
+  null,                           // 不更新公开资料
+  null,                           // 不更新私密资料
+  30,                             // 0.3% 费率
+  null                            // 不更新最小下单额
+).signAndSend(makerAccount);
+
+// 场景 3：调整最小下单额（业务策略）
+await api.tx.marketMaker.updateMakerInfo(
+  1,                              // mm_id
+  null,                           // 不更新公开资料
+  null,                           // 不更新私密资料
+  null,                           // 不更新费率
+  BigInt(1000 * 1e12)             // 1000 MEMO
+).signAndSend(makerAccount);
+
+// 场景 4：一次性更新多个配置
+await api.tx.marketMaker.updateMakerInfo(
+  1,                              // mm_id
+  "QmNewPublicCID...",            // 新的公开资料
+  "QmNewPrivateCID...",           // 新的私密资料
+  25,                             // 0.25% 费率
+  BigInt(500 * 1e12)              // 500 MEMO
+).signAndSend(makerAccount);
+```
+
+---
+
+#### update_direction 🆕 2025-10-19
+
+```rust
+pub fn update_direction(
+    origin: OriginFor<T>,
+    mm_id: u64,
+    new_direction_u8: u8,  // 新的业务方向：0=Buy, 1=Sell, 2=BuyAndSell
+) -> DispatchResult
+```
+
+**功能**：更新做市商业务方向
+
+**流程**：
+1. 验证做市商身份和状态（Active）
+2. 验证新方向有效性（0-2）
+3. 更新 `direction` 字段
+4. 发出 `DirectionUpdated` 事件
+
+**用途**：
+- ✅ 调整业务范围（从单向 → 双向，或从双向 → 单向）
+- ✅ 根据市场行情灵活切换业务方向
+- ✅ 降低资金压力（切换到单向业务）
+
+**示例**：
+```javascript
+// 场景 1：从双向切换到仅买入（Bridge）
+await api.tx.marketMaker.updateDirection(
+  1,   // mm_id
+  0    // direction: Buy（仅Bridge）
+).signAndSend(makerAccount);
+
+// 场景 2：从仅卖出（OTC）切换到双向
+await api.tx.marketMaker.updateDirection(
+  1,   // mm_id
+  2    // direction: BuyAndSell（双向）
+).signAndSend(makerAccount);
+
+// 场景 3：从双向切换到仅卖出（OTC）
+await api.tx.marketMaker.updateDirection(
+  1,   // mm_id
+  1    // direction: Sell（仅OTC）
+).signAndSend(makerAccount);
+```
+
+**事件**：
+```rust
+DirectionUpdated {
+    mm_id: u64,
+    owner: T::AccountId,
+    old_direction: Direction,
+    new_direction: Direction,
+}
+```
+
+**错误**：
+- `InvalidDirection`：无效的方向值（不在0-2范围内）
+- `SameDirection`：新方向与旧方向相同
+- `NotMarketMaker`：调用者不是做市商
+- `NotActive`：做市商状态不是Active
+
+---
+
+### 辅助方法（链上调用）
+
+#### update_bridge_stats
+```rust
+pub fn update_bridge_stats(
+    mm_id: u64,
+    volume: BalanceOf<T>,
+    time_seconds: u64,
+    success: bool,
+) -> DispatchResult
+```
+
+**功能**：更新做市商桥接服务统计数据
+
+**调用者**：`pallet-simple-bridge`（在兑换完成后调用）
+
+**流程**：
+1. 更新累计兑换笔数、交易量、成功数
+2. 更新平均完成时间（滚动平均）
+3. 发出 `BridgeStatsUpdated` 事件
+
+### 事件
+
+#### BridgeServiceEnabled
+```rust
+BridgeServiceEnabled {
+    mm_id: u64,
+    owner: T::AccountId,
+    max_swap_amount: u64,
+    fee_rate_bps: u32,
+    deposit: BalanceOf<T>,
+}
+```
+
+**说明**：桥接服务已启用
+
+---
+
+#### BridgeServiceDisabled
+```rust
+BridgeServiceDisabled {
+    mm_id: u64,
+    owner: T::AccountId,
+}
+```
+
+**说明**：桥接服务已禁用
+
+---
+
+#### BridgeStatsUpdated
+```rust
+BridgeStatsUpdated {
+    mm_id: u64,
+    total_swaps: u64,
+    total_volume: BalanceOf<T>,
+    success_count: u64,
+    avg_time_seconds: u64,
+}
+```
+
+**说明**：统计数据已更新
+
+### 错误类型
+
+```rust
+BridgeServiceAlreadyExists,    // 桥接服务已存在
+BridgeServiceNotFound,         // 桥接服务不存在
+InvalidBridgeFeeRate,          // 费率无效（5-500 bps）
+InsufficientBridgeDeposit,     // 押金不足
+BridgeServiceNotEnabled,       // 桥接服务未启用
+InvalidTronAddress,            // TRON 地址格式无效（为空或过长）
+BridgeServiceAlreadyEnabled,   // 🆕 桥接服务已启用（无需重新启用）
+MinAmountTooLow,               // 🆕 最小下单额过低（必须 >= Currency::minimum_balance）
+```
+
+### 前端查询
+
+#### 查询做市商桥接服务配置
+```javascript
+// 查询做市商桥接服务配置
+const service = await api.query.marketMaker.bridgeServices(1);  // mm_id = 1
+
+if (service.isSome) {
+  const config = service.unwrap();
+  console.log('最大兑换额:', config.max_swap_amount.toNumber() / 1_000_000, 'USDT');
+  console.log('手续费率:', config.fee_rate_bps.toNumber() / 100, '%');
+  console.log('服务状态:', config.enabled.toHuman());
+  console.log('累计兑换:', config.total_swaps.toNumber(), '笔');
+  console.log('累计交易量:', config.total_volume.toNumber() / 1e12, 'MEMO');
+  console.log('成功率:', (config.success_count.toNumber() / config.total_swaps.toNumber() * 100).toFixed(2), '%');
+  console.log('平均耗时:', config.avg_time_seconds.toNumber(), '秒');
+  console.log('押金额度:', config.deposit.toNumber() / 1e12, 'MEMO');
+}
+```
+
+#### 查询所有提供桥接服务的做市商
+```javascript
+// 获取所有活跃的做市商
+const activeMakers = await api.query.marketMaker.activeMarketMakers.entries();
+
+// 过滤出提供桥接服务的做市商
+const bridgeMakers = [];
+for (const [key, maker] of activeMakers) {
+  const mmId = key.args[0].toNumber();
+  const service = await api.query.marketMaker.bridgeServices(mmId);
+  
+  if (service.isSome) {
+    const config = service.unwrap();
+    if (config.enabled.toHuman()) {
+      bridgeMakers.push({
+        mmId,
+        owner: maker.owner.toHuman(),
+        maxSwapAmount: config.max_swap_amount.toNumber() / 1_000_000,
+        feeRate: config.fee_rate_bps.toNumber() / 100,
+        totalSwaps: config.total_swaps.toNumber(),
+        successCount: config.success_count.toNumber(),
+        avgTime: config.avg_time_seconds.toNumber(),
+        deposit: config.deposit.toNumber() / 1e12,
+      });
+    }
+  }
+}
+
+console.log('提供桥接服务的做市商:', bridgeMakers);
+```
+
+### 使用流程
+
+#### 1. 做市商启用桥接服务
+
+```javascript
+// 1. 确认做市商状态
+const maker = await api.query.marketMaker.activeMarketMakers(1);
+console.log('做市商状态:', maker.status.toHuman());  // 应为 Active
+console.log('押金余额:', maker.deposit.toNumber() / 1e12, 'MEMO');
+
+// 2. 启用桥接服务（需要足够的押金）
+const maxSwapAmount = 1_000_000_000;  // 1,000 USDT
+const feeRateBps = 10;                 // 0.1%
+const requiredDeposit = 100_000;       // 需要 100,000 MEMO
+
+await api.tx.marketMaker.enableBridgeService(
+  1,
+  maxSwapAmount,
+  feeRateBps
+).signAndSend(makerAccount);
+
+// 3. 部署 simple-bridge-service
+// 参考：simple-bridge-service README
+```
+
+#### 2. 用户通过做市商兑换
+
+```javascript
+// 用户选择做市商进行兑换
+// 参考：pallet-simple-bridge README
+await api.tx.simpleBridge.swapWithMaker(
+  1,                     // maker_id
+  100n * 1_000_000_000_000n,  // 100 MEMO
+  'TRC20_ADDRESS'        // USDT 接收地址
+).signAndSend(userAccount);
+```
+
+#### 3. 做市商完成兑换
+
+```javascript
+// 做市商监听到兑换事件后，自动转账 USDT
+// 然后调用链上完成方法
+await api.tx.simpleBridge.completeSwapByMaker(
+  swapId,
+  trc20TxHash  // TRC20 交易哈希
+).signAndSend(makerAccount);
+```
+
+### 监控指标
+
+#### 做市商桥接服务 Dashboard
+
+```javascript
+// 实时监控做市商桥接服务
+async function monitorBridgeService(mmId) {
+  const service = await api.query.marketMaker.bridgeServices(mmId);
+  
+  if (service.isSome) {
+    const config = service.unwrap();
+    
+    return {
+      enabled: config.enabled.toHuman(),
+      maxSwapAmount: config.max_swap_amount.toNumber() / 1_000_000,
+      feeRate: config.fee_rate_bps.toNumber() / 100,
+      totalSwaps: config.total_swaps.toNumber(),
+      totalVolume: config.total_volume.toNumber() / 1e12,
+      successRate: config.success_count.toNumber() / config.total_swaps.toNumber(),
+      avgTime: config.avg_time_seconds.toNumber(),
+      deposit: config.deposit.toNumber() / 1e12,
+      
+      // 告警指标
+      alerts: {
+        lowSuccessRate: config.success_count.toNumber() / config.total_swaps.toNumber() < 0.95,
+        slowResponse: config.avg_time_seconds.toNumber() > 600,  // 超过10分钟
+      }
+    };
+  }
+  
+  return null;
+}
+```
+
+### 相关文档
+
+- [pallet-simple-bridge README](/home/xiaodong/文档/memopark/pallets/simple-bridge/README.md)
+- [做市商参与SimpleBridge兑换方案分析](/home/xiaodong/文档/memopark/docs/做市商参与SimpleBridge兑换方案分析.md)
+- [做市商SimpleBridge-Phase1完成报告](/home/xiaodong/文档/memopark/docs/做市商SimpleBridge-Phase1完成报告.md)
+
+---
+
 ## 后续优化
 
 1. **性能优化**：
@@ -618,6 +1268,7 @@ T::MarketMakerProvider::record_first_purchase_usage(mm_id, &buyer, amount)?;
    - 调整费率
    - 批量审批
    - 审批历史和统计
+   - **桥接服务押金罚没机制**（仲裁违约时扣除）
 
 3. **权限管理**：
    - 集成委员会集体签名（替换 ensure_root）

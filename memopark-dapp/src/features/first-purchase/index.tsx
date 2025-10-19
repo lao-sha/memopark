@@ -4,5 +4,6 @@
 
 export { FirstPurchasePage } from './FirstPurchasePage';
 export { PaymentPage } from './PaymentPage';
+export { MarketMakerPoolPage } from './MarketMakerPoolPage';
 export { CountdownTimer } from './components/CountdownTimer';
 

@@ -6,7 +6,7 @@ extern crate alloc;
 
 use frame_support::{
     pallet_prelude::*,
-    traits::{Currency, Get, ReservableCurrency},
+    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
     BoundedVec,
 };
 use frame_system::pallet_prelude::*;
@@ -19,7 +19,7 @@ use sp_runtime::{
     offchain::{http, StorageKind},
     traits::AtLeast32BitUnsigned,
 };
-use sp_std::{str, vec::Vec};
+use sp_std::vec::Vec;
 
 /// 函数级详细中文注释：逝者 owner 只读提供者（低耦合）。
 /// - 由 runtime 注入实现，通常从 pallet-deceased 读取 owner 字段。
@@ -347,6 +347,53 @@ pub mod pallet {
     #[pallet::storage]
     pub type TotalChargedFromSubject<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
+    // ====== 动态副本数配置 ======
+    
+    /// 函数级中文注释：推荐副本数配置（按重要性等级）
+    /// 
+    /// 说明：
+    /// - 允许治理设置不同重要性等级的推荐副本数
+    /// - Level 0: 临时文件（默认 2）
+    /// - Level 1: 一般文件（默认 3）✅ 推荐
+    /// - Level 2: 重要文件（默认 5）
+    /// - Level 3: 关键文件（默认 7）
+    #[pallet::type_value]
+    pub fn DefaultReplicasForLevel0<T: Config>() -> u32 { 2 }
+    #[pallet::type_value]
+    pub fn DefaultReplicasForLevel1<T: Config>() -> u32 { 3 }
+    #[pallet::type_value]
+    pub fn DefaultReplicasForLevel2<T: Config>() -> u32 { 5 }
+    #[pallet::type_value]
+    pub fn DefaultReplicasForLevel3<T: Config>() -> u32 { 7 }
+    
+    #[pallet::storage]
+    pub type ReplicasForLevel0<T: Config> = 
+        StorageValue<_, u32, ValueQuery, DefaultReplicasForLevel0<T>>;
+    
+    #[pallet::storage]
+    pub type ReplicasForLevel1<T: Config> = 
+        StorageValue<_, u32, ValueQuery, DefaultReplicasForLevel1<T>>;
+    
+    #[pallet::storage]
+    pub type ReplicasForLevel2<T: Config> = 
+        StorageValue<_, u32, ValueQuery, DefaultReplicasForLevel2<T>>;
+    
+    #[pallet::storage]
+    pub type ReplicasForLevel3<T: Config> = 
+        StorageValue<_, u32, ValueQuery, DefaultReplicasForLevel3<T>>;
+    
+    /// 函数级中文注释：最小副本数阈值
+    /// 
+    /// 说明：
+    /// - 当副本数低于此阈值时，OCW 自动补充
+    /// - 默认：2（至少保证 2 个副本）
+    #[pallet::type_value]
+    pub fn DefaultMinReplicasThreshold<T: Config>() -> u32 { 2 }
+    
+    #[pallet::storage]
+    pub type MinReplicasThreshold<T: Config> = 
+        StorageValue<_, u32, ValueQuery, DefaultMinReplicasThreshold<T>>;
+
     // ====== 计费与生命周期（最小增量）======
     /// 函数级中文注释：每 GiB·周 单价（治理可调）。单位使用链上最小余额单位的整数，建议采用按字节的定点基数以避免小数。
     #[pallet::type_value]
@@ -511,6 +558,19 @@ pub mod pallet {
             deceased_id: u64,
             amount: BalanceOf<T>,
         },
+        /// 函数级中文注释：运营者获得奖励分配（运营者账户、金额、权重、总权重）
+        OperatorRewarded {
+            operator: T::AccountId,
+            amount: BalanceOf<T>,
+            weight: u128,
+            total_weight: u128,
+        },
+        /// 函数级中文注释：完成一轮奖励分配（总金额、运营者数量、平均权重）
+        RewardDistributed {
+            total_amount: BalanceOf<T>,
+            operator_count: u32,
+            average_weight: u128,
+        },
     }
 
     #[pallet::error]
@@ -547,9 +607,98 @@ pub mod pallet {
         SubjectFundingInsufficientBalance,
         /// 函数级中文注释：三个账户余额都不足（IpfsPool、SubjectFunding、Caller都无法支付）
         AllThreeAccountsInsufficientBalance,
+        /// 函数级中文注释：没有活跃的运营者（无法进行奖励分配）
+        NoActiveOperators,
+        /// 函数级中文注释：运营者托管账户余额不足
+        InsufficientEscrowBalance,
+        /// 函数级中文注释：计算权重时发生溢出
+        WeightOverflow,
     }
 
     impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：智能选择运营者（按权重优先选择）
+        /// 
+        /// 选择策略：
+        /// 1. 计算所有活跃运营者的权重（存储量 × 可靠性）
+        /// 2. 按权重从高到低排序
+        /// 3. 优先选择权重高、容量充足的运营者
+        /// 4. 确保负载均衡（避免单个运营者过载）
+        /// 
+        /// 权重计算：
+        /// - weight = (capacity_gib - used_ratio) × reliability
+        /// - reliability = probe_ok / (probe_ok + probe_fail)
+        /// - used_ratio = pinned_bytes / (capacity_gib × GiB)
+        /// 
+        /// 参数：
+        /// - `replicas`: 需要的副本数
+        /// - `exclude`: 排除的运营者（如已分配的）
+        /// 
+        /// 返回：
+        /// - 按权重排序的运营者列表（最多 replicas 个）
+        pub fn select_operators_by_weight(
+            replicas: u32,
+            exclude: &[T::AccountId],
+        ) -> alloc::vec::Vec<T::AccountId> {
+            let mut candidates: alloc::vec::Vec<(T::AccountId, u128)> = alloc::vec::Vec::new();
+            
+            // 1. 收集所有活跃运营者及其权重
+            for (op_acc, info) in Operators::<T>::iter() {
+                // 只选择活跃状态的运营者
+                if info.status != 0 {
+                    continue;
+                }
+                
+                // 跳过排除列表中的运营者
+                if exclude.contains(&op_acc) {
+                    continue;
+                }
+                
+                // 获取 SLA 统计
+                let sla = OperatorSla::<T>::get(&op_acc);
+                
+                // 计算可靠性（千分比）
+                let total_probes = sla.probe_ok.saturating_add(sla.probe_fail);
+                let reliability = if total_probes > 0 {
+                    (sla.probe_ok as u128).saturating_mul(1000).saturating_div(total_probes as u128)
+                } else {
+                    500 // 新运营者默认 50% 可靠性
+                };
+                
+                // 计算容量使用率
+                let capacity_bytes = (info.capacity_gib as u128).saturating_mul(1_073_741_824); // GiB to bytes
+                let used_ratio = if capacity_bytes > 0 {
+                    (sla.pinned_bytes as u128).saturating_mul(1000).saturating_div(capacity_bytes)
+                } else {
+                    1000 // 满载
+                };
+                
+                // 计算可用容量比例（1000 - used_ratio）
+                let available_ratio = if used_ratio < 1000 {
+                    1000u128.saturating_sub(used_ratio)
+                } else {
+                    0
+                };
+                
+                // 综合权重 = 可用容量 × 可靠性
+                let weight = available_ratio.saturating_mul(reliability).saturating_div(1000);
+                
+                // 只选择有可用容量的运营者（权重 > 0）
+                if weight > 0 {
+                    candidates.push((op_acc, weight));
+                }
+            }
+            
+            // 2. 按权重从高到低排序
+            candidates.sort_by(|a, b| b.1.cmp(&a.1));
+            
+            // 3. 选择前 replicas 个运营者
+            candidates
+                .into_iter()
+                .take(replicas as usize)
+                .map(|(acc, _)| acc)
+                .collect()
+        }
+        
         /// 函数级详细中文注释：根据 (domain, subject_id) 计算派生子账户（稳定派生，与创建者/拥有者解耦）
         /// - 使用 `SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))` 派生稳定地址
         /// - 该账户无私钥，不可外发，仅用于托管与扣费
@@ -562,6 +711,24 @@ pub mod pallet {
         pub fn subject_account_for_deceased(subject_id: u64) -> T::AccountId {
             Self::subject_account_for(T::DeceasedDomain::get(), subject_id)
         }
+        
+        /// 函数级详细中文注释：获取推荐副本数（根据重要性等级）
+        /// 
+        /// 参数：
+        /// - `level`: 重要性等级（0-3）
+        /// 
+        /// 返回：
+        /// - 推荐的副本数
+        pub fn get_recommended_replicas(level: u8) -> u32 {
+            match level {
+                0 => ReplicasForLevel0::<T>::get(),
+                1 => ReplicasForLevel1::<T>::get(),
+                2 => ReplicasForLevel2::<T>::get(),
+                3 => ReplicasForLevel3::<T>::get(),
+                _ => ReplicasForLevel1::<T>::get(), // 默认返回 Level 1
+            }
+        }
+        
         /// 函数级详细中文注释：CID 解密/映射内部工具函数（非外部可调用）
         /// - 从 offchain local storage 读取 `/memo/ipfs/cid/<hash_hex>` 对应的明文 CID；
         /// - 若不存在，返回占位 `"<redacted>"`，用于上层降级处理。
@@ -1134,6 +1301,180 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级详细中文注释：设置推荐副本数配置
+        /// 
+        /// 权限：治理 Origin
+        /// 
+        /// 参数：
+        /// - `level0_replicas`: Level 0（临时文件）的推荐副本数
+        /// - `level1_replicas`: Level 1（一般文件）的推荐副本数
+        /// - `level2_replicas`: Level 2（重要文件）的推荐副本数
+        /// - `level3_replicas`: Level 3（关键文件）的推荐副本数
+        /// - `min_threshold`: 最小副本数阈值（触发自动补充）
+        /// 
+        /// 使用 Option 支持部分更新
+        #[pallet::call_index(14)]
+        #[pallet::weight(10_000)]
+        pub fn set_replicas_config(
+            origin: OriginFor<T>,
+            level0_replicas: Option<u32>,
+            level1_replicas: Option<u32>,
+            level2_replicas: Option<u32>,
+            level3_replicas: Option<u32>,
+            min_threshold: Option<u32>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            if let Some(v) = level0_replicas {
+                ensure!(v >= 1 && v <= 10, Error::<T>::BadParams);
+                ReplicasForLevel0::<T>::put(v);
+            }
+            if let Some(v) = level1_replicas {
+                ensure!(v >= 1 && v <= 10, Error::<T>::BadParams);
+                ReplicasForLevel1::<T>::put(v);
+            }
+            if let Some(v) = level2_replicas {
+                ensure!(v >= 1 && v <= 10, Error::<T>::BadParams);
+                ReplicasForLevel2::<T>::put(v);
+            }
+            if let Some(v) = level3_replicas {
+                ensure!(v >= 1 && v <= 10, Error::<T>::BadParams);
+                ReplicasForLevel3::<T>::put(v);
+            }
+            if let Some(v) = min_threshold {
+                ensure!(v >= 1 && v <= 10, Error::<T>::BadParams);
+                MinReplicasThreshold::<T>::put(v);
+            }
+            
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：将 OperatorEscrowAccount 中的资金按权重分配给活跃运营者
+        /// 
+        /// 权重计算公式：
+        /// - weight = pinned_bytes × reliability_factor
+        /// - reliability_factor = probe_ok / (probe_ok + probe_fail)
+        /// - 如果 probe_ok + probe_fail = 0，则使用默认值 50%
+        /// 
+        /// 分配规则：
+        /// - 仅分配给状态为 Active(0) 的运营者
+        /// - 按权重比例分配：运营者收益 = 总金额 × (运营者权重 / 所有运营者权重之和)
+        /// - 忽略权重为 0 的运营者（pinned_bytes = 0）
+        /// 
+        /// 权限：
+        /// - 治理 Origin（Root 或技术委员会）
+        /// - 建议定期（如每周）执行一次
+        /// 
+        /// 参数：
+        /// - `max_amount`: 本次分配的最大金额（0 表示分配托管账户的全部余额）
+        #[pallet::call_index(13)]
+        #[pallet::weight(10_000)]
+        pub fn distribute_to_operators(
+            origin: OriginFor<T>,
+            max_amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            let escrow_account = T::OperatorEscrowAccount::get();
+            
+            // 1. 确定要分配的总金额
+            let escrow_balance = <T as Config>::Currency::free_balance(&escrow_account);
+            let total_amount = if max_amount.is_zero() {
+                escrow_balance
+            } else {
+                max_amount.min(escrow_balance)
+            };
+            
+            ensure!(!total_amount.is_zero(), Error::<T>::InsufficientEscrowBalance);
+            
+            // 2. 收集所有活跃运营者的权重
+            let mut weights: alloc::vec::Vec<(T::AccountId, u128)> = alloc::vec::Vec::new();
+            let mut total_weight: u128 = 0;
+            
+            for (op, sla) in OperatorSla::<T>::iter() {
+                if let Some(info) = Operators::<T>::get(&op) {
+                    if info.status == 0 {  // Active
+                        // 计算可靠性因子（千分比，避免除零）
+                        let total_probes = sla.probe_ok.saturating_add(sla.probe_fail);
+                        let reliability = if total_probes > 0 {
+                            // 计算 probe_ok / total_probes，结果乘以 1000 得到千分比
+                            (sla.probe_ok as u128)
+                                .saturating_mul(1000)
+                                .saturating_div(total_probes as u128)
+                        } else {
+                            // 默认 50% 可靠性
+                            500
+                        };
+                        
+                        // 综合权重 = 存储量 × 可靠性 / 1000
+                        let weight = (sla.pinned_bytes as u128)
+                            .saturating_mul(reliability)
+                            .checked_div(1000)
+                            .ok_or(Error::<T>::WeightOverflow)?;
+                        
+                        // 只记录权重大于 0 的运营者
+                        if weight > 0 {
+                            weights.push((op.clone(), weight));
+                            total_weight = total_weight
+                                .checked_add(weight)
+                                .ok_or(Error::<T>::WeightOverflow)?;
+                        }
+                    }
+                }
+            }
+            
+            ensure!(!weights.is_empty(), Error::<T>::NoActiveOperators);
+            ensure!(total_weight > 0, Error::<T>::NoActiveOperators);
+            
+            // 3. 按权重比例分配
+            let mut distributed_amount = BalanceOf::<T>::zero();
+            let operator_count = weights.len() as u32;
+            
+            for (op, weight) in weights.iter() {
+                // 计算该运营者应得的份额
+                // share = total_amount × weight / total_weight
+                let share_u128 = (total_amount.saturated_into::<u128>())
+                    .saturating_mul(*weight)
+                    .saturating_div(total_weight);
+                
+                let share: BalanceOf<T> = share_u128.saturated_into();
+                
+                if share > BalanceOf::<T>::zero() {
+                    // 转账给运营者
+                    <T as Config>::Currency::transfer(
+                        &escrow_account,
+                        op,
+                        share,
+                        ExistenceRequirement::KeepAlive,
+                    )?;
+                    
+                    distributed_amount = distributed_amount.saturating_add(share);
+                    
+                    Self::deposit_event(Event::OperatorRewarded {
+                        operator: op.clone(),
+                        amount: share,
+                        weight: *weight,
+                        total_weight,
+                    });
+                }
+            }
+            
+            // 4. 发出汇总事件
+            let average_weight = if operator_count > 0 {
+                total_weight / (operator_count as u128)
+            } else {
+                0
+            };
+            
+            Self::deposit_event(Event::RewardDistributed {
+                total_amount: distributed_amount,
+                operator_count,
+                average_weight,
+            });
+            
+            Ok(())
+        }
+
         /// 函数级详细中文注释：OCW 上报标记已 Pin 成功
         /// - 需要节点 keystore 的专用 key 签名；
         /// - 仅更新状态并发出事件（骨架）。
@@ -1402,26 +1743,29 @@ pub mod pallet {
             if let Some((cid_hash, (_payer, replicas, _deceased_id, _size, _price))) =
                 <PendingPins<T>>::iter().next()
             {
-                // 若未分配，则挑选活跃运营者账户（简化：取前 N 个）
+                // 若未分配，则智能选择运营者（按权重优先）
                 if PinAssignments::<T>::get(&cid_hash).is_none() {
-                    let mut selected: BoundedVec<
-                        T::AccountId,
-                        frame_support::traits::ConstU32<16>,
-                    > = Default::default();
-                    for (op_acc, info) in Operators::<T>::iter() {
-                        if info.status == 0 {
-                            let _ = selected.try_push(op_acc);
+                    // 使用智能选择算法：优先选择可靠性高、容量充足的运营者
+                    let selected_vec = Self::select_operators_by_weight(replicas, &[]);
+                    
+                    if !selected_vec.is_empty() {
+                        // 转换为 BoundedVec
+                        let mut selected: BoundedVec<
+                            T::AccountId,
+                            frame_support::traits::ConstU32<16>,
+                        > = Default::default();
+                        
+                        for op in selected_vec.iter() {
+                            let _ = selected.try_push(op.clone());
                         }
-                        if (selected.len() as u32) >= replicas {
-                            break;
+                        
+                        if !selected.is_empty() {
+                            PinAssignments::<T>::insert(&cid_hash, &selected);
+                            Self::deposit_event(Event::AssignmentCreated(
+                                cid_hash,
+                                selected.len() as u32,
+                            ));
                         }
-                    }
-                    if !selected.is_empty() {
-                        PinAssignments::<T>::insert(&cid_hash, &selected);
-                        Self::deposit_event(Event::AssignmentCreated(
-                            cid_hash,
-                            selected.len() as u32,
-                        ));
                     }
                 }
                 // 发起 Pin 请求（MVP 不在 body 中传 allocations，真实集群应携带）
@@ -1455,6 +1799,9 @@ pub mod pallet {
                             }
                         }
                         if ok_count < expect {
+                            // 副本不足，需要补充
+                            let shortage = expect.saturating_sub(ok_count);
+                            
                             // 解析 /pins/{cid}，对比分配并触发降级/修复事件
                             let cid_str = Self::resolve_cid(&cid_hash);
                             // 直接 GET /pins/{cid} 获取状态（Plan B 替换 submit_get_pin_status_collect）
@@ -1520,6 +1867,34 @@ pub mod pallet {
                                                 op_acc.clone(),
                                             ));
                                         }
+                                    }
+                                }
+                                
+                                // 自动补充副本：选择新的运营者来补充不足的副本
+                                if shortage > 0 {
+                                    // 获取当前已分配的运营者列表（用于排除）
+                                    let current_operators: alloc::vec::Vec<T::AccountId> = 
+                                        assign.iter().cloned().collect();
+                                    
+                                    // 智能选择新的运营者来补充副本
+                                    let new_operators = Self::select_operators_by_weight(
+                                        shortage,
+                                        &current_operators
+                                    );
+                                    
+                                    if !new_operators.is_empty() {
+                                        // 更新分配列表
+                                        let mut updated_assign = assign.clone();
+                                        for new_op in new_operators.iter() {
+                                            if updated_assign.try_push(new_op.clone()).is_ok() {
+                                                // 触发事件：已添加新运营者补充副本
+                                                Self::deposit_event(Event::AssignmentCreated(
+                                                    cid_hash,
+                                                    1, // 新增 1 个运营者
+                                                ));
+                                            }
+                                        }
+                                        PinAssignments::<T>::insert(&cid_hash, &updated_assign);
                                     }
                                 }
                             }
@@ -1722,7 +2097,7 @@ pub mod pallet {
 /// - 直接调用现有的 `request_pin_for_deceased` 函数；
 /// - 使用triple-charge机制自动扣费；
 /// - 将请求添加到 PendingPins 队列，由OCW异步处理。
-impl<T: Config> IpfsPinner<T::AccountId, T::Balance> for Pallet<T> {
+impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>> for Pallet<T> {
     /// 函数级详细中文注释：为逝者关联的CID发起pin请求
     /// 
     /// 内部实现：
@@ -1731,10 +2106,10 @@ impl<T: Config> IpfsPinner<T::AccountId, T::Balance> for Pallet<T> {
     /// 3. 使用 `triple_charge_storage_fee` 扣费
     /// 4. 将请求加入 PendingPins 队列
     fn pin_cid_for_deceased(
-        caller: T::AccountId,
+        caller: <T as frame_system::Config>::AccountId,
         deceased_id: u64,
         cid: Vec<u8>,
-        price: T::Balance,
+        price: BalanceOf<T>,
         replicas: u32,
     ) -> DispatchResult {
         use sp_runtime::traits::{Saturating, Hash};
@@ -1801,10 +2176,10 @@ impl<T: Config> IpfsPinner<T::AccountId, T::Balance> for Pallet<T> {
     /// 2. 避免修改核心扣费逻辑
     /// 3. 保持语义清晰（通过特殊ID区分墓位与逝者）
     fn pin_cid_for_grave(
-        caller: T::AccountId,
+        caller: <T as frame_system::Config>::AccountId,
         grave_id: u64,
         cid: Vec<u8>,
-        price: T::Balance,
+        price: BalanceOf<T>,
         replicas: u32,
     ) -> DispatchResult {
         // 使用特殊映射规则：deceased_id = u64::MAX - grave_id

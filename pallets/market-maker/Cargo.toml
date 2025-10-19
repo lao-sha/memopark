@@ -19,15 +19,17 @@ std = [
     "frame-support/std",
     "frame-system/std",
     "sp-std/std",
+    "pallet-timestamp/std",
 ]
 
 [dependencies]
-codec = { package = "parity-scale-codec", workspace = true, default-features = false, features = ["derive"] }
+codec = { workspace = true, default-features = false, features = ["derive"] }
 scale-info = { workspace = true, default-features = false, features = ["derive"] }
 sp-std = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 sp-arithmetic = { workspace = true, default-features = false }
+pallet-timestamp = { workspace = true, default-features = false }
 
 

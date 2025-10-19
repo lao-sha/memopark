@@ -1,7 +1,6 @@
 import React from 'react'
 import { Card, Space, Typography, Row, Col, Alert, Button, Tag } from 'antd'
 import { getApi } from '../../lib/polkadot'
-import { query as gqlQuery, GQL } from '../../lib/graphql'
 
 /**
  * 函数级详细中文注释：区块链数据面板（骨架版，实时三卡片）
@@ -30,13 +29,6 @@ const DashboardPage: React.FC = () => {
 
   // 简单滑窗：记录最近 N 次出块的时间与 extrinsics 数量
   const windowRef = React.useRef<Array<{ time: number; ex: number }>>([])
-
-  // Subsquid 聚合：近30天新增墓地趋势、近7天园区Top5、最近事件时间线、近7天墓地Top5（按最近动作数）
-  const [squidError, setSquidError] = React.useState<string>('')
-  const [dailyNewGraves, setDailyNewGraves] = React.useState<Array<{ day: string; count: number }>>([])
-  const [topParks, setTopParks] = React.useState<Array<{ parkId: number; count: number }>>([])
-  const [recentActions, setRecentActions] = React.useState<Array<{ kind: string; graveId?: number; block: number }>>([])
-  const [topGraves, setTopGraves] = React.useState<Array<{ id: number; actions: number }>>([])
 
   /**
    * 函数级中文注释：拉取基础链信息与实时指标
@@ -98,58 +90,6 @@ const DashboardPage: React.FC = () => {
     timer = setInterval(fetchOnce, 5000)
     return () => { if (timer) clearInterval(timer) }
   }, [fetchOnce])
-
-  /**
-   * 函数级中文注释：拉取 Subsquid 数据（存在端点时）
-   * - 近30天新墓地：按 Grave.createdAt 聚合
-   * - 近7天园区Top：按 parkId 聚合计数
-   * - 最近事件时间线：GraveAction 最近 20 条
-   * - 近7天墓地 Top：统计最近 100 条动作中每个 grave 的次数
-   */
-  const fetchSquid = React.useCallback(async () => {
-    try {
-      setSquidError('')
-      if (!GQL.endpoint || GQL.endpoint.includes('example.com')) return
-      const nowSec = Math.floor(Date.now() / 1000)
-      const since30 = nowSec - 30 * 24 * 3600
-      const since7 = nowSec - 7 * 24 * 3600
-
-      // 近30天 Grave.createdAt
-      const q1 = `query Graves30($since:Int!,$limit:Int!){
-        graves(where:{createdAt_gte:$since}, orderBy: createdAt_ASC, limit:$limit){ id createdAt parkId }
-      }`
-      const d1 = await gqlQuery<{ graves: Array<{ id: string; createdAt: number; parkId: string | null }> }>(q1, { since: since30, limit: 1000 })
-      const dayMap: Record<string, number> = {}
-      const parkMap7: Record<string, number> = {}
-      d1.graves.forEach(g => {
-        const day = new Date(g.createdAt * 1000).toISOString().slice(0, 10)
-        dayMap[day] = (dayMap[day] || 0) + 1
-        if (g.createdAt >= since7 && g.parkId != null) parkMap7[g.parkId] = (parkMap7[g.parkId] || 0) + 1
-      })
-      const days: string[] = Array.from({ length: 30 }).map((_, i) => {
-        const d = new Date(Date.now() - (29 - i) * 24 * 3600 * 1000)
-        return d.toISOString().slice(0, 10)
-      })
-      setDailyNewGraves(days.map(day => ({ day, count: dayMap[day] || 0 })))
-      const topP = Object.entries(parkMap7).map(([k, v]) => ({ parkId: Number(k), count: v as number })).sort((a, b) => b.count - a.count).slice(0, 5)
-      setTopParks(topP)
-
-      // 最近事件：GraveAction 最近20；近7天Top graves：在最近100条中统计
-      const q2 = `query GraveActs($limitRecent:Int!,$limitTop:Int!){
-        graveActions(orderBy: block_DESC, limit:$limitRecent){ kind block grave { id } }
-        top: graveActions(orderBy: block_DESC, limit:$limitTop){ kind block grave { id } }
-      }`
-      const d2 = await gqlQuery<{ graveActions: Array<{ kind: string; block: number; grave: { id: string } | null }>; top: Array<{ kind: string; block: number; grave: { id: string } | null }> }>(q2, { limitRecent: 20, limitTop: 100 })
-      setRecentActions(d2.graveActions.map(a => ({ kind: a.kind, block: a.block, graveId: a.grave ? Number(a.grave.id) : undefined })))
-      const countByGrave: Record<string, number> = {}
-      d2.top.forEach(a => { const gid = a.grave?.id; if (gid) countByGrave[gid] = (countByGrave[gid] || 0) + 1 })
-      setTopGraves(Object.entries(countByGrave).map(([k, v]) => ({ id: Number(k), actions: v as number })).sort((a, b) => b.actions - a.actions).slice(0, 5))
-    } catch (e: any) {
-      setSquidError(e?.message || 'Subsquid 数据源不可用')
-    }
-  }, [])
-
-  React.useEffect(() => { fetchSquid() }, [fetchSquid])
 
   /**
    * 函数级中文注释：格式化最小单位金额

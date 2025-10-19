@@ -261,6 +261,178 @@ export async function signAndSendLocalWithPassword(section: string, method: stri
 }
 
 /**
+ * 函数级详细中文注释：使用已构建的交易对象进行签名（带密码提示和回调）
+ * - 接受已构建的 tx 对象（而非 section/method/args）
+ * - 自动弹出密码输入框
+ * - 支持自定义回调函数来处理交易状态
+ * - 用于需要实时监控交易状态的场景（如 SimpleBridge 页面）
+ * 
+ * @param tx - 已构建的交易对象（api.tx.xxx.yyy(...)）
+ * @param address - 签名账户地址（用于验证）
+ * @param callback - 状态回调函数 (status, events) => void
+ */
+export async function signAndSendTxWithPassword(
+  tx: any,
+  address: string,
+  callback: (status: any, events?: any) => void
+): Promise<void> {
+  try {
+    const ks = loadCurrentKeystore()
+    if (!ks) throw new Error('未找到本地钱包，请先在"创建钱包"中生成')
+    
+    const currentAddr = getCurrentAddress()
+    if (!currentAddr) throw new Error('未选择当前账户')
+    
+    // 验证地址匹配
+    if (currentAddr !== address) {
+      throw new Error(`账户地址不匹配：当前 ${currentAddr}，请求 ${address}`)
+    }
+    
+    // 弹窗提示输入密码（最多 5 次重试）
+    let pwd: string | null = null
+    for (let i = 0; i < 5; i++) {
+      const input = window.prompt('请输入本地钱包密码用于签名：')
+      if (input && input.length >= 8) { 
+        pwd = input
+        break 
+      }
+      // 提示后继续下一次输入
+      window.alert('必须输入至少 8 位密码以完成签名')
+    }
+    if (!pwd) throw new Error('密码输入未完成')
+    
+    // 解密 keystore 获取密钥对
+    const mnemonic = await decryptWithPassword(pwd, ks)
+    await cryptoWaitReady()
+    const keyring = new Keyring({ type: 'sr25519' })
+    const pair = keyring.addFromUri(mnemonic)
+    
+    // 验证解密出的地址与当前地址是否匹配
+    if (pair.address !== currentAddr) {
+      console.warn('[签名] 地址不匹配！')
+      console.warn('[签名] 当前地址:', currentAddr)
+      console.warn('[签名] 解密地址:', pair.address)
+      throw new Error(`地址不匹配：当前账户是 ${currentAddr.slice(0,10)}...，但 keystore 解密出的是 ${pair.address.slice(0,10)}...。请检查是否选择了正确的账户。`)
+    }
+    
+    // 签名并发送交易，使用回调函数处理状态
+    await tx.signAndSend(pair, ({ status, events, dispatchError }: any) => {
+      console.log('[交易状态]', status.type)
+      
+      // 调用回调函数（传递状态和事件）
+      callback(status, events)
+      
+      // 检查是否有调度错误
+      if (status.isFinalized && dispatchError) {
+        if (dispatchError.isModule) {
+          const api = tx.registry.api || tx.api
+          if (api) {
+            const decoded = api.registry.findMetaError(dispatchError.asModule)
+            const { docs, name, section: errSection } = decoded
+            throw new Error(`${errSection}.${name}: ${docs.join(' ')}`)
+          }
+        }
+        throw new Error(dispatchError.toString())
+      }
+    })
+  } catch (error) {
+    console.error('[signAndSendTxWithPassword] 错误:', error)
+    throw error instanceof Error ? error : new Error(String(error))
+  }
+}
+
+/**
+ * 函数级详细中文注释：使用已构建的交易对象进行签名（简化版，等待完成）
+ * - 接受已构建的 tx 对象
+ * - 自动弹出密码输入框
+ * - 等待交易被打包进区块并最终确认
+ * - 返回交易哈希
+ * - 用于不需要监控中间状态的场景（如 MakerBridge 页面）
+ * 
+ * @param tx - 已构建的交易对象（api.tx.xxx.yyy(...)）
+ * @param address - 签名账户地址（用于验证）
+ * @returns 交易哈希
+ */
+export async function signAndSendTxWithPrompt(
+  tx: any,
+  address: string
+): Promise<string> {
+  try {
+    const ks = loadCurrentKeystore()
+    if (!ks) throw new Error('未找到本地钱包，请先在"创建钱包"中生成')
+    
+    const currentAddr = getCurrentAddress()
+    if (!currentAddr) throw new Error('未选择当前账户')
+    
+    // 验证地址匹配
+    if (currentAddr !== address) {
+      throw new Error(`账户地址不匹配：当前 ${currentAddr}，请求 ${address}`)
+    }
+    
+    // 弹窗提示输入密码（最多 5 次重试）
+    let pwd: string | null = null
+    for (let i = 0; i < 5; i++) {
+      const input = window.prompt('请输入本地钱包密码用于签名：')
+      if (input && input.length >= 8) { 
+        pwd = input
+        break 
+      }
+      // 提示后继续下一次输入
+      window.alert('必须输入至少 8 位密码以完成签名')
+    }
+    if (!pwd) throw new Error('密码输入未完成')
+    
+    // 解密 keystore 获取密钥对
+    const mnemonic = await decryptWithPassword(pwd, ks)
+    await cryptoWaitReady()
+    const keyring = new Keyring({ type: 'sr25519' })
+    const pair = keyring.addFromUri(mnemonic)
+    
+    // 验证解密出的地址与当前地址是否匹配
+    if (pair.address !== currentAddr) {
+      console.warn('[签名] 地址不匹配！')
+      console.warn('[签名] 当前地址:', currentAddr)
+      console.warn('[签名] 解密地址:', pair.address)
+      throw new Error(`地址不匹配：当前账户是 ${currentAddr.slice(0,10)}...，但 keystore 解密出的是 ${pair.address.slice(0,10)}...。请检查是否选择了正确的账户。`)
+    }
+    
+    // 签名并发送交易，等待最终确认
+    const hash = await new Promise<string>((resolve, reject) => {
+      tx.signAndSend(pair, ({ status, dispatchError, events }: any) => {
+        console.log('[交易状态]', status.type)
+        
+        if (status.isInBlock) {
+          console.log(`✓ 交易已打包进区块: ${status.asInBlock.toString()}`)
+        }
+        
+        if (status.isFinalized) {
+          console.log(`✓ 交易已最终确认: ${status.asFinalized.toString()}`)
+          
+          // 检查是否有调度错误
+          if (dispatchError) {
+            if (dispatchError.isModule) {
+              const decoded = tx.registry.findMetaError(dispatchError.asModule)
+              const { docs, name, section: errSection } = decoded
+              reject(new Error(`${errSection}.${name}: ${docs.join(' ')}`))
+            } else {
+              reject(new Error(dispatchError.toString()))
+            }
+          } else {
+            // 交易成功，返回区块哈希
+            resolve(status.asFinalized.toString())
+          }
+        }
+      }).catch(reject)
+    })
+    
+    return hash
+  } catch (error) {
+    console.error('[signAndSendTxWithPrompt] 错误:', error)
+    throw error instanceof Error ? error : new Error(String(error))
+  }
+}
+
+/**
  * 函数级中文注释：通过转发器发送交易（带错误处理）
  */
 export async function sendViaForwarder(namespace: any, signer: string, section: string, method: string, args: any[]): Promise<string> {

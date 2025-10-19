@@ -1,22 +1,25 @@
 import React from 'react'
 import { Alert, Card, Descriptions, Typography, Button, message } from 'antd'
-import { query } from '../../lib/graphql'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
- * 函数级详细中文注释：订单详情（Subsquid + 直发操作）
+ * 函数级详细中文注释：订单详情（全局链上直连）
  * 前端操作方法：
- * - 输入订单ID，从 Subsquid 拉取快照；
- * - 支持“标记已付”“发起争议”按钮（使用 @polkadot/api 直发）。
+ * - 输入订单ID，从链上拉取订单信息；
+ * - 支持"标记已付""发起争议"按钮（使用 @polkadot/api 直发）。
+ * - 全局链上直连模式，移除 Subsquid 依赖
  */
 const OrderDetailPage: React.FC = () => {
   const [orderId, setOrderId] = React.useState<string>('1')
   const [data, setData] = React.useState<any>(null)
 
+  /**
+   * 函数级中文注释：全局链上直连模式，暂时禁用 Subsquid 查询
+   */
   const load = React.useCallback(async () => {
-    const gql = `query Q($id:ID!){ order(id:$id){ id listingId maker taker price qty amount state createdAt expireAt actions(orderBy: block_ASC){ kind block meta } } }`
-    const res = await query<{ order: any }>(gql, { id: orderId })
-    setData(res.order)
+    // 暂时禁用 Subsquid 查询
+    setData(null)
+    message.info('当前采用全局链上直连模式，功能暂时禁用')
   }, [orderId])
 
   React.useEffect(()=>{ load() }, [load])

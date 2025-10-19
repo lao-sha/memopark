@@ -1,23 +1,26 @@
 import React from 'react'
 import { Alert, List, Skeleton, Typography, Tag } from 'antd'
-import { query } from '../../lib/graphql'
 
 /**
- * 函数级详细中文注释：留言板（只读时间线，数据来自 Subsquid）
+ * 函数级详细中文注释：留言板（只读时间线）
  * 前端操作方法：
  * - 输入 graveId，自动分页拉取留言；后续可加入发帖/编辑（链上直发）。
+ * - 全局链上直连模式，移除 Subsquid 依赖
  */
 const GuestbookPage: React.FC = () => {
   const [graveId, setGraveId] = React.useState<string>('1')
   const [items, setItems] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(false)
 
+  /**
+   * 函数级中文注释：全局链上直连模式，暂时禁用 Subsquid 查询
+   */
   const load = React.useCallback(async () => {
     if (!graveId) return
     setLoading(true)
     try {
-      const data = await query<{ guestbookMessages: any[] }>(`query Q($gid:BigInt!){ guestbookMessages(where:{graveId_eq:$gid}, orderBy: created_DESC, limit: 50){ id graveId author content created hidden } }`, { gid: graveId })
-      setItems(data.guestbookMessages)
+      // 暂时禁用 Subsquid 查询
+      setItems([])
     } finally { setLoading(false) }
   }, [graveId])
 

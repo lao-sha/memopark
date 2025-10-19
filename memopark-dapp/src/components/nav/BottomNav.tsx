@@ -121,7 +121,7 @@ const BottomNav: React.FC = () => {
             
             <button onClick={() => go('my-wallet')} style={{ ...btnStyle, ...(active==='my-wallet'?btnActiveStyle:undefined) }}>
               <WalletOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>钱包</span>
+              <span style={txtStyle}>我的钱包</span>
             </button>
           </div>
         </div>

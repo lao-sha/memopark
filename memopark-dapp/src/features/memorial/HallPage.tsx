@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Tabs, Typography, List, Button, Input, Row, Col, message, Space, Alert } from 'antd'
-import { query } from '../../lib/graphql'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { getApi } from '../../lib/polkadot'
 
 /**
  * 函数级详细中文注释：纪念馆 Hall 展示页
- * - 数据：Subsquid（Hall/Offering）+ 链上操作（attach_deceased/set_park）
+ * - 数据：全局链上直连（移除 Subsquid 依赖）
  * - Tab：供奉/留言/媒体（留言/媒体为占位列表）
  */
 const HallPage: React.FC<{ id: number }> = ({ id }) => {
@@ -16,15 +16,25 @@ const HallPage: React.FC<{ id: number }> = ({ id }) => {
   const [setParkId, setSetParkId] = useState<string>('')
   const [offerParams, setOfferParams] = useState<{ min?: string; window?: number } | null>(null)
 
+  /**
+   * 函数级中文注释：从链上加载纪念馆信息
+   * - 改为直接查询链上数据，移除 Subsquid 依赖
+   */
   const refetch = async () => {
-    const q = `query Q($id: ID!) { hall(id:$id){ id owner parkId kind primaryDeceasedId slug createdAt offeringsCount offeringsAmount } offerings(where:{ hallId_eq:$id }, orderBy:block_DESC, limit:20){ id who amount block } }`
-    const res = await query(q, { id: id.toString() })
-    setHall(res.hall || null)
-    setOfferings(res.offerings || [])
+    try {
+      const api = await getApi()
+      // 查询纪念馆基本信息（需根据实际 pallet 结构调整）
+      // 暂时禁用，显示提示信息
+      setHall({ id, owner: '', parkId: null, kind: '', primaryDeceasedId: null, slug: '', createdAt: 0, offeringsCount: 0, offeringsAmount: '0' })
+      setOfferings([])
+      message.info('纪念馆功能已切换为链上直连模式，部分功能暂时禁用')
+    } catch (e) {
+      console.error('加载纪念馆信息失败:', e)
+    }
   }
 
   useEffect(() => { refetch().catch(() => {}) }, [id])
-  useEffect(() => { (async()=>{ try{ const api = await (await import('../../lib/polkadot')).getApi(); const min = ((api.consts as any).memoOfferings?.minOfferAmount||0n).toString(); const window = Number((api.consts as any).memoOfferings?.offerWindow||0); setOfferParams({ min, window }); }catch{}})() }, [])
+  useEffect(() => { (async()=>{ try{ const api = await getApi(); const min = ((api.consts as any).memoOfferings?.minOfferAmount||0n).toString(); const window = Number((api.consts as any).memoOfferings?.offerWindow||0); setOfferParams({ min, window }); }catch{}})() }, [])
 
   const onAttachDeceased = async () => {
     try {

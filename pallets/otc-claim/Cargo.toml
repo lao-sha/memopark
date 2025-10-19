@@ -6,7 +6,7 @@ license = "MIT-0"
 
 [dependencies]
 scale-info = { workspace = true, default-features = false, features = ["derive"] }
-codec = { workspace = true, default-features = false, package = "parity-scale-codec", features = ["derive"] }
+codec = { workspace = true, default-features = false, features = ["derive"] }
 sp-std = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }

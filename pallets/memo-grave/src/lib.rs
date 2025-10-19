@@ -53,10 +53,9 @@ pub mod pallet {
         fn token_of(id: u64) -> Option<BoundedVec<u8, MaxCidLen>>;
     }
 
-    /// 函数级中文注释：KYC 提供者抽象（由 runtime 实现，例如基于 pallet-identity 的判定）。
-    pub trait KycProvider<AccountId> {
-        fn is_verified(who: &AccountId) -> bool;
-    }
+    // 函数级中文注释：移除未使用的 KycProvider trait
+    // - 该 trait 从未在本 pallet 中实际使用
+    // - 已清理冗余代码
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

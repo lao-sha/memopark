@@ -692,7 +692,7 @@ const MyWalletPage: React.FC = () => {
         <div
           onClick={() => {
             message.info('跳转到兑换MEMO');
-            window.location.hash = '#/otc/claim';
+            window.location.hash = '#/bridge/simple';
           }}
           style={{
             background: '#fff',

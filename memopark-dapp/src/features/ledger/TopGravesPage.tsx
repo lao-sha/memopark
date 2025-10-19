@@ -1,6 +1,5 @@
 import React from 'react'
 import { Alert, Select, Typography, List, Skeleton, Tag } from 'antd'
-import { query } from '../../lib/graphql'
 
 /**
  * 函数级详细中文注释：墓位排行榜（Subsquid 查询）

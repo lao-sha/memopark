@@ -13,7 +13,6 @@ import OfferingsTimeline from './features/offerings/OfferingsTimeline';
 import OfferingsByWho from './features/offerings/OfferingsByWho';
 import BottomNav from './components/nav/BottomNav';
 import TreasuryPage from './features/treasury/TreasuryPage';
-import ProfilePage from './features/profile/ProfilePage';
 import GraveListPage from './features/grave/GraveListPage';
 import MyGravesPage from './features/grave/MyGravesPage';
 import DashboardPage from './features/dashboard/DashboardPage';
