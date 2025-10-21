@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider, Alert, App } from 'antd';
+import { ConfigProvider, Alert, App as AntdApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { WalletProvider } from './providers/WalletProvider';
 import memorialTheme from './theme/colors';
@@ -82,7 +82,7 @@ const App: React.FC = () => {
 
     return (
       <ConfigProvider locale={zhCN} theme={memorialTheme}>
-        <App>
+        <AntdApp>
           <div className="App">
             <GovernanceUiProvider>
               <WalletProvider>
@@ -106,7 +106,7 @@ const App: React.FC = () => {
               </WalletProvider>
             </GovernanceUiProvider>
           </div>
-        </App>
+        </AntdApp>
       </ConfigProvider>
     );
   } catch (error) {
