@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider, Alert } from 'antd';
+import { ConfigProvider, Alert, App } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { WalletProvider } from './providers/WalletProvider';
 import memorialTheme from './theme/colors';
@@ -50,7 +50,7 @@ import IdentityViewerPage from './features/identity/IdentityViewerPage';
 import OriginRestrictionPage from './features/origin/OriginRestrictionPage';
 import RewardParamsPanel from './features/affiliate/RewardParamsPanel';
 import BridgeParamsPage from './features/bridge/BridgeParamsPage';
-import ClaimMemoForm from './features/otc/ClaimMemoForm';
+import ClaimMemoForm from './features/otc/ClaimMemoForm';  // 首购领取（原OTC领取）
 import CreateOrderPage from './features/otc/CreateOrderPage';
 import PayCreateTestPage from './features/otc/PayCreateTestPage';
 import CreateMarketMakerPage from './features/otc/CreateMarketMakerPage';
@@ -82,29 +82,31 @@ const App: React.FC = () => {
 
     return (
       <ConfigProvider locale={zhCN} theme={memorialTheme}>
-        <div className="App">
-          <GovernanceUiProvider>
-            <WalletProvider>
-                {(() => {
-                  const Dynamic = resolveRoute(hash);
-                  if (Dynamic) {
-                    return (
-                      <React.Suspense fallback={<div style={{padding:40,textAlign:'center',color:'#888'}}>加载中...</div>}>
-                        <Dynamic />
-                      </React.Suspense>
-                    );
-                  }
-                  if (hash === '#/graves') return <GraveListPage />; // 保持原有默认入口之一
-                  if (hash === '#/evidence/linker') return <EvidenceLinkerPage />; // 仍保留直载页
-                  if (hash === '#/otc/claim') return <ClaimMemoForm />;
-                  return <AuthEntryPage />;
-                })()}
-              <BottomNav />
-              <SettingsButton />
-              <SettingsDrawer />
-            </WalletProvider>
-          </GovernanceUiProvider>
-        </div>
+        <App>
+          <div className="App">
+            <GovernanceUiProvider>
+              <WalletProvider>
+                  {(() => {
+                    const Dynamic = resolveRoute(hash);
+                    if (Dynamic) {
+                      return (
+                        <React.Suspense fallback={<div style={{padding:40,textAlign:'center',color:'#888'}}>加载中...</div>}>
+                          <Dynamic />
+                        </React.Suspense>
+                      );
+                    }
+                    if (hash === '#/graves') return <GraveListPage />; // 保持原有默认入口之一
+                    if (hash === '#/evidence/linker') return <EvidenceLinkerPage />; // 仍保留直载页
+                    if (hash === '#/otc/claim') return <ClaimMemoForm />;  // 首购领取（兼容路径）
+                    return <AuthEntryPage />;
+                  })()}
+                <BottomNav />
+                <SettingsButton />
+                <SettingsDrawer />
+              </WalletProvider>
+            </GovernanceUiProvider>
+          </div>
+        </App>
       </ConfigProvider>
     );
   } catch (error) {

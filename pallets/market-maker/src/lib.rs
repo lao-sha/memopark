@@ -261,7 +261,6 @@ pub mod pallet {
         pub tron_address: BoundedVec<u8, ConstU32<64>>,
         pub public_cid: Cid,
         pub private_cid: Cid,
-        pub fee_bps: u16,
         /// 🆕 2025-10-19：Buy溢价（基点，-500 ~ 500 = -5% ~ +5%）
         /// - Buy方向（Bridge）：做市商购买MEMO，溢价为负（低于基准价）
         /// - 示例：-200 bps = -2%，基准价0.01 → 买价0.0098
@@ -624,7 +623,6 @@ pub mod pallet {
                     tron_address: BoundedVec::default(), // 🆕 2025-10-19：初始为空，submit_info时设置
                     public_cid: Cid::default(),
                     private_cid: Cid::default(),
-                    fee_bps: 0,
                     buy_premium_bps: 0,  // 🆕 2025-10-19：初始化Buy溢价为0
                     sell_premium_bps: 0, // 🆕 2025-10-19：初始化Sell溢价为0
                     min_amount: BalanceOf::<T>::zero(),
@@ -671,7 +669,6 @@ pub mod pallet {
             mm_id: u64,
             public_root_cid: Cid,
             private_root_cid: Cid,
-            fee_bps: u16,
             buy_premium_bps: i16,  // 🆕 2025-10-19：Buy溢价
             sell_premium_bps: i16, // 🆕 2025-10-19：Sell溢价
             min_amount: BalanceOf<T>,
@@ -728,13 +725,11 @@ pub mod pallet {
                 let now_ms = pallet_timestamp::Pallet::<T>::get();
                 let now = (now_ms / 1000u32.into()).saturated_into::<u32>();
                 ensure!(now <= app.info_deadline, Error::<T>::DeadlinePassed);
-                ensure!(fee_bps <= 10_000, Error::<T>::InvalidFee);
                 ensure!(min_amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
 
                 app.status = ApplicationStatus::PendingReview;
                 app.public_cid = public_root_cid;
                 app.private_cid = private_root_cid;
-                app.fee_bps = fee_bps;
                 app.buy_premium_bps = buy_premium_bps;   // 🆕 2025-10-19：设置Buy溢价
                 app.sell_premium_bps = sell_premium_bps; // 🆕 2025-10-19：设置Sell溢价
                 app.min_amount = min_amount;
@@ -779,7 +774,8 @@ pub mod pallet {
             mm_id: u64,
             public_root_cid: Option<Cid>,
             private_root_cid: Option<Cid>,
-            fee_bps: Option<u16>,
+            buy_premium_bps: Option<i16>,   // 🆕 2025-10-20：Buy溢价参数
+            sell_premium_bps: Option<i16>,  // 🆕 2025-10-20：Sell溢价参数
             min_amount: Option<BalanceOf<T>>,
             // 🆕 新增参数
             epay_gateway: Option<Vec<u8>>,
@@ -821,9 +817,21 @@ pub mod pallet {
                 if let Some(cid) = private_root_cid {
                     app.private_cid = cid;
                 }
-                if let Some(fee) = fee_bps {
-                    ensure!(fee <= 10_000, Error::<T>::InvalidFee);
-                    app.fee_bps = fee;
+                // 🆕 2025-10-20：更新Buy溢价（如果提供）
+                if let Some(premium) = buy_premium_bps {
+                    ensure!(
+                        premium >= T::MinPremiumBps::get() && premium <= T::MaxPremiumBps::get(),
+                        Error::<T>::InvalidBuyPremium
+                    );
+                    app.buy_premium_bps = premium;
+                }
+                // 🆕 2025-10-20：更新Sell溢价（如果提供）
+                if let Some(premium) = sell_premium_bps {
+                    ensure!(
+                        premium >= T::MinPremiumBps::get() && premium <= T::MaxPremiumBps::get(),
+                        Error::<T>::InvalidSellPremium
+                    );
+                    app.sell_premium_bps = premium;
                 }
                 if let Some(amount) = min_amount {
                     ensure!(amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
@@ -862,13 +870,12 @@ pub mod pallet {
                     // 检查是否所有必需字段都已填写（非空）
                     let has_public_cid = !app.public_cid.is_empty();
                     let has_private_cid = !app.private_cid.is_empty();
-                    let has_fee = app.fee_bps > 0 || fee_bps.is_some();
                     let has_min_amount = app.min_amount > BalanceOf::<T>::zero() || min_amount.is_some();
                     // 🆕 检查epay配置和首购资金池
                     let has_epay_config = !app.epay_gateway.is_empty() && app.epay_port > 0 && !app.epay_pid.is_empty() && !app.epay_key.is_empty();
                     let has_pool = app.first_purchase_pool >= T::MinFirstPurchasePool::get();
                     
-                    if has_public_cid && has_private_cid && has_fee && has_min_amount && has_epay_config && has_pool {
+                    if has_public_cid && has_private_cid && has_min_amount && has_epay_config && has_pool {
                         app.status = ApplicationStatus::PendingReview;
                     }
                 }
@@ -1631,7 +1638,6 @@ pub mod pallet {
             mm_id: u64,
             public_cid: Option<Cid>,           // 可选更新公开资料
             private_cid: Option<Cid>,          // 可选更新私密资料
-            fee_bps: Option<u16>,              // 可选更新费率
             buy_premium_bps: Option<i16>,      // 🆕 2025-10-19：可选更新Buy溢价
             sell_premium_bps: Option<i16>,     // 🆕 2025-10-19：可选更新Sell溢价
             min_amount: Option<BalanceOf<T>>,  // 可选更新最小下单额
@@ -1653,15 +1659,6 @@ pub mod pallet {
                 // 更新私密资料
                 if let Some(new_private_cid) = private_cid {
                     app.private_cid = new_private_cid;
-                }
-                
-                // 更新费率
-                if let Some(new_fee_bps) = fee_bps {
-                    ensure!(
-                        new_fee_bps >= 10 && new_fee_bps <= 1000,  // 0.1% - 10%
-                        Error::<T>::InvalidFee
-                    );
-                    app.fee_bps = new_fee_bps;
                 }
                 
                 // 更新最小下单额

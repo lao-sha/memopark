@@ -237,19 +237,6 @@ await api.tx.simpleBridge.createMakerSwap(
 
 **事件**: `OcwMakerSwapCreated { swap_id, maker_id, user, memo_amount, usdt_amount, tron_address, timeout_at }`
 
-### set_max_price_deviation ⭐新增
-
-**权限**: Root
-
-**参数**:
-- `deviation_bps`: 最大价格偏离（单位：万分比，如 2000 = 20%）
-
-**功能**: 设置最大价格偏离（预留用于 Phase 2）
-
-**验证**: 偏离范围必须在 5%-50% 之间（500-5000 万分比）
-
-**说明**: 此参数用于限制兑换价格相对市场均价的浮动范围，防止极端价格套利。当前版本暂未启用此检查，直接使用市场均价。
-
 ## 事件
 
 ### SwapCreated ⭐已升级
@@ -470,8 +457,8 @@ SimpleBridge: pallet_simple_bridge,
 simple_bridge: SimpleBridgeConfig {
     bridge_account: Some(get_account_id_from_seed::<sr25519::Public>("Bridge")),
     min_amount: 100 * UNITS, // 100 MEMO
-    max_price_deviation: 2000, // 20% 价格偏离上限（预留用于 Phase 2）
     // ❌ fallback_exchange_rate 已删除（2025-10-19）- 不再需要
+    // ❌ max_price_deviation 已删除（2025-10-20）- 由 pallet-pricing 统一管理
 },
 ```
 
@@ -519,8 +506,7 @@ simple_bridge: SimpleBridgeConfig {
 - [x] ⭐ 集成 `pallet-pricing` 市场均价
 - [x] ⭐ 统一价格源（删除冗余的 FallbackExchangeRate）
 - [x] ⭐ 事件中输出实际汇率（`price_usdt`）
-- [x] ⭐ 价格偏离检查辅助方法（预留）
-- [x] ⭐ 治理接口（`set_max_price_deviation`）
+- [x] ⭐ 价格偏离检查（由 `pallet-pricing` 统一管理）
 
 ### Phase 2: 增强功能（规划中）
 - [ ] 启用 ±20% 价格浮动检查（可选，当前直接使用市场均价）
@@ -1088,16 +1074,15 @@ async function monitorMakerBridge(makerId) {
 ### v2.0.0 (2025-10-19) - 动态定价升级 ⭐
 
 **破坏性变更**：
-- 移除固定汇率 `ExchangeRate`，添加 `FallbackExchangeRate`
+- 移除固定汇率 `ExchangeRate`，添加 `FallbackExchangeRate`（后在 v2.1.0 删除）
 - `SwapCreated` 事件新增 `price_usdt` 字段
-- `GenesisConfig` 新增 `max_price_deviation` 和 `fallback_exchange_rate` 字段
+- `max_price_deviation` 移至 `pallet-pricing` 统一管理（v2.2.0+）
 
 **新增功能**：
 - 动态汇率：基于 `pallet-pricing` 的市场加权均价
 - 冷启动保护机制（后来发现不需要，在 v2.1.0 删除）
-- 新增 `MaxPriceDeviation` 存储项（预留用于 Phase 2）
-- 新增 `set_max_price_deviation` 治理接口
-- 新增错误类型：`MarketPriceNotAvailable`, `PriceDeviationTooHigh`, `InvalidDeviationRange`
+- 价格偏离检查由 `pallet-pricing` 统一管理（v2.2.0+）
+- 新增错误类型：`MarketPriceNotAvailable`, `PriceDeviationTooHigh`
 
 **优化**：
 - 事件中输出实际使用的汇率，提高透明度

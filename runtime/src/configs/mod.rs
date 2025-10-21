@@ -28,7 +28,7 @@
 use frame_support::traits::{Contains, EnsureOrigin};
 use frame_support::{
     derive_impl, ensure, parameter_types,
-    traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, VariantCountOf},
+    traits::{ConstBool, ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, VariantCountOf},
     weights::{
         constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
         IdentityFee, Weight,
@@ -414,19 +414,20 @@ impl pallet_balances::Config for Runtime {
     type DoneSlashHandler = ();
 }
 
-// ====== OTC Claim（基于 balances 的命名预留+再归属）运行时配置 ======
+// ====== First Purchase（首购领取，基于 balances 的命名预留+再归属）运行时配置 ======
+// 原名: OTC Claim，2025-10-20 更名为 First Purchase 以更准确反映业务场景
 parameter_types! {
     /// 函数级中文注释：按区块数表示的一天（用于做市商日累计额度切片）。
-    pub const OtcBlocksPerDay: BlockNumber = DAYS;
+    pub const FirstPurchaseBlocksPerDay: BlockNumber = DAYS;
 }
 
-impl pallet_otc_claim::Config for Runtime {
+impl pallet_first_purchase::Config for Runtime {
     /// 函数级中文注释：事件类型绑定到运行时事件。
     type RuntimeEvent = RuntimeEvent;
     /// 函数级中文注释：使用原生币（Balances）作为 Currency，支持命名预留与再归属。
     type Currency = Balances;
     /// 函数级中文注释：日切片长度（区块数）。
-    type BlocksPerDay = OtcBlocksPerDay;
+    type BlocksPerDay = FirstPurchaseBlocksPerDay;
 }
 
 parameter_types! {
@@ -1206,6 +1207,10 @@ impl sp_core::Get<AccountId> for TreasuryAccount {
 // ===== pricing 配置 =====
 impl pallet_pricing::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    /// 最大价格偏离：2000 bps = 20%
+    /// 订单价格与基准价格的偏离不得超过 ±20%
+    /// 例如：基准价 1.0 USDT/MEMO，允许范围 0.8 ~ 1.2 USDT/MEMO
+    type MaxPriceDeviation = ConstU16<2000>;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -1653,44 +1658,8 @@ impl pallet_memo_pet::Config for Runtime {
     // 复用墓位适配器，沿用人类主体相同的权限判断
     type GraveProvider = GraveProviderAdapter;
 }
-parameter_types! {
-    pub const OtcListingFee: u128 = 0;
-    pub const OtcListingBond: u128 = 0;
-    pub const OtcFeePalletId: PalletId = PalletId(*b"otc/fees");
-}
-pub struct OtcFeeReceiver;
-impl sp_core::Get<AccountId> for OtcFeeReceiver {
-    fn get() -> AccountId {
-        OtcFeePalletId::get().into_account_truncating()
-    }
-}
-
-impl pallet_otc_listing::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type MaxCidLen = OtcMaxCidLen;
-    /// 函数级中文注释：托管接口对接，用于库存模式在创建挂单时锁入 Maker 库存
-    type Escrow = pallet_escrow::Pallet<Runtime>;
-    /// 函数级中文注释：每块最多处理的过期挂单数
-    type MaxExpiringPerBlock = frame_support::traits::ConstU32<100>;
-    /// 函数级中文注释：创建挂单限频窗口（块）
-    type CreateWindow = ConstU32<600>;
-    /// 窗口内最多创建数
-    type CreateMaxInWindow = ConstU32<5>;
-    /// 上架费（默认 0 关闭）
-    type ListingFee = OtcListingFee;
-    /// 保证金（默认 0 关闭）
-    type ListingBond = OtcListingBond;
-    /// 费用接收账户
-    type FeeReceiver = OtcFeeReceiver;
-    /// 函数级中文注释：已改为 USDT 直接报价，不再使用价格源
-    /// 最大允许 spread（bps，保留用于未来扩展）
-    type MaxSpreadBps = frame_support::traits::ConstU16<5000>; // 50% 示例
-    /// 函数级中文注释：归档阈值（150天 ≈ 5个月）
-    type ArchiveThresholdDays = ConstU32<150>;
-    /// 函数级中文注释：每次自动清理的最大挂单数
-    type MaxCleanupPerBlock = ConstU32<50>;
-}
+// 函数级中文注释：2025-10-20 已删除 pallet-otc-listing 配置
+// 原因：OTC订单重构已完成，挂单机制已由直接选择做市商替代
 parameter_types! { 
     pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS;
     pub const OtcOrderMinFirstPurchaseAmount: Balance = 10_000_000_000_000_000; // 10 MEMO

@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
-import { Button, Card, Form, Input, Typography, message, Select } from 'antd'
+import { Button, Card, Form, Input, Typography, message, Select, Alert, Space } from 'antd'
+import { GiftOutlined, InfoCircleOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { authorizeClaim } from '../../lib/otc-adapter'
 import { getApi, signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { providerRegistry } from '../../lib/providers'
 
 /**
- * 函数级详细中文注释：OTC 领取表单组件（支持多提供方选择）
+ * 函数级详细中文注释：首购领取表单组件（支持多提供方选择）
+ * 原名: OTC 领取，2025-10-20更名为首购领取以更准确反映业务场景
  */
 export default function ClaimMemoForm() {
   const [loading, setLoading] = useState(false)
@@ -49,7 +51,7 @@ export default function ClaimMemoForm() {
         auth.nonce,
         auth.signature,
       ]
-      const hash = await signAndSendLocalWithPassword('OtcClaim', 'claim', args, values.password)
+      const hash = await signAndSendLocalWithPassword('FirstPurchase', 'claim', args, values.password)  // 原名: OtcClaim
       message.success('领取提交成功，Tx: ' + hash)
     } catch (e: any) {
       message.error(e?.message || '领取提交失败')
@@ -57,9 +59,67 @@ export default function ClaimMemoForm() {
   }
 
   return (
-    <Card style={{ maxWidth: 640, margin: '0 auto' }}>
-      <Typography.Title level={5}>领取 MEMO</Typography.Title>
-      <Form form={form} layout="vertical" onFinish={onGetAuth}>
+    <Card 
+      style={{ 
+        maxWidth: 640, 
+        margin: '0 auto',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+      }}
+    >
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {/* 标题区域 */}
+        <div>
+          <Typography.Title level={4} style={{ marginBottom: 8 }}>
+            <GiftOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+            首购领取 MEMO
+          </Typography.Title>
+          <Typography.Text type="secondary" style={{ fontSize: '13px' }}>
+            首次购买或法币入金时使用
+          </Typography.Text>
+        </div>
+
+        {/* 使用场景说明 */}
+        <Alert
+          type="info"
+          icon={<InfoCircleOutlined />}
+          message="使用场景"
+          description={
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, fontSize: '13px' }}>
+              <li>✅ 新用户首次购买MEMO</li>
+              <li>✅ 老用户法币入金（微信/支付宝/银行转账）</li>
+              <li>💡 如需出金卖出MEMO，请前往 <a href="#/otc/order">OTC订单</a> 创建卖单</li>
+            </ul>
+          }
+          style={{ marginBottom: 0 }}
+        />
+
+        {/* 步骤说明 */}
+        <Card 
+          size="small" 
+          style={{ 
+            background: '#fafafa',
+            border: '1px solid #e8e8e8'
+          }}
+        >
+          <Space direction="vertical" size={4}>
+            <Typography.Text strong style={{ fontSize: '13px' }}>
+              领取步骤：
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+              1️⃣ 选择做市商并输入订单号
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+              2️⃣ 点击"获取授权"验证订单
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+              3️⃣ 输入钱包密码并提交链上交易
+            </Typography.Text>
+          </Space>
+        </Card>
+
+        {/* 表单区域 */}
+        <Form form={form} layout="vertical" onFinish={onGetAuth}>
         <Form.Item name="provider" label="做市商" initialValue={providerId}>
           <Select onChange={setProviderId} options={providerRegistry.map(p => ({ label: p.name, value: p.id }))} />
         </Form.Item>
@@ -69,19 +129,80 @@ export default function ClaimMemoForm() {
         <Form.Item name="beneficiary" label="收款地址" rules={[{ required: true }]}>
           <Input placeholder="Polkadot/Substrate 地址" allowClear />
         </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block>获取授权</Button>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button 
+            type="primary" 
+            htmlType="submit" 
+            loading={loading} 
+            block
+            style={{
+              height: '48px',
+              fontSize: '15px',
+              fontWeight: 'bold',
+              borderRadius: '8px'
+            }}
+          >
+            {loading ? '获取中...' : '获取授权'}
+          </Button>
         </Form.Item>
       </Form>
 
+      {/* 授权成功提示 */}
       {auth && (
-        <Form layout="vertical" onFinish={onClaim}>
-          <Form.Item name="password" label="本地钱包密码" rules={[{ required: true, min: 8 }]}>
-            <Input.Password placeholder="至少 8 位" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block>提交链上领取</Button>
-        </Form>
+        <>
+          <Alert
+            type="success"
+            icon={<CheckCircleOutlined />}
+            message="✅ 授权获取成功"
+            description={
+              <Space direction="vertical" size={4}>
+                <Typography.Text style={{ fontSize: '12px' }}>
+                  订单号: <Typography.Text code>{auth.order_id}</Typography.Text>
+                </Typography.Text>
+                <Typography.Text style={{ fontSize: '12px' }}>
+                  领取金额: <Typography.Text strong>{auth.amount_memo} MEMO</Typography.Text>
+                </Typography.Text>
+                <Typography.Text style={{ fontSize: '12px' }}>
+                  截止区块: {auth.deadline_block}
+                </Typography.Text>
+              </Space>
+            }
+            style={{ marginBottom: 0 }}
+          />
+
+          <Form layout="vertical" onFinish={onClaim}>
+            <Form.Item 
+              name="password" 
+              label="本地钱包密码" 
+              rules={[{ required: true, min: 8 }]}
+              style={{ marginBottom: 16 }}
+            >
+              <Input.Password 
+                placeholder="至少 8 位" 
+                style={{ height: '40px' }}
+              />
+            </Form.Item>
+            <Button 
+              type="primary" 
+              htmlType="submit" 
+              loading={loading} 
+              block
+              style={{
+                height: '48px',
+                fontSize: '15px',
+                fontWeight: 'bold',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+              }}
+            >
+              {loading ? '提交中...' : '🎉 提交链上领取'}
+            </Button>
+          </Form>
+        </>
       )}
+      </Space>
     </Card>
   )
 }

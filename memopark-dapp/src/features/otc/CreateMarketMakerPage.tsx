@@ -15,7 +15,9 @@ import FileEncryptUpload from '../../components/FileEncryptUpload'
  * 4）CID 检查遵循项目规则：CID 一律不加密（明文 CID）；私密内容加密，但 CID 指向密文文件的明文 CID。
  */
 /**
- * 函数级详细中文注释：申请详情数据结构
+ * 函数级详细中文注释：申请详情数据结构（完整版）
+ * - 包含所有可能从链上拉取的字段
+ * - 用于自动填充表单
  */
 interface ApplicationDetails {
   mmId: number
@@ -24,11 +26,19 @@ interface ApplicationDetails {
   status: string
   publicCid: string
   privateCid: string
-  feeBps: number
   minAmount: string
   createdAt: number
   infoDeadline: number
   reviewDeadline: number
+  // 🆕 扩展字段（用于自动填充）
+  buyPremiumBps?: number
+  sellPremiumBps?: number
+  tronAddress?: string
+  epayGateway?: string
+  epayPort?: number
+  epayPid?: string
+  epayKey?: string  // 不自动填充，但记录在此
+  firstPurchasePool?: string
 }
 
 /**
@@ -36,13 +46,10 @@ interface ApplicationDetails {
  */
 interface MarketMakerConfig {
   minDeposit: string       // 最小质押金额
-  maxFeeBps: number        // 最大费率（bps）
-  minFeeBps: number        // 最小费率（bps）
   minAmount: string        // 最小下单额
   reviewEnabled: boolean   // 审核开关
   isUserApplication: boolean  // 是否为当前用户的申请记录
   applicationStatus?: string  // 申请状态
-  applicationFeeBps?: number  // 用户设置的费率
   applicationMmId?: number    // 做市商 ID
 }
 
@@ -225,8 +232,6 @@ export default function CreateMarketMakerPage() {
         
         setConfig({
           minDeposit,
-          maxFeeBps: 10000,
-          minFeeBps: 0,
           minAmount: '100000000000000',
           reviewEnabled: true,
           isUserApplication: false
@@ -271,13 +276,10 @@ export default function CreateMarketMakerPage() {
       if (userApplication) {
         const configData: MarketMakerConfig = {
           minDeposit: userApplication.deposit || '0',
-          maxFeeBps: 10000,
-          minFeeBps: 0,
           minAmount: userApplication.minAmount || '0',
           reviewEnabled: true,
           isUserApplication: true,
           applicationStatus: userApplication.status || 'Unknown',
-          applicationFeeBps: userApplication.feeBps || 0,
           applicationMmId: userMmId || undefined
         }
         
@@ -305,8 +307,6 @@ export default function CreateMarketMakerPage() {
         
         const configData: MarketMakerConfig = {
           minDeposit,
-          maxFeeBps: 10000,
-          minFeeBps: 0,
           minAmount: '100000000000000',
           reviewEnabled: true,
           isUserApplication: false
@@ -321,8 +321,6 @@ export default function CreateMarketMakerPage() {
       // 使用默认配置
       setConfig({
         minDeposit: '1000000000000000',
-        maxFeeBps: 10000,
-        minFeeBps: 0,
         minAmount: '100000000000000',
         reviewEnabled: true,
         isUserApplication: false
@@ -342,9 +340,10 @@ export default function CreateMarketMakerPage() {
   }, [api, loadMarketMakerConfig])
 
   /**
-   * 函数级详细中文注释：加载申请详情
+   * 函数级详细中文注释：加载申请详情（完整版）
    * - 从链上查询指定 mmId 的申请详情
-   * - 包含质押信息和提交资料信息
+   * - 包含质押信息和所有提交的资料信息
+   * - 解析所有字段用于自动填充表单
    */
   const loadApplicationDetails = React.useCallback(async (id: number) => {
     if (!api) return
@@ -365,16 +364,58 @@ export default function CreateMarketMakerPage() {
         const app = appOption.unwrap()
         const appData = app.toJSON() as any
         
-        // 解析 CID（从 Uint8Array 转字符串）
-        const publicCid = appData.publicCid ? 
-          (Array.isArray(appData.publicCid) ? 
-            new TextDecoder().decode(new Uint8Array(appData.publicCid)) : 
-            appData.publicCid) : ''
+        console.group('📋 [加载申请详情] 完整数据')
+        console.log('原始数据:', appData)
         
-        const privateCid = appData.privateCid ? 
-          (Array.isArray(appData.privateCid) ? 
-            new TextDecoder().decode(new Uint8Array(appData.privateCid)) : 
-            appData.privateCid) : ''
+        // 辅助函数：解码字节数组或十六进制字符串为明文字符串
+        const decodeBytes = (bytes: any, fieldName: string): string => {
+          if (!bytes) return ''
+          try {
+            // 🔹 情况1：普通字符串（不是0x开头）
+            if (typeof bytes === 'string' && !bytes.startsWith('0x')) {
+              console.log(`✅ ${fieldName} (已是字符串):`, bytes)
+              return bytes
+            }
+            
+            // 🔹 情况2：十六进制字符串（0x开头）→ 需要解码
+            if (typeof bytes === 'string' && bytes.startsWith('0x')) {
+              const hex = bytes.slice(2) // 去除 '0x' 前缀
+              const byteArray: number[] = []
+              
+              // 将十六进制字符串转换为字节数组
+              for (let i = 0; i < hex.length; i += 2) {
+                byteArray.push(parseInt(hex.substr(i, 2), 16))
+              }
+              
+              // 解码为 UTF-8 字符串
+              const decoded = new TextDecoder().decode(new Uint8Array(byteArray))
+              console.log(`✅ 解码 ${fieldName} (从十六进制):`, decoded)
+              return decoded
+            }
+            
+            // 🔹 情况3：字节数组
+            if (Array.isArray(bytes) && bytes.length > 0) {
+              const decoded = new TextDecoder().decode(new Uint8Array(bytes))
+              console.log(`✅ 解码 ${fieldName} (从数组):`, decoded)
+              return decoded
+            }
+          } catch (e) {
+            console.warn(`⚠️ 解码 ${fieldName} 失败:`, e)
+          }
+          return ''
+        }
+        
+        // 解析 CID（从 Uint8Array 转字符串）
+        const publicCid = decodeBytes(appData.publicCid, 'publicCid')
+        const privateCid = decodeBytes(appData.privateCid, 'privateCid')
+        
+        // 🆕 解析 TRON 地址
+        const tronAddress = decodeBytes(appData.tronAddress, 'tronAddress')
+        
+        // 🆕 解析 epay 配置
+        const epayGateway = decodeBytes(appData.epayGateway, 'epayGateway')
+        const epayPid = decodeBytes(appData.epayPid, 'epayPid')
+        const epayKey = decodeBytes(appData.epayKey, 'epayKey')
         
         const details: ApplicationDetails = {
           mmId: id,
@@ -383,15 +424,25 @@ export default function CreateMarketMakerPage() {
           status: appData.status || 'Unknown',
           publicCid,
           privateCid,
-          feeBps: appData.feeBps || 0,
           minAmount: appData.minAmount || '0',
           createdAt: appData.createdAt || 0,
           infoDeadline: appData.infoDeadline || 0,
           reviewDeadline: appData.reviewDeadline || 0,
+          // 🆕 扩展字段
+          buyPremiumBps: appData.buyPremiumBps,
+          sellPremiumBps: appData.sellPremiumBps,
+          tronAddress: tronAddress || undefined,
+          epayGateway: epayGateway || undefined,
+          epayPort: appData.epayPort > 0 ? appData.epayPort : undefined,
+          epayPid: epayPid || undefined,
+          epayKey: epayKey || undefined,  // 不自动填充，但记录
+          firstPurchasePool: appData.firstPurchasePool || '0',
         }
         
+        console.log('✅ 解析后的完整详情:', details)
+        console.groupEnd()
+        
         setAppDetails(details)
-        console.log('[查询] 申请详情:', details)
       } else {
         console.warn('[查询] 申请不存在:', id)
         setAppDetails(null)
@@ -411,6 +462,132 @@ export default function CreateMarketMakerPage() {
       loadApplicationDetails(mmId)
     }
   }, [mmId, api, loadApplicationDetails])
+
+  /**
+   * 函数级详细中文注释：自动填充已提交的信息到表单（优化版）
+   * - 当检测到用户有未完成的申请时（DepositLocked 状态）
+   * - 直接从 appDetails 读取所有字段并自动填充到表单
+   * - 提高用户交互友好度，避免重复输入
+   * - 所有字段已在 loadApplicationDetails 中统一解析
+   */
+  React.useEffect(() => {
+    if (!appDetails || !form2) return
+    
+    console.group('🔄 [自动填充] 检查已提交信息')
+    console.log('申请状态:', appDetails.status)
+
+    // 只有在 DepositLocked 或 PendingReview 状态时才自动填充
+    if (appDetails.status === 'DepositLocked' || appDetails.status === 'PendingReview') {
+      const fieldsToFill: any = {}
+      let fieldCount = 0
+
+      // 🔹 公开资料 CID
+      if (appDetails.publicCid && appDetails.publicCid.length > 0) {
+        fieldsToFill.public_root_cid = appDetails.publicCid
+        fieldCount++
+        console.log('✅ 填充 public_root_cid:', appDetails.publicCid.substring(0, 30) + '...')
+      }
+
+      // 🔹 私密资料 CID
+      if (appDetails.privateCid && appDetails.privateCid.length > 0) {
+        fieldsToFill.private_root_cid = appDetails.privateCid
+        fieldCount++
+        console.log('✅ 填充 private_root_cid:', appDetails.privateCid.substring(0, 30) + '...')
+      }
+
+      // 🔹 最小下单额
+      if (appDetails.minAmount && BigInt(appDetails.minAmount) > 0n) {
+        const minAmountMemo = Number(BigInt(appDetails.minAmount) / BigInt(1e12))
+        fieldsToFill.min_amount = minAmountMemo
+        fieldCount++
+        console.log('✅ 填充 min_amount:', minAmountMemo, 'MEMO')
+      }
+
+      // 🔹 Buy溢价（注意：0也是有效值，需要填充）
+      if (appDetails.buyPremiumBps !== undefined && appDetails.buyPremiumBps !== null) {
+        fieldsToFill.buy_premium_bps = Number(appDetails.buyPremiumBps)
+        fieldCount++
+        console.log('✅ 填充 buy_premium_bps:', appDetails.buyPremiumBps, 'bps', `(${(appDetails.buyPremiumBps / 100).toFixed(2)}%)`)
+      } else {
+        // 首次申请时，设置默认值0
+        fieldsToFill.buy_premium_bps = 0
+        console.log('ℹ️ Buy溢价未设置，使用默认值 0 bps')
+      }
+
+      // 🔹 Sell溢价（注意：0也是有效值，需要填充）
+      if (appDetails.sellPremiumBps !== undefined && appDetails.sellPremiumBps !== null) {
+        fieldsToFill.sell_premium_bps = Number(appDetails.sellPremiumBps)
+        fieldCount++
+        console.log('✅ 填充 sell_premium_bps:', appDetails.sellPremiumBps, 'bps', `(${(appDetails.sellPremiumBps / 100).toFixed(2)}%)`)
+      } else {
+        // 首次申请时，设置默认值0
+        fieldsToFill.sell_premium_bps = 0
+        console.log('ℹ️ Sell溢价未设置，使用默认值 0 bps')
+      }
+
+      // 🔹 TRON 地址
+      if (appDetails.tronAddress && appDetails.tronAddress.length === 34 && appDetails.tronAddress.startsWith('T')) {
+        fieldsToFill.tron_address = appDetails.tronAddress
+        fieldCount++
+        console.log('✅ 填充 tron_address:', appDetails.tronAddress)
+      }
+
+      // 🔹 Epay 网关地址
+      if (appDetails.epayGateway && appDetails.epayGateway.length > 0) {
+        fieldsToFill.epay_gateway = appDetails.epayGateway
+        fieldCount++
+        console.log('✅ 填充 epay_gateway:', appDetails.epayGateway)
+      }
+
+      // 🔹 Epay 端口
+      if (appDetails.epayPort && appDetails.epayPort > 0) {
+        fieldsToFill.epay_port = appDetails.epayPort
+        fieldCount++
+        console.log('✅ 填充 epay_port:', appDetails.epayPort)
+      }
+
+      // 🔹 Epay 商户ID
+      if (appDetails.epayPid && appDetails.epayPid.length > 0) {
+        fieldsToFill.epay_pid = appDetails.epayPid
+        fieldCount++
+        console.log('✅ 填充 epay_pid:', appDetails.epayPid)
+      }
+
+      // 🔹 Epay 商户密钥（🆕 应用户要求，也进行回填）
+      if (appDetails.epayKey && appDetails.epayKey.length > 0) {
+        fieldsToFill.epay_key = appDetails.epayKey
+        fieldCount++
+        console.log('✅ 填充 epay_key:', appDetails.epayKey.substring(0, 4) + '***（已脱敏显示）')
+      }
+
+      // 🔹 首购资金池
+      if (appDetails.firstPurchasePool && BigInt(appDetails.firstPurchasePool) > 0n) {
+        const poolMemo = Number(BigInt(appDetails.firstPurchasePool) / BigInt(1e12))
+        if (poolMemo > 0) {
+          fieldsToFill.first_purchase_pool = poolMemo
+          fieldCount++
+          console.log('✅ 填充 first_purchase_pool:', poolMemo, 'MEMO')
+        }
+      }
+
+      // 填充表单
+      if (fieldCount > 0) {
+        form2.setFieldsValue(fieldsToFill)
+        message.success({
+          content: `✅ 已自动填充 ${fieldCount} 个字段到表单`,
+          duration: 3,
+          key: 'autofill'
+        })
+        console.log(`📋 [自动填充] 完整字段列表 (${fieldCount}个):`, fieldsToFill)
+      } else {
+        console.log('ℹ️ 链上无已提交的数据，跳过自动填充')
+      }
+    } else {
+      console.log('ℹ️ 状态不是 DepositLocked 或 PendingReview，跳过自动填充')
+    }
+
+    console.groupEnd()
+  }, [appDetails, form2])
 
   /**
    * 函数级详细中文注释：CID 合法性校验
@@ -640,8 +817,8 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：提交资料（链上调用）
-   * - 签名调用 pallet-market-maker::submit_info(mm_id, public_root_cid, private_root_cid, fee_bps, min_amount, epay_gateway, epay_port, epay_pid, epay_key, first_purchase_pool)
-   * - 本地校验：CID 合法、费率/最小额有效、epay 配置完整
+   * - 签名调用 pallet-market-maker::submit_info(mm_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, epay_gateway, epay_port, epay_pid, epay_key, first_purchase_pool)
+   * - 本地校验：CID 合法、溢价/最小额有效、epay 配置完整
    */
   const onSubmitInfo = async (values: any) => {
     if (!api) {
@@ -665,7 +842,6 @@ if (opt.isSome) {
       const { 
         public_root_cid, 
         private_root_cid, 
-        fee_bps,
         buy_premium_bps,  // 🆕 2025-10-19：Buy溢价
         sell_premium_bps, // 🆕 2025-10-19：Sell溢价
         min_amount,
@@ -679,9 +855,6 @@ if (opt.isSome) {
       // 本地校验
       if (!isValidCid(public_root_cid)) throw new Error('公开资料 CID 非法或疑似加密（禁止 enc: 前缀）')
       if (!isValidCid(private_root_cid)) throw new Error('私密资料根 CID 非法或疑似加密（禁止 enc: 前缀）')
-
-      const fee = Number(fee_bps)
-      if (!(fee >= 0 && fee <= 10000)) throw new Error('费率 bps 超出范围（0~10000）')
 
       const minAmt = Number(min_amount)
       if (!(minAmt > 0)) throw new Error('最小下单额必须大于 0')
@@ -738,7 +911,6 @@ if (opt.isSome) {
       // 🔍 调试日志：打印所有参数
       console.group('📤 [submitInfo] 提交参数详情')
       console.log('mmId:', mmId)
-      console.log('fee:', fee, '(u16)')
       console.log('minAmt:', minAmt, 'MEMO → formatted:', minAmountFormatted)
       console.log('pool:', pool, 'MEMO → formatted:', poolFormatted)
       console.log('epay_gateway:', epay_gateway.trim(), '→ bytes:', epayGatewayBytes.length, '字节')
@@ -765,7 +937,6 @@ if (opt.isSome) {
         mmId,
         publicCid,
         privateCid,
-        fee,
         buyPremium,       // 🆕 2025-10-19：Buy溢价
         sellPremium,      // 🆕 2025-10-19：Sell溢价
         minAmountFormatted,
@@ -834,7 +1005,7 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：更新申请资料（链上调用）
-   * - 签名调用 pallet-market-maker::update_info(mm_id, public_cid?, private_cid?, fee_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
+   * - 签名调用 pallet-market-maker::update_info(mm_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    * - 允许在 DepositLocked 或 PendingReview 状态下调用
    */
@@ -855,7 +1026,8 @@ if (opt.isSome) {
       
       // 检查是否至少修改了一个字段
       const hasChanges = values.public_root_cid || values.private_root_cid || 
-                        values.fee_bps !== undefined || values.min_amount !== undefined ||
+                        values.min_amount !== undefined ||
+                        values.buy_premium_bps !== undefined || values.sell_premium_bps !== undefined ||  // 🆕 2025-10-20：溢价字段
                         values.epay_gateway || values.epay_port !== undefined ||
                         values.epay_pid || values.epay_key || values.first_purchase_pool !== undefined
       
@@ -871,7 +1043,8 @@ if (opt.isSome) {
       // 构造参数（Option 类型：null 表示不修改，有值表示修改）
       let publicCidParam = null
       let privateCidParam = null
-      let feeBpsParam = null
+      let buyPremiumBpsParam = null   // 🆕 2025-10-20：Buy溢价参数
+      let sellPremiumBpsParam = null  // 🆕 2025-10-20：Sell溢价参数
       let minAmountParam = null
       let epayGatewayParam = null
       let epayPortParam = null
@@ -895,13 +1068,24 @@ if (opt.isSome) {
         privateCidParam = Array.from(new TextEncoder().encode(values.private_root_cid))
       }
 
-      // 费率（如果提供）
-      if (values.fee_bps !== undefined && values.fee_bps !== null && values.fee_bps !== '') {
-        const fee = Number(values.fee_bps)
-        if (!(fee >= 0 && fee <= 10000)) {
-          throw new Error('费率 bps 超出范围（0~10000）')
+      // 🆕 2025-10-20：Buy溢价（如果提供）
+      if (values.buy_premium_bps !== undefined && values.buy_premium_bps !== null && values.buy_premium_bps !== '') {
+        const premium = Number(values.buy_premium_bps)
+        if (!(premium >= -500 && premium <= 500)) {
+          throw new Error('Buy溢价超出范围（-500 ~ 500 bps）')
         }
-        feeBpsParam = fee
+        buyPremiumBpsParam = premium
+        console.log('[更新] Buy溢价:', premium, 'bps')
+      }
+
+      // 🆕 2025-10-20：Sell溢价（如果提供）
+      if (values.sell_premium_bps !== undefined && values.sell_premium_bps !== null && values.sell_premium_bps !== '') {
+        const premium = Number(values.sell_premium_bps)
+        if (!(premium >= -500 && premium <= 500)) {
+          throw new Error('Sell溢价超出范围（-500 ~ 500 bps）')
+        }
+        sellPremiumBpsParam = premium
+        console.log('[更新] Sell溢价:', premium, 'bps')
       }
 
       // 最小下单额（如果提供）
@@ -962,7 +1146,8 @@ if (opt.isSome) {
         mmId,
         publicCidParam,
         privateCidParam,
-        feeBpsParam,
+        buyPremiumBpsParam,   // 🆕 2025-10-20：Buy溢价
+        sellPremiumBpsParam,  // 🆕 2025-10-20：Sell溢价
         minAmountParam,
         epayGatewayParam,
         epayPortParam,
@@ -1294,14 +1479,6 @@ if (opt.isSome) {
                           {(BigInt(config.minDeposit) / BigInt(1e12)).toString()} MEMO
                         </Typography.Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label={config.isUserApplication ? '设置费率' : '费率范围'}>
-                        <Typography.Text>
-                          {config.isUserApplication && config.applicationFeeBps !== undefined
-                            ? `${(config.applicationFeeBps / 100).toFixed(2)}% (${config.applicationFeeBps} bps)`
-                            : `${config.minFeeBps / 100}% - ${config.maxFeeBps / 100}%`
-                          }
-                        </Typography.Text>
-                      </Descriptions.Item>
                       <Descriptions.Item label={config.isUserApplication ? '设置最小下单额' : '最小下单额'}>
                         <Typography.Text>
                           {config.minAmount !== '0' 
@@ -1347,6 +1524,61 @@ if (opt.isSome) {
                         }
                         style={{ marginTop: 12 }}
                       />
+                    )}
+
+                    {/* 🆕 做市商配置管理入口（仅 Active 状态显示） */}
+                    {config.isUserApplication && config.applicationStatus === 'Active' && (
+                      <Card 
+                        style={{ 
+                          marginTop: 12, 
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          border: 'none'
+                        }}
+                      >
+                        <div style={{ color: 'white' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                            <span style={{ fontSize: 24, marginRight: 8 }}>⚙️</span>
+                            <Typography.Title level={5} style={{ margin: 0, color: 'white' }}>
+                              做市商配置管理
+                            </Typography.Title>
+                          </div>
+                          <Typography.Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block', marginBottom: 16 }}>
+                            您可以随时更新您的做市商配置，包括 Epay 配置和业务参数
+                          </Typography.Text>
+                          <Space size="middle" wrap>
+                            <Button 
+                              type="primary" 
+                              onClick={() => window.location.hash = '#/otc/market-maker-config'}
+                              style={{
+                                background: 'white',
+                                color: '#667eea',
+                                border: 'none',
+                                fontWeight: 'bold',
+                                height: 40
+                              }}
+                            >
+                              ⚙️ Epay 配置管理
+                            </Button>
+                            <Button 
+                              type="primary" 
+                              onClick={() => window.location.hash = '#/otc/bridge-config'}
+                              style={{
+                                background: 'rgba(255,255,255,0.2)',
+                                color: 'white',
+                                border: '1px solid white',
+                                fontWeight: 'bold',
+                                height: 40
+                              }}
+                            >
+                              💰 业务配置管理
+                            </Button>
+                          </Space>
+                          <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                            💡 <strong>Epay配置</strong>：更新支付网关、商户ID、密钥等<br/>
+                            💡 <strong>业务配置</strong>：更新溢价、最小额、TRON地址、资料CID等
+                          </div>
+                        </div>
+                      </Card>
                     )}
                   </Card>
                 )}
@@ -1524,9 +1756,6 @@ if (opt.isSome) {
                             {appDetails.privateCid}
                           </Typography.Text>
                         </Descriptions.Item>
-                        <Descriptions.Item label="费率">
-                          {(appDetails.feeBps / 100).toFixed(2)}% ({appDetails.feeBps} bps)
-                        </Descriptions.Item>
                         <Descriptions.Item label="最小下单额">
                           {(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO
                         </Descriptions.Item>
@@ -1553,6 +1782,42 @@ if (opt.isSome) {
                   style={{ marginBottom: 12 }} 
                   message="修改模式" 
                   description="您可以修改已提交的资料。只需填写需要修改的字段，留空的字段将保持不变。"
+                />
+              )}
+
+              {/* 🆕 自动填充提示（完整版） */}
+              {appDetails && appDetails.status === 'DepositLocked' && (
+                <Alert 
+                  type="info" 
+                  showIcon 
+                  icon={<CheckCircleOutlined />}
+                  style={{ marginBottom: 12 }} 
+                  message="💡 智能填充" 
+                  description={
+                    <>
+                      <p style={{ margin: 0, marginBottom: 8 }}>
+                        <strong>已从链上自动加载您之前提交的信息：</strong>
+                      </p>
+                      <ul style={{ paddingLeft: 20, margin: 0, columnCount: 2, columnGap: '16px' }}>
+                        {appDetails.publicCid && <li style={{ breakInside: 'avoid' }}>✅ 公开资料 CID</li>}
+                        {appDetails.privateCid && <li style={{ breakInside: 'avoid' }}>✅ 私密资料 CID</li>}
+                        {appDetails.minAmount && BigInt(appDetails.minAmount) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 最小下单额（{(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO）</li>}
+                        {(appDetails.buyPremiumBps !== undefined && appDetails.buyPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Buy溢价（{(appDetails.buyPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Buy溢价（默认0%）</li>}
+                        {(appDetails.sellPremiumBps !== undefined && appDetails.sellPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Sell溢价（{(appDetails.sellPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Sell溢价（默认0%）</li>}
+                        {appDetails.tronAddress && <li style={{ breakInside: 'avoid' }}>✅ TRON地址（{appDetails.tronAddress.substring(0, 10)}...）</li>}
+                        {appDetails.epayGateway && <li style={{ breakInside: 'avoid' }}>✅ Epay网关地址</li>}
+                        {appDetails.epayPort && appDetails.epayPort > 0 && <li style={{ breakInside: 'avoid' }}>✅ Epay端口（{appDetails.epayPort}）</li>}
+                        {appDetails.epayPid && <li style={{ breakInside: 'avoid' }}>✅ Epay商户ID</li>}
+                        {appDetails.epayKey && appDetails.epayKey.length > 0 && <li style={{ breakInside: 'avoid' }}>✅ Epay商户密钥</li>}
+                        {appDetails.firstPurchasePool && BigInt(appDetails.firstPurchasePool) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 首购资金池（{(BigInt(appDetails.firstPurchasePool) / BigInt(1e12)).toString()} MEMO）</li>}
+                      </ul>
+                      <p style={{ margin: '8px 0 0 0', color: '#1890ff', fontWeight: 'bold' }}>
+                        {!appDetails.tronAddress || !appDetails.epayGateway || !appDetails.epayPort || !appDetails.epayPid
+                          ? '⚠️ 请补充缺失的字段（特别是TRON地址、Epay配置、商户密钥），然后提交完整资料'
+                          : '请检查所有信息是否正确，然后提交资料'}
+                      </p>
+                    </>
+                  }
                 />
               )}
 
@@ -1637,37 +1902,6 @@ if (opt.isSome) {
                   />
                 </Form.Item>
 
-                <Form.Item 
-                  label="费率（bps）" 
-                  name="fee_bps" 
-                  rules={
-                    appDetails && appDetails.feeBps !== undefined
-                      ? [{ type: 'number', min: 0, max: 10000, message: '费率范围：0-10000 bps' }]
-                      : [
-                          { required: true, message: '请输入费率' },
-                          { type: 'number', min: 0, max: 10000, message: '费率范围：0-10000 bps' }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.feeBps !== undefined
-                      ? `当前值：${(appDetails.feeBps / 100).toFixed(2)}% (${appDetails.feeBps} bps)（留空则不修改）`
-                      : "1 bps = 0.01%，例如 25 bps = 0.25%"
-                  }
-                >
-                  <InputNumber 
-                    min={0} 
-                    max={10000} 
-                    step={1} 
-                    style={{ width: '100%' }}
-                    placeholder={
-                      appDetails && appDetails.feeBps !== undefined
-                        ? `当前 ${appDetails.feeBps} bps`
-                        : "例如 25（即 0.25%）"
-                    }
-                    disabled={loading}
-                  />
-                </Form.Item>
-
                 {/* 🆕 2025-10-19：溢价定价机制 */}
                 <Divider>🆕 溢价定价配置</Divider>
 
@@ -1689,19 +1923,30 @@ if (opt.isSome) {
                 <Form.Item 
                   label="Buy溢价（Bridge，bps）" 
                   name="buy_premium_bps" 
-                  rules={[
-                    { required: true, message: '请输入Buy溢价' },
-                    { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
-                  ]}
-                  initialValue={0}
-                  extra="做市商购买MEMO的溢价。负数=折价买入（推荐），例如 -200 bps = -2%"
+                  rules={
+                    appDetails && appDetails.buyPremiumBps !== undefined
+                      ? [{ type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }]
+                      : [
+                          { required: true, message: '请输入Buy溢价' },
+                          { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                        ]
+                  }
+                  extra={
+                    appDetails && appDetails.buyPremiumBps !== undefined
+                      ? `当前值：${(appDetails.buyPremiumBps / 100).toFixed(2)}% (${appDetails.buyPremiumBps} bps)（留空则不修改）`
+                      : "做市商购买MEMO的溢价。负数=折价买入（推荐），例如 -200 bps = -2%"
+                  }
                 >
                   <InputNumber 
                     min={-500} 
                     max={500} 
                     step={10} 
                     style={{ width: '100%' }}
-                    placeholder="例如 -200（-2%折价买入）"
+                    placeholder={
+                      appDetails && appDetails.buyPremiumBps !== undefined
+                        ? `当前 ${appDetails.buyPremiumBps} bps`
+                        : "例如 -200（-2%折价买入），首次申请默认0"
+                    }
                     disabled={loading}
                   />
                 </Form.Item>
@@ -1709,19 +1954,30 @@ if (opt.isSome) {
                 <Form.Item 
                   label="Sell溢价（OTC，bps）" 
                   name="sell_premium_bps" 
-                  rules={[
-                    { required: true, message: '请输入Sell溢价' },
-                    { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
-                  ]}
-                  initialValue={0}
-                  extra="做市商出售MEMO的溢价。正数=溢价卖出（推荐），例如 +200 bps = +2%"
+                  rules={
+                    appDetails && appDetails.sellPremiumBps !== undefined
+                      ? [{ type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }]
+                      : [
+                          { required: true, message: '请输入Sell溢价' },
+                          { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
+                        ]
+                  }
+                  extra={
+                    appDetails && appDetails.sellPremiumBps !== undefined
+                      ? `当前值：${(appDetails.sellPremiumBps / 100).toFixed(2)}% (${appDetails.sellPremiumBps} bps)（留空则不修改）`
+                      : "做市商出售MEMO的溢价。正数=溢价卖出（推荐），例如 +200 bps = +2%"
+                  }
                 >
                   <InputNumber 
                     min={-500} 
                     max={500} 
                     step={10} 
                     style={{ width: '100%' }}
-                    placeholder="例如 +200（+2%溢价卖出）"
+                    placeholder={
+                      appDetails && appDetails.sellPremiumBps !== undefined
+                        ? `当前 ${appDetails.sellPremiumBps} bps`
+                        : "例如 +200（+2%溢价卖出），首次申请默认0"
+                    }
                     disabled={loading}
                   />
                 </Form.Item>
@@ -1815,9 +2071,9 @@ if (opt.isSome) {
                     { required: !appDetails, message: '请输入 epay 商户密钥' },
                     { type: 'string', min: 1, message: '商户密钥不能为空' }
                   ]}
-                  extra="您的 epay 商户密钥（请妥善保管）"
+                  extra="您的 epay 商户密钥（明文显示）"
                 >
-                  <Input.Password 
+                  <Input 
                     placeholder="请输入商户密钥"
                     disabled={loading}
                   />

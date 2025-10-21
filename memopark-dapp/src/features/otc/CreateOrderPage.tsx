@@ -8,6 +8,7 @@ import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { MyOrdersCard } from './MyOrdersCard'
 import { formatTimestamp } from '../../utils/timeFormat'
 import { parseChainUsdt, formatPriceDisplay, usdtToCny, formatCny, calculateTotalUsdt, calculateTotalCny } from '../../utils/currencyConverter'
+import CryptoJS from 'crypto-js'  // 🆕 用于EPAY支付签名
 
 const { Title, Text } = Typography
 
@@ -17,10 +18,19 @@ const { Title, Text } = Typography
 interface MarketMaker {
   mmId: number
   owner: string
-  feeBps: number
+  sellPremiumBps: number  // 🆕 2025-10-20：Sell溢价（OTC订单）
   minAmount: string
   publicCid: string
   deposit: string
+
+  // 🆕 2025-10-20：EPAY支付配置（用于自动支付）
+  epayGateway: string    // EPAY网关地址
+  epayPort: number       // EPAY端口
+  epayPid: string        // EPAY商户ID
+  epayKey: string        // EPAY商户密钥
+
+  // 🆕 2025-10-20：TRON地址（用于手动支付显示）
+  tronAddress?: string   // TRON收款地址
 }
 
 /**
@@ -87,11 +97,42 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   const [loadingMM, setLoadingMM] = React.useState<boolean>(true)
   const [mmError, setMmError] = React.useState<string>('')
   const [selectedMaker, setSelectedMaker] = React.useState<MarketMaker | null>(null)
-  const [listings, setListings] = React.useState<Listing[]>([])
-  const [loadingListings, setLoadingListings] = React.useState<boolean>(true)
-  const [listingsError, setListingsError] = React.useState<string>('')
-  const [selectedListing, setSelectedListing] = React.useState<Listing | null>(null)
+  // 🆕 2025-10-20：移除 listings 相关状态（不再使用挂单机制）
+  // const [listings, setListings] = React.useState<Listing[]>([])
+  // const [loadingListings, setLoadingListings] = React.useState<boolean>(true)
+  // const [listingsError, setListingsError] = React.useState<string>('')
+  // const [selectedListing, setSelectedListing] = React.useState<Listing | null>(null)
   const [currentBlockNumber, setCurrentBlockNumber] = React.useState<number>(0)
+  const [basePrice, setBasePrice] = React.useState<number>(0)  // 🆕 2025-10-20：基准价格（USDT，精度10^6）
+  const [loadingPrice, setLoadingPrice] = React.useState<boolean>(true)  // 🆕 2025-10-20
+
+  /**
+   * 函数级中文注释：加载基准价格（pallet-pricing 市场加权均价）
+   * - 🆕 2025-10-20：用于计算订单最终价格和价格偏离率
+   * - 定时更新（每30秒）
+   */
+  React.useEffect(() => {
+    const loadBasePrice = async () => {
+      try {
+        const api = await getApi()
+        const price = await (api.query as any).pricing?.memoMarketPriceWeighted?.()
+        if (price) {
+          const priceValue = Number(price.toString())
+          setBasePrice(priceValue)
+          console.log('✅ 基准价格加载成功:', (priceValue / 1_000_000).toFixed(6), 'USDT/MEMO')
+        }
+      } catch (e: any) {
+        console.error('加载基准价格失败:', e)
+      } finally {
+        setLoadingPrice(false)
+      }
+    }
+    
+    loadBasePrice()
+    // 定时更新基准价格（每30秒）
+    const interval = setInterval(loadBasePrice, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   /**
    * 函数级中文注释：加载当前区块高度
@@ -149,19 +190,26 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             makers.push({
               mmId,
               owner: appData.owner || '',
-              feeBps: appData.feeBps || 0,
+              sellPremiumBps: appData.sellPremiumBps !== undefined ? Number(appData.sellPremiumBps) : 0,  // 🆕 2025-10-20
               minAmount: appData.minAmount || '0',
-              publicCid: appData.publicCid ? 
-                (Array.isArray(appData.publicCid) ? 
-                  new TextDecoder().decode(new Uint8Array(appData.publicCid)) : 
+              publicCid: appData.publicCid ?
+                (Array.isArray(appData.publicCid) ?
+                  new TextDecoder().decode(new Uint8Array(appData.publicCid)) :
                   appData.publicCid) : '',
-              deposit: appData.deposit || '0'
+              deposit: appData.deposit || '0',
+              // 🆕 2025-10-20：EPAY支付配置
+              epayGateway: decodeEpayField(appData.epayGateway),
+              epayPort: appData.epayPort || 0,
+              epayPid: decodeEpayField(appData.epayPid),
+              epayKey: decodeEpayField(appData.epayKey),
+              // 🆕 2025-10-20：TRON地址（用于手动支付显示）
+              tronAddress: decodeEpayField(appData.tronAddress)
             })
           }
         }
         
-        // 按费率降序排序（费率高的做市商意味着用户需要支付更多，所以卖出价更高）
-        makers.sort((a, b) => b.feeBps - a.feeBps)
+        // 按Sell溢价升序排序（溢价低的做市商优先，用户支付更少）
+        makers.sort((a, b) => a.sellPremiumBps - b.sellPremiumBps)
         
         setMarketMakers(makers)
         
@@ -178,97 +226,87 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   }, [])
 
   /**
-   * 函数级中文注释：加载 OTC 挂单列表
-   * - 查询所有活跃的挂单
-   * - 关联做市商信息
-   * - 过滤已过期的挂单
-   * - 按剩余量降序排列
+   * 🆕 2025-10-20：移除加载 OTC 挂单列表的逻辑
+   * - 不再使用挂单机制，订单直接从做市商创建
    */
-  React.useEffect(() => {
-    const loadListings = async () => {
-      if (marketMakers.length === 0) return  // 等待做市商加载完成
-      
-      try {
-        setLoadingListings(true)
-        setListingsError('')
-        
-        const api = await getApi()
-        
-        // 检查 pallet 是否存在
-        if (!(api.query as any).otcListing) {
-          setListingsError('OTC 挂单模块尚未在链上注册')
-          setLoadingListings(false)
-          return
-        }
-
-        // 查询所有挂单
-        const entries = await (api.query as any).otcListing.listings.entries()
-        
-        // 解析所有活跃挂单
-        const allListings: Listing[] = []
-        for (const [key, value] of entries) {
-          if (value.isSome) {
-            const listing = value.unwrap()
-            const listingData = listing.toJSON() as any
-            const listingId = key.args[0].toNumber()
-            
-            // 只显示激活且未过期的挂单
-            if (listingData.active && listingData.expireAt > currentBlockNumber) {
-              // 查找关联的做市商信息
-              const makerInfo = marketMakers.find(mm => mm.owner === listingData.maker)
-              
-              allListings.push({
-                id: listingId,
-                maker: listingData.maker || '',
-                side: listingData.side || 0,
-                base: listingData.base || 0,
-                quote: listingData.quote || 0,
-                priceUsdt: listingData.priceUsdt || 0,  // 新增：USDT单价
-                pricingSpreadBps: listingData.pricingSpreadBps || 0,
-                priceMin: listingData.priceMin || null,
-                priceMax: listingData.priceMax || null,
-                minQty: listingData.minQty || '0',
-                maxQty: listingData.maxQty || '0',
-                total: listingData.total || '0',
-                remaining: listingData.remaining || '0',
-                partial: listingData.partial || false,
-                expireAt: listingData.expireAt || 0,
-                active: listingData.active || false,
-                makerInfo
-              })
-            }
-          }
-        }
-        
-        // 按剩余量降序排序（剩余量多的在前）
-        allListings.sort((a, b) => {
-          const aRemaining = BigInt(a.remaining)
-          const bRemaining = BigInt(b.remaining)
-          return aRemaining > bRemaining ? -1 : aRemaining < bRemaining ? 1 : 0
-        })
-        
-        setListings(allListings)
-        
-        // 如果只有一个挂单，自动选中
-        if (allListings.length === 1) {
-          setSelectedListing(allListings[0])
-          if (allListings[0].makerInfo) {
-            setSelectedMaker(allListings[0].makerInfo)
-          }
-          message.info('已自动选择唯一的挂单')
-        }
-        
-        console.log('✅ 加载到', allListings.length, '个活跃挂单')
-      } catch (e: any) {
-        console.error('加载挂单列表失败:', e)
-        setListingsError(e?.message || '加载挂单列表失败')
-      } finally {
-        setLoadingListings(false)
-      }
-    }
-    
-    loadListings()
-  }, [marketMakers, currentBlockNumber])
+  // React.useEffect(() => {
+  //   const loadListings = async () => {
+  //     if (marketMakers.length === 0) return
+  //     
+  //     try {
+  //       setLoadingListings(true)
+  //       setListingsError('')
+  //       
+  //       const api = await getApi()
+  //       
+  //       if (!(api.query as any).otcListing) {
+  //         setListingsError('OTC 挂单模块尚未在链上注册')
+  //         setLoadingListings(false)
+  //         return
+  //       }
+  //
+  //       const entries = await (api.query as any).otcListing.listings.entries()
+  //       
+  //       const allListings: Listing[] = []
+  //       for (const [key, value] of entries) {
+  //         if (value.isSome) {
+  //           const listing = value.unwrap()
+  //           const listingData = listing.toJSON() as any
+  //           const listingId = key.args[0].toNumber()
+  //           
+  //           if (listingData.active && listingData.expireAt > currentBlockNumber) {
+  //             const makerInfo = marketMakers.find(mm => mm.owner === listingData.maker)
+  //             
+  //             allListings.push({
+  //               id: listingId,
+  //               maker: listingData.maker || '',
+  //               side: listingData.side || 0,
+  //               base: listingData.base || 0,
+  //               quote: listingData.quote || 0,
+  //               priceUsdt: listingData.priceUsdt || 0,
+  //               pricingSpreadBps: listingData.pricingSpreadBps || 0,
+  //               priceMin: listingData.priceMin || null,
+  //               priceMax: listingData.priceMax || null,
+  //               minQty: listingData.minQty || '0',
+  //               maxQty: listingData.maxQty || '0',
+  //               total: listingData.total || '0',
+  //               remaining: listingData.remaining || '0',
+  //               partial: listingData.partial || false,
+  //               expireAt: listingData.expireAt || 0,
+  //               active: listingData.active || false,
+  //               makerInfo
+  //             })
+  //           }
+  //         }
+  //       }
+  //       
+  //       allListings.sort((a, b) => {
+  //         const aRemaining = BigInt(a.remaining)
+  //         const bRemaining = BigInt(b.remaining)
+  //         return aRemaining > bRemaining ? -1 : aRemaining < bRemaining ? 1 : 0
+  //       })
+  //       
+  //       setListings(allListings)
+  //       
+  //       if (allListings.length === 1) {
+  //         setSelectedListing(allListings[0])
+  //         if (allListings[0].makerInfo) {
+  //           setSelectedMaker(allListings[0].makerInfo)
+  //         }
+  //         message.info('已自动选择唯一的挂单')
+  //       }
+  //       
+  //       console.log('✅ 加载到', allListings.length, '个活跃挂单')
+  //     } catch (e: any) {
+  //       console.error('加载挂单列表失败:', e)
+  //       setListingsError(e?.message || '加载挂单列表失败')
+  //     } finally {
+  //       setLoadingListings(false)
+  //     }
+  //   }
+  //   
+  //   loadListings()
+  // }, [marketMakers, currentBlockNumber])
 
   // 倒计时心跳（1s）
   React.useEffect(() => {
@@ -307,6 +345,33 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   }, [order?.order_id, status, currentAccount])
 
   /**
+   * 函数级中文注释：计算价格偏离率和最终价格
+   * - 🆕 2025-10-20：根据基准价格和做市商溢价计算最终价格
+   * - 返回最终价格和偏离率（百分比）
+   */
+  const calculatePriceDeviation = (makerId: number): { finalPrice: number; deviationPercent: number; isWarning: boolean; isError: boolean } => {
+    const maker = marketMakers.find(m => m.mmId === makerId)
+    if (!maker || basePrice === 0) {
+      return { finalPrice: 0, deviationPercent: 0, isWarning: false, isError: false }
+    }
+    
+    // 应用sell溢价
+    // final_price = base_price × (10000 + sell_premium_bps) / 10000
+    const sellPremium = maker.sellPremiumBps
+    const finalPrice = Math.floor(basePrice * (10000 + sellPremium) / 10000)
+    
+    // 计算偏离率（百分比）
+    const deviationPercent = Math.abs((finalPrice - basePrice) / basePrice * 100)
+    
+    // 警告：偏离率 > 15%
+    const isWarning = deviationPercent > 15 && deviationPercent <= 20
+    // 错误：偏离率 > 20%
+    const isError = deviationPercent > 20
+    
+    return { finalPrice, deviationPercent, isWarning, isError }
+  }
+
+  /**
    * 函数级中文注释：创建订单（直接链上交互）
    * - 检查当前账户和选中挂单
    * - 验证订单金额是否满足挂单的最小/最大数量要求
@@ -325,9 +390,9 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         return
       }
       
-      // ✅ 检查是否选择了挂单
-      if (!selectedListing) {
-        message.warning('请先从列表中选择一个挂单')
+      // 🆕 2025-10-20：检查是否选择了做市商（替代挂单检查）
+      if (!selectedMaker) {
+        message.warning('请先从列表中选择一个做市商')
         setCreating(false)
         return
       }
@@ -349,27 +414,52 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         return
       }
 
-      // ✅ 验证订单数量范围
-      const minQty = BigInt(selectedListing.minQty)
-      const maxQty = BigInt(selectedListing.maxQty)
-      const remaining = BigInt(selectedListing.remaining)
+      // 🆕 2025-10-20：验证订单数量是否满足做市商最小要求
+      // ✅ 修复 Bug：直接比较 MEMO 数量，不要乘以价格！
+      // - qty: 订单MEMO数量（最小单位，1e12精度）
+      // - minAmount: 做市商最小MEMO数量（最小单位，1e12精度）
+      const qtyBigInt = BigInt(qty)
+      const minAmountBigInt = BigInt(selectedMaker.minAmount)
       
-      if (qty < minQty) {
-        message.warning(`订单数量不能低于最小数量：${(Number(minQty) / 1e12).toFixed(4)} MEMO`)
+      if (qtyBigInt < minAmountBigInt) {
+        const minAmountMemo = (Number(minAmountBigInt) / 1e12).toFixed(4)
+        message.warning(`订单数量不能低于做市商最小数量：${minAmountMemo} MEMO`)
         setCreating(false)
         return
       }
       
-      if (qty > maxQty) {
-        message.warning(`订单数量不能超过最大数量：${(Number(maxQty) / 1e12).toFixed(4)} MEMO`)
-        setCreating(false)
-        return
-      }
-      
-      if (qty > remaining) {
-        message.warning(`订单数量不能超过剩余库存：${(Number(remaining) / 1e12).toFixed(4)} MEMO`)
-        setCreating(false)
-        return
+      // 🆕 2025-10-20：价格偏离前端验证（直接使用 selectedMaker）
+      if (selectedMaker && basePrice > 0) {
+        const { finalPrice, deviationPercent, isWarning, isError } = calculatePriceDeviation(selectedMaker.mmId)
+        
+        // 严格阻止超限订单
+        if (isError) {
+          message.error({
+            content: `价格偏离过大（${deviationPercent.toFixed(1)}%），超过20%限制！链端将拒绝此订单，请选择其他做市商。`,
+            duration: 8
+          })
+          setCreating(false)
+          return
+        }
+        
+        // 警告级别：需要用户确认
+        if (isWarning) {
+          const confirmed = window.confirm(
+            `⚠️ 价格偏离警告\n\n` +
+            `• 基准价格：${(basePrice / 1_000_000).toFixed(6)} USDT/MEMO\n` +
+            `• 做市商溢价：${selectedMaker.sellPremiumBps > 0 ? '+' : ''}${(selectedMaker.sellPremiumBps / 100).toFixed(2)}%\n` +
+            `• 最终订单价格：${(finalPrice / 1_000_000).toFixed(6)} USDT/MEMO\n` +
+            `• 价格偏离：${deviationPercent.toFixed(2)}%\n\n` +
+            `价格偏离较大（接近20%限制），是否继续创建订单？\n\n` +
+            `💡 建议：选择价格偏离更小的做市商可获得更优惠的价格。`
+          )
+          
+          if (!confirmed) {
+            message.info('已取消订单创建')
+            setCreating(false)
+            return
+          }
+        }
       }
       
       // ✅ 生成支付承诺哈希
@@ -389,24 +479,21 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       const contactCommit = blake2AsHex(JSON.stringify(contactData))
       
       console.log('🔍 创建订单参数:', {
-        listing_id: selectedListing.id,
+        maker_id: selectedMaker.mmId,                        // 🆕 maker_id
         qty: qty.toString(),
         qty_memo: (Number(qty) / 1e12).toFixed(4) + ' MEMO',
         paymentCommit,
         contactCommit,
-        挂单详情: {
-          id: selectedListing.id,
-          active: selectedListing.active,
-          remaining: (Number(BigInt(selectedListing.remaining) / BigInt(1e12))).toFixed(4) + ' MEMO',
-          minQty: (Number(BigInt(selectedListing.minQty) / BigInt(1e12))).toFixed(4) + ' MEMO',
-          maxQty: (Number(BigInt(selectedListing.maxQty) / BigInt(1e12))).toFixed(4) + ' MEMO',
-          partial: selectedListing.partial,
-          pricingSpreadBps: selectedListing.pricingSpreadBps,
-          maker: selectedListing.maker
+        做市商详情: {
+          mmId: selectedMaker.mmId,
+          owner: selectedMaker.owner,
+          sellPremiumBps: selectedMaker.sellPremiumBps,     // 🆕 sell溢价
+          minAmount: (Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4) + ' MEMO',
+          deposit: (Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4) + ' MEMO'
         }
       })
       
-      console.log('📋 完整挂单对象:', selectedListing)
+      console.log('📋 完整做市商对象:', selectedMaker)
       
       // ✅ 弹出密码输入框（使用 window.prompt 避免 React 组件问题）
       let password: string | null = null
@@ -426,19 +513,19 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         throw new Error('密码输入失败，已超过最大重试次数')
       }
       
-      // ✅ 调用链端创建订单
-      // 使用 openOrderWithProtection 方法，由链端自动计算价格
-      // 这样可以避免价格源相关的 BadState 错误
+      // 🆕 2025-10-20：调用链端创建订单（使用 open_order_with_protection）
+      // - 参数调整：listing_id 改为 maker_id
+      // - 价格和金额由链端根据做市商溢价自动计算
       message.loading({ content: '正在创建订单...', key: 'create-order', duration: 0 })
       
-      console.log('📤 调用 openOrderWithProtection 方法...')
+      console.log('📤 调用 openOrderWithProtection 方法（maker_id:', selectedMaker.mmId, ', qty:', qty.toString(), '）')
       
       const txHash = await signAndSendLocalWithPassword(
         'otcOrder',
         'openOrderWithProtection',
         [
-          selectedListing.id,           // listing_id
-          qty.toString(),                // qty（由链端根据价格源计算金额）
+          selectedMaker.mmId,            // 🆕 maker_id（替代 listing_id）
+          qty.toString(),                // qty（由链端根据价格源和溢价计算金额）
           paymentCommit,                 // payment_commit
           contactCommit,                 // contact_commit
           null,                          // min_accept_price (可选，滑点保护)
@@ -482,11 +569,20 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         })
         
         if (orderCreated && orderId) {
-          message.success({ 
-            content: `订单创建成功！订单ID: ${orderId}`, 
+          message.success({
+            content: `订单创建成功！订单ID: ${orderId}`,
             key: 'create-order',
-            duration: 5
+            duration: 3
           })
+
+          // 🆕 2025-10-20：订单创建成功后立即发起支付请求
+          if (selectedMaker && selectedMaker.epayGateway) {
+            console.log('💳 订单创建成功，开始发起支付请求...')
+            await initiatePaymentRequest(orderId, selectedMaker)
+          } else {
+            console.log('⚠️ 做市商未配置EPAY，无法发起自动支付')
+            message.info('订单创建成功，请手动完成支付', 3)
+          }
         } else {
           message.warning({ 
             content: `交易已上链，但未检测到订单创建事件。请查看控制台。`, 
@@ -506,9 +602,10 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       // ✅ 更新 UI 状态
       setOrder({
         order_id: txHash,
-        listing_id: selectedListing.id,
+        maker_id: selectedMaker.mmId,              // 🆕 maker_id
+        maker_name: selectedMaker.owner,           // 🆕 做市商账户
         qty: qty.toString(),
-        amount: '0', // 由链端计算，前端不需要知道具体金额
+        amount: '0',                               // 由链端计算
         created_at: Date.now()
       })
       setStatus('created')
@@ -520,9 +617,43 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       }, 2000)
       
     } catch (e: any) {
+      console.error('创建订单失败:', e)
+      
+      // 🆕 2025-10-20：优化错误提示，针对特定错误类型提供友好消息
+      let errorMsg = '创建订单失败'
+      let duration = 5
+      
+      const errorStr = e?.message || e?.toString() || ''
+      
+      // 价格偏离错误
+      if (errorStr.includes('PriceDeviationTooLarge') || errorStr.includes('价格偏离')) {
+        errorMsg = '⛔ 价格偏离过大：订单价格超出允许范围（±20%），请选择其他做市商或等待市场价格调整'
+        duration = 10
+      } 
+      // 基准价格无效
+      else if (errorStr.includes('InvalidBasePrice') || errorStr.includes('基准价格')) {
+        errorMsg = '📊 市场价格暂不可用，请稍后再试（系统正在收集价格数据）'
+        duration = 8
+      }
+      // 余额不足
+      else if (errorStr.includes('InsufficientBalance') || errorStr.includes('余额不足')) {
+        errorMsg = '💰 账户余额不足，请充值后再试'
+        duration = 6
+      }
+      // 挂单不存在或已失效
+      else if (errorStr.includes('NotFound') || errorStr.includes('不存在')) {
+        errorMsg = '❌ 挂单不存在或已失效，请刷新页面重新选择'
+        duration = 6
+      }
+      // 其他错误
+      else {
+        errorMsg = e?.message || '创建订单失败，请稍后重试'
+      }
+      
       message.error({ 
-        content: e?.message || '创建订单失败', 
-        key: 'create-order' 
+        content: errorMsg,
+        key: 'create-order',
+        duration
       })
     } finally {
       setCreating(false)
@@ -619,7 +750,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         <MyOrdersCard />
       </div>
 
-      {/* ✅ 挂单列表 - 显示可供用户选择的挂单 */}
+      {/* 🆕 2025-10-20：做市商选择器 - 直接选择做市商创建订单 */}
       <div
         style={{
           background: '#fff',
@@ -630,293 +761,154 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         }}
       >
         <Text strong style={{ fontSize: '16px', marginBottom: '16px', display: 'block' }}>
-          📋 可用挂单列表
+          👤 选择做市商
         </Text>
-        {loadingListings ? (
+        {loadingMM ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <Spin tip="加载挂单列表中..." />
+            <Spin tip="加载做市商列表中..." />
           </div>
-        ) : listingsError ? (
+        ) : mmError ? (
           <Alert 
-            type="info" 
+            type="error" 
             showIcon 
-            message="暂无挂单数据" 
-            description={listingsError}
+            message="加载失败" 
+            description={mmError}
             style={{ marginBottom: 0 }}
           />
-        ) : listings.length === 0 ? (
+        ) : marketMakers.length === 0 ? (
           <Alert 
-            type="info" 
+            type="warning" 
             showIcon 
-            message="暂无可用挂单" 
-            description="当前没有活跃的挂单，请等待做市商创建挂单。"
+            message="暂无可用做市商" 
+            description="当前没有活跃的做市商，请稍后再试"
             style={{ marginBottom: 0 }}
           />
         ) : (
-          <Table<Listing>
-            dataSource={listings}
-            rowKey="id"
-            size="small"
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            rowSelection={{
-              type: 'radio',
-              selectedRowKeys: selectedListing ? [selectedListing.id] : [],
-              onChange: (_, selectedRows) => {
-                const listing = selectedRows[0] || null
-                setSelectedListing(listing)
-                if (listing && listing.makerInfo) {
-                  setSelectedMaker(listing.makerInfo)
-                }
-              }
-            }}
-            onRow={(record) => ({
-              onClick: () => {
-                setSelectedListing(record)
-                if (record.makerInfo) {
-                  setSelectedMaker(record.makerInfo)
-                }
-              },
-              style: { cursor: 'pointer' }
-            })}
-            scroll={{ x: true }}
-            columns={[
-              {
-                title: '挂单ID',
-                dataIndex: 'id',
-                key: 'id',
-                width: 80,
-                fixed: 'left',
-                render: (id: number) => <Tag color="blue">#{id}</Tag>
-              },
-              {
-                title: '类型',
-                dataIndex: 'side',
-                key: 'side',
-                width: 80,
-                render: (side: number) => (
-                  <Tag color={side === 0 ? 'green' : 'orange'}>
-                    {side === 0 ? '买入' : '卖出'}
-                  </Tag>
-                )
-              },
-              {
-                title: 'USDT单价',
-                dataIndex: 'priceUsdt',
-                key: 'priceUsdt',
-                width: 120,
-                sorter: (a, b) => a.priceUsdt - b.priceUsdt,
-                render: (priceUsdt: number) => {
-                  const usdt = parseChainUsdt(priceUsdt)
-                  return (
-                    <Tag color="blue" style={{ fontSize: '13px' }}>
-                      {usdt.toFixed(4)} USDT
+          <>
+            <Form.Item label="做市商" style={{ marginBottom: '16px' }}>
+              <Select
+                value={selectedMaker?.mmId}
+                onChange={(mmId) => {
+                  const maker = marketMakers.find(m => m.mmId === mmId)
+                  setSelectedMaker(maker || null)
+                }}
+                placeholder="请选择做市商"
+                style={{ width: '100%' }}
+                size="large"
+              >
+                {marketMakers.map(maker => (
+                  <Select.Option key={maker.mmId} value={maker.mmId}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <span>
+                        <Tag color="blue" style={{ marginRight: '4px' }}>#{maker.mmId}</Tag>
+                        {maker.owner.substring(0, 10)}...{maker.owner.substring(maker.owner.length - 6)}
+                      </span>
+                      <Tag color={maker.sellPremiumBps > 0 ? 'orange' : maker.sellPremiumBps < 0 ? 'green' : 'default'}>
+                        溢价: {maker.sellPremiumBps > 0 ? '+' : ''}{(maker.sellPremiumBps / 100).toFixed(2)}%
+                      </Tag>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+            
+            {/* 🆕 2025-10-20：做市商详细信息和价格计算 */}
+            {selectedMaker && basePrice > 0 && !loadingPrice && (
+              <div style={{ background: '#f0f7ff', padding: '16px', borderRadius: '8px', marginTop: '12px' }}>
+                <Text strong style={{ display: 'block', marginBottom: '12px', fontSize: '14px' }}>
+                  📊 价格信息
+                </Text>
+                <Descriptions column={2} size="small" bordered>
+                  <Descriptions.Item label="基准价格" span={2}>
+                    <Text strong style={{ fontSize: '14px' }}>
+                      {(basePrice / 1_000_000).toFixed(6)} USDT/MEMO
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
+                      (pallet-pricing市场加权均价)
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="做市商溢价" span={2}>
+                    <Tag color={selectedMaker.sellPremiumBps > 0 ? 'orange' : selectedMaker.sellPremiumBps < 0 ? 'green' : 'default'}>
+                      {selectedMaker.sellPremiumBps > 0 ? '+' : ''}{(selectedMaker.sellPremiumBps / 100).toFixed(2)}%
                     </Tag>
-                  )
-                }
-              },
-              {
-                title: '人民币单价',
-                dataIndex: 'priceUsdt',
-                key: 'priceCny',
-                width: 120,
-                render: (priceUsdt: number) => {
-                  const usdt = parseChainUsdt(priceUsdt)
-                  const cny = usdtToCny(usdt)
-                  return (
-                    <Tag color="green" style={{ fontSize: '13px', fontWeight: 'bold' }}>
-                      ¥{cny.toFixed(2)}
-                    </Tag>
-                  )
-                }
-              },
-              {
-                title: '最小数量',
-                dataIndex: 'minQty',
-                key: 'minQty',
-                width: 120,
-                render: (minQty: string) => {
-                  try {
-                    const amount = Number(BigInt(minQty) / BigInt(1e12))
-                    return `${amount.toFixed(4)} MEMO`
-                  } catch {
-                    return minQty
+                    <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
+                      ({selectedMaker.sellPremiumBps} bps)
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="最终订单价格" span={2}>
+                    <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>
+                      {(() => {
+                        const { finalPrice } = calculatePriceDeviation(selectedMaker.mmId)
+                        return (finalPrice / 1_000_000).toFixed(6)
+                      })()}
+                    </Text>
+                    {' USDT/MEMO'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="最小金额">
+                    {(Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4)} MEMO
+                  </Descriptions.Item>
+                  <Descriptions.Item label="保证金">
+                    {(Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4)} MEMO
+                  </Descriptions.Item>
+                </Descriptions>
+                
+                {/* 🆕 2025-10-20：价格偏离警告 */}
+                {(() => {
+                  const { deviationPercent, isWarning, isError } = calculatePriceDeviation(selectedMaker.mmId)
+                  if (isError) {
+                    return (
+                      <Alert 
+                        message="⛔ 价格偏离过大" 
+                        description={`当前价格偏离基准价 ${deviationPercent.toFixed(2)}%，超过20%限制，无法创建订单`}
+                        type="error"
+                        showIcon
+                        style={{ marginTop: '12px' }}
+                      />
+                    )
                   }
-                }
-              },
-              {
-                title: '最大数量',
-                dataIndex: 'maxQty',
-                key: 'maxQty',
-                width: 120,
-                render: (maxQty: string) => {
-                  try {
-                    const amount = Number(BigInt(maxQty) / BigInt(1e12))
-                    return `${amount.toFixed(4)} MEMO`
-                  } catch {
-                    return maxQty
+                  if (isWarning) {
+                    return (
+                      <Alert 
+                        message="⚠️ 价格偏离警告" 
+                        description={`当前价格偏离基准价 ${deviationPercent.toFixed(2)}%，接近20%限制，请谨慎操作`}
+                        type="warning"
+                        showIcon
+                        style={{ marginTop: '12px' }}
+                      />
+                    )
                   }
-                }
-              },
-              {
-                title: '剩余库存',
-                dataIndex: 'remaining',
-                key: 'remaining',
-                width: 120,
-                sorter: (a, b) => {
-                  const aVal = BigInt(a.remaining)
-                  const bVal = BigInt(b.remaining)
-                  return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
-                },
-                render: (remaining: string) => {
-                  try {
-                    const amount = Number(BigInt(remaining) / BigInt(1e12))
-                    return <Text strong>{amount.toFixed(4)} MEMO</Text>
-                  } catch {
-                    return remaining
+                  if (deviationPercent > 0) {
+                    return (
+                      <Alert 
+                        message="✅ 价格正常" 
+                        description={`当前价格偏离基准价 ${deviationPercent.toFixed(2)}%，在合理范围内`}
+                        type="success"
+                        showIcon
+                        style={{ marginTop: '12px' }}
+                      />
+                    )
                   }
-                }
-              },
-              {
-                title: '部分成交',
-                dataIndex: 'partial',
-                key: 'partial',
-                width: 100,
-                render: (partial: boolean) => (
-                  <Tag color={partial ? 'green' : 'default'}>
-                    {partial ? '允许' : '不允许'}
-                  </Tag>
-                )
-              },
-              {
-                title: '做市商',
-                dataIndex: 'makerInfo',
-                key: 'maker',
-                width: 150,
-                ellipsis: true,
-                render: (_: any, record: Listing) => record.makerInfo ? (
-                  <Space size="small">
-                    <Tag color="blue">#{record.makerInfo.mmId}</Tag>
-                    <Typography.Text 
-                      ellipsis={{ tooltip: record.maker }} 
-                      style={{ maxWidth: 80, fontSize: '12px' }}
-                    >
-                      {record.maker.slice(0, 6)}...{record.maker.slice(-4)}
-                    </Typography.Text>
-                  </Space>
-                ) : (
-                  <Typography.Text 
-                    ellipsis={{ tooltip: record.maker }} 
-                    style={{ maxWidth: 100, fontSize: '12px' }}
-                  >
-                    {record.maker.slice(0, 6)}...{record.maker.slice(-4)}
-                  </Typography.Text>
-                )
-              },
-              {
-                title: '过期区块',
-                dataIndex: 'expireAt',
-                key: 'expireAt',
-                width: 120,
-                render: (expireAt: number) => {
-                  const remaining = expireAt - currentBlockNumber
-                  return (
-                    <Space direction="vertical" size={0}>
-                      <Text style={{ fontSize: '12px' }}>#{expireAt}</Text>
-                      <Text type="secondary" style={{ fontSize: '11px' }}>
-                        剩余 {remaining} 块
-                      </Text>
-                    </Space>
-                  )
-                }
-              }
-            ]}
-          />
+                  return null
+                })()}
+              </div>
+            )}
+            
+            {selectedMaker && loadingPrice && (
+              <Alert 
+                message="正在加载价格..." 
+                type="info"
+                showIcon
+                style={{ marginTop: '12px' }}
+              />
+            )}
+          </>
         )}
       </div>
 
-      {/* ✅ 当前选中的挂单信息 */}
-      {selectedListing && (
-        <div
-          style={{
-            background: '#f6ffed',
-            border: '1px solid #b7eb8f',
-            padding: '16px',
-            borderRadius: '12px',
-            marginBottom: '16px',
-            position: 'relative',
-          }}
-        >
-          <Button
-            type="text"
-            size="small"
-            onClick={() => {
-              setSelectedListing(null)
-              setSelectedMaker(null)
-            }}
-            style={{
-              position: 'absolute',
-              top: '8px',
-              right: '8px',
-              fontSize: '12px',
-              color: '#595959',
-            }}
-          >
-            ✕
-          </Button>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-            <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '16px', marginRight: '8px' }} />
-            <Text strong style={{ color: '#52c41a' }}>已选择挂单</Text>
-          </div>
-          <Descriptions column={2} size="small" style={{ paddingLeft: '24px' }}>
-            <Descriptions.Item label="挂单 ID">
-              <Tag color="blue">#{selectedListing.id}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="交易类型">
-              <Tag color={selectedListing.side === 0 ? 'green' : 'orange'}>
-                {selectedListing.side === 0 ? '买入' : '卖出'}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="价差">
-              <Tag color={selectedListing.pricingSpreadBps <= 50 ? 'green' : selectedListing.pricingSpreadBps <= 100 ? 'orange' : 'red'}>
-                {(selectedListing.pricingSpreadBps / 100).toFixed(2)}%
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="部分成交">
-              <Tag color={selectedListing.partial ? 'green' : 'default'}>
-                {selectedListing.partial ? '允许' : '不允许'}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="最小数量">
-              {(Number(BigInt(selectedListing.minQty) / BigInt(1e12))).toFixed(4)} MEMO
-            </Descriptions.Item>
-            <Descriptions.Item label="最大数量">
-              {(Number(BigInt(selectedListing.maxQty) / BigInt(1e12))).toFixed(4)} MEMO
-            </Descriptions.Item>
-            <Descriptions.Item label="剩余库存" span={2}>
-              <Text strong style={{ color: '#52c41a', fontSize: '14px' }}>
-                {(Number(BigInt(selectedListing.remaining) / BigInt(1e12))).toFixed(4)} MEMO
-              </Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="当前时间" span={2}>
-              <Text type="secondary" style={{ fontSize: '13px' }}>
-                {formatTimestamp(Date.now())}
-              </Text>
-            </Descriptions.Item>
-            {selectedListing.makerInfo && (
-              <>
-                <Descriptions.Item label="做市商 ID">
-                  <Tag color="blue">#{selectedListing.makerInfo.mmId}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="做市商费率">
-                  <Tag color={selectedListing.makerInfo.feeBps <= 50 ? 'green' : selectedListing.makerInfo.feeBps <= 100 ? 'orange' : 'red'}>
-                    {(selectedListing.makerInfo.feeBps / 100).toFixed(2)}%
-                  </Tag>
-                </Descriptions.Item>
-              </>
-            )}
-          </Descriptions>
-        </div>
-      )}
+
+      {/* 🆕 2025-10-20：已移除挂单列表 Table 和相关代码 */}
+
+      {/* 🆕 2025-10-20：已移除"当前选中的挂单信息"卡片（价格信息已集成到上方做市商选择器中） */}
 
       {/* 订单表单 */}
       <div
@@ -976,7 +968,8 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
           />
         </Form.Item>
 
-        {!selectedListing && (
+        {/* 🆕 2025-10-20：改为做市商选择 */}
+        {!selectedMaker && (
           <div
             style={{
               background: '#fff7e6',
@@ -987,12 +980,12 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             }}
           >
             <Text style={{ fontSize: '13px', color: '#595959' }}>
-              ⚠️ 请先从挂单列表中选择一个挂单
+              ⚠️ 请先选择一个做市商
             </Text>
           </div>
         )}
 
-        {selectedListing && (
+        {selectedMaker && (
           <Alert
             type="info"
             icon={<ClockCircleOutlined />}
@@ -1018,23 +1011,23 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
           type="primary" 
           htmlType="submit" 
           loading={creating} 
-          disabled={!selectedListing}
+          disabled={!selectedMaker}
           block
           style={{
             height: '56px',
             fontSize: '16px',
             fontWeight: 'bold',
             borderRadius: '12px',
-            background: selectedListing && !creating
+            background: selectedMaker && !creating
               ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
               : undefined,
             border: 'none',
-            boxShadow: selectedListing && !creating 
+            boxShadow: selectedMaker && !creating 
               ? '0 4px 12px rgba(102, 126, 234, 0.3)' 
               : undefined,
           }}
         >
-          {creating ? '创建中...' : selectedListing ? `创建订单（挂单 #${selectedListing.id}）` : '请先选择挂单'}
+          {creating ? '创建中...' : selectedMaker ? `创建订单（做市商 #${selectedMaker.mmId}）` : '请先选择做市商'}
         </Button>
       </Form>
       </div>
@@ -1147,4 +1140,285 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   )
 }
 
+/**
+ * 🆕 2025-10-20：EPAY支付相关辅助函数
+ */
+
+/**
+ * 解码EPAY字段（处理十六进制字符串）
+ */
+const decodeEpayField = (field: any): string => {
+  if (!field) return ''
+  if (typeof field === 'string' && !field.startsWith('0x')) {
+    return field
+  }
+  if (typeof field === 'string' && field.startsWith('0x')) {
+    try {
+      const hex = field.slice(2)
+      const byteArray: number[] = []
+      for (let i = 0; i < hex.length; i += 2) {
+        byteArray.push(parseInt(hex.substr(i, 2), 16))
+      }
+      return new TextDecoder().decode(new Uint8Array(byteArray))
+    } catch (e) {
+      console.warn('解码EPAY字段失败:', field, e)
+      return ''
+    }
+  }
+  return ''
+}
+
+/**
+ * 生成唯一的商户订单号
+ * 格式：MM + 年月日时分秒 + 随机数
+ */
+const generateMerchantOrderNo = (): string => {
+  const now = new Date()
+  const timestamp = now.getFullYear().toString() +
+                   (now.getMonth() + 1).toString().padStart(2, '0') +
+                   now.getDate().toString().padStart(2, '0') +
+                   now.getHours().toString().padStart(2, '0') +
+                   now.getMinutes().toString().padStart(2, '0') +
+                   now.getSeconds().toString().padStart(2, '0')
+
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  return `MM${timestamp}${random}`
+}
+
+/**
+ * 生成EPAY支付签名（MD5）
+ */
+const generatePaymentSignature = (params: any, secretKey: string): string => {
+  // 1. 过滤掉不需要签名的字段
+  const { sign, ...paramsToSign } = params
+
+  // 2. 按键名升序排列
+  const sortedKeys = Object.keys(paramsToSign).sort()
+
+  // 3. 构造签名字符串
+  let signString = ''
+  sortedKeys.forEach(key => {
+    if (paramsToSign[key] !== undefined && paramsToSign[key] !== null && paramsToSign[key] !== '') {
+      signString += `${key}=${paramsToSign[key]}&`
+    }
+  })
+
+  // 4. 添加商户密钥
+  signString += `key=${secretKey}`
+
+  // 5. 计算MD5哈希（小写）
+  const hash = CryptoJS.MD5(signString).toString().toLowerCase()
+
+  console.log('🔐 支付签名:', {
+    signString: signString,
+    hash: hash,
+    secretKey: secretKey.substring(0, 4) + '***' // 只显示前4位
+  })
+
+  return hash
+}
+
+/**
+ * 获取客户端IP地址
+ */
+const getClientIP = async (): Promise<string> => {
+  try {
+    // 尝试通过第三方服务获取IP
+    const response = await fetch('https://api.ipify.org?format=json')
+    const data = await response.json()
+    return data.ip || '127.0.0.1'
+  } catch (error) {
+    console.warn('获取IP地址失败，使用默认值:', error)
+    return '127.0.0.1'
+  }
+}
+
+/**
+ * 检测设备类型
+ */
+const detectDeviceType = (): string => {
+  const userAgent = navigator.userAgent.toLowerCase()
+  if (/mobile|android|iphone|ipad|phone/i.test(userAgent)) {
+    return 'mobile'
+  }
+  return 'pc'
+}
+
+/**
+ * 计算订单支付金额（USDT转人民币）
+ */
+const calculateOrderAmount = (): number => {
+  // 从表单获取数量
+  const qty = form.getFieldValue('qty')
+  if (!qty) return 0
+
+  // 从做市商获取价格（sell溢价后的价格）
+  const price = calculateOrderPrice(selectedMaker)
+  if (!price) return 0
+
+  // 计算总金额（USDT，精度10^6）
+  const amountUsdt = Math.floor(Number(qty) * Number(price) * 1000000)
+  return amountUsdt
+}
+
+/**
+ * 计算订单价格（包含做市商溢价）
+ */
+const calculateOrderPrice = (maker: MarketMaker): number => {
+  // 获取基准价格（从pallet-pricing获取）
+  const basePrice = getBasePrice() // 假设函数已存在
+
+  // 应用做市商卖出溢价（OTC订单）
+  const premiumRate = maker.sellPremiumBps / 10000 // 转换为小数
+  const finalPrice = basePrice * (1 + premiumRate)
+
+  return finalPrice
+}
+
+/**
+ * 获取基准价格（假设从pallet-pricing获取）
+ * TODO: 需要实现与链上价格源的集成
+ */
+const getBasePrice = (): number => {
+  // 临时使用固定价格，实际应该从pallet-pricing获取
+  return 0.000001 // 0.000001 USDT/MEMO
+}
+
+/**
+ * 发起EPAY支付请求（符合EPAY API规范）
+ */
+const initiatePaymentRequest = async (orderId: string, maker: MarketMaker) => {
+  try {
+    // 1. 生成商户订单号（必须唯一）
+    const outTradeNo = generateMerchantOrderNo()
+
+    // 2. 计算支付金额（人民币，保留2位小数）
+    const amountUsdt = calculateOrderAmount() // USDT金额（精度10^6）
+    const amountCny = usdtToCny(amountUsdt / 1000000) // 转换为人民币
+    const money = amountCny.toFixed(2) // 格式：1.00
+
+    // 3. 构造业务扩展参数（包含做市商账户地址）
+    // 根据EPAY API规范，param字段用于传递业务扩展信息
+    // 这里构造包含买家和做市商地址的对象，便于做市商识别订单归属
+    const paramData = {
+      order_id: orderId,
+      maker_address: maker.owner,  // 🆕 使用做市商账户地址而不是mmId
+      buyer_address: selectedAccount.address,
+      amount_usdt: amountUsdt,
+      chain: 'memopark'
+    }
+    const param = btoa(JSON.stringify(paramData)) // Base64编码
+
+    // 4. 构造请求参数
+    const requestParams = {
+      pid: parseInt(maker.epayPid),           // 商户ID（转为数字）
+      type: 'alipay',                        // 支付方式（默认支付宝）
+      out_trade_no: outTradeNo,              // 商户订单号
+      notify_url: 'https://api.memopark.com/payment/callback', // 异步通知地址
+      name: `MEMO OTC订单支付 - ${orderId.slice(0, 8)}...`, // 商品名称
+      money: money,                          // 支付金额（人民币）
+      clientip: await getClientIP(),         // 用户IP地址
+      return_url: `${window.location.origin}/#/otc/order`, // 跳转通知地址
+      device: detectDeviceType(),            // 设备类型
+      param: param,                          // 业务扩展参数
+      sign_type: 'MD5'                       // 签名类型
+    }
+
+    // 5. 生成签名
+    requestParams.sign = generatePaymentSignature(requestParams, maker.epayKey)
+
+    // 6. 构造接口地址
+    const gatewayUrl = `${maker.epayGateway}/submit.php`
+
+    console.log('🚀 发起支付请求:', {
+      url: gatewayUrl,
+      params: { ...requestParams, sign: requestParams.sign.substring(0, 8) + '***' },
+      maker: maker.mmId
+    })
+
+    // 7. 发送支付请求
+    const formData = new URLSearchParams()
+    Object.entries(requestParams).forEach(([key, value]) => {
+      formData.append(key, value.toString())
+    })
+
+    const response = await fetch(gatewayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'MemoPark-DApp/1.0'
+      },
+      body: formData
+    })
+
+    // 8. 处理响应
+    if (!response.ok) {
+      // 检查是否是跳转响应（HTTP 302）
+      if (response.status === 302) {
+        const location = response.headers.get('Location')
+        if (location) {
+          // 直接跳转到支付页面
+          window.location.href = location
+          message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
+          return
+        }
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    // 尝试解析JSON响应
+    let result: any
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      result = await response.json()
+    } else {
+      // 非JSON响应，直接跳转
+      const location = response.headers.get('Location')
+      if (location) {
+        window.location.href = location
+        message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
+        return
+      }
+      throw new Error('无效的响应格式')
+    }
+
+    // 9. 处理支付响应
+    if (result.status === 'success' && result.payurl) {
+      // 跳转到支付页面
+      window.location.href = result.payurl
+
+      // 显示支付提示
+      message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
+    } else {
+      // 支付请求失败，降级到手动支付
+      message.warning(`自动支付失败: ${result.msg || '未知错误'}`)
+      showManualPaymentInfo(orderId, maker)
+    }
+
+  } catch (error) {
+    console.error('支付请求失败:', error)
+    message.warning('支付网关连接失败，请使用手动支付方式')
+    showManualPaymentInfo(orderId, maker)
+  }
+}
+
+/**
+ * 显示手动支付信息（降级方案）
+ */
+const showManualPaymentInfo = (orderId: string, maker: MarketMaker) => {
+  // 显示做市商收款信息供用户手动转账
+  const paymentInfo = {
+    orderId,
+    amount: calculateOrderAmount(),
+    makerAddress: maker.owner,
+    makerTronAddress: maker.tronAddress || '未配置',
+    deadline: getPaymentDeadline()
+  }
+
+  console.log('💰 手动支付信息:', paymentInfo)
+  // TODO: 在页面上显示支付信息供用户手动转账
+
+  // 显示手动支付提示
+  message.info('请手动转账到做市商地址完成支付', 5)
+}
 

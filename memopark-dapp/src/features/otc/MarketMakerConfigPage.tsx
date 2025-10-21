@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Form, Input, InputNumber, Button, message, Alert, Spin, Descriptions, Tag, Space, Typography, Divider } from 'antd'
+import { Card, Form, Input, InputNumber, Button, Alert, Spin, Descriptions, Tag, Space, Typography, Divider, App } from 'antd'
 import { SettingOutlined, SaveOutlined, ReloadOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
@@ -49,22 +49,54 @@ function formatMemoAmount(amount: number): string {
 }
 
 /**
- * 函数级详细中文注释：解析字节数组为字符串
+ * 函数级详细中文注释：解析字节数组或十六进制字符串为明文字符串
+ * - 支持三种输入格式：
+ *   1. 数组：[102, 100, 103, ...] → 直接解码
+ *   2. 十六进制字符串：'0x6664677366677364666773646667' → 先转数组再解码
+ *   3. 普通字符串：直接返回
  */
 function bytesToString(bytes: any): string {
   if (!bytes) return ''
-  if (typeof bytes === 'string') return bytes
+  
+  // 🔹 情况1：已经是普通字符串（不是0x开头）
+  if (typeof bytes === 'string' && !bytes.startsWith('0x')) {
+    return bytes
+  }
+  
+  // 🔹 情况2：十六进制字符串（0x开头）
+  if (typeof bytes === 'string' && bytes.startsWith('0x')) {
+    try {
+      const hex = bytes.slice(2) // 去除 '0x' 前缀
+      const byteArray: number[] = []
+      
+      // 将十六进制字符串转换为字节数组
+      for (let i = 0; i < hex.length; i += 2) {
+        byteArray.push(parseInt(hex.substr(i, 2), 16))
+      }
+      
+      // 解码为 UTF-8 字符串
+      return new TextDecoder().decode(new Uint8Array(byteArray))
+    } catch (e) {
+      console.error('十六进制字符串解码失败:', bytes, e)
+      return ''
+    }
+  }
+  
+  // 🔹 情况3：字节数组
   if (Array.isArray(bytes)) {
     try {
       return new TextDecoder().decode(new Uint8Array(bytes))
     } catch (e) {
+      console.error('字节数组解码失败:', bytes, e)
       return ''
     }
   }
+  
   return ''
 }
 
 export default function MarketMakerConfigPage() {
+  const { message } = App.useApp()
   const [form] = Form.useForm()
   const [loading, setLoading] = React.useState<boolean>(false)
   const [loadingInfo, setLoadingInfo] = React.useState<boolean>(false)
@@ -161,7 +193,7 @@ export default function MarketMakerConfigPage() {
         epay_gateway: info.epayGateway,
         epay_port: info.epayPort,
         epay_pid: info.epayPid,
-        epay_key: '', // 密钥不显示，用户需要重新输入
+        epay_key: info.epayKey, // 🆕 2025-10-20：明文显示密钥
       })
       
       console.log('[配置管理] 做市商信息已加载:', info)
@@ -236,8 +268,8 @@ export default function MarketMakerConfigPage() {
         epayPidParam = Array.from(new TextEncoder().encode(values.epay_pid.trim()))
       }
 
-      // epay 商户密钥（如果提供）
-      if (values.epay_key && values.epay_key.trim() !== '') {
+      // epay 商户密钥（如果提供且与当前值不同）
+      if (values.epay_key && values.epay_key.trim() !== '' && values.epay_key !== marketMakerInfo.epayKey) {
         epayKeyParam = Array.from(new TextEncoder().encode(values.epay_key.trim()))
       }
 
@@ -268,9 +300,8 @@ export default function MarketMakerConfigPage() {
       // 等待区块确认后重新加载信息
       await new Promise(resolve => setTimeout(resolve, 3000))
       await loadMarketMakerInfo()
-
-      // 清空密钥字段（安全考虑）
-      form.setFieldsValue({ epay_key: '' })
+      
+      // 🆕 2025-10-20：保留密钥明文显示，不清空字段（已在 loadMarketMakerInfo 中自动填充）
 
     } catch (e: any) {
       console.error('更新配置失败:', e)
@@ -448,6 +479,9 @@ export default function MarketMakerConfigPage() {
                   <Descriptions.Item label="Epay 网关">{marketMakerInfo.epayGateway || '未配置'}</Descriptions.Item>
                   <Descriptions.Item label="Epay 端口">{marketMakerInfo.epayPort || '未配置'}</Descriptions.Item>
                   <Descriptions.Item label="Epay 商户ID">{marketMakerInfo.epayPid || '未配置'}</Descriptions.Item>
+                  <Descriptions.Item label="Epay 商户密钥">
+                    <Text copyable>{marketMakerInfo.epayKey || '未配置'}</Text>
+                  </Descriptions.Item>
                   <Descriptions.Item label="已服务用户数">{marketMakerInfo.usersServed}</Descriptions.Item>
                 </Descriptions>
 
@@ -556,9 +590,9 @@ export default function MarketMakerConfigPage() {
                 <Form.Item 
                   label="Epay 商户密钥" 
                   name="epay_key" 
-                  extra="密钥不显示，修改时需要重新输入完整密钥"
+                  extra="明文显示当前密钥，可直接修改（留空则不修改）"
                 >
-                  <Input.Password 
+                  <Input 
                     placeholder="请输入新的商户密钥（不修改则留空）"
                     disabled={loading}
                   />

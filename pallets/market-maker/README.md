@@ -71,7 +71,6 @@ pub struct Application<AccountId, Balance> {
     pub direction: Direction,      // 业务方向：Buy（仅Bridge）/Sell（仅OTC）/BuyAndSell（双向）
     pub public_cid: Cid,          // 公开资料根 CID
     pub private_cid: Cid,         // 私密资料根 CID
-    pub fee_bps: u16,             // 费率（bps）
     pub min_amount: Balance,      // 最小下单额
     pub created_at: u32,          // 质押时间（秒）
     pub info_deadline: u32,       // 资料提交截止（秒）
@@ -213,7 +212,6 @@ pub fn submit_info(
     mm_id: u64,
     public_cid: Vec<u8>,
     private_cid: Vec<u8>,
-    fee_bps: u16,
     min_amount: BalanceOf<T>,
     // 🆕 新增参数
     epay_gateway: Vec<u8>,
@@ -230,7 +228,6 @@ pub fn submit_info(
 - `mm_id`: 申请编号
 - `public_cid`: 公开资料根 CID（明文）
 - `private_cid`: 私密资料根 CID（明文，内容加密）
-- `fee_bps`: 费率（0-10000 bps，即 0%-100%）
 - `min_amount`: 最小下单额
 - 🆕 `epay_gateway`: epay支付网关地址（如：http://111.170.145.41）
 - 🆕 `epay_port`: epay支付网关端口（如：80, 443, 8080等）
@@ -257,7 +254,6 @@ pub fn update_info(
     mm_id: u64,
     public_root_cid: Option<Cid>,
     private_root_cid: Option<Cid>,
-    fee_bps: Option<u16>,
     min_amount: Option<BalanceOf<T>>,
     // 🆕 新增参数
     epay_gateway: Option<Vec<u8>>,
@@ -274,7 +270,6 @@ pub fn update_info(
 - `mm_id`: 申请编号
 - `public_root_cid`: 公开资料根 CID（None 表示不修改）
 - `private_root_cid`: 私密资料根 CID（None 表示不修改）
-- `fee_bps`: 费率（None 表示不修改）
 - `min_amount`: 最小下单额（None 表示不修改）
 - 🆕 `epay_gateway`: epay支付网关地址（None 表示不修改）
 - 🆕 `epay_port`: epay支付网关端口（None 表示不修改）
@@ -916,7 +911,6 @@ pub fn update_maker_info(
     mm_id: u64,
     public_cid: Option<Cid>,           // 可选更新公开资料
     private_cid: Option<Cid>,          // 可选更新私密资料
-    fee_bps: Option<u16>,              // 可选更新费率
     min_amount: Option<BalanceOf<T>>,  // 可选更新最小下单额
 ) -> DispatchResult
 ```
@@ -928,7 +922,6 @@ pub fn update_maker_info(
 2. 根据参数更新相应配置：
    - `public_cid`：更新公开资料（IPFS CID）
    - `private_cid`：更新私密资料（IPFS CID）
-   - `fee_bps`：更新 OTC 费率（10-1000 bps = 0.1%-10%）
    - `min_amount`：更新最小下单额（>= Currency::minimum_balance）
 3. 发出 `MakerInfoUpdated` 事件
 

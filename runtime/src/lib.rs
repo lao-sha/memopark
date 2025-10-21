@@ -268,8 +268,9 @@ pub mod runtime {
     // 函数级中文注释：移除 pallet_otc_maker (index 9)
     // - 功能已被 pallet-market-maker 完全替代，避免冗余
 
-    #[runtime::pallet_index(10)]
-    pub type OtcListing = pallet_otc_listing;
+    // 函数级中文注释：2025-10-20 移除 pallet_otc_listing (index 10)
+    // - 功能已被 pallet-market-maker + pallet-otc-order 替代
+    // - 挂单机制已废弃，改为直接选择做市商创建订单
 
     #[runtime::pallet_index(11)]
     pub type OtcOrder = pallet_otc_order;
@@ -370,7 +371,7 @@ pub mod runtime {
     pub type Pricing = pallet_pricing;
 
     #[runtime::pallet_index(44)]
-    pub type OtcClaim = pallet_otc_claim;
+    pub type FirstPurchase = pallet_first_purchase;  // 原名: OtcClaim，2025-10-20更名
 
     #[runtime::pallet_index(45)]
     pub type MarketMaker = pallet_market_maker;

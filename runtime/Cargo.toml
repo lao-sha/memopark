@@ -29,7 +29,8 @@ pallet-forwarder = { path = "../pallets/forwarder", default-features = false }
 pallet-market-maker = { path = "../pallets/market-maker", default-features = false }
 # 函数级中文注释：移除 pallet-otc-maker 依赖
 # pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
-pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
+# 函数级中文注释：2025-10-20 移除 pallet-otc-listing 依赖，功能已由 pallet-market-maker + pallet-otc-order 替代
+# pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
 pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
 pallet-escrow = { path = "../pallets/escrow", default-features = false }
 pallet-arbitration = { path = "../pallets/arbitration", default-features = false }
@@ -55,7 +56,7 @@ pallet-memo-content-governance = { path = "../pallets/memo-content-governance", 
 pallet-collective = { path = "../pallets/collective", default-features = false }
 pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
 pallet-pricing = { path = "../pallets/pricing", default-features = false }
-pallet-otc-claim = { path = "../pallets/otc-claim", default-features = false }
+pallet-first-purchase = { path = "../pallets/first-purchase", default-features = false }  # 原名: pallet-otc-claim
 pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
 pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
 pallet-sudo.workspace = true
@@ -104,7 +105,7 @@ std = [
 	"pallet-forwarder/std",
 	"pallet-market-maker/std",
 	# "pallet-otc-maker/std",  # 已移除
-	"pallet-otc-listing/std",
+	# "pallet-otc-listing/std",  # 2025-10-20 已移除
 	"pallet-otc-order/std",
 	"pallet-escrow/std",
 	"pallet-arbitration/std",
@@ -129,7 +130,7 @@ std = [
 	"pallet-collective/std",
 	"pallet-memo-pet/std",
     "pallet-pricing/std",
-    "pallet-otc-claim/std",
+    "pallet-first-purchase/std",  # 原名: pallet-otc-claim
     "pallet-storage-treasury/std",
     "pallet-simple-bridge/std",
 	"pallet-sudo/std",

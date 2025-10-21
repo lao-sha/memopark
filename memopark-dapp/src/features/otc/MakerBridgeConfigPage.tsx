@@ -28,7 +28,6 @@ interface MarketMakerInfo {
   tronAddress: string  // 🆕 2025-10-19：统一TRON地址（OTC收款 + Bridge发款）
   publicCid: string
   privateCid: string
-  feeBps: number
   buyPremiumBps: number  // 🆕 2025-10-19：Buy溢价（基点）
   sellPremiumBps: number // 🆕 2025-10-19：Sell溢价（基点）
   minAmount: string
@@ -146,7 +145,6 @@ export default function MakerBridgeConfigPage() {
         tronAddress: bytesToString(foundApp.tronAddress),  // 🆕 2025-10-19：解析TRON地址
         publicCid: bytesToString(foundApp.publicCid),
         privateCid: bytesToString(foundApp.privateCid),
-        feeBps: foundApp.feeBps || 0,
         buyPremiumBps: foundApp.buyPremiumBps !== undefined ? Number(foundApp.buyPremiumBps) : 0,  // 🆕 2025-10-19：解析Buy溢价
         sellPremiumBps: foundApp.sellPremiumBps !== undefined ? Number(foundApp.sellPremiumBps) : 0, // 🆕 2025-10-19：解析Sell溢价
         minAmount: foundApp.minAmount || '0',
@@ -159,7 +157,6 @@ export default function MakerBridgeConfigPage() {
         tron_address: info.tronAddress,          // 🆕 2025-10-19：填充TRON地址
         public_cid: info.publicCid,
         private_cid: info.privateCid,
-        fee_bps: info.feeBps,
         buy_premium_bps: info.buyPremiumBps,    // 🆕 2025-10-19：填充Buy溢价
         sell_premium_bps: info.sellPremiumBps,  // 🆕 2025-10-19：填充Sell溢价
         min_amount: Number(BigInt(info.minAmount) / BigInt(1e12)),
@@ -411,7 +408,6 @@ export default function MakerBridgeConfigPage() {
       // 构造参数（Option 类型）
       let publicCidParam = null
       let privateCidParam = null
-      let feeBpsParam = null
       let buyPremiumBpsParam = null  // 🆕 2025-10-19：Buy溢价参数
       let sellPremiumBpsParam = null // 🆕 2025-10-19：Sell溢价参数
       let minAmountParam = null
@@ -439,10 +435,6 @@ export default function MakerBridgeConfigPage() {
         privateCidParam = Array.from(new TextEncoder().encode(values.private_cid.trim()))
       }
 
-      // OTC 费率
-      if (values.fee_bps !== undefined && values.fee_bps !== null && values.fee_bps !== '' && values.fee_bps !== marketMakerInfo.feeBps) {
-        feeBpsParam = Number(values.fee_bps)
-      }
 
       // 🆕 2025-10-19：Buy溢价
       if (values.buy_premium_bps !== undefined && values.buy_premium_bps !== null && values.buy_premium_bps !== '' && values.buy_premium_bps !== marketMakerInfo.buyPremiumBps) {
@@ -475,7 +467,7 @@ export default function MakerBridgeConfigPage() {
       }
 
       // 检查是否有实际变化
-      if (!publicCidParam && !privateCidParam && !feeBpsParam && !buyPremiumBpsParam && !sellPremiumBpsParam && !minAmountParam) {
+      if (!publicCidParam && !privateCidParam && !buyPremiumBpsParam && !sellPremiumBpsParam && !minAmountParam && !tronAddressParam) {
         message.warning('没有检测到配置变更')
         setLoading(false)
         return
@@ -485,10 +477,9 @@ export default function MakerBridgeConfigPage() {
 
       // 签名并发送交易（🆕 2025-10-19：添加溢价参数和TRON地址参数）
       const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateMakerInfo', [
-        marketMakerInfo.mmId,
+        marketMakerInfo.        mmId,
         publicCidParam,
         privateCidParam,
-        feeBpsParam,
         buyPremiumBpsParam,   // 🆕 2025-10-19：Buy溢价
         sellPremiumBpsParam,  // 🆕 2025-10-19：Sell溢价
         minAmountParam,
@@ -939,24 +930,6 @@ export default function MakerBridgeConfigPage() {
                     >
                       <Input 
                         placeholder="例如：QmYYYYYYYYYYYYYYYYYYYY"
-                        disabled={loading}
-                      />
-                    </Form.Item>
-
-                    <Form.Item 
-                      label="OTC 费率（bps，万分比）" 
-                      name="fee_bps" 
-                      rules={[
-                        { type: 'number', min: 10, max: 1000, message: 'OTC 费率范围：10-1000 bps（0.1%-10%）' }
-                      ]}
-                      extra={`当前值：${marketMakerInfo.feeBps} bps = ${(marketMakerInfo.feeBps / 100).toFixed(2)}%（留空则不修改）`}
-                    >
-                      <InputNumber 
-                        min={10}
-                        max={1000}
-                        precision={0}
-                        style={{ width: '100%' }}
-                        placeholder="例如：30（= 0.3%）"
                         disabled={loading}
                       />
                     </Form.Item>

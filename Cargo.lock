@@ -5423,6 +5423,7 @@ dependencies = [
  "pallet-escrow",
  "pallet-evidence",
  "pallet-fee-guard",
+ "pallet-first-purchase",
  "pallet-forwarder",
  "pallet-grandpa",
  "pallet-identity",
@@ -5438,8 +5439,6 @@ dependencies = [
  "pallet-memo-referrals",
  "pallet-memo-sacrifice",
  "pallet-origin-restriction",
- "pallet-otc-claim",
- "pallet-otc-listing",
  "pallet-otc-order",
  "pallet-pricing",
  "pallet-simple-bridge",
@@ -6309,6 +6308,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-first-purchase"
+version = "0.1.0"
+dependencies = [
+ "byte-slice-cast",
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-forwarder"
 version = "0.1.0"
 dependencies = [
@@ -6545,53 +6560,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-otc-claim"
-version = "0.1.0"
-dependencies = [
- "byte-slice-cast",
- "frame-support",
- "frame-system",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-otc-listing"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-balances",
- "pallet-escrow",
- "pallet-otc-maker",
- "pallet-pricing",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-otc-maker"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-membership",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-otc-order"
 version = "0.1.0"
 dependencies = [
@@ -6604,7 +6572,6 @@ dependencies = [
  "pallet-evidence",
  "pallet-market-maker",
  "pallet-memo-referrals",
- "pallet-otc-listing",
  "pallet-pricing",
  "pallet-timestamp",
  "parity-scale-codec",

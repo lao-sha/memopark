@@ -205,7 +205,7 @@ const PriceDashboard: React.FC = () => {
               prefix={<FallOutlined />}
               valueStyle={{ color: bridgeAvgPrice > 0 ? '#fa8c16' : '#999' }}
             />
-            <Text type="secondary" style={{ fontSize 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
               滑动窗口统计
             </Text>
           </Card>

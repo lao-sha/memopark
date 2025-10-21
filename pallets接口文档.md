@@ -219,8 +219,8 @@ Storage：
 ### forwarder 赞助代付（OTC 买/卖挂单与吃单）
 
 - **代付范围（命名空间）**：
-  - `OtcListingNsBytes = b"otc_lst_"`：允许 `pallet-otc-listing::create_listing`（side=Buy/Sell 由参数决定）。
-  - `OtcOrderNsBytes   = b"otc_ord_"`：允许 `pallet-otc-order::open_order`（吃单创建订单）。
+  - ~~`OtcListingNsBytes = b"otc_lst_"`：允许 `pallet-otc-listing::create_listing`~~ （已废弃，2025-10-20删除）
+  - `OtcOrderNsBytes   = b"otc_ord_"`：允许 `pallet-otc-order::open_order`（创建订单，直接选择做市商）。
 - **赞助者白名单**：仅允许平台账户 `PlatformAccount` 作为赞助者发起 `forward/open_session`（运行时适配器限制）。
 - **禁用调用**：`Sudo` 等高权限/逃逸调用被拒绝。
 
@@ -263,18 +263,22 @@ await api.tx.forwarder.forward(metaBytes, sessionSig, owner).signAndSend(platfor
   - upsert_maker(payment_cid_commit: H256) -> MakerUpserted（需 KYC 通过）
   - set_active(active: bool) -> MakerStatusChanged
 
-## pallet-otc-listing（挂单）
+## ~~pallet-otc-listing（挂单）~~ 【已删除 2025-10-20】
 
-- 作用：最小挂单骨架（价格/数量/条款承诺/到期等）。
-- Extrinsics：
-  - create_listing(side: u8, base: u32, quote: u32, price: Balance, min_qty: Balance, max_qty: Balance, total: Balance, partial: bool, expire_at: BlockNumber, terms_commit?: Bytes) -> ListingCreated
-  - cancel_listing(id: u64) -> ListingCanceled（仅创建者）
+**删除原因**: 挂单机制已废弃，改为直接选择做市商创建订单  
+**功能转移**: 
+- 做市商管理 → `pallet-market-maker`
+- 价格管理 → `pallet-pricing` 
+- 订单管理 → `pallet-otc-order`
+
+详见: `docs/pallet-otc-listing删除完成报告.md`
 
 ## pallet-otc-order（订单）
 
-- 作用：吃单生成订单、标记已付、标记争议（本地状态）。
+- 作用：直接选择做市商创建订单、标记已付、标记争议（本地状态）。
 - Extrinsics：
-  - open_order(listing_id: u64, price: Balance, qty: Balance, amount: Balance, payment_commit: H256, contact_commit: H256) -> OrderOpened
+  - open_order(maker_id: u64, price: u64, qty: Balance, amount: Balance, payment_commit: H256, contact_commit: H256) -> OrderOpened  
+    注：`maker_id` 来自 `pallet-market-maker`，不再依赖挂单
   - mark_paid(id: u64) -> OrderPaidCommitted（仅 taker；需 Created 状态）
   - mark_disputed(id: u64) -> OrderDisputed（maker/taker，见状态/时窗约束）
 

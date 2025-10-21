@@ -176,7 +176,7 @@ const tx = api.tx.otcOrder.openOrderWithProtection(
 const hash = await tx.signAndSend(keyring.getPair('//Bob'));
 ```
 
-### 3. mark_paid（标记已支付）
+### 3. mark_paid（标记已支付 - 买家调用）
 
 ```rust
 pub fn mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult
@@ -187,7 +187,80 @@ pub fn mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult
 - 状态从 `Created` → `PaidOrCommitted`
 - 要求：调用者必须是 `taker`
 
-### 4. mark_disputed（标记争议）
+### 4. mark_order_paid_by_maker（标记已支付 - 做市商自动调用）🆕 2025-10-21
+
+```rust
+pub fn mark_order_paid_by_maker(
+    origin: OriginFor<T>,
+    order_id: u64,
+    epay_trade_no: Vec<u8>,
+) -> DispatchResult
+```
+
+#### 功能说明
+- **自动支付确认**：做市商的中继服务收到EPAY支付通知后，验证签名后自动调用此接口
+- **记录交易号**：在订单中记录EPAY交易号，用于关联支付记录
+- **状态更新**：状态从 `Created` → `PaidOrCommitted`
+- **触发事件**：触发 `PaymentConfirmedByMaker` 事件，供做市商监听程序自动释放MEMO
+- **权限验证**：只有订单对应的做市商可以调用
+- **防重复标记**：只能标记 `Created` 状态的订单
+
+#### 参数说明
+- `order_id`：订单ID
+- `epay_trade_no`：EPAY交易号（最多64字节，UTF-8字符串）
+
+#### 使用场景
+此接口专为**做市商自动支付系统**设计，配合中继服务实现：
+1. 买家创建订单后，前端自动跳转到做市商的EPAY支付页面
+2. 买家完成支付后，EPAY向做市商的中继服务发送异步通知
+3. 中继服务验证签名后，调用此接口标记订单已支付
+4. 做市商监听链上 `PaymentConfirmedByMaker` 事件，自动释放MEMO
+5. 整个流程无需买家手动标记支付，实现完全自动化
+
+#### 事件
+```rust
+PaymentConfirmedByMaker {
+    order_id: u64,
+    maker_id: u64,
+    maker: T::AccountId,
+    taker: T::AccountId,
+    amount: BalanceOf<T>,
+    epay_trade_no: BoundedVec<u8, ConstU32<64>>,
+}
+```
+
+#### 中继服务调用示例（Node.js）
+```javascript
+const { ApiPromise, WsProvider } = require('@polkadot/api');
+
+// 连接到链
+const api = await ApiPromise.create({ 
+  provider: new WsProvider('ws://127.0.0.1:9944') 
+});
+
+// 做市商账户
+const makerAccount = keyring.addFromMnemonic(MAKER_MNEMONIC);
+
+// 调用接口标记订单已支付
+const tx = api.tx.otcOrder.markOrderPaidByMaker(
+  orderId,        // 链上订单ID
+  epayTradeNo     // EPAY交易号，例如 "2025012100001"
+);
+
+await tx.signAndSend(makerAccount);
+```
+
+#### 订单结构扩展
+```rust
+pub struct Order<AccountId, Balance, Moment> {
+    // ... 原有字段
+    
+    /// 🆕 EPAY 交易号（可选）
+    pub epay_trade_no: Option<BoundedVec<u8, ConstU32<64>>>,
+}
+```
+
+### 5. mark_disputed（标记争议）
 
 ```rust
 pub fn mark_disputed(origin: OriginFor<T>, id: u64) -> DispatchResult
@@ -201,7 +274,7 @@ pub fn mark_disputed(origin: OriginFor<T>, id: u64) -> DispatchResult
   2. 或超过 `expire_at`（超时）
   3. 且在 `evidence_until` 窗口内（证据追加期）
 
-### 5. release（卖家放行）✨ 价格上报
+### 6. release（卖家放行）✨ 价格上报
 
 ```rust
 pub fn release(origin: OriginFor<T>, id: u64) -> DispatchResult
@@ -230,7 +303,7 @@ let (price_usdt, memo_qty, timestamp) = {
 pallet_pricing::Pallet::<T>::add_otc_order(timestamp, price_usdt, memo_qty);
 ```
 
-### 6. refund_on_timeout（超时退款）
+### 7. refund_on_timeout（超时退款）
 
 ```rust
 pub fn refund_on_timeout(origin: OriginFor<T>, id: u64) -> DispatchResult

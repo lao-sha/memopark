@@ -166,48 +166,6 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
             <AccountsOverview />
             <FeeGuardCard />
             
-            {/* Web治理平台入口 */}
-            <Card size="small" title="🏛️ 专业治理" style={{ marginTop: 16 }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Alert
-                  type="success"
-                  showIcon
-                  message="委员会成员和管理员专用"
-                  description="内容审批、做市商审核、仲裁管理、墓地治理等专业功能已迁移到桌面端 Web 平台"
-                />
-                <Button 
-                  type="primary" 
-                  block 
-                  size="large"
-                  onClick={() => {
-                    window.open('https://governance.memopark.com', '_blank')
-                  }}
-                >
-                  🖥️ 打开 Web 治理平台
-                </Button>
-                <Row gutter={8} style={{ marginTop: 8 }}>
-                  <Col span={8}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-primary)' }}>15+</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>治理模块</div>
-                    </div>
-                  </Col>
-                  <Col span={8}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-success)' }}>3</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>委员会</div>
-                    </div>
-                  </Col>
-                  <Col span={8}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--color-warning)' }}>95%</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>功能完成</div>
-                    </div>
-                  </Col>
-                </Row>
-              </Space>
-            </Card>
-            
             <RecentTxList />
 
             <Space>

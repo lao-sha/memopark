@@ -46,10 +46,11 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/otc/mm-apply', component: lazy(() => import('./features/otc/CreateMarketMakerPage')) },
   { match: h => h === '#/otc/market-maker-config', component: lazy(() => import('./features/otc/MarketMakerConfigPage')) },
   { match: h => h === '#/otc/bridge-config', component: lazy(() => import('./features/otc/MakerBridgeConfigPage')) },
+  { match: h => h === '#/market-maker/center', component: lazy(() => import('./features/market-maker/MarketMakerCenterPage')) },
   { match: h => h === '#/otc/decrypt', component: lazy(() => import('./features/otc/DecryptFilePage')) },
   { match: h => h === '#/otc/pay-result', component: lazy(() => import('./features/otc/PayResultPage')) },
   { match: h => h === '#/otc/pay-test', component: lazy(() => import('./features/otc/PayCreateTestPage')) },
-  { match: h => h === '#/otc/claim', component: lazy(() => import('./features/otc/ClaimMemoForm')) },
+  { match: h => h === '#/otc/claim', component: lazy(() => import('./features/otc/ClaimMemoForm')) },  // 首购领取（原OTC领取）
   { match: h => h === '#/otc/release', component: lazy(() => import('./features/otc/SellerReleasePage')) },
   { match: h => h === '#/first-purchase/pool', component: lazy(() => import('./features/first-purchase/MarketMakerPoolPage')) },
   { match: h => h === '#/first-purchase', component: lazy(() => import('./features/first-purchase/FirstPurchasePage')) },

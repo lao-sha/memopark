@@ -22,7 +22,6 @@
 //! - `complete_swap`: 标记兑换完成（Root 权限）
 //! - `set_bridge_account`: 设置桥接账户
 //! - `set_min_amount`: 设置最小兑换金额
-//! - `set_max_price_deviation`: 设置最大价格偏离（默认 2000 = 20%）
 
 // 函数级详细中文注释：OCW 相关类型定义
 mod ocw_types;
@@ -212,12 +211,6 @@ pub mod pallet {
     #[pallet::getter(fn min_amount)]
     pub type MinAmount<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
-    /// 函数级详细中文注释：最大价格偏离（单位：万分比，默认 2000 = 20%）
-    /// 限制兑换价格相对市场均价的浮动范围，防止极端价格套利
-    #[pallet::storage]
-    #[pallet::getter(fn max_price_deviation)]
-    pub type MaxPriceDeviation<T> = StorageValue<_, u32, ValueQuery>;
-
     /// 🆕 函数级详细中文注释：做市商兑换记录映射（swap_id => MakerSwapRecord）
     #[pallet::storage]
     #[pallet::getter(fn maker_swaps)]
@@ -335,7 +328,6 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub bridge_account: Option<T::AccountId>,
         pub min_amount: BalanceOf<T>,
-        pub max_price_deviation: u32,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -343,7 +335,6 @@ pub mod pallet {
             Self {
                 bridge_account: None,
                 min_amount: 100u128.saturated_into(), // 默认 100 MEMO
-                max_price_deviation: 2000u32, // 默认 20%（2000/10000）
             }
         }
     }
@@ -355,7 +346,6 @@ pub mod pallet {
                 BridgeAccount::<T>::put(account);
             }
             MinAmount::<T>::put(self.min_amount);
-            MaxPriceDeviation::<T>::put(self.max_price_deviation);
         }
     }
 
@@ -384,10 +374,6 @@ pub mod pallet {
         /// 函数级详细中文注释：最小金额已更新
         MinAmountSet {
             amount: BalanceOf<T>,
-        },
-        /// 函数级详细中文注释：最大价格偏离已更新
-        MaxPriceDeviationSet {
-            deviation_bps: u32,
         },
         /// 🆕 做市商兑换已创建
         MakerSwapInitiated {
@@ -520,8 +506,6 @@ pub mod pallet {
         MarketPriceNotAvailable,
         /// 价格偏离超出允许范围（超过 ±MaxPriceDeviation）
         PriceDeviationTooHigh,
-        /// 价格偏离参数无效（必须在 5%-50% 范围内）
-        InvalidDeviationRange,
         /// 🆕 做市商兑换记录不存在
         MakerSwapNotFound,
         /// 🆕 做市商兑换状态无效
@@ -815,38 +799,6 @@ pub mod pallet {
             MinAmount::<T>::put(amount);
             
             Self::deposit_event(Event::MinAmountSet { amount });
-            Ok(())
-        }
-        
-        /// 函数级详细中文注释：设置最大价格偏离（仅 Root）
-        /// 
-        /// # 参数
-        /// - `origin`: Root 权限
-        /// - `deviation_bps`: 最大价格偏离（单位：万分比，如 2000 = 20%）
-        /// 
-        /// # 验证
-        /// - 偏离范围必须在 5%-50% 之间（500-5000 万分比）
-        /// 
-        /// # 说明
-        /// 此参数用于限制兑换价格相对市场均价的浮动范围，防止极端价格套利
-        /// 默认值 2000 (20%) 平衡了市场弹性和风险控制
-        #[pallet::call_index(4)]
-        #[pallet::weight(T::DbWeight::get().writes(1))]
-        pub fn set_max_price_deviation(
-            origin: OriginFor<T>,
-            deviation_bps: u32,
-        ) -> DispatchResult {
-            ensure_root(origin)?;
-            
-            // 函数级中文注释：限制偏离范围在 5%-50% 之间，防止配置错误
-            ensure!(
-                deviation_bps >= 500 && deviation_bps <= 5000,
-                Error::<T>::InvalidDeviationRange
-            );
-            
-            MaxPriceDeviation::<T>::put(deviation_bps);
-            
-            Self::deposit_event(Event::MaxPriceDeviationSet { deviation_bps });
             Ok(())
         }
 
@@ -1439,6 +1391,10 @@ pub mod pallet {
             let final_price_u64 = base_price_u64
                 .saturating_mul((10000i64 + buy_premium as i64) as u64)
                 .saturating_div(10000);
+            
+            // 🆕 2025-10-20：价格偏离检查 - 确保最终价格在合理范围内（±20%）
+            // 防止极端价格订单，保护买卖双方
+            pallet_pricing::Pallet::<T>::check_price_deviation(final_price_u64)?;
             
             // USDT 金额 = MEMO 数量 * 最终价格（精度转换）
             // memo_amount: 12位小数，final_price_u64: 6位小数

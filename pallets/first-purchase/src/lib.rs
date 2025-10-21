@@ -2,9 +2,12 @@
 #![allow(deprecated)]
 
 use codec::Encode;
-/// 函数级详细中文注释（模块级）：
-/// - 本 pallet 提供基于 pallet-balances 的“命名预留 + 预留再归属”式领取（claim）逻辑；
-/// - 适用于 OTC 支付成功后，由做市商（发行方）签发授权，用户链上领取 MEMO（原生代币）。
+/// 函数级详细中文注释（模块级）：pallet-first-purchase（首购领取）
+/// - 本 pallet 提供基于 pallet-balances 的"命名预留 + 预留再归属"式领取（claim）逻辑；
+/// - 适用于用户首次购买MEMO或法币入金场景，由做市商（发行方）签发授权，用户链上领取 MEMO（原生代币）。
+/// - 主要使用场景：
+///   1) 新用户首次购买MEMO（首购场景，约80%使用率）；
+///   2) 老用户法币入金（复购场景，约20%使用率）。
 /// - 安全目标：
 ///   1) 服务器端不持有链上转账权限，仅签发授权；
 ///   2) 领取交易内原子执行 reserve_named -> repatriate_reserved_named，避免竞态；

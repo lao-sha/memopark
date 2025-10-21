@@ -20,7 +20,7 @@ pallet-balances = { workspace = true }
 pallet-timestamp = { workspace = true }
 pallet-escrow = { path = "../escrow", default-features = false }
 pallet-pricing = { path = "../pricing", default-features = false }
-pallet-otc-listing = { path = "../otc-listing", default-features = false }
+# 🆕 2025-10-20：移除 pallet-otc-listing 依赖（不再使用挂单机制）
 pallet-evidence = { path = "../evidence", default-features = false }
 pallet-arbitration = { path = "../arbitration", default-features = false }
 pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
@@ -41,7 +41,6 @@ std = [
     "pallet-timestamp/std",
     "pallet-escrow/std",
     "pallet-pricing/std",
-    "pallet-otc-listing/std",
     "pallet-evidence/std",
     "pallet-arbitration/std",
     "pallet-memo-referrals/std",

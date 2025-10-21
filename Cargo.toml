@@ -11,12 +11,10 @@ members = [
     "pallets/template",
     "pallets/forwarder",
     "pallets/identity",
-    # 新 OTC 三件套：稍后创建
-    "pallets/otc-maker",
-    "pallets/otc-listing",
+    # 函数级中文注释：OTC 模块（pallet-otc-maker、pallet-otc-listing 已删除，功能由 pallet-market-maker + pallet-otc-order 替代）
     "pallets/otc-order",
     "pallets/escrow",
-    "pallets/otc-claim",
+    "pallets/first-purchase",  # 原名: pallets/otc-claim，2025-10-20更名
     "pallets/arbitration",
 
     "pallets/memo-park",

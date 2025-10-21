@@ -411,16 +411,6 @@ const MyWalletPage: React.FC = () => {
       },
     },
     {
-      icon: <DashboardOutlined style={{ fontSize: '20px' }} />,
-      title: '链上数据面板',
-      onClick: handleShowChainData,
-    },
-    {
-      icon: <BankOutlined style={{ fontSize: '20px' }} />,
-      title: '打开web治理平台',
-      onClick: handleOpenGovernance,
-    },
-    {
       icon: <MessageOutlined style={{ fontSize: '20px' }} />,
       title: '系统消息',
       badge: 1,  // 有 1 条未读消息
@@ -734,6 +724,148 @@ const MyWalletPage: React.FC = () => {
             兑换MEMO
           </Text>
         </div>
+
+      </div>
+
+      {/* 管理功能入口区域 - 链上数据面板、做市商管理中心、Web治理平台上下排列 */}
+      <div
+        style={{
+          marginTop: '16px',
+          padding: '0 16px',
+        }}
+      >
+        {/* 链上数据面板卡片 */}
+        <div
+          onClick={handleShowChainData}
+          style={{
+            background: '#fff',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.3s',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+            marginBottom: '8px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
+          }}
+        >
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '6px',
+            }}
+          >
+            <DashboardOutlined style={{ fontSize: '16px', color: '#fff' }} />
+          </div>
+          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
+            链上数据面板
+          </Text>
+        </div>
+
+        {/* 做市商管理中心卡片 */}
+        <div
+          onClick={() => {
+            window.location.hash = '#/market-maker/center';
+          }}
+          style={{
+            background: '#fff',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.3s',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+            marginBottom: '8px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
+          }}
+        >
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '6px',
+            }}
+          >
+            💼
+          </div>
+          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
+            做市商中心
+          </Text>
+        </div>
+
+        {/* Web治理平台卡片 */}
+        <div
+          onClick={handleOpenGovernance}
+          style={{
+            background: '#fff',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.3s',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
+          }}
+        >
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #f5222d 0%, #fa541c 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '6px',
+            }}
+          >
+            🏛️
+          </div>
+          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
+            Web治理平台
+          </Text>
+        </div>
       </div>
 
       {/* 菜单列表 */}
@@ -796,6 +928,7 @@ const MyWalletPage: React.FC = () => {
           </div>
         ))}
       </div>
+
 
       {/* 底部导航栏 */}
       <div
@@ -1193,6 +1326,7 @@ const MyWalletPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
 
       {/* 治理平台提示弹窗（移动端） */}
       <Modal

@@ -12,6 +12,13 @@ pub mod pallet {
         /// 函数级中文注释：事件类型绑定到运行时事件
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// 函数级中文注释：最大价格偏离（基点，bps）
+        /// 用于检查订单创建时的价格是否在合理范围内
+        /// 例如：2000 bps = 20%，表示订单价格不能超过基准价格的 ±20%
+        /// 目的：防止极端价格订单，保护买卖双方利益
+        #[pallet::constant]
+        type MaxPriceDeviation: Get<u16>;
     }
 
     /// 函数级中文注释：订单快照（用于循环缓冲区）
@@ -166,6 +173,11 @@ pub mod pallet {
     pub enum Error<T> {
         /// 函数级中文注释：冷启动已退出，无法再调整冷启动参数
         ColdStartAlreadyExited,
+        /// 函数级中文注释：价格偏离过大，超出允许的最大偏离范围
+        /// 订单价格与基准价格的偏离超过了 MaxPriceDeviation 配置的限制
+        PriceDeviationTooLarge,
+        /// 函数级中文注释：基准价格无效（为0或获取失败）
+        InvalidBasePrice,
     }
 
     #[pallet::pallet]
@@ -521,6 +533,66 @@ pub mod pallet {
                 otc_order_count: otc_agg.order_count,
                 bridge_swap_count: bridge_agg.order_count,
             }
+        }
+
+        /// 函数级详细中文注释：检查价格是否在允许的偏离范围内
+        /// 
+        /// # 参数
+        /// - `order_price_usdt`: 订单价格（USDT单价，精度 10^6，即 1,000,000 = 1 USDT）
+        /// 
+        /// # 返回
+        /// - `Ok(())`: 价格在允许的范围内
+        /// - `Err(Error::InvalidBasePrice)`: 基准价格无效（为0）
+        /// - `Err(Error::PriceDeviationTooLarge)`: 价格偏离超过限制
+        /// 
+        /// # 逻辑
+        /// 1. 获取当前市场加权平均价格作为基准价格
+        /// 2. 验证基准价格有效（> 0）
+        /// 3. 计算订单价格与基准价格的偏离率（绝对值，单位：bps）
+        /// 4. 检查偏离率是否超过 MaxPriceDeviation 配置的限制
+        /// 
+        /// # 示例
+        /// - 基准价格：1.0 USDT/MEMO（1,000,000）
+        /// - MaxPriceDeviation：2000 bps（20%）
+        /// - 允许范围：0.8 ~ 1.2 USDT/MEMO
+        /// - 订单价格 1.1 USDT/MEMO → 偏离 10% → 通过 ✅
+        /// - 订单价格 1.5 USDT/MEMO → 偏离 50% → 拒绝 ❌
+        /// 
+        /// # 用途
+        /// - OTC 订单创建时的价格合理性检查
+        /// - Bridge 兑换创建时的价格合理性检查
+        /// - 防止极端价格订单，保护买卖双方
+        pub fn check_price_deviation(order_price_usdt: u64) -> DispatchResult {
+            // 1. 获取基准价格（市场加权平均价格）
+            let base_price = Self::get_memo_market_price_weighted();
+            
+            // 2. 验证基准价格有效
+            ensure!(base_price > 0, Error::<T>::InvalidBasePrice);
+            
+            // 3. 计算偏离率（bps）
+            // 偏离率 = |订单价格 - 基准价格| / 基准价格 × 10000
+            let deviation_bps = if order_price_usdt > base_price {
+                // 订单价格高于基准价格（溢价）
+                ((order_price_usdt - base_price) as u128)
+                    .saturating_mul(10000)
+                    .checked_div(base_price as u128)
+                    .unwrap_or(0) as u16
+            } else {
+                // 订单价格低于基准价格（折价）
+                ((base_price - order_price_usdt) as u128)
+                    .saturating_mul(10000)
+                    .checked_div(base_price as u128)
+                    .unwrap_or(0) as u16
+            };
+            
+            // 4. 检查是否超出限制
+            let max_deviation = T::MaxPriceDeviation::get();
+            ensure!(
+                deviation_bps <= max_deviation,
+                Error::<T>::PriceDeviationTooLarge
+            );
+            
+            Ok(())
         }
     }
 
