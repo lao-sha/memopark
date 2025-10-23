@@ -1,6 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-// 函数级中文注释：允许未使用的导入（SaturatedConversion trait提供saturated_into方法）
-#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -9,9 +7,8 @@ pub use pallet::*;
 use frame_support::weights::Weight;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
+use sp_runtime::traits::AtLeast32BitUnsigned;
 use sp_std::vec::Vec;
-// use sp_runtime::Saturating;
 use sp_core::hashing::blake2_256;
 
 // 函数级中文注释：导入log用于记录自动pin失败的警告
@@ -25,16 +22,10 @@ use pallet_memo_ipfs::IpfsPinner;
 /// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
 /// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
 /// - `can_attach`：校验操作者是否有权在该墓位下管理逝者（通常是墓主或被授权者）。
+/// - 删除 `cached_deceased_tokens_len`：无需冗余缓存检查，容量由 BoundedVec 自动管理
 pub trait GraveInspector<AccountId, GraveId> {
     fn grave_exists(grave_id: GraveId) -> bool;
     fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
-    /// 函数级中文注释：可选的冗余校验接口——返回墓地下缓存的逝者令牌数量（若无实现则返回 None）。
-    /// - 默认由 runtime 适配器从 `pallet-memo-grave::Graves[id].deceased_tokens.len()` 读取；
-    /// - 仅作为快速拒绝优化，最终仍以本模块 `DeceasedByGrave` 的长度为准。
-    fn cached_deceased_tokens_len(grave_id: GraveId) -> Option<u32> {
-        let _ = grave_id;
-        None
-    }
 }
 
 /// 函数级中文注释：权重信息占位接口，后续可通过 benchmarking 生成并替换。
@@ -68,6 +59,57 @@ pub enum Gender {
     M,
     F,
     B,
+}
+
+impl Gender {
+    /// 函数级中文注释：转换为字节代码（M/F/B）
+    /// 
+    /// 用途：
+    /// - 在构建deceased_token时，将Gender枚举转换为字节代码
+    /// - 统一性别代码转换逻辑，避免重复的match表达式
+    /// 
+    /// 返回：
+    /// - Gender::M => b'M' (0x4D)
+    /// - Gender::F => b'F' (0x46)
+    /// - Gender::B => b'B' (0x42)
+    pub fn to_byte(&self) -> u8 {
+        match self {
+            Gender::M => b'M',
+            Gender::F => b'F',
+            Gender::B => b'B',
+        }
+    }
+    
+    /// 函数级中文注释：从数字代码构建Gender枚举
+    /// 
+    /// 用途：
+    /// - 在解析外部输入时，将数字代码转换为Gender枚举
+    /// - 统一代码转换逻辑
+    /// 
+    /// 参数：
+    /// - code: 数字代码（0=男, 1=女, 其他=保密）
+    /// 
+    /// 返回：
+    /// - 0 => Gender::M
+    /// - 1 => Gender::F
+    /// - _ => Gender::B
+    pub fn from_code(code: u8) -> Self {
+        match code {
+            0 => Gender::M,
+            1 => Gender::F,
+            _ => Gender::B,
+        }
+    }
+}
+
+/// 函数级中文注释：自动pin类型枚举
+/// - 用于标识pin的CID类型，便于日志记录和事件区分
+#[derive(Clone, Copy, Debug)]
+pub enum AutoPinType {
+    /// 全名CID
+    NameFullCid,
+    /// 主图CID
+    MainImage,
 }
 
 /// 函数级中文注释：逝者实体，链上仅存最小必要信息与链下指针。
@@ -142,13 +184,10 @@ pub mod pallet {
         #[pallet::constant]
         type MaxLinks: Get<u32>;
 
-        /// 函数级中文注释：业务上每个墓位下允许的逝者上限（软上限）。
-        /// - 与泛型 `MaxDeceasedPerGrave`（硬上限）并存；
-        /// - 本模块在创建/迁移时同时检查软上限，默认值建议为 6；
-        /// - 可通过治理升级灵活调整，兼容未来迁移。
-        #[pallet::constant]
-        type MaxDeceasedPerGraveSoft: Get<u32>;
-
+        /// 删除软上限配置：直接使用 MaxDeceasedPerGrave 作为唯一上限
+        /// - 容量检查由 BoundedVec::try_push 自动处理
+        /// - 可通过治理升级调整 MaxDeceasedPerGrave
+        
         /// 函数级中文注释：`deceased_token` 的最大长度上限（字节）。
         /// - 设计目标：与外部引用者（如 `pallet-memo-grave`）的 `MaxCidLen` 对齐，避免跨 pallet 不一致。
         #[pallet::constant]
@@ -252,18 +291,34 @@ pub mod pallet {
         RelationApproved(T::DeceasedId, T::DeceasedId, u8),
         /// 逝者关系：已拒绝
         RelationRejected(T::DeceasedId, T::DeceasedId),
+        /// 函数级中文注释：关系提案已被发起方撤回 (from, to, kind)
+        RelationProposalCancelled(T::DeceasedId, T::DeceasedId, u8),
         /// 逝者关系：已撤销
         RelationRevoked(T::DeceasedId, T::DeceasedId),
         /// 逝者关系：备注更新
         RelationUpdated(T::DeceasedId, T::DeceasedId),
-        /// 函数级中文注释：主图已更新（true=设置/修改；false=清空）
-        MainImageUpdated(T::DeceasedId, bool),
+        /// 函数级中文注释：主图已更新（增强版）
+        /// - deceased_id: 逝者ID
+        /// - operator: 操作者账户（owner）
+        /// - is_set: true=设置/修改，false=清空
+        MainImageUpdated(T::DeceasedId, T::AccountId, bool),
         /// 函数级中文注释：治理证据已记录 (id, evidence_cid)。
         GovEvidenceNoted(T::DeceasedId, BoundedVec<u8, T::TokenLimit>),
         /// 函数级中文注释：治理设置主图（Some 设置；None 清空）。
         GovMainImageSet(T::DeceasedId, bool),
         /// 函数级中文注释：治理已转移拥有者（id, old_owner, new_owner）。
         OwnerTransferred(T::DeceasedId, T::AccountId, T::AccountId),
+        /// 函数级中文注释：IPFS自动pin成功
+        /// - deceased_id: 逝者ID
+        /// - cid: 被pin的CID
+        /// - pin_type: pin类型（0=name_full_cid, 1=main_image_cid）
+        AutoPinSuccess(T::DeceasedId, BoundedVec<u8, T::TokenLimit>, u8),
+        /// 函数级中文注释：IPFS自动pin失败
+        /// - deceased_id: 逝者ID
+        /// - cid: 尝试pin的CID
+        /// - pin_type: pin类型（0=name_full_cid, 1=main_image_cid）
+        /// - error_code: 错误码（0=未知, 1=余额不足, 2=网络错误, 3=CID无效）
+        AutoPinFailed(T::DeceasedId, BoundedVec<u8, T::TokenLimit>, u8, u8),
     }
 
     #[pallet::error]
@@ -304,6 +359,10 @@ pub mod pallet {
         FriendNoPending,
         /// 亲友相关——成员数量达到上限
         FriendTooMany,
+        /// 函数级中文注释：关系功能——权限不足：只有提案接收方的管理员可以批准/拒绝提案
+        /// - 场景：当提案发起方的管理员误调用 approve_relation 或 reject_relation 时返回此错误
+        /// - 解释：approve/reject 操作必须由提案参数中 `to` 对应逝者的墓位管理员执行
+        NotProposalResponder,
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
@@ -359,12 +418,23 @@ pub mod pallet {
     }
 
     // =================== 亲友团：存储与类型（最小实现，无押金） ===================
-    /// 函数级中文注释：亲友角色枚举（0=Member，1=Core，2=Admin）。Admin 固定包含逝者 owner。
+    /// 函数级详细中文注释：亲友角色枚举
+    /// 
+    /// ### 角色说明
+    /// - **Member (0)**：普通成员，可查看公开资料、关注逝者
+    /// - **Core (1)**：核心成员，标识亲密关系（未来可扩展特殊权限）
+    /// 
+    /// ### 设计理念
+    /// - ✅ 简化设计：删除 Admin 角色，避免权限争夺和复杂度
+    /// - ✅ 唯一管理者：owner（通过 `DeceasedOf.owner`）是唯一管理者
+    /// - ✅ 社交层面：Member/Core 仅用于区分关系亲疏
+    /// 
+    /// ### 未来扩展
+    /// - Core 可能用于投票权、特殊权限、宠物养成游戏等
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     pub enum FriendRole {
-        Member,
-        Core,
-        Admin,
+        Member,  // 0：普通成员
+        Core,    // 1：核心成员
     }
 
     /// 函数级中文注释：亲友策略
@@ -498,18 +568,64 @@ pub mod pallet {
 
     // =================== Pallet 工具函数（非外部可调用） ===================
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：判断账户是否为该逝者的管理员（owner 视为 Admin）。
+        /// 函数级详细中文注释：判断账户是否为该逝者的管理员
+        /// 
+        /// ### 权限模型
+        /// - **唯一管理者**：逝者的 owner（通过 `DeceasedOf.owner` 字段）
+        /// - **管理权限来源**：`DeceasedOf.owner`，不依赖于亲友团角色
+        /// 
+        /// ### 设计理念
+        /// - ✅ 简化设计：删除 Admin 角色，避免权限争夺
+        /// - ✅ 责任明确：owner 是唯一管理者，无需授权
+        /// - ✅ 避免冲突：无多人管理，无权限争夺
+        /// 
+        /// ### 返回值
+        /// - `true`：账户是该逝者的 owner
+        /// - `false`：账户不是 owner，或逝者不存在
         pub(crate) fn is_admin(deceased_id: T::DeceasedId, who: &T::AccountId) -> bool {
             if let Some(d) = DeceasedOf::<T>::get(deceased_id) {
-                if d.owner == *who {
-                    return true;
-                }
-            }
-            if let Some(rec) = FriendsOf::<T>::get(deceased_id, who) {
-                matches!(rec.role, FriendRole::Admin)
+                d.owner == *who
             } else {
                 false
             }
+        }
+
+        /// 函数级详细中文注释：确保调用者是逝者的 owner
+        /// 
+        /// ### 功能说明
+        /// 统一的权限检查辅助函数，用于简化代码中的 owner 权限校验逻辑。
+        /// 
+        /// ### 设计目标
+        /// - **统一模式**：避免代码中散落 `ensure!(d.owner == who, ...)` 的重复模式
+        /// - **语义清晰**：`ensure_owner` 比 `is_admin` 更明确表达 "检查 owner" 的语义
+        /// - **错误一致**：统一返回 `NotAuthorized` 错误，便于前端统一处理
+        /// 
+        /// ### 参数
+        /// - `id`: 逝者记录ID
+        /// - `who`: 待校验的账户
+        /// 
+        /// ### 返回
+        /// - `Ok(())`: 账户是该逝者的 owner
+        /// - `Err(NotAuthorized)`: 账户不是 owner，或逝者不存在
+        /// 
+        /// ### 使用场景
+        /// - 修改逝者资料（update_deceased）
+        /// - 设置主图（set_main_image）
+        /// - 转让所有权（transfer_deceased）
+        /// - 管理亲友团（leave_friend_group、kick_friend等）
+        /// 
+        /// ### 注意
+        /// - 目前为工具函数，供未来代码重构使用
+        /// - 在 try_mutate 内部的权限检查仍使用内联方式以避免重复存储读取
+        #[allow(dead_code)]
+        pub(crate) fn ensure_owner(
+            id: T::DeceasedId,
+            who: &T::AccountId,
+        ) -> DispatchResult {
+            DeceasedOf::<T>::get(id)
+                .filter(|d| d.owner == *who)
+                .map(|_| ())
+                .ok_or(Error::<T>::NotAuthorized.into())
         }
 
         /// 函数级详细中文注释：治理起源统一校验入口。
@@ -533,11 +649,296 @@ pub mod pallet {
             Ok(bv)
         }
 
-        /// 函数级中文注释：更新“最近活跃时间”——在任何针对该逝者的签名写操作成功后调用。
+        /// 函数级中文注释：更新"最近活跃时间"——在任何针对该逝者的签名写操作成功后调用。
         #[inline]
         pub(crate) fn touch_last_active(id: T::DeceasedId) {
             let now = <frame_system::Pallet<T>>::block_number();
             LastActiveOf::<T>::insert(id, now);
+        }
+
+        /// 函数级详细中文注释：规范化姓名（用于deceased_token生成）
+        /// 
+        /// ### 功能说明
+        /// 统一处理姓名字符串，确保不同写法的同名人生成相同的token。
+        /// 
+        /// ### 处理规则
+        /// 1. **去除首部空格**：跳过所有前导空白
+        /// 2. **压缩连续空格**：多个空格压缩为单个空格
+        /// 3. **ASCII小写转大写**：a-z → A-Z（仅处理ASCII，其他字符保持）
+        /// 4. **去除尾部空格**：删除所有尾随空白
+        /// 
+        /// ### 示例
+        /// ```
+        /// "  John   Doe  " → "JOHN DOE"
+        /// "李明  " → "李明"
+        /// "mary-jane" → "MARY-JANE"
+        /// ```
+        /// 
+        /// ### 用途
+        /// - create_deceased: 生成初始token
+        /// - update_deceased: 更新后重新生成token
+        /// - gov_update_profile: 治理更新后重新生成token
+        /// 
+        /// ### 参数
+        /// - `bytes`: 原始姓名字节（UTF-8编码）
+        /// 
+        /// ### 返回
+        /// - 规范化后的姓名字节向量
+        pub(crate) fn normalize_name(bytes: &[u8]) -> Vec<u8> {
+            let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+            let mut i = 0usize;
+            
+            // 1. 跳过首部空格
+            while i < bytes.len() && bytes[i] == b' ' {
+                i += 1;
+            }
+            
+            // 2. 处理中间字符：压缩空格 + ASCII小写转大写
+            let mut last_space = false;
+            while i < bytes.len() {
+                let mut b = bytes[i];
+                if b == b' ' {
+                    // 连续空格只保留第一个
+                    if !last_space {
+                        out.push(b' ');
+                        last_space = true;
+                    }
+                } else {
+                    // ASCII小写字母转大写（a-z → A-Z）
+                    if (b'a'..=b'z').contains(&b) {
+                        b = b - 32;
+                    }
+                    out.push(b);
+                    last_space = false;
+                }
+                i += 1;
+            }
+            
+            // 3. 去除尾部空格
+            while out.last().copied() == Some(b' ') {
+                out.pop();
+            }
+            
+            out
+        }
+
+        /// 函数级详细中文注释：从逝者字段构建唯一token
+        /// 
+        /// ### 功能说明
+        /// 根据性别、出生日期、离世日期、姓名生成49字节的唯一标识token。
+        /// 用于去重检查和跨墓位迁移时保持身份一致性。
+        /// 
+        /// ### Token格式（49字节）
+        /// ```
+        /// +--------+----------+----------+----------------+
+        /// | Gender | Birth    | Death    | Name Hash      |
+        /// | 1 byte | 8 bytes  | 8 bytes  | 32 bytes       |
+        /// +--------+----------+----------+----------------+
+        /// ```
+        /// 
+        /// **详细说明**：
+        /// 1. **性别代码**（1 byte）：M/F/B（男/女/保密）
+        /// 2. **出生日期**（8 bytes）：YYYYMMDD格式，缺失时用"00000000"
+        /// 3. **离世日期**（8 bytes）：YYYYMMDD格式，缺失时用"00000000"
+        /// 4. **姓名哈希**（32 bytes）：规范化后姓名的blake2_256哈希
+        /// 
+        /// ### 为什么用hash而非明文姓名？
+        /// - 隐私保护：避免姓名明文直接暴露在token中
+        /// - 长度固定：无论姓名多长，token始终49字节
+        /// - 唯一性：blake2_256保证极低碰撞率
+        /// 
+        /// ### 使用场景
+        /// - **create_deceased**: 创建时生成初始token
+        /// - **update_deceased**: 更新姓名/日期后重新生成
+        /// - **gov_update_profile**: 治理更新后重新生成
+        /// - **去重检查**: 通过DeceasedIdByToken索引避免重复创建
+        /// 
+        /// ### 参数
+        /// - `gender`: 性别枚举
+        /// - `birth_ts`: 出生日期（可选，8字节YYYYMMDD）
+        /// - `death_ts`: 离世日期（可选，8字节YYYYMMDD）
+        /// - `name`: 姓名（BoundedVec）
+        /// 
+        /// ### 返回
+        /// - 49字节的BoundedVec token（失败时返回空向量）
+        pub(crate) fn build_deceased_token(
+            gender: &Gender,
+            birth_ts: &Option<BoundedVec<u8, T::StringLimit>>,
+            death_ts: &Option<BoundedVec<u8, T::StringLimit>>,
+            name: &BoundedVec<u8, T::StringLimit>,
+        ) -> BoundedVec<u8, T::TokenLimit> {
+            // 1. 规范化姓名并计算blake2_256哈希
+            let name_norm = Self::normalize_name(name.as_slice());
+            let name_hash = blake2_256(name_norm.as_slice());
+            
+            // 2. 组装token向量（预分配容量：1+8+8+32=49字节）
+            let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
+            
+            // 2.1 性别代码（1字节）- 使用Gender::to_byte()方法统一转换
+            v.push(gender.to_byte());
+            
+            // 2.2 出生日期（8字节，缺失时用"00000000"）
+            let zeros8: [u8; 8] = *b"00000000";
+            let birth_bytes = birth_ts
+                .as_ref()
+                .map(|x| x.as_slice())
+                .filter(|s| s.len() == 8)  // 仅使用有效的8字节日期
+                .unwrap_or(&zeros8);
+            v.extend_from_slice(birth_bytes);
+            
+            // 2.3 离世日期（8字节，缺失时用"00000000"）
+            let death_bytes = death_ts
+                .as_ref()
+                .map(|x| x.as_slice())
+                .filter(|s| s.len() == 8)  // 仅使用有效的8字节日期
+                .unwrap_or(&zeros8);
+            v.extend_from_slice(death_bytes);
+            
+            // 2.4 姓名哈希（32字节）
+            v.extend_from_slice(&name_hash);
+            
+            // 3. 转换为BoundedVec（失败时返回空向量）
+            BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default()
+        }
+
+        /// 函数级详细中文注释：自动pin CID到IPFS（容错处理）
+        /// 
+        /// 功能：
+        /// - 使用triple-charge机制（IpfsPoolAccount → SubjectFunding → Caller）
+        /// - 失败不阻塞业务，仅记录日志和发出事件
+        /// - 发出链上事件通知pin结果
+        /// 
+        /// 参数：
+        /// - caller: 调用者账户（用于triple-charge的第3优先级扣费）
+        /// - deceased_id: 逝者ID（用于SubjectFunding派生和事件）
+        /// - cid: 要pin的CID
+        /// - pin_type: pin类型（用于日志和事件）
+        /// 
+        /// 事件：
+        /// - AutoPinSuccess: pin成功
+        /// - AutoPinFailed: pin失败（包含错误码）
+        fn auto_pin_cid(
+            caller: T::AccountId,
+            deceased_id: T::DeceasedId,
+            cid: Vec<u8>,
+            pin_type: AutoPinType,
+        ) {
+            let deceased_id_u64: u64 = deceased_id.saturated_into::<u64>();
+            let price = T::DefaultStoragePrice::get();
+            
+            let pin_type_code = match pin_type {
+                AutoPinType::NameFullCid => 0u8,
+                AutoPinType::MainImage => 1u8,
+            };
+            
+            let type_str = match pin_type {
+                AutoPinType::NameFullCid => "name_full_cid",
+                AutoPinType::MainImage => "main_image_cid",
+            };
+            
+            // 尝试自动pin
+            match T::IpfsPinner::pin_cid_for_grave(
+                caller.clone(),
+                deceased_id_u64,
+                cid.clone(),
+                price,
+                3, // 默认3副本
+            ) {
+                Ok(_) => {
+                    // 成功：转换CID为BoundedVec并发出事件
+                    if let Ok(cid_bv) = BoundedVec::<u8, T::TokenLimit>::try_from(cid.clone()) {
+                        Self::deposit_event(Event::AutoPinSuccess(
+                            deceased_id,
+                            cid_bv,
+                            pin_type_code,
+                        ));
+                    }
+                    
+                    log::info!(
+                        target: "deceased",
+                        "Auto-pin success: deceased={:?}, type={}, caller={:?}",
+                        deceased_id,
+                        type_str,
+                        caller
+                    );
+                }
+                Err(e) => {
+                    // 失败：分析错误码并发出事件
+                    let error_code = Self::map_pin_error(&e);
+                    
+                    // 发出失败事件
+                    if let Ok(cid_bv) = BoundedVec::<u8, T::TokenLimit>::try_from(cid.clone()) {
+                        Self::deposit_event(Event::AutoPinFailed(
+                            deceased_id,
+                            cid_bv,
+                            pin_type_code,
+                            error_code,
+                        ));
+                    }
+                    
+                    log::warn!(
+                        target: "deceased",
+                        "Auto-pin failed: deceased={:?}, type={}, caller={:?}, error={:?}, code={}",
+                        deceased_id,
+                        type_str,
+                        caller,
+                        e,
+                        error_code
+                    );
+                }
+            }
+        }
+
+        /// 函数级详细中文注释：将pin错误映射为简化的错误码
+        /// 
+        /// 错误码定义：
+        /// - 0: 未知错误
+        /// - 1: 余额不足（任何余额相关错误）
+        /// - 2: IPFS网络错误或系统错误
+        /// - 3: CID格式无效或参数错误
+        /// 
+        /// pallet_memo_ipfs::Error 映射表：
+        /// - BadParams (0) → 3 (CID格式无效)
+        /// - BothAccountsInsufficientBalance (12) → 1 (余额不足)
+        /// - IpfsPoolInsufficientBalance (13) → 1 (余额不足)
+        /// - SubjectFundingInsufficientBalance (14) → 1 (余额不足)
+        /// - AllThreeAccountsInsufficientBalance (15) → 1 (余额不足)
+        /// - OrderNotFound (1) → 2 (系统错误)
+        /// - OperatorNotFound (2) → 2 (系统错误)
+        /// - DirectPinDisabled (11) → 2 (系统错误)
+        /// - 其他错误 → 2 (网络错误/系统错误)
+        /// 
+        /// 实现说明：
+        /// - 使用 module_err.error[0] 获取错误索引
+        /// - 根据 pallet_memo_ipfs 的错误顺序进行映射
+        /// - 非模块错误统一视为系统错误（错误码 2）
+        fn map_pin_error(error: &sp_runtime::DispatchError) -> u8 {
+            use sp_runtime::DispatchError;
+            
+            match error {
+                DispatchError::Module(module_err) => {
+                    // ✅ 从模块错误中提取error index
+                    // module_err.error 是一个字节数组，第一个字节是错误索引
+                    let error_index = module_err.error[0];
+                    
+                    // ✅ 根据 pallet_memo_ipfs::Error 的定义进行精确映射
+                    match error_index {
+                        // BadParams (0) - CID格式错误或其他参数错误
+                        0 => 3,
+                        
+                        // 余额不足相关错误
+                        12 => 1,  // BothAccountsInsufficientBalance
+                        13 => 1,  // IpfsPoolInsufficientBalance
+                        14 => 1,  // SubjectFundingInsufficientBalance
+                        15 => 1,  // AllThreeAccountsInsufficientBalance
+                        
+                        // 其他模块错误视为系统错误/网络错误
+                        _ => 2,
+                    }
+                }
+                // 非模块错误视为系统错误
+                _ => 2,
+            }
         }
     }
 
@@ -571,29 +972,16 @@ pub mod pallet {
                 T::GraveProvider::can_attach(&who, grave_id),
                 Error::<T>::NotAuthorized
             );
-            // 冗余快速校验：若外部缓存的令牌数已达软上限，也直接拒绝（最终仍以下方 DeceasedByGrave 为准）
-            if let Some(cached) = T::GraveProvider::cached_deceased_tokens_len(grave_id) {
-                ensure!(
-                    cached < T::MaxDeceasedPerGraveSoft::get(),
-                    Error::<T>::TooManyDeceasedInGrave
-                );
-            }
-            // 软上限权威校验：每墓位最多允许的逝者数量（默认 6）。
-            let existing_in_grave = DeceasedByGrave::<T>::get(grave_id).len() as u32;
-            ensure!(
-                existing_in_grave < T::MaxDeceasedPerGraveSoft::get(),
-                Error::<T>::TooManyDeceasedInGrave
-            );
+            
+            // 删除冗余检查：容量上限由 BoundedVec::try_push 自动管理（硬上限6）
+            // 不再需要手动检查软上限和缓存校验
 
             // 校验与规范化字段
             let name_bv: BoundedVec<_, <T as pallet::Config>::StringLimit> =
                 BoundedVec::try_from(name).map_err(|_| Error::<T>::BadInput)?;
             // name_badge 相关逻辑已移除
-            let gender: Gender = match gender_code {
-                0 => Gender::M,
-                1 => Gender::F,
-                _ => Gender::B,
-            };
+            // 使用Gender::from_code()方法统一转换
+            let gender: Gender = Gender::from_code(gender_code);
             // 校验日期：若提供则必须为 8 位数字
             fn is_yyyymmdd(v: &Vec<u8>) -> bool {
                 v.len() == 8 && v.iter().all(|b| (b'0'..=b'9').contains(b))
@@ -630,76 +1018,8 @@ pub mod pallet {
             NextDeceasedId::<T>::put(next);
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
-            // 构造 token：gender + birth(8) + death(8) + blake2_256(name_norm)
-            /// 函数级中文注释：构造逝者令牌：gender + birth(8) + death(8) + blake2_256(name_norm)
-            /// - name 规范化：去首尾空格、压缩连续空格为单个0x20、a-z→A-Z；非ASCII保持原样
-            /// - birth/death 缺省用 "00000000"（长度异常也回退到8个'0'）
-            fn build_token_from_fields<TC: Config>(
-                g: &Gender,
-                birth: &Option<BoundedVec<u8, TC::StringLimit>>,
-                death: &Option<BoundedVec<u8, TC::StringLimit>>,
-                name: &BoundedVec<u8, TC::StringLimit>,
-            ) -> BoundedVec<u8, TC::TokenLimit> {
-                // 规范化姓名
-                let mut norm: Vec<u8> = Vec::with_capacity(name.len());
-                // 去首尾空格 & 压缩空格
-                let mut i = 0usize;
-                let bytes = name.as_slice();
-                while i < bytes.len() && bytes[i] == b' ' {
-                    i += 1;
-                }
-                let mut last_space = false;
-                while i < bytes.len() {
-                    let mut b = bytes[i];
-                    if b == b' ' {
-                        if !last_space {
-                            norm.push(b' ');
-                            last_space = true;
-                        }
-                    } else {
-                        // a-z → A-Z，仅ASCII字母；其他字节保持
-                        if (b'a'..=b'z').contains(&b) {
-                            b = b - 32;
-                        }
-                        norm.push(b);
-                        last_space = false;
-                    }
-                    i += 1;
-                }
-                // 去尾随空格
-                while norm.last().copied() == Some(b' ') {
-                    norm.pop();
-                }
-
-                // 计算姓名哈希
-                let name_hash = blake2_256(norm.as_slice());
-
-                // 组装 token
-                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
-                let c = match g {
-                    Gender::M => b'M',
-                    Gender::F => b'F',
-                    Gender::B => b'B',
-                };
-                v.push(c);
-                let zeros8: [u8; 8] = *b"00000000";
-                let b8 = birth
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                let d8 = death
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                v.extend_from_slice(b8);
-                v.extend_from_slice(d8);
-                v.extend_from_slice(&name_hash);
-                BoundedVec::<u8, TC::TokenLimit>::try_from(v).unwrap_or_default()
-            }
-            let deceased_token =
-                build_token_from_fields::<T>(&gender, &birth_bv, &death_bv, &name_bv);
+            // 构造 token：使用Pallet级公共函数（已提取）
+            let deceased_token = Self::build_deceased_token(&gender, &birth_bv, &death_bv, &name_bv);
             // 唯一性检查：同 token 已存在则拒绝创建
             ensure!(
                 DeceasedIdByToken::<T>::get(&deceased_token).is_none(),
@@ -746,31 +1066,14 @@ pub mod pallet {
 
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
 
-            // 函数级详细中文注释：自动pin name_full_cid到IPFS（如果提供）
-            // - 使用triple-charge机制：IpfsPoolAccount → SubjectFunding(deceased_id) → Caller
-            // - 副本数：3（默认）
-            // - 价格：使用DefaultStoragePrice
-            // - 失败不阻塞逝者创建（仅记录警告事件）
+            // 自动pin name_full_cid到IPFS（如果提供）
             if let Some(cid_vec) = cid_for_pin {
-                let deceased_id_u64: u64 = id.saturated_into::<u64>();
-                let price = T::DefaultStoragePrice::get();
-                
-                // 尝试自动pin，失败不影响逝者创建
-                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                Self::auto_pin_cid(
                     who.clone(),
-                    deceased_id_u64,
+                    id,
                     cid_vec,
-                    price,
-                    3, // 默认3副本
-                ) {
-                    // 记录警告事件，治理可稍后修复
-                    log::warn!(
-                        target: "deceased",
-                        "Auto-pin name_full_cid failed for deceased {:?}: {:?}",
-                        deceased_id_u64,
-                        e
-                    );
-                }
+                    AutoPinType::NameFullCid,
+                );
             }
 
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
@@ -821,11 +1124,8 @@ pub mod pallet {
                 }
                 // name_badge 已移除
                 if let Some(gc) = gender_code {
-                    d.gender = match gc {
-                        0 => Gender::M,
-                        1 => Gender::F,
-                        _ => Gender::B,
-                    };
+                    // 使用Gender::from_code()方法统一转换
+                    d.gender = Gender::from_code(gc);
                 }
                 // bio 已移除：改由 deceased-data::Life 维护
                 if let Some(cid_opt) = name_full_cid {
@@ -884,62 +1184,8 @@ pub mod pallet {
                         at,
                     });
                 });
-                // 重新构造 token（gender + birth(8) + death(8) + blake2_256(name_norm)）
-                fn normalize_name(bytes: &[u8]) -> Vec<u8> {
-                    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-                    let mut i = 0usize;
-                    while i < bytes.len() && bytes[i] == b' ' {
-                        i += 1;
-                    }
-                    let mut last_space = false;
-                    while i < bytes.len() {
-                        let mut b = bytes[i];
-                        if b == b' ' {
-                            if !last_space {
-                                out.push(b' ');
-                                last_space = true;
-                            }
-                        } else {
-                            if (b'a'..=b'z').contains(&b) {
-                                b = b - 32;
-                            }
-                            out.push(b);
-                            last_space = false;
-                        }
-                        i += 1;
-                    }
-                    while out.last().copied() == Some(b' ') {
-                        out.pop();
-                    }
-                    out
-                }
-                let name_norm = normalize_name(d.name.as_slice());
-                let name_hash = blake2_256(name_norm.as_slice());
-                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
-                let c = match d.gender {
-                    Gender::M => b'M',
-                    Gender::F => b'F',
-                    Gender::B => b'B',
-                };
-                v.push(c);
-                let zeros8: [u8; 8] = *b"00000000";
-                let b8 = d
-                    .birth_ts
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                let de8 = d
-                    .death_ts
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                v.extend_from_slice(b8);
-                v.extend_from_slice(de8);
-                v.extend_from_slice(&name_hash);
-                let new_token: BoundedVec<u8, T::TokenLimit> =
-                    BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                // 重新构造 token：使用Pallet级公共函数（已提取）
+                let new_token = Self::build_deceased_token(&d.gender, &d.birth_ts, &d.death_ts, &d.name);
                 // 若 token 发生变化，需检查唯一性并更新索引
                 if new_token != old_token {
                     if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) {
@@ -958,28 +1204,14 @@ pub mod pallet {
                 Ok(())
             })?;
 
-            // 函数级详细中文注释：自动pin更新的name_full_cid到IPFS
-            // - 仅在提供了新的CID时执行（Some(Some(vec))）
-            // - 使用triple-charge机制
-            // - 失败不阻塞更新操作（容错处理）
+            // 自动pin更新的name_full_cid到IPFS
             if let Some(cid_vec) = cid_to_pin {
-                let deceased_id_u64: u64 = id.saturated_into::<u64>();
-                let price = T::DefaultStoragePrice::get();
-                
-                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+                Self::auto_pin_cid(
                     who.clone(),
-                    deceased_id_u64,
+                    id,
                     cid_vec,
-                    price,
-                    3, // 默认3副本
-                ) {
-                    log::warn!(
-                        target: "deceased",
-                        "Auto-pin name_full_cid failed for deceased {:?}: {:?}",
-                        deceased_id_u64,
-                        e
-                    );
-                }
+                    AutoPinType::NameFullCid,
+                );
             }
 
             Self::deposit_event(Event::DeceasedUpdated(id));
@@ -988,12 +1220,41 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：删除逝者（已禁用）。
-        /// - 设计原则：为保证历史可追溯与家族谱系稳定，逝者一经创建不可删除；
-        /// - 替代方案：
-        ///   1) 使用 `transfer_deceased` 迁移至新的墓位（GRAVE）；
-        ///   2) 通过逝者关系（亲友团）将成员关系维护到其他逝者名下；
-        /// - 行为：本函数保持签名以兼容旧调用索引，但始终返回 `DeletionForbidden` 错误。
-        // 已禁用：remove_deceased（为合规与审计保全，逝者创建后不可删除）
+        /// 
+        /// ### 功能说明
+        /// 为保证历史可追溯与家族谱系稳定，本 Pallet **永久禁止**删除已创建的逝者记录。
+        /// 此函数保留接口签名以兼容旧的前端/脚本调用，但始终返回 `DeletionForbidden` 错误。
+        /// 
+        /// ### 设计原则
+        /// - 📜 **合规要求**：逝者信息属于历史记录，删除可能违反数据保护法规
+        /// - 🔗 **关系稳定**：删除逝者会破坏家族谱系（Relations）的完整性
+        /// - 🔍 **审计追溯**：保留所有历史记录用于争议解决
+        /// 
+        /// ### 替代方案
+        /// 如需"移除"逝者，请考虑以下方式：
+        /// 1. **迁移墓位**：调用 `transfer_deceased(id, new_grave)` 转移到私密墓位
+        /// 2. **设置隐私**：调用 `set_visibility(id, false)` 设为不公开
+        /// 3. **清空信息**：调用 `update_deceased` 清空敏感字段（保留关系结构）
+        /// 
+        /// ### 参数
+        /// - `origin`: 交易发起者（任何签名账户均可调用）
+        /// - `id`: 逝者ID（参数会被忽略，仅保留接口兼容性）
+        /// 
+        /// ### 错误
+        /// - `DeletionForbidden`: 始终返回此错误
+        /// 
+        /// ### 权重
+        /// 极低（仅检查签名 + 返回错误）
+        #[pallet::call_index(2)]
+        #[pallet::weight(T::WeightInfo::remove())]
+        pub fn remove_deceased(
+            origin: OriginFor<T>,
+            _id: T::DeceasedId,
+        ) -> DispatchResult {
+            let _who = ensure_signed(origin)?;
+            // 永久禁止删除操作，始终返回错误
+            Err(Error::<T>::DeletionForbidden.into())
+        }
 
         /// 函数级中文注释：迁移逝者到新的墓位。
         /// - 权限：仅 `owner` 且新墓位需通过 `GraveProvider::can_attach`；
@@ -1015,12 +1276,8 @@ pub mod pallet {
                 T::GraveProvider::can_attach(&who, new_grave),
                 Error::<T>::NotAuthorized
             );
-            // 软上限校验：目标墓位是否已达上限
-            let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
-            ensure!(
-                existing_in_target < T::MaxDeceasedPerGraveSoft::get(),
-                Error::<T>::TooManyDeceasedInGrave
-            );
+            
+            // 删除软上限检查：容量由 BoundedVec::try_push 自动管理（硬上限6）
 
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
@@ -1073,109 +1330,86 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：设置/修改逝者主图（CID）。
-        /// - 权限：owner 可直接设置；非 owner 需 Root 治理来源。
-        /// - 事件：MainImageUpdated(id, true)
+        /// 函数级中文注释：设置/修改逝者主图（CID）
+        /// 
+        /// 权限：仅逝者owner
+        /// - 治理操作请使用 `gov_set_main_image`
+        /// 
+        /// 功能：
+        /// - 更新主图CID
+        /// - 自动pin到IPFS（使用triple-charge机制）
+        /// 
+        /// 事件：
+        /// - MainImageUpdated(id, operator, true)
+        /// - AutoPinSuccess / AutoPinFailed
         #[pallet::call_index(40)]
-        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
         pub fn set_main_image(
             origin: OriginFor<T>,
             id: T::DeceasedId,
             cid: Vec<u8>,
         ) -> DispatchResult {
-            let is_root = ensure_root(origin.clone()).is_ok();
-            let who = ensure_signed(origin.clone()).ok();
+            let who = ensure_signed(origin)?;
             
-            // 保存cid的副本用于后续自动pin
+            // 保存cid用于后续pin
             let cid_for_pin = cid.clone();
             
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
-                if !is_root {
-                    let caller = who.as_ref().ok_or(Error::<T>::NotAuthorized)?;
-                    ensure!(d.owner == *caller, Error::<T>::NotAuthorized);
-                }
+                
+                // 清晰的权限检查：仅owner
+                ensure!(d.owner == who, Error::<T>::NotAuthorized);
+                
+                // 更新CID
                 let bv: BoundedVec<u8, T::TokenLimit> =
                     BoundedVec::try_from(cid).map_err(|_| Error::<T>::BadInput)?;
                 d.main_image_cid = Some(bv);
                 d.updated = <frame_system::Pallet<T>>::block_number();
+                
                 Ok(())
             })?;
 
-            // 函数级详细中文注释：自动pin main_image_cid到IPFS
-            // - 使用triple-charge机制
-            // - 失败不阻塞设置主图操作（容错处理）
-            // - 优先使用signed caller，Root调用时需从DeceasedOf获取owner
-            if let Some(w) = who.as_ref() {
-                let deceased_id_u64: u64 = id.saturated_into::<u64>();
-                let price = T::DefaultStoragePrice::get();
-                
-                if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
-                    w.clone(),
-                    deceased_id_u64,
-                    cid_for_pin.clone(),
-                    price,
-                    3, // 默认3副本
-                ) {
-                    log::warn!(
-                        target: "deceased",
-                        "Auto-pin main_image_cid failed for deceased {:?}: {:?}",
-                        deceased_id_u64,
-                        e
-                    );
-                }
-            } else if is_root {
-                // Root调用时，从DeceasedOf读取owner作为caller
-                if let Some(d) = DeceasedOf::<T>::get(id) {
-                    let deceased_id_u64: u64 = id.saturated_into::<u64>();
-                    let price = T::DefaultStoragePrice::get();
-                    
-                    if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
-                        d.owner,
-                        deceased_id_u64,
+            // 自动pin（使用统一的公共函数）
+            Self::auto_pin_cid(
+                who.clone(),
+                id,
                         cid_for_pin,
-                        price,
-                        3, // 默认3副本
-                    ) {
-                        log::warn!(
-                            target: "deceased",
-                            "Auto-pin main_image_cid failed for deceased {:?}: {:?}",
-                            deceased_id_u64,
-                            e
-                        );
-                    }
-                }
-            }
+                AutoPinType::MainImage,
+            );
 
-            // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
-            // 事件维持，便于前端平滑过渡。
-            Self::deposit_event(Event::MainImageUpdated(id, true));
+            // 增强的事件：包含操作者
+            Self::deposit_event(Event::MainImageUpdated(id, who, true));
             Self::touch_last_active(id);
             Ok(())
         }
 
-        /// 函数级中文注释：清空逝者主图。
-        /// - 权限：owner 或 Root。
-        /// - 事件：MainImageUpdated(id, false)
+        /// 函数级中文注释：清空逝者主图
+        /// 
+        /// 权限：仅逝者owner
+        /// - 治理操作请使用 `gov_set_main_image`
+        /// 
+        /// 事件：MainImageUpdated(id, operator, false)
         #[pallet::call_index(41)]
-        #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
-        pub fn clear_main_image(origin: OriginFor<T>, id: T::DeceasedId) -> DispatchResult {
-            let is_root = ensure_root(origin.clone()).is_ok();
-            let who = ensure_signed(origin.clone()).ok();
+        pub fn clear_main_image(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
-                if !is_root {
-                    let caller = who.as_ref().ok_or(Error::<T>::NotAuthorized)?;
-                    ensure!(d.owner == *caller, Error::<T>::NotAuthorized);
-                }
+                
+                // 清晰的权限检查：仅owner
+                ensure!(d.owner == who, Error::<T>::NotAuthorized);
+                
                 d.main_image_cid = None;
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 Ok(())
             })?;
-            // 迁移决策：主图功能已移至 `pallet-deceased-media`，此处接口保留仅为兼容。
-            Self::deposit_event(Event::MainImageUpdated(id, false));
+            
+            // 增强的事件：包含操作者
+            Self::deposit_event(Event::MainImageUpdated(id, who, false));
             Self::touch_last_active(id);
             Ok(())
         }
@@ -1275,11 +1509,8 @@ pub mod pallet {
                 }
                 // name_badge 已移除
                 if let Some(gc) = gender_code {
-                    d.gender = match gc {
-                        0 => Gender::M,
-                        1 => Gender::F,
-                        _ => Gender::B,
-                    };
+                    // 使用Gender::from_code()方法统一转换
+                    d.gender = Gender::from_code(gc);
                 }
                 if let Some(cid_opt) = name_full_cid {
                     d.name_full_cid = match cid_opt {
@@ -1337,62 +1568,8 @@ pub mod pallet {
                         at,
                     });
                 });
-                // 重建 token 并维护唯一索引（gender + birth(8) + death(8) + blake2_256(name_norm)）
-                fn normalize_name2(bytes: &[u8]) -> Vec<u8> {
-                    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-                    let mut i = 0usize;
-                    while i < bytes.len() && bytes[i] == b' ' {
-                        i += 1;
-                    }
-                    let mut last_space = false;
-                    while i < bytes.len() {
-                        let mut b = bytes[i];
-                        if b == b' ' {
-                            if !last_space {
-                                out.push(b' ');
-                                last_space = true;
-                            }
-                        } else {
-                            if (b'a'..=b'z').contains(&b) {
-                                b = b - 32;
-                            }
-                            out.push(b);
-                            last_space = false;
-                        }
-                        i += 1;
-                    }
-                    while out.last().copied() == Some(b' ') {
-                        out.pop();
-                    }
-                    out
-                }
-                let name_norm = normalize_name2(d.name.as_slice());
-                let name_hash = blake2_256(name_norm.as_slice());
-                let mut v: Vec<u8> = Vec::with_capacity(1 + 8 + 8 + 32);
-                let c = match d.gender {
-                    Gender::M => b'M',
-                    Gender::F => b'F',
-                    Gender::B => b'B',
-                };
-                v.push(c);
-                let zeros8: [u8; 8] = *b"00000000";
-                let b8 = d
-                    .birth_ts
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                let de8 = d
-                    .death_ts
-                    .as_ref()
-                    .map(|x| x.as_slice())
-                    .filter(|s| s.len() == 8)
-                    .unwrap_or(&zeros8);
-                v.extend_from_slice(b8);
-                v.extend_from_slice(de8);
-                v.extend_from_slice(&name_hash);
-                let new_token: BoundedVec<u8, T::TokenLimit> =
-                    BoundedVec::<u8, T::TokenLimit>::try_from(v).unwrap_or_default();
+                // 重建 token：使用Pallet级公共函数（已提取）
+                let new_token = Self::build_deceased_token(&d.gender, &d.birth_ts, &d.death_ts, &d.name);
                 if new_token != old_token {
                     if let Some(existing_id) = DeceasedIdByToken::<T>::get(&new_token) {
                         if existing_id != id {
@@ -1426,11 +1603,9 @@ pub mod pallet {
                 T::GraveProvider::grave_exists(new_grave),
                 Error::<T>::GraveNotFound
             );
-            let existing_in_target = DeceasedByGrave::<T>::get(new_grave).len() as u32;
-            ensure!(
-                existing_in_target < T::MaxDeceasedPerGraveSoft::get(),
-                Error::<T>::TooManyDeceasedInGrave
-            );
+            
+            // 删除软上限检查：容量由 BoundedVec::try_push 自动管理（硬上限6）
+            
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 let original_owner = d.owner.clone();
@@ -1473,8 +1648,38 @@ pub mod pallet {
             Self::deposit_event(Event::VisibilityChanged(id, public));
             Ok(())
         }
-        /// 函数级中文注释：从 A(发起方) → B(对方) 发起关系绑定请求。
-        /// - 权限：A 所属墓位的管理员（通过 GraveProvider::can_attach(sender, A.grave_id) 判定）。
+        /// 函数级详细中文注释：发起关系绑定提案
+        /// 
+        /// ### 功能说明
+        /// 由 `from` 方向 `to` 方发起关系声明提案，等待对方管理员批准。
+        /// 
+        /// ### 参数说明
+        /// - `from`: 提案发起方的逝者ID（必须是当前调用者有权管理的逝者）
+        /// - `to`: 提案接收方的逝者ID（对方逝者）
+        /// - `kind`: 关系类型（0=ParentOf, 1=SpouseOf, 2=SiblingOf, 3=ChildOf）
+        /// - `note`: 可选的关系备注（长度限制由 StringLimit 配置）
+        /// 
+        /// ### 权限要求
+        /// - 调用者必须是 `from` 对应逝者所在墓位的管理员
+        /// - 通过 `GraveProvider::can_attach(caller, from.grave_id)` 判定
+        /// 
+        /// ### 关系类型与方向性
+        /// - **有向关系**（0=ParentOf, 3=ChildOf）：`from → to` 有明确方向
+        /// - **无向关系**（1=SpouseOf, 2=SiblingOf）：`from ↔ to` 对称关系
+        /// 
+        /// ### 后续流程
+        /// 1. 本函数发起提案后，提案存储在 `PendingRelationRequests(from, to)`
+        /// 2. `to` 方管理员调用 `approve_relation(from, to)` 批准提案
+        /// 3. 或者 `to` 方管理员调用 `reject_relation(from, to)` 拒绝提案
+        /// 4. ⚠️ 当前版本不支持发起方撤回提案（未来将提供 `cancel_relation_proposal`）
+        /// 
+        /// ### 去重与冲突检查
+        /// - 如果关系已建立（`Relations` 中存在），返回 `RelationExists` 错误
+        /// - 如果无向关系的反向提案已存在，返回 `PendingApproval` 错误
+        /// - 如果与已有关系存在逻辑冲突（如父母↔配偶），返回 `BadRelationKind` 错误
+        /// 
+        /// ### 事件
+        /// - `RelationProposed(from, to, kind)`: 提案成功发起
         #[pallet::call_index(4)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1521,7 +1726,61 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：B 方管理员批准关系绑定。
+        /// 函数级详细中文注释：批准关系绑定提案
+        /// 
+        /// ### 功能说明
+        /// 作为提案接收方（`to`）的管理员，批准由 `from` 发起的关系提案，正式建立关系。
+        /// 
+        /// ### 参数说明
+        /// ⚠️ **重要**：这两个参数是**提案的标识符**，而非"操作的方向"
+        /// - `from`: 提案发起方的逝者ID（不是当前调用者，是对方）
+        /// - `to`: 提案接收方的逝者ID（**必须是当前调用者有权管理的逝者**）
+        /// 
+        /// ### 权限要求
+        /// - 调用者必须是 `to` 对应逝者所在墓位的管理员
+        /// - 通过 `GraveProvider::can_attach(caller, to.grave_id)` 判定
+        /// - ⚠️ `from` 方管理员无权调用此函数，会返回 `NotProposalResponder` 错误
+        /// 
+        /// ### 参数理解示例
+        /// ```
+        /// 场景：张三（ID=100）向李四（ID=200）提出配偶关系
+        /// 
+        /// Step 1: 张三的管理员发起提案
+        ///   propose_relation(from=100, to=200, kind=SpouseOf)
+        /// 
+        /// Step 2: 李四的管理员批准提案（本函数）
+        ///   approve_relation(from=100, to=200)
+        ///   // 参数含义：
+        ///   // - from=100: 提案发起方（张三，对方）
+        ///   // - to=200: 提案接收方（李四，我管理的逝者）
+        ///   // - 调用者必须是李四的墓位管理员
+        /// 
+        /// ❌ 常见错误：张三的管理员误调用
+        ///   approve_relation(from=100, to=200)
+        ///   // 结果：NotProposalResponder 错误
+        ///   // 原因：只有李四的管理员可以批准
+        /// ```
+        /// 
+        /// ### 处理流程
+        /// 1. 检查权限：确保调用者是 `to` 方墓位管理员
+        /// 2. 读取提案：从 `PendingRelationRequests(from, to)` 获取提案详情
+        /// 3. 二次冲突检查：防止并发导致的重复建立
+        /// 4. 建立关系：将关系存入 `Relations` 和 `RelationsByDeceased` 索引
+        /// 5. 清理提案：从 `PendingRelationRequests` 中移除
+        /// 
+        /// ### 关系存储规则
+        /// - **无向关系**：使用 canonical 键 `(min(from,to), max(from,to))`，双方索引
+        /// - **有向关系**：使用原始键 `(from, to)`，保持方向性
+        /// 
+        /// ### 错误处理
+        /// - `DeceasedNotFound`: `to` 对应的逝者不存在
+        /// - `NotProposalResponder`: 调用者不是 `to` 方的墓位管理员
+        /// - `RelationNotFound`: 提案不存在（可能已被拒绝或撤回）
+        /// - `RelationExists`: 关系已存在（可能被并发操作建立）
+        /// - `BadRelationKind`: 与已有关系存在逻辑冲突
+        /// 
+        /// ### 事件
+        /// - `RelationApproved(from, to, kind)`: 提案批准成功
         #[pallet::call_index(5)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1534,7 +1793,7 @@ pub mod pallet {
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
             ensure!(
                 T::GraveProvider::can_attach(&who, b.grave_id),
-                Error::<T>::NotAuthorized
+                Error::<T>::NotProposalResponder
             );
             let (kind, created_by, note, _created_at) =
                 PendingRelationRequests::<T>::get(from, to).ok_or(Error::<T>::RelationNotFound)?;
@@ -1572,7 +1831,60 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：B 方管理员拒绝关系绑定。
+        /// 函数级详细中文注释：拒绝关系绑定提案
+        /// 
+        /// ### 功能说明
+        /// 作为提案接收方（`to`）的管理员，拒绝由 `from` 发起的关系提案，提案将被删除。
+        /// 
+        /// ### 参数说明
+        /// ⚠️ **重要**：这两个参数是**提案的标识符**，而非"操作的方向"
+        /// - `from`: 提案发起方的逝者ID（不是当前调用者，是对方）
+        /// - `to`: 提案接收方的逝者ID（**必须是当前调用者有权管理的逝者**）
+        /// 
+        /// ### 权限要求
+        /// - 调用者必须是 `to` 对应逝者所在墓位的管理员
+        /// - 通过 `GraveProvider::can_attach(caller, to.grave_id)` 判定
+        /// - ⚠️ `from` 方管理员无权调用此函数，会返回 `NotProposalResponder` 错误
+        /// - ⚠️ 与 `approve_relation` 的权限要求完全一致
+        /// 
+        /// ### 参数理解示例
+        /// ```
+        /// 场景：张三（ID=100）向李四（ID=200）提出配偶关系，李四拒绝
+        /// 
+        /// Step 1: 张三的管理员发起提案
+        ///   propose_relation(from=100, to=200, kind=SpouseOf)
+        /// 
+        /// Step 2: 李四的管理员拒绝提案（本函数）
+        ///   reject_relation(from=100, to=200)
+        ///   // 参数含义：
+        ///   // - from=100: 提案发起方（张三，对方）
+        ///   // - to=200: 提案接收方（李四，我管理的逝者）
+        ///   // - 调用者必须是李四的墓位管理员
+        /// 
+        /// ❌ 常见错误：张三的管理员误调用
+        ///   reject_relation(from=100, to=200)
+        ///   // 结果：NotProposalResponder 错误
+        ///   // 原因：只有李四的管理员可以拒绝
+        ///   // 张三想撤回提案？当前版本不支持，未来将提供 cancel_relation_proposal
+        /// ```
+        /// 
+        /// ### 处理流程
+        /// 1. 检查权限：确保调用者是 `to` 方墓位管理员
+        /// 2. 检查提案：确认 `PendingRelationRequests(from, to)` 存在
+        /// 3. 删除提案：从 `PendingRelationRequests` 中移除
+        /// 4. 发出事件：通知提案被拒绝
+        /// 
+        /// ### 错误处理
+        /// - `DeceasedNotFound`: `to` 对应的逝者不存在
+        /// - `NotProposalResponder`: 调用者不是 `to` 方的墓位管理员
+        /// - `RelationNotFound`: 提案不存在（可能已被批准、拒绝或撤回）
+        /// 
+        /// ### 事件
+        /// - `RelationRejected(from, to)`: 提案拒绝成功
+        /// 
+        /// ### 与 approve_relation 的区别
+        /// - **相同点**：权限要求完全一致，都需要 `to` 方管理员权限
+        /// - **不同点**：approve 会建立关系并更新索引，reject 只删除提案
         #[pallet::call_index(6)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1585,7 +1897,7 @@ pub mod pallet {
             let b = DeceasedOf::<T>::get(to).ok_or(Error::<T>::DeceasedNotFound)?;
             ensure!(
                 T::GraveProvider::can_attach(&who, b.grave_id),
-                Error::<T>::NotAuthorized
+                Error::<T>::NotProposalResponder
             );
             ensure!(
                 PendingRelationRequests::<T>::contains_key(from, to),
@@ -1596,7 +1908,158 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：任一方管理员撤销已建立的关系。
+        /// 函数级详细中文注释：发起方撤回关系提案
+        /// 
+        /// ### 功能说明
+        /// 由提案发起方（`from`）主动撤回尚未被批准/拒绝的关系提案。
+        /// 
+        /// ### 参数说明
+        /// - `from`: 提案发起方的逝者ID（必须是当前调用者有权管理的逝者）
+        /// - `to`: 提案接收方的逝者ID（对方逝者）
+        /// 
+        /// ### 权限要求
+        /// - 调用者必须是 `from` 对应逝者所在墓位的管理员
+        /// - 通过 `GraveProvider::can_attach(caller, from.grave_id)` 判定
+        /// - ⚠️ 只有提案发起方可以撤回，接收方无权调用此函数
+        /// 
+        /// ### 使用场景
+        /// 1. **发现错误**：发起提案后发现参数错误（如关系类型选错、目标逝者ID错误）
+        /// 2. **改变主意**：不再希望建立该关系
+        /// 3. **对方长时间未响应**：提案发起后对方一直不批准也不拒绝，可撤回重新发起
+        /// 
+        /// ### 参数理解示例
+        /// ```
+        /// 场景：张三（ID=100）向李四（ID=200）发起配偶关系提案，后来发现搞错了，想撤回
+        /// 
+        /// Step 1: 张三的管理员发起提案
+        ///   propose_relation(from=100, to=200, kind=SpouseOf)
+        /// 
+        /// Step 2: 张三发现错误，撤回提案（本函数）
+        ///   cancel_relation_proposal(from=100, to=200)
+        ///   // 参数含义：
+        ///   // - from=100: 提案发起方（张三，我管理的逝者）
+        ///   // - to=200: 提案接收方（李四，对方）
+        ///   // - 调用者必须是张三的墓位管理员
+        /// 
+        /// ❌ 常见错误：李四的管理员误调用
+        ///   cancel_relation_proposal(from=100, to=200)
+        ///   // 结果：NotAuthorized 错误
+        ///   // 原因：只有提案发起方（张三）的管理员可以撤回
+        ///   // 李四想拒绝提案？应该调用 reject_relation
+        /// ```
+        /// 
+        /// ### 与 reject_relation 的区别
+        /// | 维度 | cancel_relation_proposal | reject_relation |
+        /// |------|-------------------------|----------------|
+        /// | **操作主体** | 提案发起方（`from`） | 提案接收方（`to`） |
+        /// | **权限要求** | `from` 方的墓位管理员 | `to` 方的墓位管理员 |
+        /// | **业务语义** | 撤回自己发起的提案 | 拒绝对方的提案 |
+        /// | **常见场景** | 发现错误、改变主意 | 不同意建立关系 |
+        /// 
+        /// ### 处理流程
+        /// 1. 检查权限：确保调用者是 `from` 方墓位管理员
+        /// 2. 检查提案：确认 `PendingRelationRequests(from, to)` 存在
+        /// 3. 删除提案：从 `PendingRelationRequests` 中移除
+        /// 4. 发出事件：通知提案已被发起方撤回
+        /// 
+        /// ### 错误处理
+        /// - `DeceasedNotFound`: `from` 对应的逝者不存在
+        /// - `NotAuthorized`: 调用者不是 `from` 方的墓位管理员
+        /// - `RelationNotFound`: 提案不存在（可能已被批准、拒绝或撤回）
+        /// 
+        /// ### 事件
+        /// - `RelationProposalCancelled(from, to, kind)`: 提案撤回成功
+        /// 
+        /// ### 注意事项
+        /// - ⚠️ **不可逆操作**：撤回后提案完全删除，如需重新建立需重新发起提案
+        /// - ⚠️ **仅限发起方**：只有 `from` 方可撤回，`to` 方应使用 `reject_relation`
+        /// - ⚠️ **事件包含kind**：事件中包含关系类型，便于前端展示
+        #[pallet::call_index(9)]
+        #[allow(deprecated)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn cancel_relation_proposal(
+            origin: OriginFor<T>,
+            from: T::DeceasedId,
+            to: T::DeceasedId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 检查提案是否存在，并获取kind
+            let (kind, _created_by, _note, _created_at) = PendingRelationRequests::<T>::get(from, to)
+                .ok_or(Error::<T>::RelationNotFound)?;
+            
+            // 权限检查：必须是发起方的管理员
+            let a = DeceasedOf::<T>::get(from).ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(
+                T::GraveProvider::can_attach(&who, a.grave_id),
+                Error::<T>::NotAuthorized
+            );
+            
+            // 移除提案
+            PendingRelationRequests::<T>::remove(from, to);
+            
+            // 发出事件（包含kind，便于前端展示）
+            Self::deposit_event(Event::RelationProposalCancelled(from, to, kind));
+            
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：撤销已建立的关系
+        /// 
+        /// ### 功能说明
+        /// 删除已经正式建立的关系记录。**任一方**的墓位管理员都可以单方面撤销。
+        /// 
+        /// ### 参数说明
+        /// - `from`: 关系的一方逝者ID
+        /// - `to`: 关系的另一方逝者ID
+        /// - ⚠️ 参数顺序可任意，函数会自动查找 `Relations(from,to)` 或 `Relations(to,from)`
+        /// 
+        /// ### 权限要求
+        /// - 调用者必须是 `from` **或** `to` 任一方对应逝者所在墓位的管理员
+        /// - 通过 `can_attach(caller, from.grave_id) || can_attach(caller, to.grave_id)` 判定
+        /// - ⚠️ **单方面撤销**：不需要对方同意，任何一方都可以主动解除关系
+        /// 
+        /// ### 与 reject_relation 的区别
+        /// | 维度 | revoke_relation | reject_relation |
+        /// |------|----------------|----------------|
+        /// | **操作对象** | 已建立的关系（`Relations`） | 待批准的提案（`PendingRelationRequests`） |
+        /// | **权限要求** | 任一方管理员 | 仅 `to` 方管理员 |
+        /// | **业务语义** | 解除正式关系 | 拒绝提案 |
+        /// 
+        /// ### 参数理解示例
+        /// ```
+        /// 场景：张三（ID=100）和李四（ID=200）是已建立的配偶关系，张三想解除
+        /// 
+        /// 调用方式（两种参数顺序都可以）：
+        ///   revoke_relation(from=100, to=200)  // 张三的管理员调用
+        ///   或
+        ///   revoke_relation(from=200, to=100)  // 效果相同
+        /// 
+        /// 权限检查：
+        ///   - 如果调用者是张三的墓位管理员 → ✅ 允许
+        ///   - 如果调用者是李四的墓位管理员 → ✅ 也允许
+        ///   - 如果调用者两边都不是管理员 → ❌ NotAuthorized
+        /// ```
+        /// 
+        /// ### 处理流程
+        /// 1. 检查权限：确保调用者是 `from` 或 `to` 任一方的墓位管理员
+        /// 2. 查找关系：在 `Relations(from,to)` 或 `Relations(to,from)` 中查找
+        /// 3. 删除关系：从 `Relations` 中移除
+        /// 4. 更新索引：从 `RelationsByDeceased` 双方索引中移除（无向关系需清理双方）
+        /// 5. 发出事件：通知关系已撤销
+        /// 
+        /// ### 错误处理
+        /// - `DeceasedNotFound`: `from` 或 `to` 对应的逝者不存在
+        /// - `NotAuthorized`: 调用者既不是 `from` 也不是 `to` 的墓位管理员
+        /// - `RelationNotFound`: 关系不存在（可能已被撤销或从未建立）
+        /// 
+        /// ### 事件
+        /// - `RelationRevoked(from, to)`: 关系撤销成功
+        /// 
+        /// ### 注意事项
+        /// - ⚠️ **不可逆操作**：撤销后关系完全删除，如需重新建立需重新走提案流程
+        /// - ⚠️ **单方面决策**：不需要对方同意，符合"解除关系自由"原则
+        /// - ⚠️ **事件参数顺序**：事件中的 `from`/`to` 使用调用者传入的参数，不重排序
         #[pallet::call_index(7)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1843,7 +2306,26 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：退出亲友团（自愿退出）。
+        /// 函数级详细中文注释：退出亲友团（自愿退出）
+        /// 
+        /// ### 功能说明
+        /// 允许成员主动退出亲友团。
+        /// 
+        /// ### 权限说明
+        /// - **任何成员**：✅ 可以随时自由退出
+        /// - **包括 owner**：✅ owner 也可以退出亲友团（退出后依然保留管理权限）
+        /// 
+        /// ### 设计理念
+        /// - ✅ **自由退出**：删除 Admin 角色后，无需退出限制
+        /// - ✅ **亲友团是可选的**：成员可以自由选择是否参与
+        /// - ✅ **owner 的管理权限不受影响**：owner 的管理权限来自 `DeceasedOf.owner`，不依赖于亲友团
+        /// 
+        /// ### 使用场景
+        /// 1. **普通成员退出**：不想继续关注该逝者
+        /// 2. **owner 退出**：不想参与亲友团社交，但依然保留管理权限
+        /// 
+        /// ### 错误处理
+        /// - `FriendNotMember`: 调用者不在亲友团中
         #[pallet::call_index(36)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1856,19 +2338,39 @@ pub mod pallet {
                 FriendsOf::<T>::contains_key(deceased_id, &who),
                 Error::<T>::FriendNotMember
             );
-            // 保护：owner/Admin 不允许用此接口自降级退出，避免孤儿；需由另一 Admin 处理
-            let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
-            ensure!(
-                !matches!(rec.role, FriendRole::Admin),
-                Error::<T>::NotAuthorized
-            );
+            
+            // ✅ 简化：删除 Admin 角色后，任何成员都可以自由退出
             FriendsOf::<T>::remove(deceased_id, &who);
             let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
             FriendCount::<T>::insert(deceased_id, cnt);
             Ok(())
         }
 
-        /// 函数级中文注释：移出成员（仅 Admin）。
+        /// 函数级详细中文注释：移出成员（仅 owner）
+        /// 
+        /// ### 功能说明
+        /// 允许 owner 移除亲友团中的任何成员。
+        /// 
+        /// ### 权限说明
+        /// - **调用者**：必须是 owner（通过 `is_admin` 判定）
+        /// - **可移除对象**：任何成员（Member/Core），包括 owner 自己
+        /// 
+        /// ### 设计理念
+        /// - ✅ **简化设计**：删除 Admin 角色后，只有 owner 有管理权限
+        /// - ✅ **责任明确**：owner 是唯一管理者，可以移除任何成员
+        /// - ✅ **避免冲突**：无多人管理，无权限争夺
+        /// 
+        /// ### owner 的特殊性
+        /// - owner 可以移除自己（自愿退出亲友团的另一种方式）
+        /// - owner 被移除后，依然通过 `DeceasedOf.owner` 保留管理权限
+        /// 
+        /// ### 使用场景
+        /// 1. **owner 移除普通成员**：管理亲友团成员
+        /// 2. **owner 移除自己**：退出亲友团社交
+        /// 
+        /// ### 错误处理
+        /// - `NotAuthorized`: 调用者不是 owner
+        /// - `FriendNotMember`: 被移除者不在亲友团中
         #[pallet::call_index(37)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1886,19 +2388,38 @@ pub mod pallet {
                 FriendsOf::<T>::contains_key(deceased_id, &who),
                 Error::<T>::FriendNotMember
             );
-            let rec = FriendsOf::<T>::get(deceased_id, &who).unwrap();
-            // 禁止移除 owner/Admin，自我保护
-            ensure!(
-                !matches!(rec.role, FriendRole::Admin),
-                Error::<T>::NotAuthorized
-            );
+            
+            // ✅ 简化：删除 Admin 角色后，owner 可以移除任何成员
             FriendsOf::<T>::remove(deceased_id, &who);
             let cnt = FriendCount::<T>::get(deceased_id).saturating_sub(1);
             FriendCount::<T>::insert(deceased_id, cnt);
             Ok(())
         }
 
-        /// 函数级中文注释：设置成员角色（仅 Admin）。不可移除所有 Admin，owner 始终视为 Admin。
+        /// 函数级详细中文注释：设置成员角色（仅 owner）
+        /// 
+        /// ### 功能说明
+        /// 允许 owner 设置亲友团成员的角色（Member 或 Core）。
+        /// 
+        /// ### 权限说明
+        /// - **调用者**：必须是 owner（通过 `is_admin` 判定）
+        /// - **可设置角色**：
+        ///   - `0` → Member（普通成员）
+        ///   - `1` → Core（核心成员）
+        ///   - 其他值 → 默认为 Member
+        /// 
+        /// ### 设计理念
+        /// - ✅ **简化设计**：删除 Admin 角色，只保留 Member/Core
+        /// - ✅ **社交层面**：Member/Core 用于区分关系亲疏
+        /// - ✅ **未来扩展**：Core 可能用于投票权、特殊权限等
+        /// 
+        /// ### 使用场景
+        /// 1. **提升为核心成员**：将关系密切的成员设为 Core
+        /// 2. **降级为普通成员**：调整成员角色
+        /// 
+        /// ### 错误处理
+        /// - `NotAuthorized`: 调用者不是 owner
+        /// - `FriendNotMember`: 被设置者不在亲友团中
         #[pallet::call_index(38)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::update())]
@@ -1915,8 +2436,8 @@ pub mod pallet {
             );
             FriendsOf::<T>::try_mutate(deceased_id, &who, |maybe| -> DispatchResult {
                 let r = maybe.as_mut().ok_or(Error::<T>::FriendNotMember)?;
+                // ✅ 简化：删除 Admin 角色，只支持 Member/Core
                 r.role = match role {
-                    2 => FriendRole::Admin,
                     1 => FriendRole::Core,
                     _ => FriendRole::Member,
                 };

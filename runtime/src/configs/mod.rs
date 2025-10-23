@@ -36,7 +36,7 @@ use frame_support::{
     PalletId,
 };
 use frame_system::limits::{BlockLength, BlockWeights};
-use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier};
+use pallet_transaction_payment::{ConstFeeMultiplier, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::Get;
 use sp_runtime::{traits::AccountIdConversion, traits::One, Perbill};
@@ -248,7 +248,7 @@ impl pallet_collective::Config<TechnicalCollective> for Runtime {
 }
 
 // 引入以区块数表示的一天常量
-use crate::DAYS;
+use crate::{DAYS, UNIT};
 use alloc::vec;
 // 引入以区块数表示的一分钟常量，用于设备挑战 TTL 等时间参数
 // 引入余额单位常量（已移除与设备/挖矿相关依赖，无需引入 MINUTES/MILLI_UNIT）
@@ -259,53 +259,7 @@ use super::{
     RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
     System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
 };
-
-// ===== Forwarder 集成所需的适配与类型 =====
-use pallet_forwarder::ForwarderAuthorizer;
 use sp_runtime::traits::IdentityLookup;
-
-
-/// Authorizer 适配器（Noop）：默认拒绝，避免依赖 `pallet-authorizer`。
-pub struct AuthorizerAdapter;
-impl ForwarderAuthorizer<AccountId, RuntimeCall> for AuthorizerAdapter {
-    /// 函数级中文注释：校验赞助者是否在命名空间下被允许
-    /// - 当前仅允许平台账户代付，便于统一风控与审计；未来可扩展为授权中心。
-    fn is_sponsor_allowed(_ns: [u8; 8], _sponsor: &AccountId) -> bool {
-        true
-    }
-
-    /// 函数级中文注释：校验调用是否在允许范围（基于命名空间 + 具体 Call 变体匹配）
-    /// - 本次需求：创建购买/出售订单（挂单 create_listing）与吃单创建（open_order）由 forwarder 代付。
-    fn is_call_allowed(ns: [u8; 8], _sponsor: &AccountId, call: &RuntimeCall) -> bool {
-        match (ns, call) {
-            // 仅放行 OTC 买方侧方法（买方全流程免 GAS）
-            (n, RuntimeCall::OtcOrder(inner)) if n == OtcOrderNsBytes::get() => matches!(
-                inner,
-                pallet_otc_order::Call::open_order { .. }
-                    | pallet_otc_order::Call::open_order_with_protection { .. }
-                    | pallet_otc_order::Call::mark_paid { .. }
-                    | pallet_otc_order::Call::reveal_payment { .. }
-                    | pallet_otc_order::Call::reveal_contact { .. }
-                    | pallet_otc_order::Call::mark_disputed { .. }
-            ),
-            // 明确不放行做市商/挂单侧与其他域方法
-            _ => false,
-        }
-    }
-}
-
-/// 禁止调用集合（MVP：空集）。可在后续版本中拒绝 utility::batch/dispatch_as 等逃逸方法。
-pub struct ForbidEscapeCalls;
-impl frame_support::traits::Contains<RuntimeCall> for ForbidEscapeCalls {
-    fn contains(call: &RuntimeCall) -> bool {
-        // 禁用可能逃逸范围或高权限入口（根据是否引入相应 pallet 可调整）
-        matches!(
-            call,
-            RuntimeCall::Sudo(_) // 禁止 sudo
-        )
-    }
-}
-// 已移除：pallet-authorizer 配置与常量
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -414,29 +368,59 @@ impl pallet_balances::Config for Runtime {
     type DoneSlashHandler = ();
 }
 
-// ====== First Purchase（首购领取，基于 balances 的命名预留+再归属）运行时配置 ======
-// 原名: OTC Claim，2025-10-20 更名为 First Purchase 以更准确反映业务场景
+// 函数级中文注释：2025-10-22 已删除 pallet-balance-tiers 配置
+// - 功能与固定免费次数重复，复杂度过高
+// - 新用户 Gas 已由固定免费次数覆盖（做市商代付）
+// - 活动空投、邀请奖励改用直接转账 MEMO
+
 parameter_types! {
-    /// 函数级中文注释：按区块数表示的一天（用于做市商日累计额度切片）。
-    pub const FirstPurchaseBlocksPerDay: BlockNumber = DAYS;
+    /// 函数级中文注释：买家信用系统参数 - 最小持仓量（用于资产信任评估）
+    /// - 100 MEMO 作为基准，持仓>=100倍（10000 MEMO）视为高信任
+    pub const BuyerCreditMinimumBalance: Balance = 100 * UNIT;
+    /// 函数级中文注释：推荐所需最低信用分（风险分300以下，即信用分700以上）
+    pub const BuyerCreditEndorseMinScore: u16 = 700;
 }
 
-impl pallet_first_purchase::Config for Runtime {
-    /// 函数级中文注释：事件类型绑定到运行时事件。
+/// 函数级中文注释：买家信用风控模块配置
+impl pallet_buyer_credit::Config for Runtime {
+    /// 函数级中文注释：事件类型绑定到运行时事件
     type RuntimeEvent = RuntimeEvent;
-    /// 函数级中文注释：使用原生币（Balances）作为 Currency，支持命名预留与再归属。
+    /// 函数级中文注释：使用原生币（Balances）作为 Currency
     type Currency = Balances;
-    /// 函数级中文注释：日切片长度（区块数）。
-    type BlocksPerDay = FirstPurchaseBlocksPerDay;
+    /// 函数级中文注释：每日区块数（用于日限额计算）
+    type BlocksPerDay = ConstU32<{ DAYS as u32 }>;
+    /// 函数级中文注释：最小持仓量（用于资产信任评估）
+    type MinimumBalance = BuyerCreditMinimumBalance;
+    /// 函数级中文注释：推荐所需最低信用分
+    type EndorseMinCreditScore = BuyerCreditEndorseMinScore;
+    /// 函数级中文注释：Weight 信息
+    type WeightInfo = ();
+}
+
+/// 函数级中文注释：做市商信用风控模块配置
+/// - 信用评分体系：800-1000分，五个等级
+/// - 履约率追踪、违约惩罚、动态保证金
+impl pallet_maker_credit::Config for Runtime {
+    /// 函数级中文注释：事件类型绑定到运行时事件
+    type RuntimeEvent = RuntimeEvent;
+    /// 函数级中文注释：使用原生币（Balances）作为 Currency（用于动态保证金计算）
+    type Currency = Balances;
+    /// 函数级中文注释：Weight 信息
+    type WeightInfo = ();
 }
 
 parameter_types! {
     pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
+/// 函数级中文注释：交易支付模块配置
+/// - 2025-10-22：已恢复默认交易支付处理器（删除 balance-tiers 后）
+/// - 使用标准 CurrencyAdapter 处理交易费用
+/// - 免费 Gas 功能由固定免费次数实现（做市商代付）
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = FungibleAdapter<Balances, ()>;
+    /// 函数级中文注释：使用标准交易支付处理器（默认实现）
+    type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = IdentityFee<Balance>;
@@ -457,48 +441,6 @@ impl pallet_template::Config for Runtime {
 }
 
 // 已移除：pallet_karma 配置块与相关常量
-
-// ===== pallet-forwarder 配置实现 =====
-impl pallet_forwarder::Config for Runtime {
-    /// 事件类型
-    type RuntimeEvent = RuntimeEvent;
-    /// 运行时聚合调用类型（作为元交易内层调用）
-    type RuntimeCall = RuntimeCall;
-    /// Authorizer 适配器（Noop 实现，默认拒绝）
-    type Authorizer = AuthorizerAdapter;
-    /// 禁止调用集合（MVP：为空集）
-    type ForbiddenCalls = ForbidEscapeCalls;
-    /// 字节上限（根据业务情况调整）
-    type MaxMetaLen = frame_support::traits::ConstU32<8192>;
-    type MaxPermitLen = frame_support::traits::ConstU32<512>;
-    /// 函数级中文注释：强制校验 open_session 的所有者签名
-    type RequirePermitSig = frame_support::traits::ConstBool<true>;
-    /// 函数级中文注释：强制校验 forward 的会话签名
-    type RequireMetaSig = frame_support::traits::ConstBool<true>;
-    /// 会话配额与预算上限（示例值）
-    type MaxCallsPerSession = frame_support::traits::ConstU32<100>;
-    type MaxWeightPerSessionRefTime =
-        frame_support::traits::ConstU64<{ 2u64 * WEIGHT_REF_TIME_PER_SECOND }>; // 约2秒
-    /// 函数级中文注释：最小 meta TTL（示例：10 块）。
-    type MinMetaTxTTL = frame_support::traits::ConstU32<10>;
-    /// 每块代付上限与窗口统计
-    type MaxForwardedPerBlock = frame_support::traits::ConstU32<100>;
-    type ForwarderWindowBlocks = frame_support::traits::ConstU32<600>;
-    type WeightInfo = ();
-    /// 函数级中文注释：开放会话许可签名类型与公钥类型（多签通用）。
-    type PermitSignature = sp_runtime::MultiSignature;
-    type PermitSigner = sp_runtime::MultiSigner;
-}
-
-// 设备/挖矿/冥想相关配置已移除
-
-// （pallet-meditation 已移除）
-// ===== 会话许可命名空间常量（用于 forwarder） =====
-parameter_types! {
-    pub const ArbitrationNsBytes: [u8; 8] = *b"arb___ _"; // 8字节
-    pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
-    pub const OtcListingNsBytes: [u8; 8] = *b"otc_lst_";
-}
 
 // ===== temple 已移除；保留 agent/order 配置 =====
 
@@ -589,10 +531,10 @@ impl pallet_memo_grave::Config for Runtime {
 
 // ===== deceased 配置 =====
 parameter_types! {
-    pub const DeceasedMaxPerGrave: u32 = 128;
+    pub const DeceasedMaxPerGrave: u32 = 6;  // 每墓位最多6个逝者（业务上限）
     pub const DeceasedStringLimit: u32 = 256;
     pub const DeceasedMaxLinks: u32 = 8;
-    pub const DeceasedMaxPerGraveSoft: u32 = 6;
+    // 删除软上限配置：直接使用硬上限6，由BoundedVec自动管理
 }
 
 /// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
@@ -625,11 +567,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             false
         }
     }
-    /// 冗余校验：读取 memo-grave 的已安葬令牌缓存长度（最多 6）。
-    fn cached_deceased_tokens_len(grave_id: u64) -> Option<u32> {
-        pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id)
-            .map(|g| g.deceased_tokens.len() as u32)
-    }
+    // 删除cached_deceased_tokens_len：无需冗余缓存检查，直接由BoundedVec管理容量
 }
 
 // 为 memo-pet 复用同一墓位适配逻辑
@@ -662,10 +600,10 @@ impl pallet_deceased::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
     type GraveId = u64;
-    type MaxDeceasedPerGrave = DeceasedMaxPerGrave;
+    type MaxDeceasedPerGrave = DeceasedMaxPerGrave;  // 硬上限6（业务上限）
     type StringLimit = DeceasedStringLimit;
     type MaxLinks = DeceasedMaxLinks;
-    type MaxDeceasedPerGraveSoft = DeceasedMaxPerGraveSoft;
+    // 删除软上限配置：直接使用硬上限，由BoundedVec自动管理
     type TokenLimit = GraveMaxCidLen;
     type GraveProvider = GraveProviderAdapter;
     type WeightInfo = ();
@@ -945,6 +883,19 @@ impl pallet_memo_offerings::Config for Runtime {
     type BurnAccount = BurnAccount;
     /// 函数级中文注释：国库账户（用于平台财政收入）
     type TreasuryAccount = TreasuryAccount;
+    /// 函数级详细中文注释：委员会账户（用于接收供奉品审核罚没资金）
+    /// - 当用户提交的供奉品被拒绝或撤回时，5%的押金将罚没至此账户
+    /// - 委员会可通过治理提案使用这些资金，用于激励审核工作
+    type CommitteeAccount = CommitteeAccount;
+    /// 函数级详细中文注释：供奉品提交押金（1,000,000 MEMO）
+    /// - 用户提交供奉品审核时需要冻结的押金
+    /// - 1,000,000 MEMO = 1,000,000,000,000 单位（假设 1 MEMO = 1,000,000 单位）
+    /// - 批准上架后全额退还；拒绝或撤回时罚没5%到委员会账户
+    type SubmissionDeposit = ConstU128<1_000_000_000_000>; // 1,000,000 MEMO
+    /// 函数级详细中文注释：拒绝/撤回罚没比例（500 bps = 5%）
+    /// - bps = basis points，10,000 bps = 100%
+    /// - 罚没资金进入委员会账户，用于激励委员会成员的审核工作
+    type RejectionSlashBps = ConstU32<500>;
 }
 
 /// 函数级详细中文注释：供奉收款路由实现
@@ -1100,6 +1051,10 @@ parameter_types! {
     pub const TreasuryPayoutPeriod: BlockNumber = 7 * DAYS;
     pub const TreasuryBurn: sp_runtime::Permill = sp_runtime::Permill::from_percent(0);
     pub const TreasuryMaxApprovals: u32 = 100;
+    /// 函数级详细中文注释：委员会托管账户 PalletId
+    /// - 用于接收供奉品审核罚没资金（拒绝或撤回时罚没5%押金）
+    /// - PalletId = "py/cmmte" 派生稳定的链上账户地址
+    pub const CommitteePalletId: frame_support::PalletId = frame_support::PalletId(*b"py/cmmte");
 }
 
 pub struct NativePaymaster;
@@ -1202,6 +1157,17 @@ pub struct TreasuryAccount;
 impl sp_core::Get<AccountId> for TreasuryAccount {
     fn get() -> AccountId {
         TreasuryPalletId::get().into_account_truncating()
+    }
+}
+
+/// 函数级详细中文注释：委员会账户解析器——由 Committee PalletId 派生稳定账户地址。
+/// - 用于接收供奉品审核罚没资金
+/// - 当用户提交的供奉品被拒绝或撤回时，5%的押金将罚没至此账户
+/// - 委员会可通过治理提案使用这些资金，用于激励审核工作或其他委员会运营
+pub struct CommitteeAccount;
+impl sp_core::Get<AccountId> for CommitteeAccount {
+    fn get() -> AccountId {
+        CommitteePalletId::get().into_account_truncating()
     }
 }
 // ===== pricing 配置 =====
@@ -1546,22 +1512,40 @@ parameter_types! {
     pub const MarketMakerRejectSlashBpsMax: u16 = 10_000;
     /// 函数级中文注释：最大交易对数量（预留）
     pub const MarketMakerMaxPairs: u32 = 10;
-    /// 函数级中文注释：首购资金池最小金额（10000 MEMO = 10,000 * UNIT）
-    pub const MarketMakerMinFirstPurchasePool: Balance = 10_000_000_000_000_000; // 10000 MEMO (10^16)
-    /// 函数级中文注释：每次首购转账金额（100 MEMO = 100 * UNIT）
-    pub const MarketMakerFirstPurchaseAmount: Balance = 100_000_000_000_000; // 100 MEMO (10^14)
-    /// 函数级中文注释：做市商 Pallet ID（用于派生首购资金池账户）
+    /// 函数级中文注释：做市商 Pallet ID
     pub const MarketMakerPalletId: frame_support::PalletId = frame_support::PalletId(*b"mm/pool!");
-    /// 函数级中文注释：资金池提取冷却期（7 天 = 604800 秒）
-    pub const MarketMakerWithdrawalCooldown: u32 = 604_800;
-    /// 函数级中文注释：最小保留资金池余额（1000 MEMO）
-    pub const MarketMakerMinPoolBalance: Balance = 1_000_000_000_000_000_000; // 1000 UNIT
+}
+
+/// 🆕 2025-10-23：做市商审核员列表（方案A - Phase 2）
+/// 
+/// # 设计说明
+/// - 审核员在做市商提交申请时自动收到通知（通过pallet-chat）
+/// - 审核员可以查看私密资料（private_cid）并联系做市商
+/// - 初始化为空列表，由治理后续添加专业审核员账户
+/// 
+/// # 配置方法（链启动后通过治理添加）
+/// 1. 运营者提交治理提案
+/// 2. 委员会投票通过
+/// 3. Root或委员会2/3多数执行 setStorage 添加审核员账户
+pub struct MarketMakerReviewerAccounts;
+impl sp_core::Get<Vec<AccountId>> for MarketMakerReviewerAccounts {
+    fn get() -> Vec<AccountId> {
+        // 初始化为空列表，由治理后续添加
+        // 示例格式（后续通过治理添加）：
+        // vec![
+        //     hex_literal::hex!("审核员1的SS58地址...").into(),
+        //     hex_literal::hex!("审核员2的SS58地址...").into(),
+        // ]
+        Vec::new()
+    }
 }
 
 impl pallet_market_maker::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type WeightInfo = ();
+    /// 🆕 2025-10-22：做市商信用接口（初始化信用记录）
+    type MakerCredit = pallet_maker_credit::Pallet<Runtime>;
     type MinDeposit = MarketMakerMinDeposit;
     type InfoWindow = MarketMakerInfoWindow;
     type ReviewWindow = MarketMakerReviewWindow;
@@ -1574,11 +1558,9 @@ impl pallet_market_maker::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
     >;
-    type MinFirstPurchasePool = MarketMakerMinFirstPurchasePool;
-    type FirstPurchaseAmount = MarketMakerFirstPurchaseAmount;
+    /// 🆕 2025-10-23：审核员账户列表（方案A - Phase 2）
+    type ReviewerAccounts = MarketMakerReviewerAccounts;
     type PalletId = MarketMakerPalletId;
-    type WithdrawalCooldown = MarketMakerWithdrawalCooldown;
-    type MinPoolBalance = MarketMakerMinPoolBalance;
     // 🆕 2025-10-19：溢价范围限制
     type MaxPremiumBps = frame_support::traits::ConstI16<500>;  // +5%
     type MinPremiumBps = frame_support::traits::ConstI16<-500>; // -5%
@@ -1700,6 +1682,8 @@ impl pallet_otc_order::Config for Runtime {
     type ConfirmTTL = OtcOrderConfirmTTL;
     /// 函数级中文注释：托管接口（用于订单锁定/释放/退款），对接 pallet-escrow
     type Escrow = pallet_escrow::Pallet<Runtime>;
+    /// 🆕 2025-10-22：做市商信用接口（订单完成和违约记录）
+    type MakerCredit = pallet_maker_credit::Pallet<Runtime>;
     /// 每块最多处理过期订单数
     type MaxExpiringPerBlock = frame_support::traits::ConstU32<200>;
     /// 吃单与标记支付的限频窗口与上限（示例：各 600 块窗口内最多 30 次/100 次）
@@ -1707,6 +1691,9 @@ impl pallet_otc_order::Config for Runtime {
     type OpenMaxInWindow = ConstU32<30>;
     type PaidWindow = ConstU32<600>;
     type PaidMaxInWindow = ConstU32<100>;
+    /// ✅ 2025-10-23：买家撤回窗口（P2优化）
+    /// 5分钟 = 300,000 毫秒
+    type CancelWindow = ConstU64<{ 5 * 60 * 1000 }>;
     /// 函数级中文注释：法币网关相关配置
     type FiatGatewayAccount = FiatGatewayAccount;
     type FiatGatewayTreasuryAccount = FiatGatewayTreasuryAccount;
@@ -1776,6 +1763,11 @@ impl pallet_arbitration::Config for Runtime {
 // 已移除：Karma 授权命名空间常量
 
 // ===== 仲裁域路由：把仲裁请求分发到对应业务 pallet（当前无业务接入） =====
+// 函数级中文注释：定义 OTC 订单命名空间（用于仲裁路由）
+parameter_types! {
+    pub const OtcOrderNsBytes: [u8; 8] = *b"otc_ord_";
+}
+
 pub struct ArbitrationRouter;
 /// 函数级中文注释：仲裁域路由器实现。转发到 OTC 订单 Pallet 上的校验与执行接口。
 impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRouter {
@@ -2003,16 +1995,12 @@ impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernan
 parameter_types! {
     /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
     pub const RefMaxHops: u32 = 10;
-    /// 函数级中文注释：每个推荐人最多可拥有的直接下级数量（反向索引容量上限）。
-    pub const RefMaxChildren: u32 = 100_000;
 }
 impl pallet_memo_referrals::Config for Runtime {
     /// 函数级中文注释：事件类型绑定到运行时事件。
     type RuntimeEvent = RuntimeEvent;
     /// 函数级中文注释：最大层级限制（防环遍历的边界）。
     type MaxHops = RefMaxHops;
-    /// 函数级中文注释：反向索引容量上限。
-    type MaxReferralsPerAccount = RefMaxChildren;
     /// 函数级中文注释：会员信息提供者（用于验证推荐码申请资格）
     /// - 用于 claim_default_code() 验证用户是否为有效会员
     /// - 由 pallet-membership 提供实现
@@ -2688,4 +2676,28 @@ impl pallet_fee_guard::AllowMarkingPolicy<AccountId> for DenyTreasuryAndPlatform
         who != &<TreasuryAccount as sp_core::Get<AccountId>>::get()
             && who != &<PlatformAccount as sp_core::Get<AccountId>>::get()
     }
+}
+
+// ========= Chat（去中心化聊天） =========
+/// 函数级中文注释：去中心化聊天功能配置
+impl pallet_chat::Config for Runtime {
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+    
+    /// 函数级中文注释：IPFS CID 最大长度（通常为46-59字节）
+    /// - CIDv0: 46字节（Qm开头）
+    /// - CIDv1: 约59字节（b开头）
+    /// - 设为128字节保证兼容未来扩展
+    type MaxCidLen = frame_support::traits::ConstU32<128>;
+    
+    /// 函数级中文注释：每个用户最多会话数（100个会话）
+    /// - 防止状态膨胀
+    /// - 一般用户足够使用
+    type MaxSessionsPerUser = frame_support::traits::ConstU32<100>;
+    
+    /// 函数级中文注释：每个会话最多保留消息数（最近1000条）
+    /// - 链上只保留最近的消息索引
+    /// - 历史消息通过IPFS查询
+    /// - 节省链上存储空间
+    type MaxMessagesPerSession = frame_support::traits::ConstU32<1000>;
 }

@@ -28,7 +28,12 @@
 **特点**：
 - 副本数：默认3副本
 - 存储价格：使用`DefaultStoragePrice`配置（1 MEMO/副本/月）
-- 失败容错：pin失败不阻塞业务操作，仅记录warning日志
+- 失败容错：pin失败不阻塞业务操作，发出链上事件通知
+
+**事件通知**：
+- `AutoPinSuccess(deceased_id, cid, pin_type)` - pin成功
+- `AutoPinFailed(deceased_id, cid, pin_type, error_code)` - pin失败
+  - error_code: 0=未知, 1=余额不足, 2=网络错误, 3=CID无效
 
 ### 3. 迁移策略（开发阶段）
 
@@ -80,10 +85,15 @@ impl pallet_deceased::Config for Runtime {
     - 令牌约束：上述字段变更会导致 `deceased_token` 重新生成（规则同上）；若新 token 与他人记录冲突，将拒绝更新并返回 `DeceasedTokenExists`，不会移除旧 token 或写入新 token。
     - 所有权：`owner` 为创建者且永久不可更换；任何试图变更所有者的行为将被拒绝（OwnerImmutable）。
 - remove_deceased(id)
-  - 已禁用：为合规与审计保全，逝者创建后不可删除；本调用将始终返回 `DeletionForbidden`。
-  - 替代方案：
-    1) 使用 `transfer_deceased(id, new_grave)` 将逝者迁移至新的 GRAVE；
-    2) 通过逝者关系功能，加入亲友团（族谱）以表示关联。
+  - ⚠️ **已永久禁用**：本函数**始终**返回 `DeletionForbidden` 错误，仅保留接口兼容性。
+  - 📜 **设计原则**：
+    - **合规要求**：逝者信息属于历史记录，删除可能违反数据保护法规
+    - **关系稳定**：删除逝者会破坏家族谱系（Relations）的完整性
+    - **审计追溯**：保留所有历史记录用于争议解决
+  - 🔄 **替代方案**（如需"移除"逝者，请使用）：
+    1) **迁移墓位**：`transfer_deceased(id, new_grave)` - 转移到私密墓位
+    2) **设置隐私**：`set_visibility(id, false)` - 设为不公开可见
+    3) **清空信息**：`update_deceased` - 清空敏感字段（保留关系结构）
 - transfer_deceased(id, new_grave)
 
 - set_visibility(id, public)
@@ -92,14 +102,18 @@ impl pallet_deceased::Config for Runtime {
 
 - set_main_image(id, cid)
   - 说明：设置/修改逝者主图（链下 CID，如 IPFS CID）。
-  - 权限：owner 可直接调用；非 owner 需 Root 治理来源。
+  - 权限：仅逝者owner；治理操作请使用 `gov_set_main_image`。
+  - 自动pin：自动调用IPFS pin服务，使用triple-charge机制扣费。
   - 校验：仅长度校验，使用 `TokenLimit` 限长；不做 URI 语义校验。
-  - 事件：`MainImageUpdated(id, true)`。
+  - 事件：
+    - `MainImageUpdated(id, operator, true)` - 包含操作者信息
+    - `AutoPinSuccess(id, cid, pin_type)` - pin成功
+    - `AutoPinFailed(id, cid, pin_type, error_code)` - pin失败（包含错误码）
 
 - clear_main_image(id)
   - 说明：清空逝者主图。
-  - 权限：owner 或 Root。
-  - 事件：`MainImageUpdated(id, false)`。
+  - 权限：仅逝者owner；治理操作请使用 `gov_set_main_image`。
+  - 事件：`MainImageUpdated(id, operator, false)` - 包含操作者信息
 
 权限：
 - 创建/迁移：`GraveProvider::can_attach(who, grave_id)`。
@@ -142,16 +156,21 @@ impl pallet_deceased::Config for Runtime {
 - 相关事件：沿用 `DeceasedUpdated(id)`；前端/索引可据此读取最新版本并查询历史。
 
 ## 逝者↔逝者关系（族谱）
-- 存储：
-  - `Relations: (from, to) -> { kind: u8, note: BoundedVec<u8>, created_by, since }`
-  - `RelationsByDeceased: deceased -> BoundedVec<(peer, kind)>`
-  - `PendingRelationRequests: (from, to) -> (kind, requester, note, created)`
-- Extrinsics：
-  - `propose_relation(from, to, kind, note?)`（A方管理员）
-  - `approve_relation(from, to)` / `reject_relation(from, to)`（B方管理员）
-  - `revoke_relation(from, to)`（任一方管理员）
-  - `update_relation_note(from, to, note?)`
-- 事件：RelationProposed/Approved/Rejected/Revoked/Updated
+
+### 存储
+- `Relations: (from, to) -> { kind: u8, note: BoundedVec<u8>, created_by, since }`
+- `RelationsByDeceased: deceased -> BoundedVec<(peer, kind)>`
+- `PendingRelationRequests: (from, to) -> (kind, requester, note, created)`
+
+### Extrinsics
+- `propose_relation(from, to, kind, note?)`（A方管理员）
+- `approve_relation(from, to)` / `reject_relation(from, to)`（B方管理员）
+- `cancel_relation_proposal(from, to)` ✨新增（A方管理员，撤回自己的提案）
+- `revoke_relation(from, to)`（任一方管理员）
+- `update_relation_note(from, to, note?)`
+
+### 事件
+- RelationProposed/Approved/Rejected/Cancelled/Revoked/Updated
 
 ### 关系规范与迁移
 - 方向：0=ParentOf（有向），1=SpouseOf（无向），2=SiblingOf（无向），3=ChildOf（有向）。
@@ -160,23 +179,155 @@ impl pallet_deceased::Config for Runtime {
 - 去重：主记录与 Pending 均做无向对称去重与冲突校验。
 - 迁移：StorageVersion=1（`on_runtime_upgrade` 写入版本），为后续状态机与押金/TTL 迁移预留。
 
+---
+
+## 关系功能权限说明
+
+### 提案流程
+
+1. **发起提案**：`propose_relation(from, to, kind, note)`
+   - 权限：`from` 对应逝者所在墓位的管理员
+   - 含义：`from` 向 `to` 提出关系声明
+   - 存储：提案存储在 `PendingRelationRequests(from, to)`
+
+2. **批准提案**：`approve_relation(from, to)`
+   - 权限：`to` 对应逝者所在墓位的管理员（⚠️ 注意不是 `from`）
+   - 含义：`to` 方同意 `from` 发起的提案
+   - 存储：关系存储在 `Relations(canonical(from, to))`
+
+3. **拒绝提案**：`reject_relation(from, to)`
+   - 权限：`to` 对应逝者所在墓位的管理员
+   - 含义：`to` 方拒绝 `from` 发起的提案
+   - 存储：移除 `PendingRelationRequests(from, to)`
+
+4. **撤回提案** ✨新增：`cancel_relation_proposal(from, to)`
+   - 权限：`from` 对应逝者所在墓位的管理员（⚠️ 仅发起方）
+   - 含义：`from` 方主动撤回自己发起的提案
+   - 存储：移除 `PendingRelationRequests(from, to)`
+   - 场景：发现错误、改变主意、对方长时间未响应
+
+5. **撤销关系**：`revoke_relation(from, to)`
+   - 权限：`from` **或** `to` 任一方的墓位管理员
+   - 含义：单方面解除已建立的关系
+   - 存储：移除 `Relations` 和双方的 `RelationsByDeceased` 索引
+
+### 参数语义说明
+
+⚠️ **重要**：`approve_relation` 和 `reject_relation` 中的 `from`/`to` 参数是**提案的标识符**，而非操作的方向。
+
+- `from`：提案发起方的逝者ID（不是当前调用者）
+- `to`：提案接收方的逝者ID（必须是当前调用者有权管理的逝者）
+
+### 权限矩阵
+
+| 操作 | 谁可以调用 | 参数中的角色 |
+|------|-----------|-------------|
+| `propose_relation(from, to, ...)` | `from` 的墓位管理员 | 我是 `from` |
+| `approve_relation(from, to)` | `to` 的墓位管理员 | 我是 `to`，对方是 `from` |
+| `reject_relation(from, to)` | `to` 的墓位管理员 | 我是 `to`，对方是 `from` |
+| `cancel_relation_proposal(from, to)` ✨新增 | `from` 的墓位管理员 | 我是 `from`，撤回我的提案 |
+| `revoke_relation(from, to)` | `from` 或 `to` 的墓位管理员 | 我是其中一方（参数顺序任意）|
+
+### 前端调用示例
+
+```typescript
+// 场景：张三（deceased_id=100）想声明与李四（deceased_id=200）是配偶关系
+
+// Step 1: 张三的管理员发起提案
+await api.tx.deceased.proposeRelation(
+  100,  // from: 张三的ID
+  200,  // to: 李四的ID
+  1,    // kind: SpouseOf
+  null  // note: 无备注
+).signAndSend(张三管理员账户);
+
+// Step 2: 李四的管理员批准提案
+await api.tx.deceased.approveRelation(
+  100,  // from: 提案发起方（张三）
+  200   // to: 提案接收方（李四，也就是我管理的逝者）
+).signAndSend(李四管理员账户);
+
+// ❌ 常见错误：张三管理员调用 approve_relation
+await api.tx.deceased.approveRelation(100, 200)
+  .signAndSend(张三管理员账户);
+// 结果：NotProposalResponder 错误，因为只有李四的管理员可以批准
+
+// ✨ 新增：张三发现发错了，主动撤回提案
+await api.tx.deceased.cancelRelationProposal(
+  100,  // from: 张三（我的逝者）
+  200   // to: 李四（对方）
+).signAndSend(张三管理员账户);
+// 结果：提案被撤回，可以重新发起
+
+// Step 3: 关系建立后，任何一方都可以单方面撤销
+await api.tx.deceased.revokeRelation(
+  100,  // 参数顺序可任意
+  200
+).signAndSend(张三管理员账户或李四管理员账户);
+```
+
+### 错误处理
+
+| 错误类型 | 触发场景 | 解释 |
+|---------|---------|------|
+| `NotProposalResponder` | `approve/reject` 时调用者不是 `to` 方管理员 | 只有提案接收方可批准/拒绝 |
+| `NotAuthorized` | 调用者无权操作相关逝者 | 一般权限错误 |
+| `RelationExists` | 关系已存在 | 避免重复建立 |
+| `RelationNotFound` | 提案或关系不存在 | 可能已被处理或从未建立 |
+| `BadRelationKind` | 关系类型冲突 | 如父母关系与配偶关系互斥 |
+| `PendingApproval` | 提案待审批 | 无向关系的反向提案已存在 |
+
+### 功能限制
+
+- ⚠️ **单方面撤销关系**：关系建立后，任何一方都可以单方面解除，无需对方同意
+- ⚠️ **有向关系强制双向审批**：即使是父母声明子女关系，也需要子女方管理员批准
+
+### 未来优化方向
+
+1. ✅ **撤回提案功能**：`cancel_relation_proposal(from, to)` 已实现，允许发起方主动撤回
+2. **考虑单方面声明模式**：对有向关系（ParentOf/ChildOf）支持单方面声明，无需批准
+3. **引入争议机制**：允许被声明方发起争议，由治理委员会审核处理
+
 ## 亲友团（Friends）
 
 - 存储：
   - `FriendPolicyOf: DeceasedId -> { require_approval, is_private, max_members }`
-  - `FriendsOf: (DeceasedId, AccountId) -> { role: Member|Core|Admin, since, note }`
+  - `FriendsOf: (DeceasedId, AccountId) -> { role: Member|Core, since, note }` ✨简化（删除 Admin 角色）
   - `FriendCount: DeceasedId -> u32`
   - `FriendJoinRequests: DeceasedId -> BoundedVec<(AccountId, BlockNumber), MaxPending>`
 - Extrinsics：
-  - `set_friend_policy(deceased_id, require_approval, is_private, max_members)`（Admin/owner）
+  - `set_friend_policy(deceased_id, require_approval, is_private, max_members)` ✨更新（仅 owner）
   - `request_join(deceased_id, note?)`（若无需审批则直接入团）
-  - `approve_join(deceased_id, who)` / `reject_join(deceased_id, who)`（Admin）
-  - `leave_friend_group(deceased_id)`（成员自愿退出）
-  - `kick_friend(deceased_id, who)`（Admin）
-  - `set_friend_role(deceased_id, who, role)`（Admin；owner 恒视为 Admin）
+  - `approve_join(deceased_id, who)` / `reject_join(deceased_id, who)` ✨更新（仅 owner）
+  - `leave_friend_group(deceased_id)` ✨简化（任何成员可自由退出）
+  - `kick_friend(deceased_id, who)` ✨简化（owner 可移除任何成员）
+  - `set_friend_role(deceased_id, who, role)` ✨简化（仅 owner；仅支持 Member/Core）
 - 说明：
   - 亲友团以逝者为主体；墓位不再承载关注/亲友能力（见 `pallet-memo-grave` 方案B）。
-  - `is_private=true` 时，成员明细仅 Admin 可见；对外仅暴露 `FriendCount`。
+  - `is_private=true` 时，成员明细仅 owner 可见；对外仅暴露 `FriendCount`。
+
+### 权限模型 ✨简化设计
+
+**唯一管理者**：
+- **owner** 是逝者的**唯一管理者**（通过 `DeceasedOf.owner` 字段）
+- owner 的管理权限**不依赖**于亲友团角色
+- owner 即使**不在**亲友团中，依然拥有完整管理权限
+
+**亲友团角色**：
+- ✅ **Member (0)**：普通成员，可查看公开资料、关注逝者
+- ✅ **Core (1)**：核心成员，标识亲密关系（未来可扩展特殊权限）
+- ❌ **Admin 已删除**：避免权限争夺、简化设计
+
+**退出与移除规则**：
+- ✅ **任何成员可以自由退出**（包括 owner）
+- ✅ **owner 可以移除任何成员**（包括自己）
+- ✅ owner 退出/被移除后，依然保留管理权限
+
+**设计理念**：
+- ✅ **简化设计**：删除 Admin 角色，避免复杂的权限管理
+- ✅ **责任明确**：owner 是唯一管理者，无需授权
+- ✅ **避免冲突**：无多人管理，无权限争夺
+- ✅ **亲友团是可选的**：owner 可以自由选择是否参与社交
 
 ### 迁移
 - StorageVersion = 4：引入亲友团存储，默认空；原有数据不受影响。
@@ -206,7 +357,7 @@ impl pallet_deceased::Config for Runtime {
 
 - `gov_transfer_deceased(id, new_grave, evidence_cid)`
   - 功能：治理迁移逝者到新墓位（不改 owner）。
-  - 校验：新墓位存在与软上限；写入/移除 grave 下索引；事件 `DeceasedTransferred(id, from, to)`。
+  - 校验：新墓位存在与容量上限（6个）；写入/移除 grave 下索引；事件 `DeceasedTransferred(id, from, to)`。
 
 - `gov_set_visibility(id, public, evidence_cid)`
   - 功能：治理设置可见性（不要求 owner/Admin）。
