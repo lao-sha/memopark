@@ -42,9 +42,11 @@ use sp_core::Get;
 use sp_runtime::{traits::AccountIdConversion, traits::One, Perbill};
 use sp_version::RuntimeVersion;
 // ===== memo-content-governance 运行时配置（占位骨架） =====
-impl pallet_memo_content_governance::Config for Runtime {
+impl pallet_memo_appeals::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
+    /// Phase 2: 押金管理器（使用pallet-deposits）
+    type DepositManager = pallet_deposits::Pallet<Runtime>;
     /// 申诉押金（示例：0.01 UNIT）
     type AppealDeposit = frame_support::traits::ConstU128<10_000_000_000>;
     /// 驳回罚没 30% 入国库
@@ -77,7 +79,7 @@ impl pallet_memo_content_governance::Config for Runtime {
     /// 函数级中文注释：动态押金策略实现：按 domain/action 给出基准押金倍数；没有匹配则回退固定押金。
     type AppealDepositPolicy = ContentAppealDepositPolicy;
     /// 权重实现（占位）
-    type WeightInfo = pallet_memo_content_governance::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = pallet_memo_appeals::weights::SubstrateWeight<Runtime>;
     /// 函数级中文注释：最近活跃度提供者（用于"应答自动否决"判断）。
     type LastActiveProvider = ContentLastActiveProvider;
     /// 函数级中文注释：CID 最小长度默认值（示例：10字节）。
@@ -86,46 +88,87 @@ impl pallet_memo_content_governance::Config for Runtime {
     type MinReasonCidLen = frame_support::traits::ConstU32<8>;
 }
 
-/// 函数级中文注释：内容治理申诉的动态押金策略实现。
-/// - 规则示例（可后续治理升级）：
-///   - 逝者媒体域(4)：替换 URI(31)/冻结视频集(32) → 2× 基准；隐藏媒体(30) → 1× 基准
-///   - 逝者文本域(3)：删除类(20/21) → 1.5× 基准；编辑类(22/23) → 1× 基准
-///   - 逝者档案域(2)：主图/可见性调整(1/2/3) → 1× 基准
-///   - 其他 → None（回退固定押金）
+/// 函数级中文注释：内容治理申诉的动态押金策略实现（USD锚定版本）
+/// 
+/// ## 核心逻辑
+/// 1. 基础押金金额：$10 USD（固定）
+/// 2. 从 pallet-pricing 获取MEMO/USDT实时市场价格
+/// 3. 计算押金MEMO数量 = $10 / (MEMO价格 in USDT)
+/// 4. 根据 domain/action 应用倍数（1x, 1.5x, 2x）
+/// 
+/// ## 价格安全机制
+/// - 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/MEMO）
+/// - 最高押金上限：单次押金不超过 100,000 MEMO（防止价格异常导致押金过高）
+/// - 最低押金下限：单次押金不少于 1 MEMO（保证押金有意义）
+/// 
+/// ## 倍数规则（可后续治理升级）
+/// - 逝者媒体域(4)：替换 URI(31)/冻结视频集(32) → 2× 基准；隐藏媒体(30) → 1× 基准
+/// - 逝者文本域(3)：删除类(20/21) → 1.5× 基准；编辑类(22/23) → 1× 基准
+/// - 逝者档案域(2)：主图/可见性调整(1/2/3) → 1× 基准；治理转移拥有者(4) → 1.5× 基准
+/// - 其他 → None（回退到固定押金）
 pub struct ContentAppealDepositPolicy;
-impl pallet_memo_content_governance::AppealDepositPolicy for ContentAppealDepositPolicy {
+impl pallet_memo_appeals::AppealDepositPolicy for ContentAppealDepositPolicy {
     type AccountId = AccountId;
     type Balance = Balance;
     type BlockNumber = BlockNumber;
+    
     fn calc_deposit(
         _who: &Self::AccountId,
         domain: u8,
         _target: u64,
         action: u8,
     ) -> Option<Self::Balance> {
-        use frame_support::traits::Get as _;
-        let base: Balance =
-            <Runtime as pallet_memo_content_governance::pallet::Config>::AppealDeposit::get();
+        // 1. 获取MEMO/USDT市场价格（精度 10^6，即 1,000,000 = 1 USDT）
+        let memo_price_usdt = pallet_pricing::Pallet::<Runtime>::get_memo_market_price_weighted();
+        
+        // 2. 价格安全检查：如果价格为0或过低，使用默认最低价格
+        let safe_price = if memo_price_usdt == 0 || memo_price_usdt < 1 {
+            1u64 // 0.000001 USDT/MEMO（最低保护价格）
+        } else {
+            memo_price_usdt
+        };
+        
+        // 3. 计算$10 USD等价的MEMO数量
+        // $10 USD = 10,000,000（精度 10^6）
+        // MEMO数量 = $10 / (MEMO价格 in USDT) = 10,000,000 / safe_price
+        // 结果需要转换为MEMO精度（10^12）
+        const TEN_USD: u128 = 10_000_000u128; // $10 in USDT (precision 10^6)
+        const MEMO_PRECISION: u128 = 1_000_000_000_000u128; // 10^12
+        
+        let base_deposit_memo = TEN_USD
+            .saturating_mul(MEMO_PRECISION)
+            .checked_div(safe_price as u128)
+            .unwrap_or(1 * MEMO_PRECISION); // 默认1 MEMO
+        
+        // 4. 根据 domain/action 确定倍数（以万分比表示）
         let mult_bp: u16 = match (domain, action) {
             (4, 31) | (4, 32) => 20000, // 2.0x
             (4, 30) => 10000,           // 1.0x
             (3, 20) | (3, 21) => 15000, // 1.5x
             (3, 22) | (3, 23) => 10000, // 1.0x
-            (2, 1) | (2, 2) | (2, 3) => 10000,
-            (2, 4) => 15000, // 治理转移拥有者 ≥1.5x 基准
-            _ => return None,
+            (2, 1) | (2, 2) | (2, 3) => 10000, // 1.0x
+            (2, 4) => 15000, // 治理转移拥有者 1.5x
+            _ => return None, // 不支持的域/操作，回退到固定押金
         };
-        // 以万分比计算：base * mult_bp / 10000
+        
+        // 5. 应用倍数：final_deposit = base_deposit * (mult_bp / 10000)
         let mult = sp_runtime::Perbill::from_parts((mult_bp as u32) * 100); // 100bp = 1%
-        let dep = mult.mul_floor(base);
-        Some(dep)
+        let final_deposit = mult.mul_floor(base_deposit_memo);
+        
+        // 6. 安全限制
+        const MAX_DEPOSIT: Balance = 100_000 * MEMO_PRECISION; // 最高 100,000 MEMO
+        const MIN_DEPOSIT: Balance = 1 * MEMO_PRECISION; // 最低 1 MEMO
+        
+        let safe_deposit = final_deposit.clamp(MIN_DEPOSIT, MAX_DEPOSIT);
+        
+        Some(safe_deposit)
     }
 }
 
 /// 函数级详细中文注释：内容治理最近活跃度提供者实现。
 /// - 仅对 2=deceased 域返回最近活跃块高：读取 `pallet-deceased::LastActiveOf`；其他域返回 None。
 pub struct ContentLastActiveProvider;
-impl pallet_memo_content_governance::LastActiveProvider for ContentLastActiveProvider {
+impl pallet_memo_appeals::LastActiveProvider for ContentLastActiveProvider {
     type BlockNumber = BlockNumber;
     fn last_active_of(domain: u8, target: u64) -> Option<Self::BlockNumber> {
         match domain {
@@ -531,10 +574,14 @@ impl pallet_memo_grave::Config for Runtime {
 
 // ===== deceased 配置 =====
 parameter_types! {
-    pub const DeceasedMaxPerGrave: u32 = 6;  // 每墓位最多6个逝者（业务上限）
     pub const DeceasedStringLimit: u32 = 256;
     pub const DeceasedMaxLinks: u32 = 8;
-    // 删除软上限配置：直接使用硬上限6，由BoundedVec自动管理
+    
+    // ✅ 墓位容量无限制说明
+    // - **已删除**：DeceasedMaxPerGrave（原6人硬上限）
+    // - **改为**：Vec 无容量限制，支持家族墓、纪念墓
+    // - **保护**：经济成本（每人约10 MEMO）天然防止恶意填充
+    // - **性能**：前端分页加载，1000人墓位仅8KB Storage
 }
 
 /// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
@@ -567,6 +614,108 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             false
         }
     }
+    
+    /// 函数级详细中文注释：记录安葬操作（Phase 1.5新增）
+    /// 
+    /// ### 功能
+    /// - 调用grave pallet的内部函数同步Interments
+    /// - 解决P0问题：Interments与DeceasedByGrave不同步
+    /// 
+    /// ### 调用链
+    /// deceased::create_deceased → GraveInspector::record_interment → grave::do_inter_internal
+    /// deceased::transfer_deceased → GraveInspector::record_interment → grave::do_inter_internal
+    /// 
+    /// ### 参数
+    /// - `grave_id`: 墓位ID
+    /// - `deceased_id`: 逝者ID（u64）
+    /// - `slot`: 槽位（可选）
+    /// - `note_cid`: 备注CID（可选）
+    fn record_interment(
+        grave_id: u64,
+        deceased_id: u64,
+        slot: Option<u16>,
+        note_cid: Option<Vec<u8>>,
+    ) -> Result<(), sp_runtime::DispatchError> {
+        // 转换note_cid为BoundedVec
+        use frame_support::BoundedVec;
+        let note_cid_bounded: Option<BoundedVec<u8, GraveMaxCidLen>> = 
+            match note_cid {
+                Some(v) => Some(
+                    BoundedVec::try_from(v)
+                        .map_err(|_| sp_runtime::DispatchError::Other("CID too long"))?
+                ),
+                None => None,
+            };
+        
+        // 调用grave pallet的内部函数
+        pallet_memo_grave::pallet::Pallet::<Runtime>::do_inter_internal(
+            grave_id,
+            deceased_id,
+            slot,
+            note_cid_bounded,
+        )
+    }
+    
+    /// 函数级详细中文注释：记录起掘操作（Phase 1.5新增）
+    /// 
+    /// ### 功能
+    /// - 调用grave pallet的内部函数同步Interments
+    /// - 解决P0问题：Interments与DeceasedByGrave不同步
+    /// 
+    /// ### 调用链
+    /// deceased::transfer_deceased → GraveInspector::record_exhumation → grave::do_exhume_internal
+    /// 
+    /// ### 参数
+    /// - `grave_id`: 墓位ID
+    /// - `deceased_id`: 逝者ID（u64）
+    fn record_exhumation(
+        grave_id: u64,
+        deceased_id: u64,
+    ) -> Result<(), sp_runtime::DispatchError> {
+        // 调用grave pallet的内部函数
+        pallet_memo_grave::pallet::Pallet::<Runtime>::do_exhume_internal(
+            grave_id,
+            deceased_id,
+        )
+    }
+    
+    /// 函数级详细中文注释：检查墓位准入策略（Phase 1.5新增 - 解决P0问题2）
+    /// 
+    /// ### 功能
+    /// - 检查调用者是否有权限将逝者迁入目标墓位
+    /// - 调用grave pallet的check_admission_policy方法
+    /// - 解决P0问题：逝者强行挤入私人墓位
+    /// 
+    /// ### 调用链
+    /// deceased::transfer_deceased → GraveInspector::check_admission_policy → grave::check_admission_policy
+    /// 
+    /// ### 参数
+    /// - `who`: 调用者账户（逝者owner）
+    /// - `grave_id`: 目标墓位ID
+    /// 
+    /// ### 策略逻辑
+    /// - **OwnerOnly（默认）**：仅墓主可以迁入
+    /// - **Public**：任何人都可以迁入
+    /// - **Whitelist**：仅白名单可以迁入
+    /// 
+    /// ### 返回值
+    /// - `Ok(())`: 允许迁入
+    /// - `Err(AdmissionDenied)`: 拒绝迁入
+    /// - `Err(NotFound)`: 墓位不存在
+    /// 
+    /// ### 设计理念
+    /// - 平衡需求3（逝者自由迁移）与墓主控制权
+    /// - 墓主可以设置准入策略保护墓位
+    /// - 逝者owner在策略允许范围内自由迁移
+    fn check_admission_policy(
+        who: &AccountId,
+        grave_id: u64,
+    ) -> Result<(), sp_runtime::DispatchError> {
+        // 调用grave pallet的公共方法
+        pallet_memo_grave::pallet::Pallet::<Runtime>::check_admission_policy(who, grave_id)
+            .map_err(|e| e.into())
+    }
+    
     // 删除cached_deceased_tokens_len：无需冗余缓存检查，直接由BoundedVec管理容量
 }
 
@@ -600,10 +749,9 @@ impl pallet_deceased::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
     type GraveId = u64;
-    type MaxDeceasedPerGrave = DeceasedMaxPerGrave;  // 硬上限6（业务上限）
+    // ✅ 已删除 MaxDeceasedPerGrave：墓位容量无限制
     type StringLimit = DeceasedStringLimit;
     type MaxLinks = DeceasedMaxLinks;
-    // 删除软上限配置：直接使用硬上限，由BoundedVec自动管理
     type TokenLimit = GraveMaxCidLen;
     type GraveProvider = GraveProviderAdapter;
     type WeightInfo = ();
@@ -1544,8 +1692,6 @@ impl pallet_market_maker::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type WeightInfo = ();
-    /// 🆕 2025-10-22：做市商信用接口（初始化信用记录）
-    type MakerCredit = pallet_maker_credit::Pallet<Runtime>;
     type MinDeposit = MarketMakerMinDeposit;
     type InfoWindow = MarketMakerInfoWindow;
     type ReviewWindow = MarketMakerReviewWindow;
@@ -1564,6 +1710,10 @@ impl pallet_market_maker::Config for Runtime {
     // 🆕 2025-10-19：溢价范围限制
     type MaxPremiumBps = frame_support::traits::ConstI16<500>;  // +5%
     type MinPremiumBps = frame_support::traits::ConstI16<-500>; // -5%
+    // 🆕 资金池提取冷却期（7天）
+    type WithdrawalCooldown = frame_support::traits::ConstU32<604800>;
+    // 🆕 最小保留资金池余额（1000 MEMO）
+    type MinPoolBalance = frame_support::traits::ConstU128<{ 1000 * 1_000_000_000_000 }>;
 }
 
 // ===== KYC 适配器（基于 pallet-identity 的 judgement） =====
@@ -1816,7 +1966,7 @@ pub struct ContentGovernanceRouter;
 /// - 根据 (domain, action) 将调用分发到相应 pallet 的 gov*/force* 接口；
 /// - MVP：先覆盖常见内容域（grave/deceased/deceased-text/deceased-media/offerings/park）；
 /// - 安全：仅在 memo-content-governance Pallet 审批通过后由 Hooks 调用，无需二次权限判断。
-impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernanceRouter {
+impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
     fn execute(
         _who: &AccountId,
         domain: u8,
@@ -1886,7 +2036,7 @@ impl pallet_memo_content_governance::AppealRouter<AccountId> for ContentGovernan
             // 2=deceased：4=治理转移拥有者
             (2, 4) => {
                 // 运行时通过治理 Pallet 的只读接口查找 new_owner
-                if let Some((_id, new_owner)) = pallet_memo_content_governance::pallet::Pallet::<
+                if let Some((_id, new_owner)) = pallet_memo_appeals::pallet::Pallet::<
                     Runtime,
                 >::find_owner_transfer_params(target)
                 {
@@ -2032,9 +2182,28 @@ impl pallet_memo_ipfs::Config for Runtime {
     /// - 与 OTC 托管、联盟计酬托管完全隔离，各司其职
     /// - 未来可扩展到墓地(domain=2)、陵园(domain=3)等其他业务域
     type SubjectPalletId = SubjectPalletId;
-    /// 函数级中文注释：绑定逝者域常量（domain=1），用于 (domain, subject_id) 稳定派生。
+    /// 函数级中文注释：绑定逝者域常量（domain=1），用于 (domain, creator, deceased_id) 稳定派生。
     type DeceasedDomain = ConstU8<1>;
-    /// 函数级中文注释：OwnerProvider 适配器，将 subject_id→owner 从 pallet-deceased 读取
+    /// 函数级详细中文注释：CreatorProvider适配器（从pallet-deceased读取creator字段）
+    /// 
+    /// ### 功能
+    /// - 从pallet-deceased读取creator（创建者）
+    /// - 用于SubjectFunding账户派生
+    /// 
+    /// ### 设计理念
+    /// - creator不可变，确保地址稳定
+    /// - 与owner解耦，支持owner转让
+    type CreatorProvider = DeceasedCreatorAdapter;
+    
+    /// 函数级详细中文注释：OwnerProvider适配器（从pallet-deceased读取owner字段）
+    /// 
+    /// ### 功能
+    /// - 从pallet-deceased读取owner（当前所有者）
+    /// - 用于权限检查
+    /// 
+    /// ### 设计理念
+    /// - owner可转让，支持所有权转移
+    /// - 与creator分离，creator用于派生地址，owner用于权限检查
     type OwnerProvider = DeceasedOwnerAdapter;
     
     // ⭐ 新增：双重扣款配置
@@ -2053,14 +2222,91 @@ impl pallet_memo_ipfs::Config for Runtime {
     
     /// 函数级中文注释：配额重置周期（28 天）
     type QuotaResetPeriod = QuotaResetPeriod;
+    
+    /// 函数级详细中文注释：默认扣费周期（7 天）✅ 新增
+    /// 
+    /// ### 说明
+    /// - 周期性扣费的间隔时间
+    /// - 默认：100,800 区块 ≈ 7天（假设6秒/块）
+    /// - 用于on_finalize自动扣费调度
+    /// - 可通过治理动态调整
+    /// 
+    /// ### 计算公式
+    /// 块数 = 天数 × 24 × 60 × 60 ÷ 6 = 天数 × 14400
+    /// - 1天 = 14,400块
+    /// - 7天 = 100,800块
+    /// - 28天 = 403,200块
+    type DefaultBillingPeriod = DefaultBillingPeriod;
 }
 
-/// 函数级详细中文注释：逝者 owner 只读适配器
+/// 函数级详细中文注释：逝者creator只读适配器
+/// 
+/// ### 功能
+/// - 从pallet-deceased读取creator字段
+/// - 用于SubjectFunding账户派生
+/// 
+/// ### 设计理念
+/// - **creator不可变**：创建时设置，永不改变
+/// - **地址稳定**：不受owner转让影响
+/// - **低耦合**：通过trait解耦，不直接依赖pallet-deceased
+/// 
+/// ### 实现细节
+/// - 从DeceasedOf storage读取deceased信息
+/// - 返回creator字段
+/// - 如果deceased不存在返回None
+pub struct DeceasedCreatorAdapter;
+impl pallet_memo_ipfs::CreatorProvider<AccountId> for DeceasedCreatorAdapter {
+    /// 函数级详细中文注释：从pallet-deceased读取creator字段
+    /// 
+    /// ### 参数
+    /// - `deceased_id`: 逝者ID
+    /// 
+    /// ### 返回
+    /// - `Some(creator)`: 逝者存在，返回创建者账户
+    /// - `None`: 逝者不存在
+    /// 
+    /// ### 注意
+    /// - creator是不可变的，创建时设置后永不改变
+    /// - 与owner不同，owner可以被转让
+    fn creator_of(deceased_id: u64) -> Option<AccountId> {
+        use pallet_deceased::pallet::DeceasedOf as DMap;
+        DMap::<Runtime>::get(deceased_id).map(|d| d.creator)
+    }
+}
+
+/// 函数级详细中文注释：逝者owner只读适配器
+/// 
+/// ### 功能
+/// - 从pallet-deceased读取owner字段
+/// - 用于权限检查
+/// 
+/// ### 设计理念
+/// - **owner可转让**：支持所有权转移
+/// - **权限控制**：用于检查操作权限
+/// - **与creator分离**：creator用于派生地址，owner用于权限检查
+/// - **低耦合**：通过trait解耦，不直接依赖pallet-deceased
+/// 
+/// ### 实现细节
+/// - 从DeceasedOf storage读取deceased信息
+/// - 返回owner字段
+/// - 如果deceased不存在返回None
 pub struct DeceasedOwnerAdapter;
 impl pallet_memo_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
-    fn owner_of(subject_id: u64) -> Option<AccountId> {
+    /// 函数级详细中文注释：从pallet-deceased读取owner字段
+    /// 
+    /// ### 参数
+    /// - `deceased_id`: 逝者ID
+    /// 
+    /// ### 返回
+    /// - `Some(owner)`: 逝者存在，返回当前所有者账户
+    /// - `None`: 逝者不存在
+    /// 
+    /// ### 注意
+    /// - owner可以被转让，与creator不同
+    /// - 用于权限检查，不用于资金账户派生
+    fn owner_of(deceased_id: u64) -> Option<AccountId> {
         use pallet_deceased::pallet::DeceasedOf as DMap;
-        DMap::<Runtime>::get(subject_id).map(|d| d.owner)
+        DMap::<Runtime>::get(deceased_id).map(|d| d.owner)
     }
 }
 
@@ -2226,6 +2472,24 @@ parameter_types! {
     /// - 100,800 区块/周 × 4 = 403,200 区块 ≈ 28 天
     /// - 配额每月自动重置
     pub const QuotaResetPeriod: BlockNumber = 100_800 * 4;
+    
+    /// 函数级详细中文注释：默认扣费周期 ✅ 新增
+    /// 
+    /// ### 说明
+    /// - 周期性扣费的间隔时间
+    /// - 默认：100,800 区块 ≈ 7天（6秒/块）
+    /// - 用于on_finalize自动扣费调度
+    /// 
+    /// ### 计算依据
+    /// - 6秒/块 × 100,800 = 604,800秒 = 7天
+    /// - 1天 = 14,400块（24 × 60 × 60 ÷ 6）
+    /// - 1周 = 100,800块（7 × 14,400）
+    /// 
+    /// ### 调整建议
+    /// - 测试网：可设为14,400块（1天）以加快测试
+    /// - 生产网：推荐100,800块（7天），平衡用户体验和系统开销
+    /// - 长周期：可设为403,200块（28天），但宽限期需相应延长
+    pub const DefaultBillingPeriod: BlockNumber = 100_800;
 }
 
 /// 函数级中文注释：运营者托管账户
@@ -2447,6 +2711,22 @@ impl pallet_affiliate_instant::MembershipProvider<AccountId> for InstantMembersh
     fn get_member_generations(who: &AccountId) -> Option<u8> {
         pallet_membership::Pallet::<Runtime>::get_member_generations(who)
     }
+    
+    /// 函数级详细中文注释：获取会员等级（1-4，对应V1-V4）
+    /// - 调用 pallet-membership 获取会员等级
+    /// - 用于分红系统验证会员级别
+    fn get_member_level(_who: &AccountId) -> Option<u8> {
+        // 暂时返回None，待实现
+        None
+    }
+    
+    /// 函数级详细中文注释：获取团队规模（推荐人数）
+    /// - 获取用户的直推+间推总人数
+    /// - 用于团队统计和排名
+    fn get_team_size(_who: &AccountId) -> u32 {
+        // 暂时返回0，待实现
+        0
+    }
 }
 
 /// 函数级中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-config 的 ReferralProvider trait
@@ -2653,30 +2933,12 @@ pub fn initialize_offering_routes() {
     pallet_memo_offerings::RouteTableGlobal::<Runtime>::put(bounded_routes);
 }
 
-// ========= FeeGuard（仅手续费账户保护） =========
-impl pallet_fee_guard::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    /// 函数级中文注释：管理员起源采用 Root | 委员会阈值(2/3)。
-    type AdminOrigin = frame_support::traits::EitherOfDiverse<
-        frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
-    >;
-    /// 函数级中文注释：允许标记策略——拒绝国库与平台账户，其余放行。
-    type AllowMarking = DenyTreasuryAndPlatform;
-    /// 函数级中文注释：权重实现（占位）。
-    type WeightInfo = ();
-}
-
-/// 函数级中文注释：默认允许标记的策略实现，始终返回 true。
-pub struct DenyTreasuryAndPlatform;
-impl pallet_fee_guard::AllowMarkingPolicy<AccountId> for DenyTreasuryAndPlatform {
-    /// 返回 false 表示禁止标记（国库/平台账户）；其余返回 true。
-    fn allow(who: &AccountId) -> bool {
-        who != &<TreasuryAccount as sp_core::Get<AccountId>>::get()
-            && who != &<PlatformAccount as sp_core::Get<AccountId>>::get()
-    }
-}
+// ========= FeeGuard（已移除 - 使用官方 pallet-proxy 纯代理替代） =========
+// 移除原因：
+// 1. 项目中没有 pallet-forwarder（手续费代付），主要使用场景不存在
+// 2. 官方 pallet-proxy 的纯代理（Pure Proxy）已经提供相同功能
+// 3. 减少自研 pallet 维护成本和系统复杂度
+// 替代方案：使用 pallet-proxy 的 createPure() 创建纯代理账户
 
 // ========= Chat（去中心化聊天） =========
 /// 函数级中文注释：去中心化聊天功能配置
@@ -2700,4 +2962,41 @@ impl pallet_chat::Config for Runtime {
     /// - 历史消息通过IPFS查询
     /// - 节省链上存储空间
     type MaxMessagesPerSession = frame_support::traits::ConstU32<1000>;
+}
+
+// ========= Deposits（通用押金管理） =========
+/// 函数级中文注释：通用押金管理模块配置
+/// - 统一管理申诉押金、审核押金、投诉押金
+/// - 资金安全：使用Currency trait冻结押金
+/// - 权限控制：释放和罚没需要治理权限
+impl pallet_deposits::Config for Runtime {
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+    
+    /// 函数级中文注释：货币类型（MEMO）
+    /// - 使用Balances模块管理押金
+    type Currency = Balances;
+    
+    /// 函数级中文注释：释放押金的权限
+    /// - Root权限：超级管理员
+    /// - 内容委员会2/3多数：去中心化治理
+    /// - 用于批准申诉后的全额退回
+    type ReleaseOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
+    >;
+    
+    /// 函数级中文注释：罚没押金的权限
+    /// - Root权限：超级管理员
+    /// - 内容委员会2/3多数：去中心化治理
+    /// - 用于驳回申诉后的部分罚没（10%）
+    type SlashOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
+    >;
+    
+    /// 函数级中文注释：每个账户最多可持有的押金数量（100个）
+    /// - 防止状态膨胀
+    /// - 一般用户足够使用（申诉+投诉+审核）
+    type MaxDepositsPerAccount = frame_support::traits::ConstU32<100>;
 }

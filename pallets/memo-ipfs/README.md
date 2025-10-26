@@ -48,7 +48,7 @@ charge_due() / on_initialize
 | 账户 | PalletId/派生规则 | 用途 | 地址示例 |
 |------|------------------|------|---------|
 | **IpfsPoolAccount** | `py/ipfs+` | 公共费用池，由供奉路由分配 50% | `5Fm7k7uj...` |
-| **SubjectFunding** | `(domain, creator, deceased_id)` | 逝者专属资金，家属充值 | 派生地址 |
+| **SubjectFunding** | `SubjectPalletId + (domain, creator, deceased_id)` | 逝者专属资金，**任何人都可充值** | 派生地址（稳定） |
 | **Caller** | msg.sender | 调用者账户，fallback 自费 | 用户地址 |
 | **OperatorEscrowAccount** | `py/opesc` | 运营者托管，待 SLA 考核分配 | `5EYa...` |
 
@@ -143,6 +143,161 @@ Caller（自费） → OperatorEscrowAccount（托管）
 运营者 A/B/C
 ```
 
+---
+
+## 💳 SubjectFunding账户详解
+
+### 派生方式
+
+**派生公式**：
+```rust
+SubjectFunding = SubjectPalletId.into_sub_account_truncating(
+    (DeceasedDomain, creator, deceased_id).encode()
+)
+```
+
+**参数说明**：
+- `SubjectPalletId`：`py/subj+`（PalletId常量）
+- `DeceasedDomain`：`1`（逝者域编码）
+- `creator`：创建者账户（**不可变**）
+- `deceased_id`：逝者ID
+
+**核心特性**：
+- ✅ **地址稳定**：基于creator（创建时设置，永不改变）
+- ✅ **支持转让**：owner可转让，不影响资金账户地址
+- ✅ **资金隔离**：每个deceased有独立的资金账户
+- ✅ **确定性派生**：相同输入总是产生相同输出
+
+### 充值机制
+
+#### fund_subject_account - 为逝者账户充值
+
+**权限**：
+- ✅ **任何账户都可以充值**（开放性）
+- ✅ 无需owner权限
+- ✅ 只需要deceased存在
+
+**使用场景**：
+1. **owner自己充值**（常规场景）
+   ```rust
+   fund_subject_account(deceased_id, 100 * UNIT)
+   ```
+
+2. **家人朋友赞助**（情感场景）
+   ```rust
+   // Bob为Alice创建的deceased充值
+   fund_subject_account(1, 50 * UNIT)  // 情感支持
+   ```
+
+3. **社区众筹**（公益场景）
+   ```rust
+   // 多人为公益deceased众筹
+   fund_subject_account(1, 10 * UNIT)  // 社区A
+   fund_subject_account(1, 20 * UNIT)  // 社区B
+   fund_subject_account(1, 30 * UNIT)  // 社区C
+   // 总计：60 MEMO
+   ```
+
+4. **服务商预付费**（商业场景）
+   ```rust
+   // 服务商为客户充值
+   fund_subject_account(deceased_id, 500 * UNIT)  // 预付费
+   ```
+
+5. **慈善捐赠**（慈善场景）
+   ```rust
+   // 慈善基金会为贫困家庭充值
+   fund_subject_account(deceased_id, 1000 * UNIT)  // 慈善捐赠
+   ```
+
+**安全保障**：
+- ✅ 资金只能用于IPFS pin
+- ✅ 派生地址确定性，无法篡改
+- ✅ 只检查deceased是否存在
+
+### 权限控制
+
+**充值权限**：
+- ✅ 任何人都可以充值
+- ✅ 无需owner权限
+
+**使用权限**（pin操作）：
+- ⚠️ **仅owner可以pin**
+- ⚠️ 防止恶意消耗资金
+- ⚠️ 保护deceased隐私
+
+**示例**：
+```rust
+// 场景1：正常充值和使用
+Alice创建deceased（creator=Alice, owner=Alice）
+Bob充值100 MEMO  // ✅ 成功（任何人都可以充值）
+Alice请求pin  // ✅ 成功（owner权限）
+Bob请求pin  // ❌ Error::BadStatus（不是owner）
+
+// 场景2：owner转让后的资金使用
+Alice创建deceased（creator=Alice, owner=Alice）
+Bob充值100 MEMO → SubjectFunding(Alice, 1)  // ✅ 成功
+Alice转让owner给Carol  // ✅ 成功
+Carol请求pin → 从SubjectFunding(Alice, 1)扣费  // ✅ 成功
+// 💡 资金地址不变，因为基于creator派生
+```
+
+### Owner转让与资金稳定性
+
+**核心设计**：
+- **creator不可变** → 资金账户地址永久稳定
+- **owner可转让** → 支持所有权转移
+
+**转让流程**：
+```rust
+// 步骤1：Alice创建deceased
+create_deceased(...)
+// creator = Alice（不可变）
+// owner = Alice（可转让）
+// SubjectFunding = (domain, Alice, 1)
+
+// 步骤2：充值
+fund_subject_account(1, 100 * UNIT)
+// 资金存入：SubjectFunding(Alice, 1)
+
+// 步骤3：owner转让
+transfer_deceased_owner(1, Carol)
+// creator = Alice（不变）
+// owner = Carol（已改变）
+// SubjectFunding = (domain, Alice, 1)（不变）
+
+// 步骤4：Carol使用资金
+Carol.request_pin_for_deceased(1, ...)
+// ✅ Carol是owner，有权限
+// ✅ 从SubjectFunding(Alice, 1)扣费
+// ✅ 资金地址未改变，正常使用
+```
+
+**优势**：
+1. **地址稳定**：不受owner转让影响
+2. **资金安全**：无需手动迁移资金
+3. **逻辑清晰**：creator管资金，owner管权限
+4. **低成本**：无需支付资金迁移gas费
+
+### Trait职责分离
+
+**CreatorProvider**：
+- 功能：从pallet-deceased读取creator字段
+- 用途：SubjectFunding账户派生
+- 特性：creator不可变，地址稳定
+
+**OwnerProvider**：
+- 功能：从pallet-deceased读取owner字段
+- 用途：权限检查（pin操作）
+- 特性：owner可转让，灵活管理
+
+**设计理念**：
+- ✅ **职责分离**：creator管资金，owner管权限
+- ✅ **低耦合**：通过trait解耦pallet
+- ✅ **灵活性**：支持owner转让，不影响资金
+
+---
+
 ### 运营者奖励分配机制
 
 **概念澄清**：
@@ -234,6 +389,193 @@ api.tx.memoIpfs.joinOperator(
 // 3. 完成 pin 任务后上报 mark_pinned
 // 4. 等待治理定期调用 distribute_to_operators 获得奖励
 ```
+
+---
+
+## 📊 运营者监控系统（v5.0 - 阶段1：链上基础监控）
+
+### 核心特性
+
+1. **实时健康度监控**：自动追踪每个运营者的Pin管理质量
+2. **智能评分算法**：基于失败率和健康Pin比例的综合评分（0-100）
+3. **容量自动告警**：使用率超过80%时自动发出警告
+4. **多维度指标聚合**：Pin统计、容量使用、收益数据一体化查询
+
+### 监控数据结构
+
+#### OperatorPinStats - 运营者Pin健康统计
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `total_pins` | `u32` | 当前管理的Pin总数 |
+| `healthy_pins` | `u32` | 健康Pin数（副本数达标） |
+| `failed_pins` | `u32` | 累计失败Pin数 |
+| `last_check` | `BlockNumber` | 上次统计更新时间 |
+| `health_score` | `u8` | 健康度得分（0-100） |
+
+#### 健康度评分算法
+
+```rust
+// 基础分：60分
+// 健康奖励：(healthy_pins / total_pins) * 40，最多+40分
+// 失败惩罚：(failed_pins / total_pins) * 100 * 2，每1%失败率扣2分，最多扣60分
+// 最终得分：max(0, min(100, 60 + 健康奖励 - 失败惩罚))
+
+// 示例：
+// - 无Pin：100分（初始满分）
+// - 100个Pin，100个健康，0个失败：100分（60 + 40 - 0）
+// - 100个Pin，90个健康，10个失败：78分（60 + 36 - 20）
+// - 100个Pin，50个健康，50个失败：0分（60 + 20 - 100，取0）
+```
+
+### 监控事件
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `OperatorCapacityWarning` | `operator`, `used_capacity_gib`, `total_capacity_gib`, `usage_percent` | 容量使用率超过80% |
+| `OperatorHealthDegraded` | `operator`, `old_score`, `new_score`, `total_pins`, `failed_pins` | 健康度下降超过10分 |
+| `PinAssignedToOperator` | `operator`, `cid_hash`, `current_pins`, `capacity_usage_percent` | Pin已分配给运营者 |
+| `OperatorPinSuccess` | `operator`, `cid_hash`, `replicas_confirmed` | 运营者Pin成功 |
+| `OperatorPinFailed` | `operator`, `cid_hash`, `reason` | 运营者Pin失败 |
+
+### 辅助函数
+
+#### update_operator_pin_stats() - 更新运营者统计
+
+```rust
+/// 更新运营者Pin统计并重新计算健康度得分
+/// 
+/// 参数：
+/// - operator: 运营者账户
+/// - delta_total: Pin总数变化（+1分配，-1移除）
+/// - delta_failed: 失败Pin数变化（+1失败）
+/// 
+/// 调用时机：
+/// - Pin分配时：(operator, +1, 0)
+/// - Pin失败时：(operator, 0, +1)
+/// - Pin移除时：(operator, -1, 0)
+pub fn update_operator_pin_stats(
+    operator: &T::AccountId,
+    delta_total: i32,
+    delta_failed: i32,
+) -> DispatchResult
+```
+
+#### calculate_health_score() - 计算健康度得分
+
+```rust
+/// 计算运营者健康度得分（0-100）
+/// 
+/// 评分公式：
+/// - 基础分：60分
+/// - 健康奖励：(healthy_pins / total_pins) * 40
+/// - 失败惩罚：(failed_pins / total_pins) * 100 * 2
+/// 
+/// 返回：u8（0-100）
+pub fn calculate_health_score(operator: &T::AccountId) -> u8
+```
+
+#### check_operator_capacity_warning() - 容量告警检查
+
+```rust
+/// 检查运营者容量使用率，超过80%发出告警
+/// 
+/// 算法：
+/// - 假设每个Pin平均2MB
+/// - usage_percent = (current_pins * 2MB / 1024) / total_capacity_gib * 100
+/// 
+/// 返回：bool（true=已发出告警）
+pub fn check_operator_capacity_warning(operator: &T::AccountId) -> bool
+```
+
+#### get_operator_metrics() - 获取综合指标
+
+```rust
+/// 聚合运营者多维度数据，供RPC查询
+/// 
+/// 返回：Option<OperatorMetrics>，包含：
+/// - status: 运营者状态（0=Active, 1=Suspended）
+/// - capacity_gib: 声明的存储容量
+/// - registered_at: 注册时间
+/// - total_pins: 当前管理的Pin总数
+/// - healthy_pins: 健康Pin数
+/// - failed_pins: 累计失败Pin数
+/// - health_score: 健康度得分（0-100）
+/// - used_capacity_gib: 已使用容量（估算）
+/// - capacity_usage_percent: 容量使用率（0-100）
+/// - pending_rewards: 待领取收益
+pub fn get_operator_metrics(
+    operator: &T::AccountId,
+) -> Option<OperatorMetrics<BalanceOf<T>, BlockNumberFor<T>>>
+```
+
+### 使用场景
+
+#### 1. 运营者Dashboard查询
+
+```rust
+// 获取运营者综合指标
+let metrics = Pallet::<T>::get_operator_metrics(&operator_account);
+if let Some(m) = metrics {
+    println!("健康度得分: {}", m.health_score);
+    println!("容量使用率: {}%", m.capacity_usage_percent);
+    println!("待领取收益: {}", m.pending_rewards);
+}
+```
+
+#### 2. 健康度自动告警
+
+```rust
+// 在Pin失败时自动更新统计并告警
+Pallet::<T>::update_operator_pin_stats(&operator, 0, 1)?;
+// 如果健康度下降超过10分，会自动发送OperatorHealthDegraded事件
+```
+
+#### 3. 容量预警
+
+```rust
+// 在Pin分配后检查容量
+Pallet::<T>::update_operator_pin_stats(&operator, 1, 0)?;
+Pallet::<T>::check_operator_capacity_warning(&operator);
+// 如果使用率≥80%，会自动发送OperatorCapacityWarning事件
+```
+
+### 前端集成建议
+
+#### RPC接口（待实现）
+
+```typescript
+// 查询运营者指标
+const metrics = await api.rpc.memoIpfs.getOperatorMetrics(operatorAccount);
+
+// 监听健康度告警
+api.query.system.events((events) => {
+  events.forEach((record) => {
+    const { event } = record;
+    if (event.section === 'memoIpfs' && event.method === 'OperatorHealthDegraded') {
+      const [operator, oldScore, newScore] = event.data;
+      console.warn(`运营者 ${operator} 健康度下降: ${oldScore} → ${newScore}`);
+    }
+  });
+});
+```
+
+### 后续阶段
+
+**阶段2（OCW健康检查增强）**：
+- OCW定期调用IPFS Cluster API检查运营者节点状态
+- 自动更新`healthy_pins`统计
+- 自动触发Pin修复
+
+**阶段3（链下聚合层）**：
+- Subsquid监听监控Events
+- 聚合历史数据（收益趋势、失败率趋势）
+- 提供REST API
+
+**阶段4（前端Dashboard）**：
+- 运营者个人监控面板
+- 全局运营者网络监控
+- 实时图表与告警推送
 
 ---
 

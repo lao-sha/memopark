@@ -21,11 +21,73 @@ use sp_runtime::{
 };
 use sp_std::vec::Vec;
 
-/// 函数级详细中文注释：逝者 owner 只读提供者（低耦合）。
-/// - 由 runtime 注入实现，通常从 pallet-deceased 读取 owner 字段。
+/// 函数级详细中文注释：优化后的类型定义模块
+/// 
+/// 包含以下核心类型：
+/// - 分层配置（PinTier, TierConfig）
+/// - Subject管理（SubjectType, SubjectInfo）
+/// - 健康巡检（HealthCheckTask, HealthStatus, GlobalHealthStats）
+/// - 周期扣费（BillingTask, ChargeLayer, GraceStatus）
+pub mod types;
+
+// 导出常用类型，方便其他模块使用
+pub use types::{
+    BillingTask, ChargeLayer, ChargeResult, GraceStatus, GlobalHealthStats, HealthCheckTask,
+    HealthStatus, LayeredOperatorSelection, LayeredPinAssignment, OperatorLayer,
+    OperatorMetrics, OperatorPinHealth, PinTier, SimpleNodeStats, SimplePinStatus,
+    StorageLayerConfig, SubjectInfo, SubjectType, TierConfig, UnpinReason,
+};
+
+/// 函数级详细中文注释：逝者创建者只读提供者（低耦合）
+/// 
+/// ### 功能
+/// - 从pallet-deceased读取creator字段（不可变的创建者）
+/// - 用于SubjectFunding账户派生
+/// 
+/// ### 设计理念
+/// - **creator不可变**：创建时设置，永不改变，确保资金账户地址永久稳定
+/// - **与owner解耦**：owner可转让，但不影响资金账户地址
+/// - **低耦合设计**：通过trait解耦，不直接依赖pallet-deceased
+/// 
+/// ### 使用场景
+/// - SubjectFunding账户派生
+/// - deceased存在性检查
+pub trait CreatorProvider<AccountId> {
+    /// 返回逝者的creator（创建者）
+    /// 
+    /// ### 参数
+    /// - `deceased_id`: 逝者ID
+    /// 
+    /// ### 返回
+    /// - `Some(creator)`: 逝者存在，返回创建者账户
+    /// - `None`: 逝者不存在
+    fn creator_of(deceased_id: u64) -> Option<AccountId>;
+}
+
+/// 函数级详细中文注释：逝者owner只读提供者（低耦合）
+/// 
+/// ### 功能
+/// - 从pallet-deceased读取owner字段（当前所有者）
+/// - 用于权限检查
+/// 
+/// ### 设计理念
+/// - **owner可转让**：支持所有权转移
+/// - **权限控制**：用于检查操作权限
+/// - **与creator分离**：creator用于派生地址，owner用于权限检查
+/// 
+/// ### 使用场景
+/// - 权限检查：request_pin_for_deceased等操作
+/// - deceased存在性检查
 pub trait OwnerProvider<AccountId> {
-    /// 返回 subject(owner)；None 表示 subject 不存在。
-    fn owner_of(subject_id: u64) -> Option<AccountId>;
+    /// 返回逝者的owner（当前所有者）
+    /// 
+    /// ### 参数
+    /// - `deceased_id`: 逝者ID
+    /// 
+    /// ### 返回
+    /// - `Some(owner)`: 逝者存在，返回当前所有者账户
+    /// - `None`: 逝者不存在
+    fn owner_of(deceased_id: u64) -> Option<AccountId>;
 }
 
 /// 专用 Offchain 签名 KeyType。注意：需要在节点端注册对应密钥。
@@ -64,54 +126,55 @@ pub type AuthorityId = sr25519_app::Public;
 /// )?;
 /// ```
 pub trait IpfsPinner<AccountId, Balance> {
-    /// 函数级详细中文注释：为逝者关联的CID发起pin请求
+    /// 函数级详细中文注释：为逝者关联的CID发起pin请求（优化版）
     /// 
     /// 参数：
-    /// - `caller`: 发起调用的账户（用于fallback扣款，triple-charge的第3层）
+    /// - `caller`: 发起调用的账户
     /// - `deceased_id`: 逝者ID（用于派生SubjectFunding账户）
     /// - `cid`: IPFS CID（Vec<u8>格式）
-    /// - `price`: 存储单价（每副本每月，单位为Balance最小单位）
-    /// - `replicas`: 副本数（建议3，范围1-5）
+    /// - `tier`: 分层等级（None则使用默认Standard）✅ 新增
     /// 
     /// 返回：
     /// - `Ok(())`: pin请求成功提交，费用扣取成功
     /// - `Err(...)`: 失败原因（余额不足、CID格式错误、系统错误等）
     /// 
-    /// 扣费机制（triple-charge）：
-    /// 1. 优先从 `IpfsPoolAccount` 扣取（有月度quota限制）
+    /// 扣费机制（四层回退）：✅ 更新
+    /// 1. 优先从 `IpfsPoolAccount` 扣取（系统公共池）
     /// 2. 如失败，从 `SubjectFunding(deceased_id)` 扣取
-    /// 3. 如仍失败，从 `caller` 账户扣取（兜底）
-    /// 4. 所有费用流向 `OperatorEscrowAccount`（运营者托管）
+    /// 3. 如仍失败，从 `OperatorEscrowAccount` 扣取（运营者垫付）
+    /// 4. 如仍失败，进入宽限期（GracePeriod）
+    /// 
+    /// 分层配置：
+    /// - Critical：5副本，6小时巡检，1.5x费率
+    /// - Standard：3副本，24小时巡检，1.0x费率（默认）
+    /// - Temporary：1副本，7天巡检，0.5x费率
     fn pin_cid_for_deceased(
         caller: AccountId,
         deceased_id: u64,
         cid: Vec<u8>,
-        price: Balance,
-        replicas: u32,
+        tier: Option<PinTier>,  // 新增参数
     ) -> DispatchResult;
 
-    /// 函数级详细中文注释：为墓位关联的CID发起pin请求
+    /// 函数级详细中文注释：为墓位关联的CID发起pin请求（优化版）
     /// 
     /// 参数：
     /// - `caller`: 发起调用的账户
     /// - `grave_id`: 墓位ID（用于派生特定的SubjectFunding账户）
     /// - `cid`: IPFS CID
-    /// - `price`: 存储单价
-    /// - `replicas`: 副本数
+    /// - `tier`: 分层等级（None则使用默认Standard）✅ 新增
     /// 
     /// 适用场景：
     /// - 墓位封面图（pallet-memo-grave::set_cover）
     /// - 墓位背景音乐（pallet-memo-grave::set_audio）
     /// - 墓位播放列表（pallet-memo-grave::set_audio_playlist）
     /// 
-    /// 注意：墓位维度的SubjectFunding派生方式可能与逝者维度不同，
-    /// 具体由实现方决定（建议使用 `b"grave"` 作为domain前缀）。
+    /// 注意：墓位维度的SubjectFunding派生方式与逝者维度不同
+    /// （使用 `b"grave"` 作为domain前缀）
     fn pin_cid_for_grave(
         caller: AccountId,
         grave_id: u64,
         cid: Vec<u8>,
-        price: Balance,
-        replicas: u32,
+        tier: Option<PinTier>,  // 新增参数
     ) -> DispatchResult;
 }
 
@@ -124,6 +187,7 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use alloc::vec;  // 添加vec宏导入（no_std环境）
     use frame_support::traits::ConstU32;
     use frame_support::traits::StorageVersion;
     use sp_runtime::traits::Saturating;
@@ -136,6 +200,20 @@ pub mod pallet {
 
     /// 余额别名
     pub type BalanceOf<T> = <T as Config>::Balance;
+
+    /// 函数级中文注释：Pin元信息结构体
+    /// - replicas: 副本数
+    /// - size: 文件大小（字节）
+    /// - created_at: 创建时间（区块号）
+    /// - last_activity: 最后活动时间（区块号）
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(BlockNumber))]
+    pub struct PinMetadata<BlockNumber> {
+        pub replicas: u32,
+        pub size: u64,
+        pub created_at: BlockNumber,
+        pub last_activity: BlockNumber,
+    }
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -182,8 +260,28 @@ pub mod pallet {
         #[pallet::constant]
         type DeceasedDomain: Get<u8>;
 
-    /// 函数级中文注释：逝者所有者只读提供者（低耦合）。
-    /// - 返回 `Some(owner)` 则视为 subject 存在；None 表示不存在。
+    /// 函数级详细中文注释：逝者创建者只读提供者（低耦合）
+    /// 
+    /// ### 功能
+    /// - 从pallet-deceased读取creator字段
+    /// - 用于SubjectFunding账户派生和deceased存在性检查
+    /// 
+    /// ### 设计理念
+    /// - creator不可变，确保资金账户地址稳定
+    /// - 与owner解耦，支持owner转让
+    /// - 低耦合设计，通过trait解耦pallet
+    type CreatorProvider: CreatorProvider<Self::AccountId>;
+    
+    /// 函数级详细中文注释：逝者owner只读提供者（低耦合）
+    /// 
+    /// ### 功能
+    /// - 从pallet-deceased读取owner字段
+    /// - 用于权限检查
+    /// 
+    /// ### 设计理念
+    /// - owner可转让，支持所有权转移
+    /// - 权限控制，用于检查操作权限
+    /// - 与creator分离，creator用于派生地址，owner用于权限检查
     type OwnerProvider: OwnerProvider<Self::AccountId>;
 
     /// 函数级中文注释：IPFS 池账户（公共费用来源）
@@ -214,6 +312,15 @@ pub mod pallet {
     /// - 默认：100,800 × 4 = 403,200 区块 ≈ 28 天
     #[pallet::constant]
     type QuotaResetPeriod: Get<BlockNumberFor<Self>>;
+    
+    /// 函数级详细中文注释：默认扣费周期（区块数）
+    /// 
+    /// 说明：
+    /// - 周期性扣费的间隔时间
+    /// - 默认：100,800 区块 ≈ 7天（假设3秒/块）
+    /// - 可通过治理调整
+    #[pallet::constant]
+    type DefaultBillingPeriod: Get<u32>;
 }
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
@@ -221,6 +328,18 @@ pub mod pallet {
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
+    
+    /// 函数级详细中文注释：Genesis配置（初始化分层配置默认值）
+    /// 
+    /// 目的：
+    /// - 在创世块时设置三层Pin配置的合理默认值
+    /// - 可通过runtime中的GenesisConfig自定义初始值
+    /// - 提供开箱即用的生产级配置
+    // 注释：由于substrate新版本对GenesisConfig的Serialize/Deserialize要求较严格，
+    // 暂时使用默认配置。链启动后可通过治理接口update_tier_config动态调整。
+    // 
+    // 默认配置已在TierConfig::default()、TierConfig::critical_default()、
+    // TierConfig::temporary_default()中定义，get_tier_config会自动应用。
 
     /// 定价参数原始字节（骨架）
     #[pallet::storage]
@@ -241,7 +360,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::Hash,
-        (u32, u64, BlockNumberFor<T>, BlockNumberFor<T>),
+        PinMetadata<BlockNumberFor<T>>,
         OptionQuery,
     >;
 
@@ -271,7 +390,15 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    /// 运营者信息
+    /// 函数级详细中文注释：运营者信息结构体（优化版）
+    /// 
+    /// ### 字段说明
+    /// - peer_id: IPFS节点的PeerID
+    /// - capacity_gib: 声明的存储容量（GiB）
+    /// - endpoint_hash: IPFS Cluster API端点的哈希
+    /// - cert_fingerprint: TLS证书指纹（可选）
+    /// - status: 运营者状态（0=Active, 1=Suspended, 2=Banned）
+    /// - registered_at: 注册时间戳（区块高度）✅ P1新增
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct OperatorInfo<T: Config> {
@@ -280,6 +407,9 @@ pub mod pallet {
         pub endpoint_hash: T::Hash,
         pub cert_fingerprint: Option<T::Hash>,
         pub status: u8, // 0=Active,1=Suspended,2=Banned
+        pub registered_at: BlockNumberFor<T>, // ✅ P1新增：注册时间戳
+        pub layer: OperatorLayer, // ✅ Layer分层：Core/Community/External
+        pub priority: u8, // ✅ 优先级：0-255（越小越优先，Core通常0-50，Community通常51-200）
     }
 
     /// 运营者注册表与保证金
@@ -290,6 +420,21 @@ pub mod pallet {
     #[pallet::storage]
     pub type OperatorBond<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
+
+    /// 函数级详细中文注释：待注销运营者列表（宽限期机制）✅ P0-3新增
+    /// 
+    /// ### 用途
+    /// - 记录已提交unregister但仍有Pin的运营者
+    /// - Value: 宽限期到期时间（区块高度）
+    /// - 宽限期内OCW自动迁移Pin到其他运营者
+    /// - 宽限期结束后检查Pin数量，无Pin则返还保证金并移除记录
+    /// 
+    /// ### 宽限期设计
+    /// - 默认7天（100,800块，假设6秒/块）
+    /// - 可通过治理调整
+    #[pallet::storage]
+    pub type PendingUnregistrations<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
     /// 运营者 SLA 统计
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -447,16 +592,9 @@ pub mod pallet {
     #[pallet::storage]
     pub type BillingPaused<T: Config> = StorageValue<_, bool, ValueQuery, DefaultBillingPaused<T>>;
 
-    /// 函数级中文注释：是否允许“直接从调用者账户扣费”的直扣费路径。
-    /// - 默认建议关闭（false），统一走“主题资金账户聚合计费”的 request_pin_for_deceased 路径。
-    /// - 可由治理通过 set_billing_params 动态调整。
-    #[pallet::type_value]
-    pub fn DefaultAllowDirectPin<T: Config>() -> bool {
-        false
-    }
-    #[pallet::storage]
-    pub type AllowDirectPin<T: Config> =
-        StorageValue<_, bool, ValueQuery, DefaultAllowDirectPin<T>>;
+    // ⭐ P2优化：已删除 AllowDirectPin 存储（10行）
+    // 原因：旧版 request_pin() extrinsic 已删除，此配置无用
+    // 删除日期：2025-10-26
 
     /// 函数级中文注释：到期队列容量上限（每个区块键对应的最大 CID 数）。
     #[pallet::type_value]
@@ -486,10 +624,339 @@ pub mod pallet {
     pub type PinBilling<T: Config> =
         StorageMap<_, Blake2_128Concat, T::Hash, (BlockNumberFor<T>, u128, u8), OptionQuery>;
 
-    /// 函数级中文注释：仅对“逝者主题扣费”的 CID 记录 funding 来源（owner, subject_id），用于从派生账户自动扣款。
+    /// 函数级中文注释：仅对"逝者主题扣费"的 CID 记录 funding 来源（owner, subject_id），用于从派生账户自动扣款。
     #[pallet::storage]
     pub type PinSubjectOf<T: Config> =
         StorageMap<_, Blake2_128Concat, T::Hash, (T::AccountId, u64), OptionQuery>;
+
+    // ============================================================================
+    // 新增存储：域索引、分层配置、健康巡检、周期扣费（优化改造）
+    // ============================================================================
+
+    /// 函数级详细中文注释：域维度Pin索引，O(1)查找某域下的所有CID
+    /// 
+    /// 设计目标：
+    /// - 替代全局扫描 PendingPins::iter()
+    /// - 支持域级别的优先级调度（Deceased优先于OTC）
+    /// - 便于域级别的批量操作（如暂停某域的扣费）
+    /// 
+    /// 存储结构：
+    /// - Key1: domain（如 b"deceased", b"grave", b"offerings"）
+    /// - Key2: cid_hash
+    /// - Value: ()（标记存在即可）
+    /// 
+    /// 使用场景：
+    /// - OCW巡检时，按域顺序扫描：Deceased → Grave → Offerings → Media...
+    /// - 统计各域的Pin数量和存储容量
+    /// - 实现域级别的优先级队列
+    #[pallet::storage]
+    #[pallet::getter(fn domain_pins)]
+    pub type DomainPins<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<32>>,  // domain
+        Blake2_128Concat,
+        T::Hash,                        // cid_hash
+        (),                             // 标记存在
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：CID到Subject的反向映射，用于扣费时查找资金账户
+    /// 
+    /// 设计目标：
+    /// - 周期扣费时，根据 cid_hash 查找对应的 SubjectFunding 账户
+    /// - 支持一个CID属于多个Subject的场景（如共享媒体文件）
+    /// 
+    /// 存储结构：
+    /// - Key: cid_hash
+    /// - Value: BoundedVec<SubjectInfo>（主Subject + 可选共享Subject列表）
+    /// 
+    /// SubjectInfo 包含：
+    /// - subject_type: SubjectType (Deceased/Grave/Offerings/...)
+    /// - subject_id: u64
+    /// - funding_share: u8（该Subject承担的费用比例，0-100）
+    #[pallet::storage]
+    #[pallet::getter(fn cid_to_subject)]
+    pub type CidToSubject<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash,                                    // cid_hash
+        BoundedVec<SubjectInfo, ConstU32<8>>,      // 最多8个Subject共享
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：分层Pin策略配置
+    /// 
+    /// 设计目标：
+    /// - 根据内容重要性，配置不同的副本数和巡检周期
+    /// - 平衡存储成本和可靠性
+    /// - 支持运行时动态调整（治理提案）
+    /// 
+    /// 存储结构：
+    /// - Key: PinTier（Critical/Standard/Temporary）
+    /// - Value: TierConfig（副本数、巡检周期、费率系数等）
+    /// 
+    /// 默认值：
+    /// - Critical：5副本，7200块（6小时），1.5x费率
+    /// - Standard：3副本，28800块（24小时），1.0x费率
+    /// - Temporary：1副本，604800块（7天），0.5x费率
+    #[pallet::storage]
+    #[pallet::getter(fn pin_tier_config)]
+    pub type PinTierConfig<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        PinTier,
+        TierConfig,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：CID分层映射，记录每个CID的优先级等级
+    /// 
+    /// 存储结构：
+    /// - Key: cid_hash
+    /// - Value: PinTier
+    /// 
+    /// 默认规则：
+    /// - 未显式设置：Standard（标准级）
+    /// - 业务pallet调用时指定（如 pin_cid_for_deceased 传递 tier 参数）
+    #[pallet::type_value]
+    pub fn DefaultPinTier() -> PinTier {
+        PinTier::Standard
+    }
+    #[pallet::storage]
+    #[pallet::getter(fn cid_tier)]
+    pub type CidTier<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash,
+        PinTier,
+        ValueQuery,
+        DefaultPinTier,
+    >;
+
+    /// 函数级详细中文注释：健康巡检队列，按优先级和到期时间排序
+    /// 
+    /// 设计目标：
+    /// - 替代全局扫描，提供高效的巡检调度
+    /// - 支持优先级队列（Critical优先）
+    /// - 自动去重和过期清理
+    /// 
+    /// 存储结构：
+    /// - Key1: next_check_block（下次巡检时间）
+    /// - Key2: cid_hash
+    /// - Value: HealthCheckTask
+    /// 
+    /// 调度逻辑：
+    /// - on_finalize 时，扫描 next_check_block <= current_block 的任务
+    /// - 执行巡检后，重新插入队列（next_check_block + interval）
+    #[pallet::storage]
+    #[pallet::getter(fn health_check_queue)]
+    pub type HealthCheckQueue<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        BlockNumberFor<T>,  // next_check_block
+        Blake2_128Concat,
+        T::Hash,            // cid_hash
+        HealthCheckTask<BlockNumberFor<T>>,
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：巡检统计数据，用于链上仪表板展示
+    /// 
+    /// 存储内容：
+    /// - 总Pin数、总存储量
+    /// - 健康/降级/危险CID数量
+    /// - 上次巡检时间
+    /// - 累计修复次数
+    #[pallet::storage]
+    #[pallet::getter(fn health_check_stats)]
+    pub type HealthCheckStats<T: Config> = StorageValue<
+        _,
+        GlobalHealthStats<BlockNumberFor<T>>,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：周期扣费队列，替代手动 charge_due 调用
+    /// 
+    /// 设计目标：
+    /// - on_finalize 自动扫描到期的扣费任务
+    /// - 支持四层回退充电机制
+    /// - 自动进入宽限期/Unpin流程
+    /// 
+    /// 存储结构：
+    /// - Key1: due_block（下次扣费时间）
+    /// - Key2: cid_hash
+    /// - Value: BillingTask
+    /// 
+    /// 调度逻辑：
+    /// - on_finalize 时，批量处理 due_block <= current_block 的任务
+    /// - 扣费成功：更新 due_block += billing_period
+    /// - 扣费失败：进入宽限期或标记Unpin
+    #[pallet::storage]
+    #[pallet::getter(fn billing_queue)]
+    pub type BillingQueue<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        BlockNumberFor<T>,  // due_block
+        Blake2_128Concat,
+        T::Hash,            // cid_hash
+        BillingTask<BlockNumberFor<T>, BalanceOf<T>>,
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：运营者奖励账户，累计待提取的奖励
+    /// 
+    /// 存储结构：
+    /// - Key: operator_account
+    /// - Value: 累计奖励金额
+    /// 
+    /// 使用场景：
+    /// - 周期扣费成功后，自动累加到运营者奖励
+    /// - 运营者调用 operator_claim_rewards 提取
+    #[pallet::storage]
+    #[pallet::getter(fn operator_rewards)]
+    pub type OperatorRewards<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BalanceOf<T>,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：运营者Pin健康统计（阶段1：链上基础监控）
+    /// 
+    /// 记录每个运营者的Pin管理健康状况，用于：
+    /// 1. 实时监控运营者服务质量
+    /// 2. 计算运营者健康度得分（0-100）
+    /// 3. 容量预警与负载均衡
+    /// 4. 运营者排行榜与信誉评分
+    /// 
+    /// 存储结构：
+    /// - Key: operator_account
+    /// - Value: OperatorPinHealth（total_pins, healthy_pins, failed_pins, last_check, health_score）
+    /// 
+    /// 更新时机：
+    /// - Pin分配时（request_pin_for_deceased）：total_pins +1
+    /// - Pin成功时（OCW回调）：healthy_pins +1
+    /// - Pin失败时（OCW回调）：failed_pins +1
+    /// - 健康检查时（on_finalize / OCW）：重新计算health_score
+    /// 
+    /// 使用场景：
+    /// - 运营者Dashboard展示（RPC查询）
+    /// - 容量告警（容量使用率超过80%）
+    /// - 健康度下降告警（得分下降超过10分）
+    /// - 运营者排行榜（按健康度排序）
+    #[pallet::storage]
+    #[pallet::getter(fn operator_pin_stats)]
+    pub type OperatorPinStats<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        OperatorPinHealth<BlockNumberFor<T>>,
+        ValueQuery, // 默认值为全0，健康度100分
+    >;
+
+    /// 函数级详细中文注释：分层存储策略配置存储
+    /// 
+    /// 按（数据类型 × Pin层级）存储分层策略配置，用于：
+    /// 1. 动态配置不同数据类型的存储策略
+    /// 2. 治理提案调整分层参数
+    /// 3. 运营者选择时的依据
+    /// 
+    /// Key: (SubjectType, PinTier)
+    /// Value: StorageLayerConfig
+    /// 
+    /// 示例：
+    /// - (SubjectType::Evidence, PinTier::Critical) → {core: 5, community: 0, ...}
+    /// - (SubjectType::Deceased, PinTier::Critical) → {core: 3, community: 2, ...}
+    /// - (SubjectType::Offerings, PinTier::Standard) → {core: 1, community: 2, ...}
+    /// 
+    /// 默认值：使用 StorageLayerConfig::default()
+    #[pallet::storage]
+    #[pallet::getter(fn storage_layer_config)]
+    pub type StorageLayerConfigs<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (SubjectType, PinTier), // (数据类型, Pin层级)
+        StorageLayerConfig,
+        ValueQuery, // 使用默认配置
+    >;
+
+    /// 函数级详细中文注释：CID的分层Pin分配记录存储
+    /// 
+    /// 记录每个CID被分配到哪些Layer 1和Layer 2运营者，用于：
+    /// 1. 审计和追溯
+    /// 2. 费用分配（按层级分配收益）
+    /// 3. 健康检查（分层验证副本数）
+    /// 4. 数据迁移（Layer之间迁移）
+    /// 
+    /// Key: CID Hash
+    /// Value: LayeredPinAssignment<AccountId>
+    /// 
+    /// 包含信息：
+    /// - core_operators: Layer 1运营者列表
+    /// - community_operators: Layer 2运营者列表
+    /// - external_used: 是否使用Layer 3
+    /// - external_network: 外部网络类型
+    #[pallet::storage]
+    #[pallet::getter(fn layered_pin_assignments)]
+    pub type LayeredPinAssignments<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash, // CID Hash
+        LayeredPinAssignment<T::AccountId>,
+        OptionQuery,
+    >;
+
+    // ============================================================================
+    // 公共IPFS网络简化管理存储（无隐私约束版本）
+    // ============================================================================
+
+    /// 函数级详细中文注释：简化的节点统计信息（用于公共IPFS网络）
+    /// 
+    /// 记录每个Substrate节点的PIN统计和健康状态，用于智能PIN分配：
+    /// - total_pins：该节点当前Pin的CID总数
+    /// - capacity_gib：节点存储容量（GB）
+    /// - health_score：健康评分（0-100）
+    /// - last_check：最后一次健康检查的区块号
+    #[pallet::storage]
+    #[pallet::getter(fn simple_node_stats)]
+    pub type SimpleNodeStatsMap<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        SimpleNodeStats<BlockNumberFor<T>>,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：简化的PIN分配记录（公共IPFS网络）
+    /// 
+    /// 记录每个CID分配到哪些Substrate节点：
+    /// - Critical数据：3副本（3个节点）
+    /// - Standard数据：2副本（2个节点）
+    /// - Temporary数据：1副本（1个节点）
+    #[pallet::storage]
+    #[pallet::getter(fn simple_pin_assignments)]
+    pub type SimplePinAssignments<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash, // CID Hash
+        BoundedVec<T::AccountId, ConstU32<8>>, // 最多8个节点
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：CID注册表（plaintext CID映射到hash）
+    /// 
+    /// 存储CID的plaintext形式，用于OCW调用本地IPFS API
+    #[pallet::storage]
+    #[pallet::getter(fn cid_registry)]
+    pub type CidRegistry<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Hash, // CID Hash
+        BoundedVec<u8, ConstU32<128>>, // Plaintext CID
+        OptionQuery,
+    >;
 
     /// 事件
     #[pallet::event]
@@ -508,6 +975,18 @@ pub mod pallet {
         OperatorUpdated(T::AccountId),
         OperatorLeft(T::AccountId),
         OperatorStatusChanged(T::AccountId, u8),
+        /// 函数级详细中文注释：运营者暂停（运营者自主操作）✅ P0-1新增
+        OperatorPaused { operator: T::AccountId },
+        /// 函数级详细中文注释：运营者恢复（运营者自主操作）✅ P0-2新增
+        OperatorResumed { operator: T::AccountId },
+        /// 函数级详细中文注释：运营者注销进入宽限期（有未完成Pin）✅ P0-3新增
+        OperatorUnregistrationPending {
+            operator: T::AccountId,
+            remaining_pins: u32,
+            expires_at: BlockNumberFor<T>,
+        },
+        /// 函数级详细中文注释：运营者注销完成（保证金已返还）✅ P0-3新增
+        OperatorUnregistered { operator: T::AccountId },
         /// 运营者探测结果（ok=true 表示在线且集群识别到该 Peer）
         OperatorProbed(T::AccountId, bool),
         /// 创建了副本分配（cid_hash, count）
@@ -571,9 +1050,305 @@ pub mod pallet {
             operator_count: u32,
             average_weight: u128,
         },
+        
+        // ============================================================================
+        // 新增事件：分层配置、健康巡检、自动化扣费（优化改造）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：分层配置已更新（治理调整）
+        TierConfigUpdated {
+            tier: PinTier,
+            config: TierConfig,
+        },
+        
+        /// 函数级详细中文注释：健康巡检结果（CID健康状态变化）
+        HealthCheckCompleted {
+            cid_hash: T::Hash,
+            status: HealthStatus,
+            next_check: BlockNumberFor<T>,
+        },
+        
+        /// 函数级详细中文注释：健康状态降级（副本数不足）
+        HealthDegraded {
+            cid_hash: T::Hash,
+            current_replicas: u32,
+            target: u32,
+        },
+        
+        /// 函数级详细中文注释：健康状态危险（副本数 < 2）
+        HealthCritical {
+            cid_hash: T::Hash,
+            current_replicas: u32,
+        },
+        
+        /// 函数级详细中文注释：健康巡检失败（网络错误等）
+        HealthCheckFailed {
+            cid_hash: T::Hash,
+            failures: u8,
+        },
+        
+        /// 函数级详细中文注释：自动修复触发（副本数降级）
+        AutoRepairTriggered {
+            cid_hash: T::Hash,
+            current_replicas: u32,
+            target: u32,
+        },
+        
+        /// 函数级详细中文注释：自动修复完成
+        AutoRepairCompleted {
+            cid_hash: T::Hash,
+            new_replicas: u32,
+        },
+        
+        /// 函数级详细中文注释：宽限期开始（费用不足）
+        GracePeriodStarted {
+            cid_hash: T::Hash,
+            expires_at: BlockNumberFor<T>,
+        },
+        
+        /// 函数级详细中文注释：宽限期过期，标记Unpin
+        GracePeriodExpired {
+            cid_hash: T::Hash,
+        },
+        
+        /// 函数级详细中文注释：CID已标记为待Unpin
+        MarkedForUnpin {
+            cid_hash: T::Hash,
+            reason: UnpinReason,
+        },
+        
+        /// 函数级详细中文注释：使用了运营者保证金扣费（极端情况）
+        OperatorEscrowUsed {
+            cid_hash: T::Hash,
+            amount: BalanceOf<T>,
+        },
+        
+        /// 函数级详细中文注释：IPFS公共池余额不足警告（需要补充）
+        IpfsPoolLowBalanceWarning {
+            current: BalanceOf<T>,
+        },
+        
+        /// 函数级详细中文注释：运营者提取奖励
+        RewardsClaimed {
+            operator: T::AccountId,
+            amount: BalanceOf<T>,
+        },
+        
+        /// 函数级详细中文注释：扣费已暂停（紧急开关）
+        BillingPausedByGovernance {
+            by: T::AccountId,
+        },
+        
+        /// 函数级详细中文注释：扣费已恢复
+        BillingResumedByGovernance {
+            by: T::AccountId,
+        },
+        
+        // ============================================================================
+        // 运营者监控相关Events（阶段1：链上基础监控）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：运营者容量告警（使用率超过80%）
+        /// 
+        /// 触发时机：
+        /// - Pin分配时检查容量
+        /// - 健康检查时定期检查
+        /// 
+        /// 使用场景：
+        /// - 运营者Dashboard展示告警
+        /// - 提醒运营者扩容
+        /// - Pin分配算法避开高负载运营者
+        OperatorCapacityWarning {
+            operator: T::AccountId,
+            used_capacity_gib: u32,
+            total_capacity_gib: u32,
+            usage_percent: u8,
+        },
+        
+        /// 函数级详细中文注释：运营者健康度下降（得分下降超过10分）
+        /// 
+        /// 触发时机：
+        /// - Pin失败时
+        /// - 健康检查发现副本数不足时
+        /// 
+        /// 使用场景：
+        /// - 运营者Dashboard展示告警
+        /// - 评估运营者服务质量
+        /// - 治理决策参考（淘汰低质量运营者）
+        OperatorHealthDegraded {
+            operator: T::AccountId,
+            old_score: u8,
+            new_score: u8,
+            total_pins: u32,
+            failed_pins: u32,
+        },
+        
+        /// 函数级详细中文注释：Pin已分配给运营者
+        /// 
+        /// 触发时机：
+        /// - request_pin_for_deceased 成功分配Pin给运营者
+        /// 
+        /// 使用场景：
+        /// - 运营者Dashboard展示新任务
+        /// - 追踪Pin分配历史
+        /// - 负载均衡分析
+        PinAssignedToOperator {
+            operator: T::AccountId,
+            cid_hash: T::Hash,
+            current_pins: u32,
+            capacity_usage_percent: u8,
+        },
+        
+        /// 函数级详细中文注释：运营者Pin成功
+        /// 
+        /// 触发时机：
+        /// - OCW确认Pin成功且副本数达标
+        /// 
+        /// 使用场景：
+        /// - 运营者Dashboard展示成功率
+        /// - 计算运营者信誉评分
+        OperatorPinSuccess {
+            operator: T::AccountId,
+            cid_hash: T::Hash,
+            replicas_confirmed: u32,
+        },
+        
+        /// 函数级详细中文注释：运营者Pin失败
+        /// 
+        /// 触发时机：
+        /// - OCW检测到Pin失败
+        /// - IPFS Cluster API返回错误
+        /// 
+        /// 使用场景：
+        /// - 运营者Dashboard展示失败原因
+        /// - 自动触发重新分配
+        /// - 降低运营者健康度得分
+        OperatorPinFailed {
+            operator: T::AccountId,
+            cid_hash: T::Hash,
+            reason: BoundedVec<u8, ConstU32<128>>,
+        },
+
+        /// 函数级详细中文注释：核心运营者不足告警
+        /// 
+        /// 触发时机：
+        /// - select_operators_by_layer 时Layer 1运营者数量不足
+        /// 
+        /// 告警级别：高（可能影响服务）
+        /// 
+        /// 建议措施：
+        /// - 立即增加Layer 1运营者
+        /// - 或调整存储策略配置
+        CoreOperatorShortage {
+            required: u32,
+            available: u32,
+        },
+
+        /// 函数级详细中文注释：社区运营者不足告警
+        /// 
+        /// 触发时机：
+        /// - select_operators_by_layer 时Layer 2运营者数量不足
+        /// 
+        /// 告警级别：中（不影响核心服务）
+        /// 
+        /// 建议措施：
+        /// - 增加社区运营者激励
+        /// - 调整Layer 2副本配置
+        CommunityOperatorShortage {
+            required: u32,
+            available: u32,
+        },
+
+        /// 函数级详细中文注释：分层Pin分配完成
+        /// 
+        /// 触发时机：
+        /// - request_pin_for_deceased 成功分配Pin
+        /// 
+        /// 包含信息：
+        /// - Layer 1运营者列表
+        /// - Layer 2运营者列表
+        /// - 是否使用Layer 3
+        LayeredPinAssigned {
+            cid_hash: T::Hash,
+            core_operators: BoundedVec<T::AccountId, ConstU32<8>>,
+            community_operators: BoundedVec<T::AccountId, ConstU32<8>>,
+            external_used: bool,
+        },
+
+        /// 函数级详细中文注释：分层策略配置更新
+        /// 
+        /// 触发时机：
+        /// - 治理调用 set_storage_layer_config
+        /// 
+        /// 使用场景：
+        /// - 审计配置变更历史
+        /// - 前端Dashboard展示
+        StorageLayerConfigUpdated {
+            subject_type: SubjectType,
+            tier: PinTier,
+            core_replicas: u32,
+            community_replicas: u32,
+        },
+
+        /// 函数级详细中文注释：运营者层级更新
+        /// 
+        /// 触发时机：
+        /// - 治理调用 set_operator_layer
+        /// 
+        /// 使用场景：
+        /// - 审计运营者层级变更
+        /// - 追踪Layer 1/2迁移
+        OperatorLayerUpdated {
+            operator: T::AccountId,
+            layer: OperatorLayer,
+            priority: u8,
+        },
+
+        // ============================================================================
+        // 公共IPFS网络简化事件（无隐私约束版本）
+        // ============================================================================
+
+        /// 函数级详细中文注释：简化PIN分配完成事件
+        /// 
+        /// 当CID成功分配到指定节点时触发，记录：
+        /// - cid_hash：CID的hash值
+        /// - tier：PIN层级（Critical/Standard/Temporary）
+        /// - nodes：分配到的节点列表
+        /// - replicas：实际分配的副本数
+        SimplePinAllocated {
+            cid_hash: T::Hash,
+            tier: PinTier,
+            nodes: BoundedVec<T::AccountId, ConstU32<8>>,
+            replicas: u32,
+        },
+
+        /// 函数级详细中文注释：PIN状态报告事件（OCW上报）
+        /// 
+        /// OCW健康检查后上报PIN状态：
+        /// - cid_hash：CID的hash值
+        /// - node：上报的节点
+        /// - status：PIN状态（Pinned/Failed/Restored）
+        SimplePinStatusReported {
+            cid_hash: T::Hash,
+            node: T::AccountId,
+            status: SimplePinStatus,
+        },
+
+        /// 函数级详细中文注释：节点负载警告事件
+        /// 
+        /// 当节点容量使用率超过阈值时触发：
+        /// - node：节点账户
+        /// - capacity_usage：容量使用率（0-100）
+        /// - current_pins：当前PIN数量
+        SimpleNodeLoadWarning {
+            node: T::AccountId,
+            capacity_usage: u8,
+            current_pins: u32,
+        },
     }
 
     #[pallet::error]
+    #[derive(PartialEq)]
     pub enum Error<T> {
         /// 参数非法
         BadParams,
@@ -585,6 +1360,10 @@ pub mod pallet {
         OperatorExists,
         /// 运营者已被禁用
         OperatorBanned,
+        /// 函数级详细中文注释：运营者已暂停（无法再次暂停）✅ P0-1新增
+        AlreadyPaused,
+        /// 函数级详细中文注释：运营者未暂停（无法恢复）✅ P0-2新增
+        NotPaused,
         /// 保证金不足
         InsufficientBond,
         /// 容量不足
@@ -597,14 +1376,15 @@ pub mod pallet {
         HasActiveAssignments,
         /// 调用方未被指派到该内容的副本分配中
         OperatorNotAssigned,
-        /// 直扣费路径已禁用，请使用 request_pin_for_deceased。
-        DirectPinDisabled,
+        // ⭐ P2优化：已删除 DirectPinDisabled 错误（旧版 request_pin() 已删除）
         /// 函数级中文注释：两个账户余额都不足（IPFS池和SubjectFunding都无法支付）
         BothAccountsInsufficientBalance,
         /// 函数级中文注释：IPFS 池余额不足
         IpfsPoolInsufficientBalance,
         /// 函数级中文注释：SubjectFunding 账户余额不足
         SubjectFundingInsufficientBalance,
+        /// 函数级中文注释：CID已经被pin，禁止重复pin
+        CidAlreadyPinned,
         /// 函数级中文注释：三个账户余额都不足（IpfsPool、SubjectFunding、Caller都无法支付）
         AllThreeAccountsInsufficientBalance,
         /// 函数级中文注释：没有活跃的运营者（无法进行奖励分配）
@@ -613,91 +1393,83 @@ pub mod pallet {
         InsufficientEscrowBalance,
         /// 函数级中文注释：计算权重时发生溢出
         WeightOverflow,
+        
+        // ============================================================================
+        // 新增错误：分层配置、健康巡检、自动化扣费（优化改造）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：域名太长（超过32字节）
+        DomainTooLong,
+        /// 函数级详细中文注释：Subject未找到（CID无归属）
+        SubjectNotFound,
+        /// 函数级详细中文注释：逝者未找到
+        DeceasedNotFound,
+        /// 函数级详细中文注释：非所有者（无权限操作）
+        NotOwner,
+        /// 函数级详细中文注释：已经Pin过（避免重复）
+        AlreadyPinned,
+        /// 函数级详细中文注释：副本数无效（必须1-10）
+        InvalidReplicas,
+        /// 函数级详细中文注释：巡检间隔太短（必须≥600块，约30分钟）
+        IntervalTooShort,
+        /// 函数级详细中文注释：费率系数无效（必须0.1x-10x）
+        InvalidMultiplier,
+        /// 函数级详细中文注释：宽限期已过（无法再扣费）
+        GraceExpired,
+        /// 函数级详细中文注释：没有分配运营者（Pin未成功）
+        NoOperatorsAssigned,
+        /// 函数级详细中文注释：没有可用奖励（余额为零）
+        NoRewardsAvailable,
+        /// 函数级详细中文注释：分层配置未找到
+        TierConfigNotFound,
+        /// 函数级详细中文注释：健康巡检任务未找到
+        HealthCheckTaskNotFound,
+        /// 函数级详细中文注释：扣费任务未找到
+        BillingTaskNotFound,
+        /// 函数级详细中文注释：可用运营者不足（P0-1新增）
+        /// 
+        /// 触发场景：
+        /// - 活跃运营者数量 < 需要的副本数
+        /// - 容量充足的运营者数量 < 需要的副本数
+        /// 
+        /// 解决方案：
+        /// - 增加运营者注册
+        /// - 运营者扩容
+        /// - 降低副本数需求
+        NotEnoughOperators,
+        
+        // ============================================================================
+        // 公共IPFS网络简化错误（无隐私约束版本）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：没有可用的IPFS运营者
+        /// 
+        /// 触发场景：
+        /// - 所有运营者都是Suspended或Banned状态
+        /// - 没有注册任何运营者
+        NoAvailableOperators,
+        
+        /// 函数级详细中文注释：节点数量不足
+        /// 
+        /// 触发场景：
+        /// - 活跃节点数量 < 需要的副本数
+        /// - 容量充足的节点 < 需要的副本数
+        InsufficientNodes,
+        
+        /// 函数级详细中文注释：节点数量过多
+        /// 
+        /// 触发场景：
+        /// - 尝试分配超过BoundedVec限制的节点数
+        TooManyNodes,
     }
 
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：智能选择运营者（按权重优先选择）
-        /// 
-        /// 选择策略：
-        /// 1. 计算所有活跃运营者的权重（存储量 × 可靠性）
-        /// 2. 按权重从高到低排序
-        /// 3. 优先选择权重高、容量充足的运营者
-        /// 4. 确保负载均衡（避免单个运营者过载）
-        /// 
-        /// 权重计算：
-        /// - weight = (capacity_gib - used_ratio) × reliability
-        /// - reliability = probe_ok / (probe_ok + probe_fail)
-        /// - used_ratio = pinned_bytes / (capacity_gib × GiB)
-        /// 
-        /// 参数：
-        /// - `replicas`: 需要的副本数
-        /// - `exclude`: 排除的运营者（如已分配的）
-        /// 
-        /// 返回：
-        /// - 按权重排序的运营者列表（最多 replicas 个）
-        pub fn select_operators_by_weight(
-            replicas: u32,
-            exclude: &[T::AccountId],
-        ) -> alloc::vec::Vec<T::AccountId> {
-            let mut candidates: alloc::vec::Vec<(T::AccountId, u128)> = alloc::vec::Vec::new();
-            
-            // 1. 收集所有活跃运营者及其权重
-            for (op_acc, info) in Operators::<T>::iter() {
-                // 只选择活跃状态的运营者
-                if info.status != 0 {
-                    continue;
-                }
-                
-                // 跳过排除列表中的运营者
-                if exclude.contains(&op_acc) {
-                    continue;
-                }
-                
-                // 获取 SLA 统计
-                let sla = OperatorSla::<T>::get(&op_acc);
-                
-                // 计算可靠性（千分比）
-                let total_probes = sla.probe_ok.saturating_add(sla.probe_fail);
-                let reliability = if total_probes > 0 {
-                    (sla.probe_ok as u128).saturating_mul(1000).saturating_div(total_probes as u128)
-                } else {
-                    500 // 新运营者默认 50% 可靠性
-                };
-                
-                // 计算容量使用率
-                let capacity_bytes = (info.capacity_gib as u128).saturating_mul(1_073_741_824); // GiB to bytes
-                let used_ratio = if capacity_bytes > 0 {
-                    (sla.pinned_bytes as u128).saturating_mul(1000).saturating_div(capacity_bytes)
-                } else {
-                    1000 // 满载
-                };
-                
-                // 计算可用容量比例（1000 - used_ratio）
-                let available_ratio = if used_ratio < 1000 {
-                    1000u128.saturating_sub(used_ratio)
-                } else {
-                    0
-                };
-                
-                // 综合权重 = 可用容量 × 可靠性
-                let weight = available_ratio.saturating_mul(reliability).saturating_div(1000);
-                
-                // 只选择有可用容量的运营者（权重 > 0）
-                if weight > 0 {
-                    candidates.push((op_acc, weight));
-                }
-            }
-            
-            // 2. 按权重从高到低排序
-            candidates.sort_by(|a, b| b.1.cmp(&a.1));
-            
-            // 3. 选择前 replicas 个运营者
-            candidates
-                .into_iter()
-                .take(replicas as usize)
-                .map(|(acc, _)| acc)
-                .collect()
-        }
+        // ⭐ P0优化：已删除 select_operators_by_weight() 函数（82行）
+        // 原因：所有引用已迁移到 select_operators_by_layer()
+        // 迁移完成位置：
+        // - offchain_worker 初始分配 (行4176)
+        // - offchain_worker 补充副本 (行4382)
+        // 删除日期：2025-10-26
         
         /// 函数级详细中文注释：根据 (domain, subject_id) 计算派生子账户（稳定派生，与创建者/拥有者解耦）
         /// - 使用 `SubjectPalletId.into_sub_account_truncating((domain:u8, subject_id:u64))` 派生稳定地址
@@ -745,327 +1517,880 @@ pub mod pallet {
             "<redacted>".into()
         }
 
-        /// 函数级中文注释：派生 SubjectFunding 账户地址
+        // ⭐ P1优化：已删除 derive_subject_funding_account() 函数（39行）
+        // 原因：所有引用已迁移到 derive_subject_funding_account_v2()
+        // 迁移完成位置：fund_subject_account() extrinsic (行2491)
+        // 删除日期：2025-10-26
+        // 
+        // 新函数优势：
+        // - 支持多种SubjectType（Deceased/Grave/Offerings/OtcOrder/Evidence/Custom）
+        // - 统一的派生逻辑
+        // - 向后兼容（Deceased使用相同的domain）
+
+        // ⭐ P0优化：已删除 dual_charge_storage_fee() 函数（131行）
+        // 原因：所有引用已迁移到 four_layer_charge()
+        // 迁移完成位置：charge_due() extrinsic (行3270)
+        // 删除日期：2025-10-26
+
+        // ⭐ P1优化：已删除 triple_charge_storage_fee() 函数（160行）
+        // 原因：所有引用已迁移到 four_layer_charge()
+        // 旧版调用位置：old_pin_cid_for_deceased()（已同时删除）
+        // 删除日期：2025-10-26
+        
+        // ============================================================================
+        // 新增辅助函数：分层配置、健康巡检、自动化扣费（优化改造）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：获取分层配置（带默认值）
         /// 
-        /// 算法：
-        /// - PalletId + (DeceasedDomain, creator, deceased_id)
-        /// - 从 pallet-deceased 读取 creator
-        /// - 生成确定性的子账户地址
-        /// 
-        /// 参数：
-        /// - deceased_id: 逝者 ID
-        /// 
-        /// 返回：
-        /// - AccountId: 派生的账户地址
-        pub fn derive_subject_funding_account(deceased_id: u64) -> T::AccountId {
-            use codec::Encode;
-            use sp_runtime::traits::AccountIdConversion;
+        /// 如果链上没有配置，返回默认值：
+        /// - Critical: 5副本，7200块（6小时），1.5x费率
+        /// - Standard: 3副本，28800块（24小时），1.0x费率
+        /// - Temporary: 1副本，604800块（7天），0.5x费率
+        pub fn get_tier_config(tier: &PinTier) -> Result<TierConfig, Error<T>> {
+            let config = PinTierConfig::<T>::get(tier);
             
-            // 从 pallet-deceased 获取 creator
-            let creator = match T::OwnerProvider::owner_of(deceased_id) {
-                Some(owner) => owner,
-                None => {
-                    // deceased 不存在，返回默认账户（会导致扣款失败）
-                    return T::SubjectPalletId::get().into_account_truncating();
+            // 如果没有配置，使用默认值
+            if config.enabled {
+                Ok(config)
+            } else {
+                // 返回默认配置
+                Ok(match tier {
+                    PinTier::Critical => TierConfig::critical_default(),
+                    PinTier::Standard => TierConfig::default(),
+                    PinTier::Temporary => TierConfig::temporary_default(),
+                })
+            }
+        }
+        
+        /// 函数级详细中文注释：根据SubjectType派生资金账户
+        /// 
+        /// 派生规则：
+        /// - Deceased: (domain=DeceasedDomain, subject_id)
+        /// - Grave: (domain=b"grave", subject_id)
+        /// - Offerings: (domain=b"offerings", subject_id)
+        /// - OtcOrder: (domain=b"otc", subject_id)
+        /// - Evidence: (domain=b"evidence", subject_id)
+        /// - Custom: (domain=custom_bytes, subject_id)
+        /// 函数级详细中文注释：统计运营者的Pin数量 ✅ P0-3新增
+        /// 
+        /// ### 功能
+        /// - 遍历PinAssignments，统计该运营者被分配的Pin数量
+        /// - 用于leave_operator判断是否需要进入宽限期
+        /// 
+        /// ### 复杂度
+        /// - O(n)，n为所有Pin总数
+        /// - MVP实现，生产环境建议增加索引优化
+        pub fn count_operator_pins(operator: &T::AccountId) -> u32 {
+            let mut count = 0u32;
+            for (_cid, operators) in PinAssignments::<T>::iter() {
+                if operators.iter().any(|o| o == operator) {
+                    count = count.saturating_add(1);
                 }
-            };
-            
-            let domain = T::DeceasedDomain::get();
-            let seed = (domain, creator, deceased_id).encode();
-            
-            T::SubjectPalletId::get().into_sub_account_truncating(seed)
+            }
+            count
         }
 
-        /// 函数级中文注释：双重扣款逻辑（IPFS池 → SubjectFunding）
+        /// 函数级详细中文注释：完成运营者注销（内部函数）✅ P0-3新增
         /// 
-        /// 参数：
-        /// - deceased_id: 逝者 ID
-        /// - amount: 需要扣除的费用金额
+        /// ### 功能
+        /// - 返还保证金
+        /// - 移除运营者记录
+        /// - 移除宽限期记录（如有）
+        /// - 发送OperatorUnregistered事件
         /// 
-        /// 扣款流程：
-        /// 1. 检查并更新月度配额
-        /// 2. 如配额充足，尝试从 IPFS 池扣款
-        /// 3. 如失败，尝试从 SubjectFunding 扣款
-        /// 4. 两者都失败则返回错误
+        /// ### 调用场景
+        /// 1. leave_operator：无Pin时立即调用
+        /// 2. on_finalize：宽限期到期且无Pin时调用
+        pub fn finalize_operator_unregistration(operator: &T::AccountId) -> DispatchResult {
+            // 返还保证金
+            let bond = OperatorBond::<T>::take(operator);
+            if !bond.is_zero() {
+                let _ = <T as Config>::Currency::unreserve(operator, bond);
+            }
+
+            // 移除运营者记录
+            Operators::<T>::remove(operator);
+            
+            // 移除宽限期记录（如果存在）
+            PendingUnregistrations::<T>::remove(operator);
+
+            // 发送事件
+            Self::deposit_event(Event::OperatorUnregistered {
+                operator: operator.clone(),
+            });
+
+            Ok(())
+        }
+
+        // ============================================================================
+        // 运营者监控相关辅助函数（阶段1：链上基础监控）
+        // ============================================================================
+
+        /// 函数级详细中文注释：更新运营者Pin统计（核心监控函数）
         /// 
-        /// 返回：
-        /// - Ok(()) 扣款成功
-        /// - Err(Error::BothAccountsInsufficientBalance) 两账户都余额不足
-        pub fn dual_charge_storage_fee(
-            deceased_id: u64,
-            amount: BalanceOf<T>,
+        /// ### 功能
+        /// - 更新运营者的Pin统计数据（total_pins, healthy_pins, failed_pins）
+        /// - 重新计算健康度得分
+        /// - 健康度下降超过10分时自动发送告警Event
+        /// 
+        /// ### 参数
+        /// - `operator`: 运营者账户
+        /// - `delta_total`: Pin总数变化（+1分配，-1移除）
+        /// - `delta_failed`: 失败Pin数变化（+1失败）
+        /// 
+        /// ### 调用场景
+        /// 1. Pin分配时：delta_total=+1, delta_failed=0
+        /// 2. Pin失败时：delta_total=0, delta_failed=+1
+        /// 3. Pin移除时：delta_total=-1, delta_failed=0
+        /// 
+        /// ### 注意
+        /// - 健康度得分会在每次调用时重新计算
+        /// - 下降超过10分会触发OperatorHealthDegraded事件
+        pub fn update_operator_pin_stats(
+            operator: &T::AccountId,
+            delta_total: i32,
+            delta_failed: i32,
         ) -> DispatchResult {
-            use sp_runtime::traits::{Zero, Saturating};
-            
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            let ipfs_pool = T::IpfsPoolAccount::get();
-            let escrow_account = T::OperatorEscrowAccount::get();
-            
-            // ========================================
-            // 步骤 1: 获取并检查月度配额
-            // ========================================
-            
-            let (used_quota, reset_block) = PublicFeeQuotaUsage::<T>::get(deceased_id);
-            
-            // 如果超过重置周期，重置配额
-            let (used_quota, reset_block) = if current_block >= reset_block {
-                let new_reset_block = current_block.saturating_add(T::QuotaResetPeriod::get());
+            OperatorPinStats::<T>::try_mutate(operator, |stats| -> DispatchResult {
+                // 更新Pin总数
+                if delta_total > 0 {
+                    stats.total_pins = stats.total_pins.saturating_add(delta_total as u32);
+                } else if delta_total < 0 {
+                    stats.total_pins = stats.total_pins.saturating_sub((-delta_total) as u32);
+                }
                 
-                Self::deposit_event(Event::QuotaReset {
-                    deceased_id,
-                    new_reset_block,
-                });
+                // 更新失败数
+                if delta_failed > 0 {
+                    stats.failed_pins = stats.failed_pins.saturating_add(delta_failed as u32);
+                }
                 
-                (BalanceOf::<T>::zero(), new_reset_block)
-            } else {
-                (used_quota, reset_block)
+                // 重新计算健康度得分
+                let old_score = stats.health_score;
+                stats.health_score = Self::calculate_health_score(operator);
+                stats.last_check = <frame_system::Pallet<T>>::block_number();
+                
+                // 如果健康度下降超过10分，发射Event
+                if old_score.saturating_sub(stats.health_score) >= 10 {
+                    Self::deposit_event(Event::OperatorHealthDegraded {
+                        operator: operator.clone(),
+                        old_score,
+                        new_score: stats.health_score,
+                        total_pins: stats.total_pins,
+                        failed_pins: stats.failed_pins,
+                    });
+                }
+                
+                Ok(())
+            })
+        }
+        
+        /// 函数级详细中文注释：计算运营者健康度得分（智能评分算法）
+        /// 
+        /// ### 评分算法
+        /// 1. 基础分：60分
+        /// 2. 健康Pin比例奖励：(healthy_pins / total_pins) * 40，最多+40分
+        /// 3. 失败率惩罚：(failed_pins / total_pins) * 100 * 2，每1%失败率扣2分，最多扣60分
+        /// 4. 最终得分：max(0, min(100, 60 + 健康奖励 - 失败惩罚))
+        /// 
+        /// ### 示例
+        /// - 无Pin：100分（初始满分）
+        /// - 100个Pin，100个健康，0个失败：100分（60 + 40 - 0）
+        /// - 100个Pin，90个健康，10个失败：78分（60 + 36 - 20）
+        /// - 100个Pin，50个健康，50个失败：0分（60 + 20 - 100，取0）
+        /// 
+        /// ### 参数
+        /// - `operator`: 运营者账户
+        /// 
+        /// ### 返回
+        /// - u8: 健康度得分（0-100）
+        pub fn calculate_health_score(operator: &T::AccountId) -> u8 {
+            let stats = OperatorPinStats::<T>::get(operator);
+            
+            if stats.total_pins == 0 {
+                return 100; // 无Pin时默认满分
+            }
+            
+            // 失败率惩罚：每1%失败率扣2分
+            let failure_rate = stats.failed_pins.saturating_mul(100) / stats.total_pins;
+            let failure_penalty = failure_rate.saturating_mul(2).min(60); // 最多扣60分
+            
+            // 健康Pin比例奖励：健康Pin占比越高，得分越高
+            let health_ratio = stats.healthy_pins.saturating_mul(100) / stats.total_pins;
+            let health_bonus = health_ratio.min(40); // 最多加40分
+            
+            // 基础分60 + 健康奖励 - 失败惩罚
+            60u8.saturating_add(health_bonus as u8)
+                .saturating_sub(failure_penalty as u8)
+                .max(0)
+                .min(100)
+        }
+        
+        /// 函数级详细中文注释：检查运营者容量并发出告警
+        /// 
+        /// ### 功能
+        /// - 计算运营者容量使用率（0-100）
+        /// - 估算每个Pin平均2MB
+        /// 
+        /// ### 参数
+        /// - `operator`: 运营者账户
+        /// 
+        /// ### 返回
+        /// - `u8`: 容量使用率百分比（0-100），如果运营者不存在或容量为0，返回100
+        pub fn calculate_capacity_usage(operator: &T::AccountId) -> u8 {
+            let Some(info) = Operators::<T>::get(operator) else {
+                return 100; // 运营者不存在，视为满载
             };
             
-            let monthly_quota = T::MonthlyPublicFeeQuota::get();
-            let remaining_quota = monthly_quota.saturating_sub(used_quota);
+            if info.capacity_gib == 0 {
+                return 100; // 容量为0，视为满载
+            }
             
-            // ========================================
-            // 步骤 2: 尝试从 IPFS 池扣款（配额内）
-            // ========================================
+            let current_pins = Self::count_operator_pins(operator);
             
-            if remaining_quota >= amount {
-                let pool_balance = <T as Config>::Currency::free_balance(&ipfs_pool);
+            // 估算使用容量（每个Pin平均2MB）
+            let avg_size_mb: u64 = 2;
+            let used_capacity_gib = (current_pins as u64 * avg_size_mb) / 1024;
+            let total_capacity_gib = info.capacity_gib as u64;
+            
+            ((used_capacity_gib * 100) / total_capacity_gib) as u8
+        }
+
+        /// 函数级详细中文注释：检查运营者容量告警并自动发出事件
+        /// 
+        /// ### 功能
+        /// - 估算运营者当前使用的存储容量
+        /// - 计算容量使用率
+        /// - 使用率超过80%时自动发送OperatorCapacityWarning事件
+        /// 
+        /// ### 算法
+        /// - 假设每个Pin平均大小为2MB
+        /// - used_capacity_gib = (current_pins * 2MB) / 1024
+        /// - usage_percent = (used_capacity_gib / total_capacity_gib) * 100
+        /// 
+        /// ### 参数
+        /// - `operator`: 运营者账户
+        /// 
+        /// ### 返回
+        /// - `true`: 已发出容量告警
+        /// - `false`: 容量正常
+        /// 
+        /// ### 触发时机
+        /// - Pin分配后
+        /// - 健康检查时（on_finalize / OCW）
+        pub fn check_operator_capacity_warning(operator: &T::AccountId) -> bool {
+            let Some(info) = Operators::<T>::get(operator) else {
+                return false;
+            };
+            
+            let current_pins = Self::count_operator_pins(operator);
+            
+            // 估算使用容量（每个Pin平均2MB）
+            let avg_size_mb: u64 = 2;
+            let used_capacity_gib = (current_pins as u64 * avg_size_mb) / 1024;
+            let total_capacity_gib = info.capacity_gib as u64;
+            
+            if total_capacity_gib == 0 {
+                return false;
+            }
+            
+            let usage_percent = ((used_capacity_gib * 100) / total_capacity_gib) as u8;
+            
+            // 如果使用率超过80%，发出告警
+            if usage_percent >= 80 {
+                Self::deposit_event(Event::OperatorCapacityWarning {
+                    operator: operator.clone(),
+                    used_capacity_gib: used_capacity_gib as u32,
+                    total_capacity_gib: total_capacity_gib as u32,
+                    usage_percent,
+                });
+                return true;
+            }
+            
+            false
+        }
+        
+        /// 函数级详细中文注释：获取运营者综合指标（供RPC调用）
+        /// 
+        /// ### 功能
+        /// - 聚合运营者的多维度数据（基础信息、Pin统计、容量使用、收益）
+        /// - 返回完整的OperatorMetrics结构体
+        /// 
+        /// ### 返回数据
+        /// - status: 运营者状态（0=Active, 1=Suspended）
+        /// - capacity_gib: 声明的存储容量
+        /// - registered_at: 注册时间
+        /// - total_pins: 当前管理的Pin总数
+        /// - healthy_pins: 健康Pin数
+        /// - failed_pins: 累计失败Pin数
+        /// - health_score: 健康度得分（0-100）
+        /// - used_capacity_gib: 已使用容量（估算）
+        /// - capacity_usage_percent: 容量使用率（0-100）
+        /// - pending_rewards: 待领取收益
+        /// 
+        /// ### 使用场景
+        /// - RPC方法 `memoIpfs_getOperatorMetrics`
+        /// - 前端运营者Dashboard
+        /// - 运营者排行榜
+        /// 
+        /// ### 参数
+        /// - `operator`: 运营者账户
+        /// 
+        /// ### 返回
+        /// - `Some(OperatorMetrics)`: 运营者存在
+        /// - `None`: 运营者不存在
+        pub fn get_operator_metrics(
+            operator: &T::AccountId,
+        ) -> Option<OperatorMetrics<BalanceOf<T>, BlockNumberFor<T>>> {
+            let info = Operators::<T>::get(operator)?;
+            let stats = OperatorPinStats::<T>::get(operator);
+            let pending_rewards = OperatorRewards::<T>::get(operator);
+            
+            let current_pins = Self::count_operator_pins(operator);
+            let avg_size_mb: u64 = 2;
+            let used_capacity_gib = (current_pins as u64 * avg_size_mb) / 1024;
+            let capacity_usage_percent = if info.capacity_gib > 0 {
+                ((used_capacity_gib * 100) / (info.capacity_gib as u64)) as u8
+            } else {
+                0
+            };
+            
+            Some(OperatorMetrics {
+                // 基础信息
+                status: info.status,
+                capacity_gib: info.capacity_gib,
+                registered_at: info.registered_at,
                 
-                if pool_balance >= amount {
-                    // 从 IPFS 池转账到运营者托管账户
-                    <T as Config>::Currency::transfer(
-                        &ipfs_pool,
-                        &escrow_account,
-                        amount,
-                        frame_support::traits::ExistenceRequirement::AllowDeath,
-                    )?;
+                // Pin统计
+                total_pins: stats.total_pins,
+                healthy_pins: stats.healthy_pins,
+                failed_pins: stats.failed_pins,
+                health_score: stats.health_score,
+                
+                // 容量使用
+                used_capacity_gib: used_capacity_gib as u32,
+                capacity_usage_percent,
+                
+                // 收益
+                pending_rewards,
+            })
+        }
+
+        // ⭐ P1优化：已删除 select_operators_for_pin() 函数（98行）
+        // 原因：所有引用已迁移到 select_operators_by_layer()
+        // 迁移完成位置：
+        // - request_pin_for_deceased() extrinsic (已使用select_operators_by_layer)
+        // 删除日期：2025-10-26
+        // 
+        // 新函数优势：
+        // - 支持分层选择（Layer 1 Core + Layer 2 Community）
+        // - 更智能的评分算法（健康度+容量+优先级）
+        // - 详细的审计追溯（LayeredPinAssignments）
+
+        /// 函数级详细中文注释：根据分层策略智能选择运营者（Layer 1/Layer 2）
+        /// 
+        /// ### 功能
+        /// 根据数据类型和Pin优先级，从Layer 1（核心）和Layer 2（社区）运营者池中智能选择，实现：
+        /// 1. 核心数据优先分配到Layer 1（项目方运营者）
+        /// 2. 社区运营者增强冗余
+        /// 3. 自动降级机制（运营者不足时）
+        /// 4. 健康度和容量优先排序
+        /// 
+        /// ### 参数
+        /// - `subject_type`: 数据类型（Deceased/Grave/Evidence等）
+        /// - `tier`: Pin优先级（Critical/Standard/Temporary）
+        /// 
+        /// ### 返回
+        /// - `Ok(LayeredOperatorSelection)`: 分层运营者列表（Layer 1 + Layer 2）
+        /// - `Err(Error::InsufficientOperators)`: 总副本数不足最低要求
+        /// 
+        /// ### 分层策略
+        /// 1. 从 `StorageLayerConfigs` 获取该数据类型的配置
+        /// 2. 筛选Layer 1运营者：Active + 容量<80% + 非待注销
+        /// 3. 按健康度和优先级排序Layer 1运营者
+        /// 4. 选择Top N个Layer 1运营者
+        /// 5. 筛选Layer 2运营者（同样条件）
+        /// 6. 选择Top M个Layer 2运营者
+        /// 7. 检查总副本数是否满足最低要求
+        /// 8. 发出告警事件（如果某层不足）
+        /// 
+        /// ### 降级策略
+        /// - Layer 1不足时，发出 `CoreOperatorShortage` 事件（高优先级告警）
+        /// - Layer 2不足时，发出 `CommunityOperatorShortage` 事件（中优先级告警）
+        /// - 总副本数不足时，返回错误拒绝Pin请求
+        /// 
+        /// ### 使用场景
+        /// - `request_pin_for_deceased` 初始Pin分配
+        /// - `request_pin_for_grave` 墓碑数据Pin分配
+        /// - OCW自动修复时重新分配
+        pub fn select_operators_by_layer(
+            subject_type: SubjectType,
+            tier: PinTier,
+        ) -> Result<LayeredOperatorSelection<T::AccountId>, Error<T>> {
+            // 1. 获取分层策略配置
+            let config = StorageLayerConfigs::<T>::get((subject_type.clone(), tier.clone()));
+            
+            // 2. 收集所有Layer 1（核心）运营者候选
+            let mut core_candidates: Vec<(T::AccountId, u8, u8, u8)> = Vec::new(); 
+            // (account, health_score, capacity_usage, priority)
+            
+            for (operator, info) in Operators::<T>::iter() {
+                // 筛选条件1：必须是Core层
+                if info.layer != OperatorLayer::Core {
+                    continue;
+                }
+                
+                // 筛选条件2：只选Active状态
+                if info.status != 0 {
+                    continue;
+                }
+                
+                // 筛选条件3：不在待注销列表
+                if PendingUnregistrations::<T>::contains_key(&operator) {
+                    continue;
+                }
+                
+                // 计算容量使用率
+                let capacity_usage_percent = Self::calculate_capacity_usage(&operator);
+                
+                // 筛选条件4：容量使用率 < 80%
+                if capacity_usage_percent >= 80 {
+                    continue;
+                }
+                
+                // 获取健康度得分
+                let health_score = Self::calculate_health_score(&operator);
+                
+                core_candidates.push((operator, health_score, capacity_usage_percent, info.priority));
+            }
+            
+            // 3. 排序Layer 1运营者：健康度优先、优先级次要、容量第三
+            core_candidates.sort_by(|a, b| {
+                // 第一排序：健康度降序（高优先）
+                match b.1.cmp(&a.1) {
+                    core::cmp::Ordering::Equal => {
+                        // 第二排序：优先级升序（低值优先）
+                        match a.3.cmp(&b.3) {
+                            core::cmp::Ordering::Equal => {
+                                // 第三排序：容量使用率升序（低优先）
+                                a.2.cmp(&b.2)
+                            },
+                            other => other,
+                        }
+                    },
+                    other => other,
+                }
+            });
+            
+            // 4. 选择Top N个Layer 1运营者
+            let selected_core: Vec<T::AccountId> = core_candidates
+                .into_iter()
+                .take(config.core_replicas as usize)
+                .map(|(account, _, _, _)| account)
+                .collect();
+            
+            // 5. 如果Layer 1运营者不足，发出告警
+            if (selected_core.len() as u32) < config.core_replicas {
+                Self::deposit_event(Event::CoreOperatorShortage {
+                    required: config.core_replicas,
+                    available: selected_core.len() as u32,
+                });
+            }
+            
+            // 6. 收集所有Layer 2（社区）运营者候选
+            let mut community_candidates: Vec<(T::AccountId, u8, u8)> = Vec::new(); 
+            // (account, health_score, capacity_usage)
+            
+            for (operator, info) in Operators::<T>::iter() {
+                // 筛选条件1：必须是Community层
+                if info.layer != OperatorLayer::Community {
+                    continue;
+                }
+                
+                // 筛选条件2：只选Active状态
+                if info.status != 0 {
+                    continue;
+                }
+                
+                // 筛选条件3：不在待注销列表
+                if PendingUnregistrations::<T>::contains_key(&operator) {
+                    continue;
+                }
+                
+                // 计算容量使用率
+                let capacity_usage_percent = Self::calculate_capacity_usage(&operator);
+                
+                // 筛选条件4：容量使用率 < 80%
+                if capacity_usage_percent >= 80 {
+                    continue;
+                }
+                
+                // 获取健康度得分
+                let health_score = Self::calculate_health_score(&operator);
+                
+                community_candidates.push((operator, health_score, capacity_usage_percent));
+            }
+            
+            // 7. 排序Layer 2运营者：健康度优先、容量次要
+            community_candidates.sort_by(|a, b| {
+                // 第一排序：健康度降序（高优先）
+                match b.1.cmp(&a.1) {
+                    core::cmp::Ordering::Equal => {
+                        // 第二排序：容量使用率升序（低优先）
+                        a.2.cmp(&b.2)
+                    },
+                    other => other,
+                }
+            });
+            
+            // 8. 选择Top M个Layer 2运营者
+            let selected_community: Vec<T::AccountId> = community_candidates
+                .into_iter()
+                .take(config.community_replicas as usize)
+                .map(|(account, _, _)| account)
+                .collect();
+            
+            // 9. 如果Layer 2运营者不足，发出告警（但不影响系统运行）
+            if (selected_community.len() as u32) < config.community_replicas {
+                Self::deposit_event(Event::CommunityOperatorShortage {
+                    required: config.community_replicas,
+                    available: selected_community.len() as u32,
+                });
+            }
+            
+            // 10. 检查总副本数是否满足最低要求
+            let total_selected = selected_core.len() + selected_community.len();
+            ensure!(
+                total_selected >= config.min_total_replicas as usize,
+                Error::<T>::NotEnoughOperators
+            );
+            
+            // 11. 转换为BoundedVec并返回
+            Ok(LayeredOperatorSelection {
+                core_operators: BoundedVec::try_from(selected_core)
+                    .map_err(|_| Error::<T>::BadParams)?,
+                community_operators: BoundedVec::try_from(selected_community)
+                    .map_err(|_| Error::<T>::BadParams)?,
+            })
+        }
+
+        pub fn derive_subject_funding_account_v2(
+            subject_type: SubjectType,
+            subject_id: u64,
+        ) -> T::AccountId {
+            let domain: u8 = match subject_type {
+                SubjectType::Deceased => T::DeceasedDomain::get(),
+                SubjectType::Grave => 1,      // b"grave"
+                SubjectType::Offerings => 2,  // b"offerings"
+                SubjectType::OtcOrder => 3,   // b"otc"
+                SubjectType::Evidence => 4,   // b"evidence"
+                SubjectType::Custom(_) => 99, // 自定义域统一使用99
+            };
+            
+            Self::subject_account_for(domain, subject_id)
+        }
+        
+        /// 函数级详细中文注释：四层回退充电机制（IpfsPool优先）
+        /// 
+        /// 充电顺序（调整后）：
+        /// 1. IpfsPoolAccount（系统公共池）← 第一顺序
+        /// 2. SubjectFunding（用户充值账户）← 第二顺序
+        /// 3. OperatorEscrowAccount（运营者保证金）← 第三顺序
+        /// 4. GracePeriod（宽限期）← 最后防线
+        /// 
+        /// 返回：
+        /// - Ok(ChargeResult::Success)：扣费成功，记录使用的层级
+        /// - Ok(ChargeResult::EnterGrace)：进入宽限期
+        /// - Err(Error::GraceExpired)：宽限期已过
+        pub fn four_layer_charge(
+            cid_hash: &T::Hash,
+            task: &mut BillingTask<BlockNumberFor<T>, BalanceOf<T>>,
+        ) -> Result<ChargeResult<BlockNumberFor<T>>, Error<T>> {
+            let amount = task.amount_per_period;
+            
+            // 获取Subject信息
+            let subjects = CidToSubject::<T>::get(cid_hash)
+                .ok_or(Error::<T>::SubjectNotFound)?;
+            
+            // ===== 第1层：IpfsPoolAccount（系统公共池）=====
+            let pool_account = T::IpfsPoolAccount::get();
+            let pool_balance = T::Currency::free_balance(&pool_account);
+            
+            if pool_balance >= amount {
+                // 从公共池扣费
+                let _ = T::Currency::withdraw(
+                    &pool_account,
+                    amount,
+                    frame_support::traits::WithdrawReasons::TRANSFER,
+                    ExistenceRequirement::KeepAlive,
+                ).map_err(|_| Error::<T>::IpfsPoolInsufficientBalance)?;
+                
+                // 分配给运营者
+                Self::distribute_to_pin_operators(cid_hash, amount).map_err(|_| Error::<T>::BadStatus)?;
+                
+                TotalChargedFromPool::<T>::mutate(|total| *total = total.saturating_add(amount));
+                
+                // 成功从公共池扣费
+                return Ok(ChargeResult::Success {
+                    layer: ChargeLayer::IpfsPool,
+                });
+            }
+            
+            // ===== 第2层：SubjectFunding（用户充值账户）=====
+            // 公共池不足时，尝试从用户账户补充公共池
+            for subject_info in subjects.iter() {
+                let funding_account = Self::derive_subject_funding_account_v2(
+                    subject_info.subject_type.clone(),
+                    subject_info.subject_id,
+                );
+                
+                // 计算该Subject应承担的费用
+                let share_amount = if subject_info.funding_share > 0 {
+                    amount.saturating_mul(subject_info.funding_share.into()) / 100u32.into()
+                } else {
+                    amount // 如果share为0，默认承担全部
+                };
+                
+                let funding_balance = T::Currency::free_balance(&funding_account);
+                
+                if funding_balance >= share_amount {
+                    // 从用户账户转入公共池
+                    T::Currency::transfer(
+                        &funding_account,
+                        &pool_account,
+                        share_amount,
+                        ExistenceRequirement::KeepAlive,
+                    ).map_err(|_| Error::<T>::SubjectFundingInsufficientBalance)?;
                     
-                    // 更新配额使用记录
-                    PublicFeeQuotaUsage::<T>::insert(
-                        deceased_id,
-                        (used_quota.saturating_add(amount), reset_block),
-                    );
+                    // 分配给运营者
+                    Self::distribute_to_pin_operators(cid_hash, share_amount).map_err(|_| Error::<T>::BadStatus)?;
                     
-                    // 更新统计
-                    TotalChargedFromPool::<T>::mutate(|total| {
-                        *total = total.saturating_add(amount);
+                    TotalChargedFromSubject::<T>::mutate(|total| *total = total.saturating_add(share_amount));
+                    
+                    // 发出警告：公共池已不足，需要及时补充
+                    Self::deposit_event(Event::IpfsPoolLowBalanceWarning {
+                        current: T::Currency::free_balance(&pool_account),
                     });
                     
-                    // 触发事件
-                    Self::deposit_event(Event::ChargedFromIpfsPool {
-                        deceased_id,
-                        amount,
-                        remaining_quota: remaining_quota.saturating_sub(amount),
+                    return Ok(ChargeResult::Success {
+                        layer: ChargeLayer::SubjectFunding,
                     });
-                    
-                    // 检查池余额，如果过低发出警告
-                    let new_balance = pool_balance.saturating_sub(amount);
-                    let threshold = monthly_quota.saturating_mul(10u32.into()); // 10 个月配额
-                    
-                    if new_balance < threshold {
-                        Self::deposit_event(Event::IpfsPoolLowBalance {
-                            current_balance: new_balance,
-                            threshold,
-                        });
-                    }
-                    
-                    return Ok(());
                 }
             }
             
-            // ========================================
-            // 步骤 3: 从 SubjectFunding 扣款
-            // ========================================
+            // ===== 第3层：OperatorEscrowAccount（运营者保证金）=====
+            // 从存储该CID的运营者保证金中平摊扣除
+            let operators = Self::get_pin_operators(cid_hash)?;
+            if operators.is_empty() {
+                return Err(Error::<T>::NoOperatorsAssigned);
+            }
             
-            let subject_account = Self::derive_subject_funding_account(deceased_id);
-            let subject_balance = <T as Config>::Currency::free_balance(&subject_account);
+            let per_operator = amount / (operators.len() as u32).into();
+            let escrow_account = T::OperatorEscrowAccount::get();
+            let escrow_balance = T::Currency::free_balance(&escrow_account);
             
-            ensure!(
-                subject_balance >= amount,
-                Error::<T>::BothAccountsInsufficientBalance
-            );
+            // 检查运营者托管账户是否有足够余额
+            let total_needed = per_operator.saturating_mul((operators.len() as u32).into());
+            if escrow_balance >= total_needed {
+                // 从运营者托管账户扣费
+                let _ = T::Currency::withdraw(
+                    &escrow_account,
+                    total_needed,
+                    frame_support::traits::WithdrawReasons::TRANSFER,
+                    ExistenceRequirement::KeepAlive,
+                ).map_err(|_| Error::<T>::InsufficientEscrowBalance)?;
+                
+                // 分配给运营者（实际上是返还给他们，因为他们垫付了）
+                Self::distribute_to_pin_operators(cid_hash, total_needed).map_err(|_| Error::<T>::BadStatus)?;
+                
+                // 发送紧急通知：使用了运营者保证金
+                Self::deposit_event(Event::OperatorEscrowUsed {
+                    cid_hash: *cid_hash,
+                    amount: total_needed,
+                });
+                
+                // 进入短宽限期（3天）
+                let current_block = <frame_system::Pallet<T>>::block_number();
+                let short_grace = 86400u32; // 3天
+                let expires_at = current_block + short_grace.into();
+                
+                return Ok(ChargeResult::EnterGrace { expires_at });
+            }
             
-            // 从 SubjectFunding 转账到运营者托管账户
-            <T as Config>::Currency::transfer(
-                &subject_account,
-                &escrow_account,
-                amount,
-                frame_support::traits::ExistenceRequirement::AllowDeath,
-            )?;
+            // ===== 第4层：GracePeriod（宽限期）=====
+            match &task.grace_status {
+                GraceStatus::Normal => {
+                    // 首次失败，进入宽限期
+                    let tier = CidTier::<T>::get(cid_hash);
+                    let tier_config = Self::get_tier_config(&tier).unwrap_or_default();
+                    let current_block = <frame_system::Pallet<T>>::block_number();
+                    let expires_at = current_block + tier_config.grace_period_blocks.into();
+                    
+                    Ok(ChargeResult::EnterGrace { expires_at })
+                },
+                GraceStatus::InGrace { expires_at, .. } => {
+                    // 检查是否过期
+                    let current_block = <frame_system::Pallet<T>>::block_number();
+                    if current_block > *expires_at {
+                        Err(Error::<T>::GraceExpired)
+                    } else {
+                        Ok(ChargeResult::EnterGrace { expires_at: *expires_at })
+                    }
+                },
+                GraceStatus::Expired => {
+                    Err(Error::<T>::GraceExpired)
+                },
+            }
+        }
+        
+        /// 函数级详细中文注释：自动分配存储费给运营者
+        /// 
+        /// 分配逻辑：
+        /// 1. 查询哪些运营者存储了该CID（从PinAssignments读取）
+        /// 2. 平均分配费用给所有运营者
+        /// 3. 累计到运营者奖励账户（OperatorRewards）
+        /// 
+        /// 参数：
+        /// - cid_hash: CID哈希
+        /// - total_amount: 总费用
+        /// 
+        /// 防作弊：
+        /// - 运营者必须在PinAssignments中有该CID的记录
+        /// - 定期健康巡检验证运营者确实存储了数据
+        /// - 虚假报告会被申诉系统惩罚
+        pub fn distribute_to_pin_operators(
+            cid_hash: &T::Hash,
+            total_amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            // 1. 从PinAssignments获取运营者列表（链上记录）
+            let operators = PinAssignments::<T>::get(cid_hash)
+                .ok_or(Error::<T>::NoOperatorsAssigned)?;
             
-            // 更新统计
-            TotalChargedFromSubject::<T>::mutate(|total| {
-                *total = total.saturating_add(amount);
-            });
+            if operators.is_empty() {
+                return Err(Error::<T>::NoOperatorsAssigned.into());
+            }
             
-            // 触发事件
-            Self::deposit_event(Event::ChargedFromSubjectFunding {
-                deceased_id,
-                amount,
+            // 2. 计算每个运营者的奖励
+            let per_operator = total_amount / (operators.len() as u32).into();
+            
+            // 3. 累计到运营者奖励账户
+            for operator in operators.iter() {
+                OperatorRewards::<T>::mutate(operator, |balance| {
+                    *balance = balance.saturating_add(per_operator);
+                });
+                
+                // 发送事件（简化版，不包含权重信息）
+                Self::deposit_event(Event::OperatorRewarded {
+                    operator: operator.clone(),
+                    amount: per_operator,
+                    weight: 1000, // 平均分配，权重相同
+                    total_weight: (operators.len() as u128) * 1000,
+                });
+            }
+            
+            // 4. 发送分配完成事件
+            Self::deposit_event(Event::RewardDistributed {
+                total_amount,
+                operator_count: operators.len() as u32,
+                average_weight: 1000,
             });
             
             Ok(())
         }
-
-        /// 函数级详细中文注释：三重扣款逻辑（增强版，用于初次 pin 请求）
+        
+        /// 函数级详细中文注释：获取Pin的运营者列表
         /// 
-        /// 扣款优先级：
-        /// 1. IpfsPoolAccount（配额内优先，公共福利）
-        /// 2. SubjectFunding（逝者专属资金，推荐）
-        /// 3. 调用者账户（fallback，自费模式）
+        /// 从PinAssignments存储中读取分配给该CID的运营者列表
+        pub fn get_pin_operators(cid_hash: &T::Hash) -> Result<BoundedVec<T::AccountId, ConstU32<16>>, Error<T>> {
+            PinAssignments::<T>::get(cid_hash).ok_or(Error::<T>::NoOperatorsAssigned)
+        }
+        
+        /// 函数级详细中文注释：健康巡检（检查Pin状态）
+        /// 
+        /// 功能：
+        /// 1. 调用IPFS Cluster status API查询副本状态
+        /// 2. 比对目标副本数与当前副本数
+        /// 3. 返回健康状态（Healthy/Degraded/Critical/Unknown）
         /// 
         /// 参数：
-        /// - caller: 调用者账户（用于 fallback 扣款）
-        /// - deceased_id: 逝者 ID（用于配额检查和 SubjectFunding 派生）
-        /// - amount: 扣款金额
+        /// - cid_hash: CID哈希
         /// 
-        /// 返回值：
-        /// - Ok(source) - 成功，source=0:IpfsPool, 1:SubjectFunding, 2:Caller
-        /// - Err(Error) - 所有账户都余额不足
+        /// 返回：
+        /// - HealthStatus枚举值
         /// 
-        /// 使用场景：
-        /// - request_pin_for_deceased()：初次 pin 请求
-        /// - 不用于周期扣款（周期扣款使用 dual_charge_storage_fee）
-        pub fn triple_charge_storage_fee(
-            caller: &T::AccountId,
-            deceased_id: u64,
-            amount: BalanceOf<T>,
-        ) -> Result<u8, DispatchError> {
-            use sp_runtime::traits::{Zero, Saturating};
+        /// 注意：此函数应在OCW中调用，不应在链上执行
+        pub fn check_pin_health(_cid_hash: &T::Hash) -> HealthStatus {
+            // TODO: 实际实现需要在OCW中调用IPFS Cluster API
+            // 这里返回默认值，后续在on_finalize中实现
+            HealthStatus::Unknown
+        }
+        
+        /// 函数级详细中文注释：计算初始Pin费用（一次性预扣30天费用）
+        /// 
+        /// 参数：
+        /// - size_bytes: CID大小（字节）
+        /// - replicas: 副本数
+        /// 
+        /// 返回：
+        /// - Ok(Balance): 计算出的初始费用
+        /// - Err: 计算失败
+        /// 
+        /// 计算公式：
+        /// 费用 = (size_bytes / 1GiB) × replicas × base_rate × 4周
+        pub fn calculate_initial_pin_fee(
+            size_bytes: u64,
+            replicas: u32,
+        ) -> Result<BalanceOf<T>, Error<T>> {
+            let gib: u128 = 1_073_741_824u128; // 1 GiB
+            let size_u128 = size_bytes as u128;
+            let units = (size_u128 + gib - 1) / gib; // ceil
             
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            let ipfs_pool = T::IpfsPoolAccount::get();
-            let escrow_account = T::OperatorEscrowAccount::get();
+            let base_rate = PricePerGiBWeek::<T>::get();
+            let weeks_count = 4u128; // 30天 ≈ 4周
             
-            // ========================================
-            // 步骤 1: 获取并检查月度配额
-            // ========================================
+            let total = units
+                .saturating_mul(replicas as u128)
+                .saturating_mul(base_rate)
+                .saturating_mul(weeks_count);
             
-            let (used_quota, reset_block) = PublicFeeQuotaUsage::<T>::get(deceased_id);
+            Ok(total.saturated_into())
+        }
+        
+        /// 函数级详细中文注释：计算周期费用（每个billing_period的费用）
+        /// 
+        /// 参数：
+        /// - size_bytes: CID大小（字节）
+        /// - replicas: 副本数
+        /// 
+        /// 返回：
+        /// - Ok(Balance): 计算出的周期费用
+        /// - Err: 计算失败
+        /// 
+        /// 计算公式：
+        /// 费用 = (size_bytes / 1GiB) × replicas × base_rate × 1周
+        pub fn calculate_period_fee(
+            size_bytes: u64,
+            replicas: u32,
+        ) -> Result<BalanceOf<T>, Error<T>> {
+            let gib: u128 = 1_073_741_824u128;
+            let size_u128 = size_bytes as u128;
+            let units = (size_u128 + gib - 1) / gib;
             
-            // 如果超过重置周期，重置配额
-            let (used_quota, reset_block) = if current_block >= reset_block {
-                let new_reset_block = current_block.saturating_add(T::QuotaResetPeriod::get());
-                
-                Self::deposit_event(Event::QuotaReset {
-                    deceased_id,
-                    new_reset_block,
-                });
-                
-                (BalanceOf::<T>::zero(), new_reset_block)
-            } else {
-                (used_quota, reset_block)
-            };
+            let base_rate = PricePerGiBWeek::<T>::get();
             
-            let monthly_quota = T::MonthlyPublicFeeQuota::get();
-            let remaining_quota = monthly_quota.saturating_sub(used_quota);
+            let total = units
+                .saturating_mul(replicas as u128)
+                .saturating_mul(base_rate);
             
-            // ========================================
-            // 步骤 2: 尝试从 IPFS 池扣款（配额内优先）
-            // ========================================
-            
-            if remaining_quota >= amount {
-                let pool_balance = <T as Config>::Currency::free_balance(&ipfs_pool);
-                
-                if pool_balance >= amount {
-                    // 从 IPFS 池转账到运营者托管账户
-                    <T as Config>::Currency::transfer(
-                        &ipfs_pool,
-                        &escrow_account,
-                        amount,
-                        frame_support::traits::ExistenceRequirement::AllowDeath,
-                    )?;
-                    
-                    // 更新配额使用记录
-                    PublicFeeQuotaUsage::<T>::insert(
-                        deceased_id,
-                        (used_quota.saturating_add(amount), reset_block),
-                    );
-                    
-                    // 更新统计
-                    TotalChargedFromPool::<T>::mutate(|total| {
-                        *total = total.saturating_add(amount);
-                    });
-                    
-                    // 触发事件
-                    Self::deposit_event(Event::ChargedFromIpfsPool {
-                        deceased_id,
-                        amount,
-                        remaining_quota: remaining_quota.saturating_sub(amount),
-                    });
-                    
-                    // 检查池余额，如果过低发出警告
-                    let new_balance = pool_balance.saturating_sub(amount);
-                    let threshold = monthly_quota.saturating_mul(10u32.into()); // 10 个月配额
-                    
-                    if new_balance < threshold {
-                        Self::deposit_event(Event::IpfsPoolLowBalance {
-                            current_balance: new_balance,
-                            threshold,
-                        });
-                    }
-                    
-                    return Ok(0);  // ✅ 从 IpfsPool 扣款成功
-                }
-            }
-            
-            // ========================================
-            // 步骤 3: 尝试从 SubjectFunding 扣款
-            // ========================================
-            
-            let subject_account = Self::derive_subject_funding_account(deceased_id);
-            let subject_balance = <T as Config>::Currency::free_balance(&subject_account);
-            
-            if subject_balance >= amount {
-                // 从 SubjectFunding 转账到运营者托管账户
-                <T as Config>::Currency::transfer(
-                    &subject_account,
-                    &escrow_account,
-                    amount,
-                    frame_support::traits::ExistenceRequirement::AllowDeath,
-                )?;
-                
-                // 更新统计
-                TotalChargedFromSubject::<T>::mutate(|total| {
-                    *total = total.saturating_add(amount);
-                });
-                
-                // 触发事件
-                Self::deposit_event(Event::ChargedFromSubjectFunding {
-                    deceased_id,
-                    amount,
-                });
-                
-                return Ok(1);  // ✅ 从 SubjectFunding 扣款成功
-            }
-            
-            // ========================================
-            // 步骤 4: 从调用者账户扣款（fallback）
-            // ========================================
-            
-            let caller_balance = <T as Config>::Currency::free_balance(caller);
-            
-            ensure!(
-                caller_balance >= amount,
-                Error::<T>::AllThreeAccountsInsufficientBalance
-            );
-            
-            // 从调用者转账到运营者托管账户
-            <T as Config>::Currency::transfer(
-                caller,
-                &escrow_account,
-                amount,
-                frame_support::traits::ExistenceRequirement::KeepAlive,
-            )?;
-            
-            // 触发事件
-            Self::deposit_event(Event::ChargedFromCaller {
-                caller: caller.clone(),
-                deceased_id,
-                amount,
-            });
-            
-            Ok(2)  // ✅ 从调用者账户扣款成功
+            Ok(total.saturated_into())
+        }
+        
+        /// 函数级详细中文注释：获取治理账户（辅助函数）
+        /// 
+        /// 返回一个固定的治理账户地址（用于日志记录）
+        pub fn governance_account() -> T::AccountId {
+            // 使用SubjectPalletId作为治理账户的默认值
+            T::SubjectPalletId::get().into_account_truncating()
         }
     }
 
@@ -1073,9 +2398,36 @@ pub mod pallet {
     #[allow(warnings)]
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：为“逝者主题资金账户”充值（留审计事件）
-        /// - 限制：必须为该 subject 的 owner 调用；amount>0
-        /// - 行为：从 caller → 派生账户 转账（KeepAlive）
+        /// 函数级详细中文注释：为逝者SubjectFunding账户充值（开放充值）
+        /// 
+        /// ### 权限
+        /// - **任何账户都可以充值**（开放性）
+        /// - 无需owner权限
+        /// - 只需要deceased存在
+        /// 
+        /// ### 资金流向
+        /// - caller → SubjectFunding(deceased_id)
+        /// - SubjectFunding地址基于creator派生（稳定地址）
+        /// 
+        /// ### 使用场景
+        /// - owner自己充值（常规）
+        /// - 家人朋友赞助（情感）
+        /// - 社区众筹（公益）
+        /// - 服务商预付费（商业）
+        /// - 慈善捐赠（慈善）
+        /// 
+        /// ### 设计理念
+        /// - **开放性**：任何人都可以资助
+        /// - **灵活性**：支持多种场景
+        /// - **安全性**：资金只能用于IPFS pin
+        /// - **简单性**：不需要权限检查
+        /// 
+        /// ### 参数
+        /// - `subject_id`: 逝者ID
+        /// - `amount`: 充值金额（必须>0）
+        /// 
+        /// ### 事件
+        /// - SubjectFunded(subject_id, who, to, amount)
         #[pallet::call_index(9)]
         #[pallet::weight(10_000)]
         pub fn fund_subject_account(
@@ -1085,55 +2437,42 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(amount != BalanceOf::<T>::default(), Error::<T>::BadParams);
-            let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
-            ensure!(owner == who, Error::<T>::BadStatus);
-            let to = Self::subject_account_for_deceased(subject_id);
+            
+            // ✅ 只检查deceased是否存在（通过CreatorProvider）
+            let _creator = T::CreatorProvider::creator_of(subject_id)
+                .ok_or(Error::<T>::BadParams)?;
+            
+            // ✅ 派生SubjectFunding地址（使用统一的v2版本）
+            let to = Self::derive_subject_funding_account_v2(SubjectType::Deceased, subject_id);
+            
+            // ✅ 转账（任何人都可以充值）
             <T as Config>::Currency::transfer(
                 &who,
                 &to,
                 amount,
                 frame_support::traits::ExistenceRequirement::KeepAlive,
             )?;
+            
+            // ✅ 发送事件
             Self::deposit_event(Event::SubjectFunded(subject_id, who, to, amount));
             Ok(())
         }
-        /// 函数级详细中文注释：用户请求 Pin（一次性付费进入基金会）
-        /// - 输入为 `cid_hash`（避免泄露明文 CID）、大小与副本数；
-        /// - 价格计算在链上依据 `PricingParams` 得出；当前骨架由外部直接给出 `price`；
-        /// - 将 `price` 转入基金会（Endowment）并记录订单，等待 OCW 提交到 ipfs-cluster。
-        #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::request_pin())]
-        pub fn request_pin(
-            origin: OriginFor<T>,
-            cid_hash: T::Hash,
-            size_bytes: u64,
-            replicas: u32,
-            price: T::Balance,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            // 若直扣费关闭，则拒绝调用
-            ensure!(AllowDirectPin::<T>::get(), Error::<T>::DirectPinDisabled);
-            ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
-            // 将一次性费用直接转入 FeeCollector（例如 Treasury）
-            {
-                let to = <T as Config>::FeeCollector::get();
-                <T as Config>::Currency::transfer(
-                    &who,
-                    &to,
-                    price,
-                    frame_support::traits::ExistenceRequirement::KeepAlive,
-                )?;
-            }
-            // 注意：此函数已禁用，deceased_id 使用占位值 0
-            PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, 0u64, size_bytes, price));
-            let now = <frame_system::Pallet<T>>::block_number();
-            PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
-            PinStateOf::<T>::insert(&cid_hash, 0u8); // Requested
-            Self::deposit_event(Event::PinRequested(
-                cid_hash, who, replicas, size_bytes, price,
-            ));
-            Ok(())
-        }
+        // ⭐ P2优化：已删除 request_pin() extrinsic（46行）
+        // 原因：已被破坏式改造的 request_pin_for_deceased 替代
+        // 删除日期：2025-10-26
+        // 
+        // 旧版问题：
+        // - 使用cid_hash而非明文CID（不利于IPFS集成）
+        // - 直接扣费模式（无四层回退保障）
+        // - 不支持分层运营者选择
+        // - 不支持自动化计费和宽限期
+        // 
+        // 新版优势（request_pin_for_deceased）：
+        // - 使用明文CID（Vec<u8>），便于IPFS API调用
+        // - 四层扣费逻辑（IpfsPool → SubjectFunding → OperatorEscrow → Grace）
+        // - 分层运营者选择（Layer 1 Core + Layer 2 Community）
+        // - 支持PinTier（Critical/Standard/Temporary）
+        // - 自动化周期计费和宽限期管理
 
         /// 函数级详细中文注释：为"逝者主题"发起 Pin（三重扣款逻辑）
         /// 
@@ -1154,34 +2493,204 @@ pub mod pallet {
         pub fn request_pin_for_deceased(
             origin: OriginFor<T>,
             subject_id: u64,
-            cid_hash: T::Hash,
-            size_bytes: u64,
-            replicas: u32,
-            price: T::Balance,
+            cid: Vec<u8>,                    // 改为明文CID（破坏式修改）
+            tier: Option<PinTier>,           // 新增：分层等级，None则使用默认Standard
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(replicas >= 1 && size_bytes > 0, Error::<T>::BadParams);
-            let owner = T::OwnerProvider::owner_of(subject_id).ok_or(Error::<T>::BadParams)?;
-            ensure!(owner == who, Error::<T>::BadStatus);
+            let caller = ensure_signed(origin)?;
             
-            // 使用三重扣款逻辑：IpfsPool → SubjectFunding → Caller
-            let _charge_source = Self::triple_charge_storage_fee(&who, subject_id, price)?;
+            // 1. 验证逝者存在性和权限
+            let owner = T::OwnerProvider::owner_of(subject_id)
+                .ok_or(Error::<T>::DeceasedNotFound)?;
+            ensure!(caller == owner, Error::<T>::NotOwner);
             
-            PendingPins::<T>::insert(&cid_hash, (who.clone(), replicas, subject_id, size_bytes, price));
-            let now = <frame_system::Pallet<T>>::block_number();
-            PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
-            PinStateOf::<T>::insert(&cid_hash, 0u8);
-            Self::deposit_event(Event::PinRequested(
-                cid_hash, who, replicas, size_bytes, price,
-            ));
-            // 计费初始化：仅对“主题扣费”场景登记来源/周期
+            let creator = T::CreatorProvider::creator_of(subject_id)
+                .ok_or(Error::<T>::DeceasedNotFound)?;
+            
+            // 2. 计算CID哈希
+            use sp_runtime::traits::Hash;
+            let cid_hash = T::Hashing::hash(&cid[..]);
+            
+            // 3. 防重复Pin
+            ensure!(!PinMeta::<T>::contains_key(&cid_hash), Error::<T>::AlreadyPinned);
+            
+            // 4. 获取分层配置
+            let tier = tier.unwrap_or(PinTier::Standard);
+            let tier_config = Self::get_tier_config(&tier)?;
+            
+            // 5. 估算CID大小（简化处理，实际可从OCW获取）
+            let size_bytes = cid.len() as u64 * 1024; // 假设平均1KB/字符
+            
+            // 6. 计算初始Pin费用（根据tier的fee_multiplier调整）
+            let base_fee = Self::calculate_initial_pin_fee(size_bytes, tier_config.replicas)?;
+            let adjusted_fee = base_fee.saturating_mul(tier_config.fee_multiplier.into()) / 10000u32.into();
+            
+            // 7. 执行初始扣费（使用四层回退机制）
+            // 创建临时的BillingTask用于扣费
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let mut temp_task = BillingTask {
+                billing_period: T::DefaultBillingPeriod::get(),
+                amount_per_period: adjusted_fee,
+                last_charge: current_block,
+                grace_status: GraceStatus::Normal,
+                charge_layer: ChargeLayer::IpfsPool,
+            };
+            
+            // 先注册CidToSubject（four_layer_charge需要）
+            let subject_info = SubjectInfo {
+                subject_type: SubjectType::Deceased,
+                subject_id,
+                funding_share: 100,  // 独占100%费用
+            };
+            let subject_vec = BoundedVec::try_from(vec![subject_info])
+                .map_err(|_| Error::<T>::BadParams)?;
+            CidToSubject::<T>::insert(&cid_hash, subject_vec);
+            
+            // ⭐ 公共IPFS网络简化PIN分配（无隐私约束）
+            // 优先使用简化算法：更快、更高效
+            let simple_nodes = Self::optimized_pin_allocation(cid_hash, tier.clone(), size_bytes)?;
+            
+            // 同时保留完整的Layer 1/Layer 2逻辑（向后兼容）
+            let selection = Self::select_operators_by_layer(SubjectType::Deceased, tier.clone())?;
+            
+            // 合并Layer 1和Layer 2运营者为完整列表
+            let mut all_operators = selection.core_operators.to_vec();
+            all_operators.extend(selection.community_operators.to_vec());
+            
+            // 更新每个运营者的统计信息（分别处理Layer 1和Layer 2）
+            // Layer 1运营者
+            for operator in selection.core_operators.iter() {
+                Self::update_operator_pin_stats(operator, 1, 0)?;
+                Self::check_operator_capacity_warning(operator);
+                
+                let current_pins = Self::count_operator_pins(operator);
+                let capacity_usage_percent = Self::calculate_capacity_usage(operator);
+                
+                Self::deposit_event(Event::PinAssignedToOperator {
+                    operator: operator.clone(),
+                    cid_hash,
+                    current_pins,
+                    capacity_usage_percent,
+                });
+            }
+            
+            // Layer 2运营者
+            for operator in selection.community_operators.iter() {
+                Self::update_operator_pin_stats(operator, 1, 0)?;
+                Self::check_operator_capacity_warning(operator);
+                
+                let current_pins = Self::count_operator_pins(operator);
+                let capacity_usage_percent = Self::calculate_capacity_usage(operator);
+                
+                Self::deposit_event(Event::PinAssignedToOperator {
+                    operator: operator.clone(),
+                    cid_hash,
+                    current_pins,
+                    capacity_usage_percent,
+                });
+            }
+            
+            // ⭐ 记录分层Pin分配（用于审计和追溯）
+            // 注意：使用truncate_from转换不同bound的BoundedVec
+            let core_ops_for_storage = BoundedVec::truncate_from(selection.core_operators.to_vec());
+            let community_ops_for_storage = BoundedVec::truncate_from(selection.community_operators.to_vec());
+            
+            LayeredPinAssignments::<T>::insert(
+                &cid_hash,
+                LayeredPinAssignment {
+                    core_operators: core_ops_for_storage.clone(),
+                    community_operators: community_ops_for_storage.clone(),
+                    external_used: false,  // 暂不支持Layer 3
+                    external_network: None,
+                },
+            );
+            
+            // 发送分层Pin分配完成事件
+            Self::deposit_event(Event::LayeredPinAssigned {
+                cid_hash,
+                core_operators: core_ops_for_storage,
+                community_operators: community_ops_for_storage,
+                external_used: false,
+            });
+            
+            // 注册到PinAssignments（向后兼容）
+            let operators_bounded = BoundedVec::try_from(all_operators)
+                .map_err(|_| Error::<T>::BadParams)?;
+            PinAssignments::<T>::insert(&cid_hash, operators_bounded);
+            
+            // 执行扣费
+            match Self::four_layer_charge(&cid_hash, &mut temp_task) {
+                Ok(ChargeResult::Success { layer }) => {
+                    // 扣费成功
+                },
+                Ok(ChargeResult::EnterGrace { .. }) => {
+                    // 进入宽限期也允许Pin，但发出警告
+                    Self::deposit_event(Event::IpfsPoolLowBalanceWarning {
+                        current: T::Currency::free_balance(&T::IpfsPoolAccount::get()),
+                    });
+                },
+                Err(e) => return Err(e.into()),
+            }
+            
+            // 8. 注册CID到CidRegistry（用于OCW调用IPFS API）
+            let cid_bounded = BoundedVec::try_from(cid.clone())
+                .map_err(|_| Error::<T>::BadParams)?;
+            CidRegistry::<T>::insert(&cid_hash, cid_bounded);
+            
+            // 9. 注册到域索引
+            let domain = BoundedVec::try_from(b"deceased".to_vec())
+                .map_err(|_| Error::<T>::DomainTooLong)?;
+            DomainPins::<T>::insert(&domain, &cid_hash, ());
+            
+            // 9. 记录分层等级
+            CidTier::<T>::insert(&cid_hash, tier.clone());
+            
+            // 10. 注册到健康巡检队列
+            let next_check = current_block + tier_config.health_check_interval.into();
+            let check_task = HealthCheckTask {
+                tier: tier.clone(),
+                last_check: current_block,
+                last_status: HealthStatus::Unknown,  // 初始状态未知
+                consecutive_failures: 0,
+            };
+            HealthCheckQueue::<T>::insert(next_check, &cid_hash, check_task);
+            
+            // 11. 注册到周期扣费队列
+            let period_fee = Self::calculate_period_fee(size_bytes, tier_config.replicas)?;
+            let period_fee_adjusted = period_fee.saturating_mul(tier_config.fee_multiplier.into()) / 10000u32.into();
+            let billing_period = T::DefaultBillingPeriod::get();
+            let next_billing = current_block + billing_period.into();
+            let billing_task = BillingTask {
+                billing_period,
+                amount_per_period: period_fee_adjusted,
+                last_charge: current_block,
+                grace_status: GraceStatus::Normal,
+                charge_layer: ChargeLayer::IpfsPool,
+            };
+            BillingQueue::<T>::insert(next_billing, &cid_hash, billing_task);
+            
+            // 12. 存储Pin元信息
+            let meta = PinMetadata {
+                replicas: tier_config.replicas,
+                size: size_bytes,
+                created_at: current_block,
+                last_activity: current_block,
+            };
+            PinMeta::<T>::insert(&cid_hash, meta);
+            
+            // 13. 保留旧的存储项（兼容OCW）
+            PendingPins::<T>::insert(&cid_hash, (caller.clone(), tier_config.replicas, subject_id, size_bytes, adjusted_fee));
+            PinStateOf::<T>::insert(&cid_hash, 0u8);  // 0=Pending
             PinSubjectOf::<T>::insert(&cid_hash, (owner.clone(), subject_id));
-            let period = BillingPeriodBlocks::<T>::get();
-            let unit = PricePerGiBWeek::<T>::get();
-            let next = now.saturating_add(period.into());
-            PinBilling::<T>::insert(&cid_hash, (next, unit, 0u8));
-            // 加入到期队列（扩散入队，若全部满则静默丢弃；后续可由治理修复/补处理）
-            Self::enqueue_due(cid_hash, next);
+            
+            // 14. 发送事件
+            Self::deposit_event(Event::PinRequested(
+                cid_hash,
+                caller,
+                tier_config.replicas,
+                size_bytes,
+                adjusted_fee,
+            ));
+            
             Ok(())
         }
 
@@ -1210,34 +2719,55 @@ pub mod pallet {
                         // 仅处理 Active/Grace，已过期则跳过
                         if state <= 1u8 {
                             // 计算应收：ceil(size/GiB) * replicas * unit_price
-                            if let Some((replicas, size_bytes, _c, _l)) = PinMeta::<T>::get(&cid) {
+                            if let Some(meta) = PinMeta::<T>::get(&cid) {
                                 let gib: u128 = 1_073_741_824u128; // 1024^3
-                                let sz = size_bytes as u128;
+                                let sz = meta.size as u128;
+                                let replicas = meta.replicas;
                                 let units = (sz + gib - 1) / gib; // ceil
                                 let due_u128 = units
                                     .saturating_mul(replicas as u128)
                                     .saturating_mul(unit_price);
                                 let due_bal: BalanceOf<T> = due_u128.saturated_into();
                                 
-                                // 使用双重扣款逻辑：IPFS池（配额内）→ SubjectFunding
-                                if Self::dual_charge_storage_fee(subject_id, due_bal).is_ok() {
-                                    // 推进下一期并重新入队
-                                    let period = BillingPeriodBlocks::<T>::get();
-                                    let next = now.saturating_add(period.into());
-                                    PinBilling::<T>::insert(&cid, (next, unit_price, 0u8));
-                                    Self::enqueue_due(cid, next);
-                                    Self::deposit_event(Event::PinCharged(
-                                        cid, due_bal, period, next,
-                                    ));
-                                } else {
-                                    // 余额不足：首次不足进入 Grace；已在 Grace 再次不足则过期
-                                    if state == 0u8 {
-                                        let g = GraceBlocks::<T>::get();
-                                        let next = now.saturating_add(g.into());
-                                        PinBilling::<T>::insert(&cid, (next, unit_price, 1u8));
+                                // ⭐ P0优化：使用四层扣费逻辑替代双重扣费
+                                // 创建临时的BillingTask用于扣费
+                                let mut temp_task = BillingTask {
+                                    billing_period: BillingPeriodBlocks::<T>::get().into(),
+                                    amount_per_period: due_bal,
+                                    last_charge: now,
+                                    grace_status: match state {
+                                        0 => GraceStatus::Normal,
+                                        1 => GraceStatus::InGrace { 
+                                            entered_at: now.saturating_sub(GraceBlocks::<T>::get().into()),
+                                            expires_at: now
+                                        },
+                                        _ => GraceStatus::Normal, // 不应该到这里
+                                    },
+                                    charge_layer: ChargeLayer::IpfsPool,
+                                };
+                                
+                                match Self::four_layer_charge(&cid, &mut temp_task) {
+                                    Ok(ChargeResult::Success { layer }) => {
+                                        // 扣费成功：推进下一期并重新入队
+                                        let period = BillingPeriodBlocks::<T>::get();
+                                        let next = now.saturating_add(period.into());
+                                        PinBilling::<T>::insert(&cid, (next, unit_price, 0u8));
                                         Self::enqueue_due(cid, next);
+                                        Self::deposit_event(Event::PinCharged(
+                                            cid, due_bal, period, next,
+                                        ));
+                                        
+                                        // 分配收益给运营者
+                                        let _ = Self::distribute_to_pin_operators(&cid, due_bal);
+                                    },
+                                    Ok(ChargeResult::EnterGrace { expires_at }) => {
+                                        // 进入宽限期：更新状态并重新入队
+                                        PinBilling::<T>::insert(&cid, (expires_at, unit_price, 1u8));
+                                        Self::enqueue_due(cid, expires_at);
                                         Self::deposit_event(Event::PinGrace(cid));
-                                    } else {
+                                    },
+                                    Err(_) => {
+                                        // 扣费失败（宽限期已过）：标记过期
                                         PinBilling::<T>::insert(&cid, (now, unit_price, 2u8));
                                         Self::deposit_event(Event::PinExpired(cid));
                                     }
@@ -1269,7 +2799,7 @@ pub mod pallet {
             max_charge_per_block: Option<u32>,
             subject_min_reserve: Option<BalanceOf<T>>,
             paused: Option<bool>,
-            allow_direct_pin: Option<bool>,
+            // ⭐ P2优化：已删除 allow_direct_pin 参数（旧版 request_pin() 已删除）
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
             // 参数防呆校验：确保关键参数为正，避免导致停摆或无限宽限
@@ -1295,9 +2825,7 @@ pub mod pallet {
             if let Some(v) = paused {
                 BillingPaused::<T>::put(v);
             }
-            if let Some(v) = allow_direct_pin {
-                AllowDirectPin::<T>::put(v);
-            }
+            // ⭐ P2优化：已删除 allow_direct_pin 参数处理（旧版 request_pin() 已删除）
             Ok(())
         }
 
@@ -1505,7 +3033,8 @@ pub mod pallet {
             // 标记该运营者完成
             PinSuccess::<T>::insert(&cid_hash, &who, true);
             // 达到副本数则完成
-            if let Some((expect, _size, _created, _last)) = PinMeta::<T>::get(&cid_hash) {
+            if let Some(meta) = PinMeta::<T>::get(&cid_hash) {
+                let expect = meta.replicas;
                 let mut ok_count: u32 = 0;
                 if let Some(ops) = PinAssignments::<T>::get(&cid_hash) {
                     for o in ops.iter() {
@@ -1589,12 +3118,19 @@ pub mod pallet {
             // 保证金保留
             <T as Config>::Currency::reserve(&who, bond)?;
             OperatorBond::<T>::insert(&who, bond);
+            
+            // ✅ P1-1：获取当前区块高度作为注册时间
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            
             let info = OperatorInfo::<T> {
                 peer_id,
                 capacity_gib,
                 endpoint_hash,
                 cert_fingerprint,
                 status: 0,
+                registered_at: current_block,  // ✅ P1-1：记录注册时间
+                layer: OperatorLayer::Community,  // ✅ Layer分层：新运营者默认分配到Layer 2（社区）
+                priority: 128,  // ✅ 默认优先级：中等（0-255，Community通常51-200）
             };
             Operators::<T>::insert(&who, info);
             Self::deposit_event(Event::OperatorJoined(who));
@@ -1639,24 +3175,68 @@ pub mod pallet {
         /// 函数级详细中文注释：退出运营者并解保留保证金（需无未完成订单，MVP 略过校验）
         #[pallet::call_index(5)]
         #[pallet::weight(10_000)]
+        /// 函数级详细中文注释：运营者注销（永久退出）✅ P0-3优化版
+        /// 
+        /// ### 功能说明
+        /// - 运营者自己调用，永久退出运营者身份
+        /// - 如果有未完成的Pin，进入7天宽限期
+        /// - 宽限期内OCW自动迁移Pin到其他运营者
+        /// - 宽限期结束后，如无Pin则返还保证金并移除记录
+        /// - 如果没有Pin，立即退出并返还保证金
+        /// 
+        /// ### 宽限期机制（✅ P0-3新增）
+        /// - 默认7天（100,800块）
+        /// - 宽限期内运营者状态标记为Suspended（停止新Pin）
+        /// - OCW负责迁移Pin到其他运营者
+        /// - 宽限期到期由on_finalize检查并处理
+        /// 
+        /// ### 流程
+        /// 1. 检查是否是运营者
+        /// 2. 统计当前Pin数量
+        /// 3. 如有Pin → 进入宽限期（7天）
+        /// 4. 如无Pin → 立即退出
+        /// 
+        /// ### 权限
+        /// - 签名账户必须是已注册的运营者
         pub fn leave_operator(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // 检查是否是运营者
             ensure!(
                 Operators::<T>::contains_key(&who),
                 Error::<T>::OperatorNotFound
             );
-            // 退出校验：不得出现在任何分配中（MVP：线性扫描）
-            for (_cid, ops) in PinAssignments::<T>::iter() {
-                if ops.iter().any(|o| o == &who) {
-                    return Err(Error::<T>::HasActiveAssignments.into());
-                }
+
+            // ✅ P0-3：统计运营者的Pin数量
+            let assigned_pins = Self::count_operator_pins(&who);
+            
+            if assigned_pins > 0 {
+                // ✅ P0-3：进入宽限期
+                let grace_period_blocks = 100_800u32.into();  // 7天（100,800块）
+                let current_block = <frame_system::Pallet<T>>::block_number();
+                let expires_at = current_block.saturating_add(grace_period_blocks);
+                
+                // 记录到宽限期队列
+                PendingUnregistrations::<T>::insert(&who, expires_at);
+                
+                // 立即停止新Pin分配（标记为Suspended）
+                Operators::<T>::try_mutate(&who, |maybe| -> DispatchResult {
+                    let op = maybe.as_mut().ok_or(Error::<T>::OperatorNotFound)?;
+                    op.status = 1;  // 1 = Suspended
+                    Ok(())
+                })?;
+                
+                // 发送进入宽限期事件
+                Self::deposit_event(Event::OperatorUnregistrationPending {
+                    operator: who,
+                    remaining_pins: assigned_pins,
+                    expires_at,
+                });
+            } else {
+                // ✅ 无Pin，立即退出
+                Self::finalize_operator_unregistration(&who)?;
             }
-            Operators::<T>::remove(&who);
-            let bond = OperatorBond::<T>::take(&who);
-            if !bond.is_zero() {
-                let _ = <T as Config>::Currency::unreserve(&who, bond);
-            }
-            Self::deposit_event(Event::OperatorLeft(who));
+
             Ok(())
         }
 
@@ -1675,6 +3255,180 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::OperatorStatusChanged(who, status));
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：治理更新分层存储策略配置
+        /// 
+        /// ### 功能说明
+        /// - 治理Root调用，动态调整不同数据类型的分层存储策略
+        /// - 支持按（数据类型 × Pin层级）细粒度配置
+        /// - 配置项包括：Layer 1副本数、Layer 2副本数、是否允许Layer 3、最低副本数
+        /// 
+        /// ### 参数
+        /// - `origin`: 必须是Root
+        /// - `subject_type`: 数据类型（Deceased/Grave/Evidence等）
+        /// - `tier`: Pin优先级（Critical/Standard/Temporary）
+        /// - `config`: 分层配置参数
+        /// 
+        /// ### 使用场景
+        /// - 调整证据数据的高安全策略（仅Layer 1，5副本）
+        /// - 调整供奉品的低成本策略（允许Layer 3）
+        /// - 应对运营者数量变化，动态调整副本分配
+        #[pallet::call_index(19)]
+        #[pallet::weight(10_000)]
+        pub fn set_storage_layer_config(
+            origin: OriginFor<T>,
+            subject_type: SubjectType,
+            tier: PinTier,
+            config: StorageLayerConfig,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 验证配置合理性
+            ensure!(
+                config.min_total_replicas > 0,
+                Error::<T>::BadParams
+            );
+            ensure!(
+                config.core_replicas + config.community_replicas >= config.min_total_replicas,
+                Error::<T>::BadParams
+            );
+            
+            // 更新配置
+            StorageLayerConfigs::<T>::insert((subject_type.clone(), tier.clone()), config.clone());
+            
+            // 发送事件
+            Self::deposit_event(Event::StorageLayerConfigUpdated {
+                subject_type,
+                tier,
+                core_replicas: config.core_replicas,
+                community_replicas: config.community_replicas,
+            });
+            
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：治理设置运营者层级
+        /// 
+        /// ### 功能说明
+        /// - 治理Root调用，手动调整运营者的层级和优先级
+        /// - 支持Layer 1/2之间的迁移
+        /// - 用于项目方将自己的节点设置为Layer 1（核心）
+        /// 
+        /// ### 参数
+        /// - `origin`: 必须是Root
+        /// - `operator`: 运营者账户
+        /// - `layer`: 新的层级（Core/Community）
+        /// - `priority`: 优先级（0-255，越小越优先）
+        /// 
+        /// ### 使用场景
+        /// - 项目方初始运营者设置为Layer 1（Core）
+        /// - 优秀社区运营者升级到Layer 1
+        /// - 降级不活跃的Layer 1运营者到Layer 2
+        #[pallet::call_index(20)]
+        #[pallet::weight(10_000)]
+        pub fn set_operator_layer(
+            origin: OriginFor<T>,
+            operator: T::AccountId,
+            layer: OperatorLayer,
+            priority: u8,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 检查运营者是否存在
+            Operators::<T>::try_mutate(&operator, |info_opt| -> DispatchResult {
+                let info = info_opt.as_mut().ok_or(Error::<T>::OperatorNotFound)?;
+                
+                // 更新层级和优先级
+                info.layer = layer.clone();
+                info.priority = priority;
+                
+                // 发送事件
+                Self::deposit_event(Event::OperatorLayerUpdated {
+                    operator: operator.clone(),
+                    layer,
+                    priority,
+                });
+                
+                Ok(())
+            })
+        }
+
+        /// 函数级详细中文注释：运营者自主暂停（临时停止接收新Pin）✅ P0-1实现
+        /// 
+        /// ### 功能说明
+        /// - 运营者自己调用，无需治理介入
+        /// - 将status从0(Active)改为1(Suspended)
+        /// - 停止分配新Pin，但已有Pin仍需维护
+        /// - 保留运营者身份和保证金
+        /// - 可随时调用resume_operator()恢复
+        /// 
+        /// ### 适用场景
+        /// - 短期维护（硬件升级、网络故障修复）
+        /// - 临时离线（1-7天）
+        /// - 容量不足需要扩容
+        /// 
+        /// ### 权限
+        /// - 签名账户必须是已注册的运营者
+        /// - 当前状态必须是Active（status=0）
+        #[pallet::call_index(22)]
+        #[pallet::weight(10_000)]
+        pub fn pause_operator(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查是否是运营者
+            let mut info = Operators::<T>::get(&who)
+                .ok_or(Error::<T>::OperatorNotFound)?;
+
+            // 检查是否已暂停
+            ensure!(info.status == 0, Error::<T>::AlreadyPaused);
+
+            // 标记为暂停
+            info.status = 1;  // 1 = Suspended
+            Operators::<T>::insert(&who, info);
+
+            // 发送事件
+            Self::deposit_event(Event::OperatorPaused { operator: who });
+
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：运营者自主恢复（从暂停状态恢复）✅ P0-2实现
+        /// 
+        /// ### 功能说明
+        /// - 运营者自己调用，无需治理介入
+        /// - 将status从1(Suspended)改为0(Active)
+        /// - 恢复接收新Pin分配
+        /// - 保证金和运营者信息不变
+        /// 
+        /// ### 适用场景
+        /// - 维护完成后恢复服务
+        /// - 硬件扩容完成
+        /// - 网络问题修复
+        /// 
+        /// ### 权限
+        /// - 签名账户必须是已注册的运营者
+        /// - 当前状态必须是Suspended（status=1）
+        #[pallet::call_index(23)]
+        #[pallet::weight(10_000)]
+        pub fn resume_operator(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查是否是运营者
+            let mut info = Operators::<T>::get(&who)
+                .ok_or(Error::<T>::OperatorNotFound)?;
+
+            // 检查是否已暂停
+            ensure!(info.status == 1, Error::<T>::NotPaused);
+
+            // 恢复激活
+            info.status = 0;  // 0 = Active
+            Operators::<T>::insert(&who, info);
+
+            // 发送事件
+            Self::deposit_event(Event::OperatorResumed { operator: who });
+
             Ok(())
         }
 
@@ -1719,6 +3473,152 @@ pub mod pallet {
             OperatorBond::<T>::insert(&who, new);
             Ok(())
         }
+        
+        // ============================================================================
+        // 新增治理接口：分层配置、扣费控制、运营者奖励（优化改造）
+        // ============================================================================
+        
+        /// 函数级详细中文注释：治理更新分层配置
+        /// 
+        /// 功能：
+        /// - 允许治理提案动态调整分层配置参数
+        /// - 支持调整副本数、巡检周期、费率系数、宽限期
+        /// 
+        /// 参数：
+        /// - tier: 分层等级（Critical/Standard/Temporary）
+        /// - config: 新的配置参数
+        /// 
+        /// 权限：
+        /// - 治理Origin（Root或技术委员会）
+        /// 
+        /// 验证：
+        /// - 副本数：1-10
+        /// - 巡检间隔：≥600块（约30分钟）
+        /// - 费率系数：1000-100000（0.1x-10x）
+        #[pallet::call_index(15)]
+        #[pallet::weight(10_000)]
+        pub fn update_tier_config(
+            origin: OriginFor<T>,
+            tier: PinTier,
+            config: TierConfig,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 验证配置合理性
+            ensure!(
+                config.replicas > 0 && config.replicas <= 10,
+                Error::<T>::InvalidReplicas
+            );
+            ensure!(
+                config.health_check_interval >= 600,  // 至少30分钟
+                Error::<T>::IntervalTooShort
+            );
+            ensure!(
+                config.fee_multiplier >= 1000 && config.fee_multiplier <= 100000,  // 0.1x ~ 10x
+                Error::<T>::InvalidMultiplier
+            );
+            
+            // 更新配置
+            PinTierConfig::<T>::insert(&tier, config.clone());
+            
+            // 发送事件
+            Self::deposit_event(Event::TierConfigUpdated { tier, config });
+            
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：运营者提取奖励
+        /// 
+        /// 功能：
+        /// - 运营者提取累计的存储费奖励
+        /// - 从IpfsPoolAccount转账到运营者账户
+        /// - 清零奖励记录
+        /// 
+        /// 权限：
+        /// - 签名账户（运营者本人）
+        /// 
+        /// 检查：
+        /// - 必须有可用奖励（余额 > 0）
+        /// - IpfsPoolAccount余额充足
+        #[pallet::call_index(16)]
+        #[pallet::weight(100_000)]
+        pub fn operator_claim_rewards(origin: OriginFor<T>) -> DispatchResult {
+            let operator = ensure_signed(origin)?;
+            
+            // 1. 获取奖励余额
+            let reward = OperatorRewards::<T>::get(&operator);
+            ensure!(!reward.is_zero(), Error::<T>::NoRewardsAvailable);
+            
+            // 2. 转账
+            let pool_account = T::IpfsPoolAccount::get();
+            T::Currency::transfer(
+                &pool_account,
+                &operator,
+                reward,
+                ExistenceRequirement::KeepAlive,
+            )?;
+            
+            // 3. 清零奖励
+            OperatorRewards::<T>::remove(&operator);
+            
+            // 4. 发送事件
+            Self::deposit_event(Event::RewardsClaimed {
+                operator,
+                amount: reward,
+            });
+            
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：紧急暂停自动扣费（应急开关）
+        /// 
+        /// 使用场景：
+        /// - 发现扣费逻辑漏洞，需要暂停保护用户资金
+        /// - IPFS集群故障，暂停扣费直到恢复
+        /// - 链上治理投票期间，暂停重大变更
+        /// 
+        /// 功能：
+        /// - 设置BillingPaused标志为true
+        /// - on_finalize将跳过扣费逻辑
+        /// 
+        /// 权限：
+        /// - 治理Origin（Root或技术委员会）
+        #[pallet::call_index(17)]
+        #[pallet::weight(30_000)]
+        pub fn emergency_pause_billing(origin: OriginFor<T>) -> DispatchResult {
+            let who = T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            BillingPaused::<T>::put(true);
+            
+            Self::deposit_event(Event::BillingPausedByGovernance {
+                by: Self::governance_account(),
+            });
+            
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：恢复自动扣费
+        /// 
+        /// 功能：
+        /// - 设置BillingPaused标志为false
+        /// - on_finalize恢复扣费逻辑
+        /// 
+        /// 权限：
+        /// - 治理Origin（Root或技术委员会）
+        #[pallet::call_index(18)]
+        #[pallet::weight(30_000)]
+        pub fn resume_billing(origin: OriginFor<T>) -> DispatchResult {
+            let who = T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            BillingPaused::<T>::put(false);
+            
+            Self::deposit_event(Event::BillingResumedByGovernance {
+                by: Self::governance_account(),
+            });
+            
+            Ok(())
+        }
+        
     }
 
     #[pallet::hooks]
@@ -1740,31 +3640,51 @@ pub mod pallet {
                     .and_then(|v| core::str::from_utf8(&v).ok().map(|s| s.to_string()));
 
             // 分配与 Pin：遍历 PendingPins，若无分配则创建；否则尝试 POST /pins 携带 allocations
-            if let Some((cid_hash, (_payer, replicas, _deceased_id, _size, _price))) =
+            if let Some((cid_hash, (_payer, _replicas, _deceased_id, _size, _price))) =
                 <PendingPins<T>>::iter().next()
             {
-                // 若未分配，则智能选择运营者（按权重优先）
-                if PinAssignments::<T>::get(&cid_hash).is_none() {
-                    // 使用智能选择算法：优先选择可靠性高、容量充足的运营者
-                    let selected_vec = Self::select_operators_by_weight(replicas, &[]);
+                // ⭐ P0优化：使用分层选择算法替代旧版权重选择
+                if LayeredPinAssignments::<T>::get(&cid_hash).is_none() {
+                    // 获取CID的Tier（默认Standard，ValueQuery自动返回默认值）和SubjectType（默认Custom）
+                    let tier = CidTier::<T>::get(&cid_hash);
+                    let subject_type = SubjectType::Custom(Default::default());
                     
-                    if !selected_vec.is_empty() {
-                        // 转换为 BoundedVec
-                        let mut selected: BoundedVec<
-                            T::AccountId,
-                            frame_support::traits::ConstU32<16>,
-                        > = Default::default();
-                        
-                        for op in selected_vec.iter() {
-                            let _ = selected.try_push(op.clone());
-                        }
-                        
-                        if !selected.is_empty() {
-                            PinAssignments::<T>::insert(&cid_hash, &selected);
-                            Self::deposit_event(Event::AssignmentCreated(
+                    // 使用分层选择算法：Layer 1 + Layer 2
+                    match Self::select_operators_by_layer(subject_type, tier.clone()) {
+                        Ok(selection) => {
+                            // 合并Layer 1和Layer 2运营者
+                            let mut all_operators = selection.core_operators.to_vec();
+                            all_operators.extend(selection.community_operators.to_vec());
+                            
+                            // 记录分层Pin分配
+                            let core_ops = BoundedVec::truncate_from(selection.core_operators.to_vec());
+                            let community_ops = BoundedVec::truncate_from(selection.community_operators.to_vec());
+                            
+                            LayeredPinAssignments::<T>::insert(
+                                &cid_hash,
+                                LayeredPinAssignment {
+                                    core_operators: core_ops.clone(),
+                                    community_operators: community_ops.clone(),
+                                    external_used: false,
+                                    external_network: None,
+                                },
+                            );
+                            
+                            // 向后兼容：同时更新旧版PinAssignments
+                            if let Ok(operators_bounded) = BoundedVec::try_from(all_operators) {
+                                PinAssignments::<T>::insert(&cid_hash, operators_bounded);
+                            }
+                            
+                            // 发送分层Pin分配完成事件
+                            Self::deposit_event(Event::LayeredPinAssigned {
                                 cid_hash,
-                                selected.len() as u32,
-                            ));
+                                core_operators: core_ops,
+                                community_operators: community_ops,
+                                external_used: false,
+                            });
+                        },
+                        Err(_) => {
+                            // 选择失败，跳过（运营者不足等）
                         }
                     }
                 }
@@ -1790,7 +3710,7 @@ pub mod pallet {
                     sample = sample.saturating_add(1);
                     if let Some(assign) = PinAssignments::<T>::get(&cid_hash) {
                         let expect = PinMeta::<T>::get(&cid_hash)
-                            .map(|m| m.0)
+                            .map(|m| m.replicas)
                             .unwrap_or(assign.len() as u32);
                         let mut ok_count: u32 = 0;
                         for o in assign.iter() {
@@ -1842,13 +3762,72 @@ pub mod pallet {
                                         let success = PinSuccess::<T>::get(&cid_hash, op_acc);
                                         if present && !success {
                                             PinSuccess::<T>::insert(&cid_hash, op_acc, true);
+                                            
+                                            // P0-4：自动更新healthy_pins统计
+                                            // 注意：这里不修改total_pins（已在分配时+1）
+                                            // 仅需要在Pinned时更新healthy_pins
+                                            let _ = OperatorPinStats::<T>::try_mutate(op_acc, |stats| {
+                                                stats.healthy_pins = stats.healthy_pins.saturating_add(1);
+                                                stats.last_check = _n;
+                                                // 重新计算健康度得分
+                                                stats.health_score = Self::calculate_health_score(op_acc);
+                                                Ok::<(), ()>(())
+                                            });
+                                            
                                             Self::deposit_event(Event::ReplicaRepaired(
                                                 cid_hash,
                                                 op_acc.clone(),
                                             ));
+                                            
+                                            // 发送运营者Pin成功事件
+                                            if let Some(meta) = PinMeta::<T>::get(&cid_hash) {
+                                                Self::deposit_event(Event::OperatorPinSuccess {
+                                                    operator: op_acc.clone(),
+                                                    cid_hash,
+                                                    replicas_confirmed: meta.replicas,
+                                                });
+                                            }
                                         }
                                         if !present && success {
                                             PinSuccess::<T>::insert(&cid_hash, op_acc, false);
+                                            
+                                            // P0-4：自动更新监控统计 - Pin失败
+                                            // healthy_pins -1, failed_pins +1
+                                            let _ = OperatorPinStats::<T>::try_mutate(op_acc, |stats| {
+                                                stats.healthy_pins = stats.healthy_pins.saturating_sub(1);
+                                                stats.failed_pins = stats.failed_pins.saturating_add(1);
+                                                stats.last_check = _n;
+                                                
+                                                // 重新计算健康度得分
+                                                let old_score = stats.health_score;
+                                                stats.health_score = Self::calculate_health_score(op_acc);
+                                                
+                                                // 如果健康度下降超过10分，发送告警
+                                                if old_score.saturating_sub(stats.health_score) >= 10 {
+                                                    Self::deposit_event(Event::OperatorHealthDegraded {
+                                                        operator: op_acc.clone(),
+                                                        old_score,
+                                                        new_score: stats.health_score,
+                                                        total_pins: stats.total_pins,
+                                                        failed_pins: stats.failed_pins,
+                                                    });
+                                                }
+                                                
+                                                Ok::<(), ()>(())
+                                            });
+                                            
+                                            // 发送运营者Pin失败事件
+                                            let reason = alloc::format!("Pin degraded - operator offline or unreachable")
+                                                .as_bytes()
+                                                .to_vec();
+                                            if let Ok(bounded_reason) = BoundedVec::try_from(reason) {
+                                                Self::deposit_event(Event::OperatorPinFailed {
+                                                    operator: op_acc.clone(),
+                                                    cid_hash,
+                                                    reason: bounded_reason,
+                                                });
+                                            }
+                                            
                                             // 统计降级次数并触发告警建议
                                             OperatorSla::<T>::mutate(op_acc, |s| {
                                                 s.degraded = s.degraded.saturating_add(1);
@@ -1870,31 +3849,43 @@ pub mod pallet {
                                     }
                                 }
                                 
-                                // 自动补充副本：选择新的运营者来补充不足的副本
+                                // ⭐ P0优化：自动补充副本使用分层选择算法
                                 if shortage > 0 {
-                                    // 获取当前已分配的运营者列表（用于排除）
-                                    let current_operators: alloc::vec::Vec<T::AccountId> = 
-                                        assign.iter().cloned().collect();
+                                    // 获取CID的Tier（ValueQuery自动返回默认值）和SubjectType
+                                    let tier = CidTier::<T>::get(&cid_hash);
+                                    let subject_type = SubjectType::Custom(Default::default());
                                     
-                                    // 智能选择新的运营者来补充副本
-                                    let new_operators = Self::select_operators_by_weight(
-                                        shortage,
-                                        &current_operators
-                                    );
-                                    
-                                    if !new_operators.is_empty() {
-                                        // 更新分配列表
+                                    // 使用分层选择算法获取新运营者
+                                    if let Ok(selection) = Self::select_operators_by_layer(subject_type, tier) {
+                                        // 合并Layer 1和Layer 2运营者
+                                        let mut new_candidates = selection.core_operators.to_vec();
+                                        new_candidates.extend(selection.community_operators.to_vec());
+                                        
+                                        // 获取当前已分配的运营者（用于去重）
+                                        let current_operators: alloc::vec::Vec<T::AccountId> = 
+                                            assign.iter().cloned().collect();
+                                        
+                                        // 过滤出新的运营者（未在当前分配列表中）
                                         let mut updated_assign = assign.clone();
-                                        for new_op in new_operators.iter() {
-                                            if updated_assign.try_push(new_op.clone()).is_ok() {
-                                                // 触发事件：已添加新运营者补充副本
-                                                Self::deposit_event(Event::AssignmentCreated(
-                                                    cid_hash,
-                                                    1, // 新增 1 个运营者
-                                                ));
+                                        let mut added_count = 0u32;
+                                        
+                                        for new_op in new_candidates.iter() {
+                                            if !current_operators.contains(new_op) && added_count < shortage {
+                                                if updated_assign.try_push(new_op.clone()).is_ok() {
+                                                    added_count += 1;
+                                                }
                                             }
                                         }
-                                        PinAssignments::<T>::insert(&cid_hash, &updated_assign);
+                                        
+                                        if added_count > 0 {
+                                            PinAssignments::<T>::insert(&cid_hash, &updated_assign);
+                                            
+                                            // 触发事件：已添加新运营者补充副本
+                                            Self::deposit_event(Event::AssignmentCreated(
+                                                cid_hash,
+                                                added_count,
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -1916,6 +3907,310 @@ pub mod pallet {
             if sample > 0 {
                 Self::deposit_event(Event::PinProbe(sample, pinning, pinned, missing));
             }
+            
+            // ============================================================================
+            // 公共IPFS网络简化健康检查（无隐私约束版本）
+            // ============================================================================
+            
+            // 从本地存储读取节点账户（用于识别本节点）
+            // TODO: 实现从OCW本地存储读取节点账户的逻辑
+            // 暂时跳过简化健康检查（需要节点账户配置）
+            let local_node_account_bytes = sp_io::offchain::local_storage_get(
+                StorageKind::PERSISTENT,
+                b"/memo/ipfs/node_account",
+            );
+            
+            if local_node_account_bytes.is_none() {
+                // 节点账户未配置，跳过简化健康检查
+                return;
+            }
+            
+            let local_node_account = match T::AccountId::decode(&mut &local_node_account_bytes.unwrap()[..]) {
+                Ok(account) => account,
+                Err(_) => return, // 解码失败，跳过
+            };
+            
+            // 获取分配给本节点的CID列表（限制每次检查10个，避免阻塞）
+            let my_cids = Self::get_my_assigned_cids(&local_node_account, 10);
+            
+            // 遍历检查每个CID的PIN状态
+            for (cid_hash, plaintext_cid) in my_cids.iter() {
+                // 调用本地IPFS HTTP API检查Pin状态
+                match Self::check_ipfs_pin(plaintext_cid) {
+                    Ok(true) => {
+                        // Pin存在且健康，上报成功状态
+                        Self::deposit_event(Event::SimplePinStatusReported {
+                            cid_hash: *cid_hash,
+                            node: local_node_account.clone(),
+                            status: SimplePinStatus::Pinned,
+                        });
+                    },
+                    Ok(false) => {
+                        // Pin不存在，尝试重新Pin
+                        if let Ok(()) = Self::pin_to_local_ipfs(plaintext_cid) {
+                            // 重新Pin成功
+                            Self::deposit_event(Event::SimplePinStatusReported {
+                                cid_hash: *cid_hash,
+                                node: local_node_account.clone(),
+                                status: SimplePinStatus::Restored,
+                            });
+                        } else {
+                            // 重新Pin失败
+                            Self::deposit_event(Event::SimplePinStatusReported {
+                                cid_hash: *cid_hash,
+                                node: local_node_account.clone(),
+                                status: SimplePinStatus::Failed,
+                            });
+                        }
+                    },
+                    Err(_) => {
+                        // HTTP请求失败，上报失败状态
+                        Self::deposit_event(Event::SimplePinStatusReported {
+                            cid_hash: *cid_hash,
+                            node: local_node_account.clone(),
+                            status: SimplePinStatus::Failed,
+                        });
+                    },
+                }
+                
+                // 检查节点负载，发出告警
+                let capacity_usage = Self::calculate_simple_capacity_usage(&local_node_account);
+                if capacity_usage > 80 {
+                    let stats = SimpleNodeStatsMap::<T>::get(&local_node_account);
+                    Self::deposit_event(Event::SimpleNodeLoadWarning {
+                        node: local_node_account.clone(),
+                        capacity_usage: capacity_usage as u8,
+                        current_pins: stats.total_pins,
+                    });
+                }
+            }
+        }
+        
+        /// 函数级详细中文注释：区块结束时的自动化任务（优化改造）
+        /// 
+        /// 执行顺序（优先级从高到低）：
+        /// 1. 周期扣费（确保资金流转）
+        /// 2. 健康巡检（确保数据安全）
+        /// 3. 统计更新（链上仪表板）
+        /// 
+        /// 限流保护：
+        /// - 每块最多处理20个扣费任务
+        /// - 每块最多处理10个巡检任务
+        /// - 防止区块拥堵
+        fn on_finalize(n: BlockNumberFor<T>) {
+            let current_block = n;
+            
+            // 检查是否暂停扣费
+            if BillingPaused::<T>::get() {
+                return;
+            }
+            
+            // ======== 任务1：自动周期扣费 ========
+            let max_charges_per_block = 20u32;
+            let mut charged = 0u32;
+            
+            // 遍历到期的扣费任务（due_block <= current_block）
+            let mut tasks_to_process: alloc::vec::Vec<(BlockNumberFor<T>, T::Hash, BillingTask<BlockNumberFor<T>, BalanceOf<T>>)> 
+                = alloc::vec::Vec::new();
+            
+            // 收集到期任务（限制数量）
+            for (due_block, cid_hash, task) in BillingQueue::<T>::iter() {
+                if due_block <= current_block && charged < max_charges_per_block {
+                    tasks_to_process.push((due_block, cid_hash, task));
+                    charged += 1;
+                }
+            }
+            
+            // 处理收集到的任务
+            for (due_block, cid_hash, mut task) in tasks_to_process {
+                // 执行四层回退扣费
+                match Self::four_layer_charge(&cid_hash, &mut task) {
+                    Ok(ChargeResult::Success { layer }) => {
+                        // 扣费成功：更新下次扣费时间
+                        let next_billing = current_block + task.billing_period.into();
+                        task.last_charge = current_block;
+                        task.charge_layer = layer;
+                        task.grace_status = GraceStatus::Normal;
+                        BillingQueue::<T>::insert(next_billing, &cid_hash, task);
+                        
+                        // 移除旧的队列项
+                        BillingQueue::<T>::remove(due_block, &cid_hash);
+                    },
+                    Ok(ChargeResult::EnterGrace { expires_at }) => {
+                        // 进入宽限期：发送通知
+                        task.grace_status = GraceStatus::InGrace {
+                            entered_at: current_block,
+                            expires_at,
+                        };
+                        // 1小时后再试
+                        let next_billing = current_block + 1200u32.into();
+                        BillingQueue::<T>::insert(next_billing, &cid_hash, task);
+                        
+                        Self::deposit_event(Event::GracePeriodStarted {
+                            cid_hash: cid_hash.clone(),
+                            expires_at,
+                        });
+                        
+                        // 移除旧的队列项
+                        BillingQueue::<T>::remove(due_block, &cid_hash);
+                    },
+                    Err(_) => {
+                        // 宽限期已过，标记Unpin
+                        task.grace_status = GraceStatus::Expired;
+                        
+                        // 从所有队列中移除
+                        BillingQueue::<T>::remove(due_block, &cid_hash);
+                        
+                        // 标记为过期（保留兼容旧逻辑）
+                        if let Some((_, unit_price, _)) = PinBilling::<T>::get(&cid_hash) {
+                            PinBilling::<T>::insert(&cid_hash, (current_block, unit_price, 2u8)); // 2=Expired
+                        }
+                        
+                        Self::deposit_event(Event::MarkedForUnpin {
+                            cid_hash: cid_hash.clone(),
+                            reason: UnpinReason::InsufficientFunds,
+                        });
+                    },
+                }
+            }
+            
+            // ======== 任务2：自动健康巡检 ========
+            let max_checks_per_block = 10u32;
+            let mut checked = 0u32;
+            
+            // 收集到期的巡检任务
+            let mut checks_to_process: alloc::vec::Vec<(BlockNumberFor<T>, T::Hash, HealthCheckTask<BlockNumberFor<T>>)> 
+                = alloc::vec::Vec::new();
+            
+            for (check_block, cid_hash, task) in HealthCheckQueue::<T>::iter() {
+                if check_block <= current_block && checked < max_checks_per_block {
+                    checks_to_process.push((check_block, cid_hash, task));
+                    checked += 1;
+                }
+            }
+            
+            // 处理巡检任务
+            for (check_block, cid_hash, mut task) in checks_to_process {
+                // 执行巡检（简化版，实际应在OCW中调用IPFS Cluster API）
+                let status = Self::check_pin_health(&cid_hash);
+                
+                // 获取分层配置
+                let tier_config = Self::get_tier_config(&task.tier).unwrap_or_default();
+                
+                // 根据状态决定下一步
+                match status {
+                    HealthStatus::Healthy { .. } => {
+                        // 健康：重新入队，正常间隔
+                        let next_check = current_block + tier_config.health_check_interval.into();
+                        task.last_check = current_block;
+                        task.last_status = status.clone();
+                        task.consecutive_failures = 0;
+                        HealthCheckQueue::<T>::insert(next_check, &cid_hash, task);
+                    },
+                    HealthStatus::Degraded { current_replicas, target } => {
+                        // 降级：缩短巡检间隔（降级期间更频繁检查）
+                        let urgent_interval = tier_config.health_check_interval / 4;
+                        let next_check = current_block + urgent_interval.into();
+                        task.last_check = current_block;
+                        task.last_status = status.clone();
+                        task.consecutive_failures = task.consecutive_failures.saturating_add(1);
+                        HealthCheckQueue::<T>::insert(next_check, &cid_hash, task);
+                        
+                        // 发送告警事件
+                        Self::deposit_event(Event::HealthDegraded {
+                            cid_hash: cid_hash.clone(),
+                            current_replicas,
+                            target,
+                        });
+                    },
+                    HealthStatus::Critical { current_replicas } => {
+                        // 危险：极短巡检间隔（每小时检查一次）
+                        let critical_interval = 1200u32; // ~1小时
+                        let next_check = current_block + critical_interval.into();
+                        task.last_check = current_block;
+                        task.last_status = status.clone();
+                        task.consecutive_failures = task.consecutive_failures.saturating_add(1);
+                        HealthCheckQueue::<T>::insert(next_check, &cid_hash, task);
+                        
+                        // 发送紧急告警
+                        Self::deposit_event(Event::HealthCritical {
+                            cid_hash: cid_hash.clone(),
+                            current_replicas,
+                        });
+                    },
+                    HealthStatus::Unknown => {
+                        // 未知：可能是网络问题，稍后重试
+                        let retry_interval = 600u32; // ~30分钟后重试
+                        let next_check = current_block + retry_interval.into();
+                        task.last_check = current_block;
+                        task.last_status = status.clone();
+                        task.consecutive_failures = task.consecutive_failures.saturating_add(1);
+                        
+                        // 连续失败5次，发送告警
+                        if task.consecutive_failures >= 5 {
+                            Self::deposit_event(Event::HealthCheckFailed {
+                                cid_hash: cid_hash.clone(),
+                                failures: task.consecutive_failures,
+                            });
+                        }
+                        
+                        HealthCheckQueue::<T>::insert(next_check, &cid_hash, task);
+                    },
+                }
+                
+                // 移除旧的队列项
+                HealthCheckQueue::<T>::remove(check_block, &cid_hash);
+            }
+            
+            // ======== 任务3：统计更新（每24小时一次）========
+            if current_block % 7200u32.into() == Zero::zero() {
+                Self::update_global_health_stats_impl();
+            }
+        }
+    }
+    
+    /// 函数级详细中文注释：更新全局健康统计数据（内部实现）
+    /// 
+    /// 统计内容：
+    /// - 总Pin数量
+    /// - 总存储量
+    /// - 健康/降级/危险CID数量
+    /// - 上次扫描时间
+    impl<T: Config> Pallet<T> {
+        fn update_global_health_stats_impl() {
+            let mut stats = GlobalHealthStats::<BlockNumberFor<T>>::default();
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            
+            // 遍历所有Pin元信息
+            for (cid_hash, meta) in PinMeta::<T>::iter() {
+                stats.total_pins = stats.total_pins.saturating_add(1);
+                stats.total_size_bytes = stats.total_size_bytes.saturating_add(meta.size);
+                
+                // 检查健康状态
+                if let Some(task) = HealthCheckQueue::<T>::iter()
+                    .find(|(_, hash, _)| hash == &cid_hash)
+                    .map(|(_, _, task)| task)
+                {
+                    match task.last_status {
+                        HealthStatus::Healthy { .. } => {
+                            stats.healthy_count = stats.healthy_count.saturating_add(1);
+                        },
+                        HealthStatus::Degraded { .. } => {
+                            stats.degraded_count = stats.degraded_count.saturating_add(1);
+                        },
+                        HealthStatus::Critical { .. } => {
+                            stats.critical_count = stats.critical_count.saturating_add(1);
+                        },
+                        _ => {},
+                    }
+                } else {
+                    // 未找到巡检任务，默认为健康
+                    stats.healthy_count = stats.healthy_count.saturating_add(1);
+                }
+            }
+            
+            stats.last_full_scan = current_block;
+            HealthCheckStats::<T>::put(stats);
         }
     }
 
@@ -2093,83 +4388,40 @@ pub mod pallet {
 
 /// 函数级详细中文注释：为 Pallet<T> 实现 IpfsPinner trait，供其他pallet调用
 /// 
-/// 实现说明：
-/// - 直接调用现有的 `request_pin_for_deceased` 函数；
-/// - 使用triple-charge机制自动扣费；
-/// - 将请求添加到 PendingPins 队列，由OCW异步处理。
+/// 实现说明（⭐ P1优化后）：
+/// - 直接调用破坏式改造后的 `request_pin_for_deceased` extrinsic；
+/// - 使用 `four_layer_charge` 四层扣费机制（IpfsPool → SubjectFunding → OperatorEscrow → Grace）；
+/// - 支持分层运营者选择（Layer 1 Core + Layer 2 Community）；
+/// - 自动分配收益给运营者。
 impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>> for Pallet<T> {
     /// 函数级详细中文注释：为逝者关联的CID发起pin请求
     /// 
     /// 内部实现：
     /// 1. 将Vec<u8> CID转换为BoundedVec
-    /// 2. 调用 `request_pin_for_deceased` extrinsic的内部逻辑
-    /// 3. 使用 `triple_charge_storage_fee` 扣费
-    /// 4. 将请求加入 PendingPins 队列
+    /// 2. 调用破坏式改造后的 `request_pin_for_deceased` extrinsic
+    /// 3. 使用 `four_layer_charge` 四层扣费逻辑（IpfsPool → SubjectFunding → OperatorEscrow → Grace）
+    /// 4. 支持分层运营者选择（Layer 1 Core + Layer 2 Community）
     fn pin_cid_for_deceased(
         caller: <T as frame_system::Config>::AccountId,
         deceased_id: u64,
         cid: Vec<u8>,
-        price: BalanceOf<T>,
-        replicas: u32,
+        tier: Option<PinTier>,  // 改造：使用tier参数替代price和replicas
     ) -> DispatchResult {
-        use sp_runtime::traits::{Saturating, Hash};
-        
-        // 1. 验证参数
-        ensure!(replicas >= 1 && replicas <= 5, Error::<T>::BadParams);
-        ensure!(!cid.is_empty(), Error::<T>::BadParams);
-
-        // 2. 计算CID hash（与现有代码保持一致）
-        let cid_hash = T::Hashing::hash_of(&cid);
-        
-        // 3. 估算大小（简化：使用CID长度作为估算）
-        let size_bytes = cid.len() as u64;
-
-        // 4. 使用triple-charge扣费机制
-        let _charge_source = Self::triple_charge_storage_fee(&caller, deceased_id, price)?;
-
-        // 5. 插入PendingPins（与request_pin_for_deceased保持一致）
-        PendingPins::<T>::insert(&cid_hash, (caller.clone(), replicas, deceased_id, size_bytes, price));
-        
-        // 6. 设置pin元数据
-        let now = <frame_system::Pallet<T>>::block_number();
-        PinMeta::<T>::insert(&cid_hash, (replicas, size_bytes, now, now));
-        PinStateOf::<T>::insert(&cid_hash, 0u8); // 0 = Requested
-
-        // 7. 登记计费信息
-        let owner = T::OwnerProvider::owner_of(deceased_id).unwrap_or(caller.clone());
-        PinSubjectOf::<T>::insert(&cid_hash, (owner.clone(), deceased_id));
-        
-        let period = BillingPeriodBlocks::<T>::get();
-        let unit = PricePerGiBWeek::<T>::get();
-        let next = now.saturating_add(period.into());
-        PinBilling::<T>::insert(&cid_hash, (next, unit, 0u8));
-        
-        // 8. 加入到期队列（使用扩散入队策略）
-        // 在 next..next+spread 范围内寻找首个未满的队列入队
-        let spread: u32 = DueEnqueueSpread::<T>::get();
-        for off in 0..=spread {
-            let key = next.saturating_add(off.into());
-            let mut v = DueQueue::<T>::get(key);
-            if v.try_push(cid_hash).is_ok() {
-                DueQueue::<T>::insert(key, v);
-                break;
-            }
-        }
-        // 如果全部满了，静默放弃（治理可通过扫描修复）
-
-        // 9. 发出事件
-        Self::deposit_event(Event::PinRequested(
-            cid_hash, caller, replicas, size_bytes, price,
-        ));
-
-        Ok(())
+        // 直接调用破坏式重写的request_pin_for_deceased
+        Self::request_pin_for_deceased(
+            OriginFor::<T>::from(Some(caller).into()),
+            deceased_id,
+            cid,
+            tier,
+        )
     }
-
-    /// 函数级详细中文注释：为墓位关联的CID发起pin请求
+    
+    /// 函数级详细中文注释：为墓位关联的CID发起pin请求（复用deceased逻辑）
     /// 
-    /// 注意：墓位维度使用特殊的deceased_id派生规则：
-    /// - deceased_id = u64::MAX - grave_id（确保不与真实deceased_id冲突）
-    /// - SubjectFunding账户派生时会使用该特殊ID
+    /// ### 设计思路
+    /// - 墓位与逝者都使用SubjectFunding机制
+    /// - 通过特殊的ID映射规则（u64::MAX - grave_id）避免冲突
+    /// - 完全复用deceased的pin逻辑
     /// 
     /// 这样可以：
     /// 1. 复用现有的SubjectFunding机制
@@ -2179,17 +4431,322 @@ impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>>
         caller: <T as frame_system::Config>::AccountId,
         grave_id: u64,
         cid: Vec<u8>,
-        price: BalanceOf<T>,
-        replicas: u32,
+        tier: Option<PinTier>,  // 改造：移除price和replicas，使用tier参数
     ) -> DispatchResult {
         // 使用特殊映射规则：deceased_id = u64::MAX - grave_id
         // 确保不与真实deceased_id冲突（假设真实ID从0开始递增）
         let pseudo_deceased_id = u64::MAX.saturating_sub(grave_id);
 
-        // 复用deceased的pin逻辑
-        Self::pin_cid_for_deceased(caller, pseudo_deceased_id, cid, price, replicas)
+        // 复用deceased的pin逻辑（同样破坏式修改）
+        Self::request_pin_for_deceased(
+            OriginFor::<T>::from(Some(caller).into()),
+            pseudo_deceased_id,
+            cid,
+            tier,
+        )
     }
 }
 
+// ⭐ P1优化：已删除 old_pin_cid_for_deceased() 函数（68行）
+// 原因：已被 request_pin_for_deceased() extrinsic的破坏式改造替代
+// 该函数使用了已删除的 triple_charge_storage_fee()
+// 删除日期：2025-10-26
+
 #[cfg(test)]
 mod tests;
+
+// ============================================================================
+// 公共IPFS网络简化PIN管理实现（无隐私约束版本）
+// ============================================================================
+
+impl<T: Config> Pallet<T> {
+    /// 函数级详细中文注释：简化的智能PIN分配算法（公共IPFS网络）
+    /// 
+    /// 根据PinTier确定副本数，然后选择最优节点：
+    /// - Critical数据：3副本（3个节点）
+    /// - Standard数据：2副本（2个节点）
+    /// - Temporary数据：1副本（1个节点）
+    /// 
+    /// 节点选择策略（简化评分算法）：
+    /// score = capacity_usage(50%) + (100 - health_score)(50%)
+    /// 评分越低，节点越优先被选择
+    /// 
+    /// 参数：
+    /// - cid_hash: CID的hash值
+    /// - tier: PIN层级
+    /// - estimated_size: 估算的文件大小（字节）
+    /// 
+    /// 返回：
+    /// - 选中的节点列表
+    pub fn optimized_pin_allocation(
+        cid_hash: T::Hash,
+        tier: PinTier,
+        estimated_size: u64,
+    ) -> Result<BoundedVec<T::AccountId, ConstU32<8>>, Error<T>> {
+        // 1. 获取所有活跃节点（从Operators或者一个简化的节点列表）
+        let all_nodes = Self::get_active_ipfs_nodes()?;
+        
+        // 2. 确定副本数（简化策略）
+        let replica_count = match tier {
+            PinTier::Critical => 3,  // 3副本（充分冗余）
+            PinTier::Standard => 2,  // 2副本（平衡）
+            PinTier::Temporary => 1, // 1副本（最小化）
+        };
+        
+        // 3. 智能选择节点（基于负载和健康度）
+        let selected_nodes = Self::select_best_ipfs_nodes(
+            &all_nodes,
+            replica_count,
+            estimated_size,
+        )?;
+        
+        // 4. 记录分配
+        SimplePinAssignments::<T>::insert(&cid_hash, selected_nodes.clone());
+        
+        // 5. 更新节点统计（增加PIN计数）
+        for node in selected_nodes.iter() {
+            SimpleNodeStatsMap::<T>::mutate(node, |stats| {
+                stats.total_pins = stats.total_pins.saturating_add(1);
+            });
+        }
+        
+        // 6. 发送事件
+        Self::deposit_event(Event::SimplePinAllocated {
+            cid_hash,
+            tier,
+            nodes: selected_nodes.clone(),
+            replicas: replica_count,
+        });
+        
+        Ok(selected_nodes)
+    }
+    
+    /// 函数级详细中文注释：获取所有活跃的IPFS节点
+    /// 
+    /// 从Operators存储中筛选出状态为Active(0)的节点
+    /// 
+    /// 返回：活跃节点账户列表
+    fn get_active_ipfs_nodes() -> Result<alloc::vec::Vec<T::AccountId>, Error<T>> {
+        let mut active_nodes = alloc::vec::Vec::new();
+        
+        for (node, info) in Operators::<T>::iter() {
+            // 只选择Active状态的运营者
+            if info.status == 0 {
+                active_nodes.push(node);
+            }
+        }
+        
+        ensure!(!active_nodes.is_empty(), Error::<T>::NoAvailableOperators);
+        
+        Ok(active_nodes)
+    }
+    
+    /// 函数级详细中文注释：选择最优IPFS节点（简化评分）
+    /// 
+    /// 评分算法：
+    /// score = capacity_usage(50%) + (100 - health_score)(50%)
+    /// 
+    /// 容量检查：
+    /// - 容量使用率 > 90% 的节点自动跳过
+    /// 
+    /// 参数：
+    /// - nodes: 候选节点列表
+    /// - count: 需要选择的节点数
+    /// - estimated_size: 估算的文件大小
+    /// 
+    /// 返回：
+    /// - 选中的节点列表（BoundedVec）
+    fn select_best_ipfs_nodes(
+        nodes: &alloc::vec::Vec<T::AccountId>,
+        count: u32,
+        _estimated_size: u64,
+    ) -> Result<BoundedVec<T::AccountId, ConstU32<8>>, Error<T>> {
+        let mut node_scores: alloc::vec::Vec<(T::AccountId, u32)> = alloc::vec::Vec::new();
+        
+        for node in nodes {
+            let stats = SimpleNodeStatsMap::<T>::get(node);
+            
+            // 计算容量使用率（简化估算）
+            let capacity_usage = Self::calculate_simple_capacity_usage(node);
+            
+            // 容量检查（使用率 > 90%则跳过）
+            if capacity_usage > 90 {
+                continue;
+            }
+            
+            // 简化评分公式
+            // score = capacity_usage(50%) + (100 - health_score)(50%)
+            let health_penalty = 100u8.saturating_sub(stats.health_score);
+            let score = (capacity_usage / 2) + (health_penalty as u32 / 2);
+            
+            node_scores.push((node.clone(), score));
+        }
+        
+        // 按评分排序（升序，评分越低越优先）
+        node_scores.sort_by(|a, b| a.1.cmp(&b.1));
+        
+        // 选择前N个节点
+        let selected: alloc::vec::Vec<T::AccountId> = node_scores
+            .iter()
+            .take(count as usize)
+            .map(|(node, _)| node.clone())
+            .collect();
+        
+        // 确保有足够节点
+        ensure!(
+            selected.len() >= count as usize,
+            Error::<T>::InsufficientNodes
+        );
+        
+        BoundedVec::try_from(selected)
+            .map_err(|_| Error::<T>::TooManyNodes)
+    }
+    
+    /// 函数级详细中文注释：计算节点容量使用率（简化估算）
+    /// 
+    /// 估算方法：
+    /// - 每个PIN平均2MB
+    /// - used_capacity_gib = (total_pins × 2MB) / 1024
+    /// - capacity_usage = (used_capacity_gib / total_capacity_gib) × 100
+    /// 
+    /// 参数：
+    /// - node: 节点账户
+    /// 
+    /// 返回：
+    /// - 容量使用率（0-100）
+    pub fn calculate_simple_capacity_usage(node: &T::AccountId) -> u32 {
+        let Some(info) = Operators::<T>::get(node) else {
+            return 100; // 节点不存在，视为满载
+        };
+        
+        if info.capacity_gib == 0 {
+            return 100; // 容量为0，视为满载
+        }
+        
+        let stats = SimpleNodeStatsMap::<T>::get(node);
+        
+        // 估算使用容量（每个PIN平均2MB）
+        let avg_size_mb: u64 = 2;
+        let used_capacity_gib = (stats.total_pins as u64 * avg_size_mb) / 1024;
+        let total_capacity_gib = info.capacity_gib as u64;
+        
+        ((used_capacity_gib * 100) / total_capacity_gib) as u32
+    }
+    
+    /// 函数级详细中文注释：获取分配给本节点的CID列表（OCW使用）
+    /// 
+    /// OCW在健康检查时调用，获取需要检查的CID列表
+    /// 
+    /// 参数：
+    /// - node: 本节点账户
+    /// - limit: 最多返回多少个CID
+    /// 
+    /// 返回：
+    /// - (cid_hash, plaintext_cid) 列表
+    pub fn get_my_assigned_cids(
+        node: &T::AccountId,
+        limit: u32,
+    ) -> alloc::vec::Vec<(T::Hash, alloc::vec::Vec<u8>)> {
+        let mut result = alloc::vec::Vec::new();
+        
+        for (cid_hash, assigned_nodes) in SimplePinAssignments::<T>::iter() {
+            if assigned_nodes.contains(node) {
+                if let Some(cid) = CidRegistry::<T>::get(&cid_hash) {
+                    result.push((cid_hash, cid.to_vec()));
+                    
+                    if result.len() >= limit as usize {
+                        break;
+                    }
+                }
+            }
+        }
+        
+        result
+    }
+    
+    /// 函数级详细中文注释：检查IPFS Pin状态（OCW调用）
+    /// 
+    /// 调用本地IPFS HTTP API检查Pin是否存在：
+    /// GET http://127.0.0.1:5001/api/v0/pin/ls?arg=<CID>
+    /// 
+    /// 参数：
+    /// - cid: Plaintext CID
+    /// 
+    /// 返回：
+    /// - Ok(true): Pin存在且健康
+    /// - Ok(false): Pin不存在
+    /// - Err: HTTP请求失败
+    pub fn check_ipfs_pin(cid: &[u8]) -> Result<bool, &'static str> {
+        let cid_str = alloc::string::String::from_utf8_lossy(cid);
+        let url = alloc::format!("http://127.0.0.1:5001/api/v0/pin/ls?arg={}", cid_str);
+        
+        let request = http::Request::get(&url);
+        let pending = request
+            .deadline(sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(5_000)))
+            .send()
+            .map_err(|_| "HTTP request failed")?;
+        
+        let response = pending
+            .try_wait(sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(5_000)))
+            .map_err(|_| "HTTP timeout")?
+            .map_err(|_| "HTTP error")?;
+        
+        Ok(response.code == 200)
+    }
+    
+    /// 函数级详细中文注释：Pin到本地IPFS（OCW调用）
+    /// 
+    /// 调用本地IPFS HTTP API执行Pin：
+    /// POST http://127.0.0.1:5001/api/v0/pin/add?arg=<CID>
+    /// 
+    /// 参数：
+    /// - cid: Plaintext CID
+    /// 
+    /// 返回：
+    /// - Ok(()): Pin成功
+    /// - Err: Pin失败
+    pub fn pin_to_local_ipfs(cid: &[u8]) -> Result<(), &'static str> {
+        let cid_str = alloc::string::String::from_utf8_lossy(cid);
+        let url = alloc::format!("http://127.0.0.1:5001/api/v0/pin/add?arg={}", cid_str);
+        
+        // 使用Vec<Vec<u8>>作为body，满足http::Request的要求
+        let chunks: Vec<Vec<u8>> = Vec::new();
+        let timeout = sp_io::offchain::timestamp()
+            .add(sp_runtime::offchain::Duration::from_millis(30_000));
+        
+        let request = http::Request::post(&url, chunks);
+        let pending = request
+            .deadline(timeout)
+            .send()
+            .map_err(|_| "HTTP request failed")?;
+        
+        let response = pending
+            .try_wait(timeout)
+            .map_err(|_| "HTTP timeout")?
+            .map_err(|_| "HTTP error")?;
+        
+        let code: u16 = response.code;
+        if (200..300).contains(&code) {
+            Ok(())
+        } else {
+            Err("Pin failed")
+        }
+    }
+    
+    /// 函数级详细中文注释：获取本地节点账户（OCW使用）
+    /// 
+    /// 从OCW本地存储中读取节点账户ID
+    /// 
+    /// 返回：
+    /// - Some(本节点账户) 如果配置存在
+    /// - None 如果未配置
+    pub fn get_local_node_account() -> Option<T::AccountId> {
+        // 从本地存储读取节点账户
+        let account_bytes = sp_io::offchain::local_storage_get(
+            StorageKind::PERSISTENT,
+            b"/memo/ipfs/node_account",
+        )?;
+        
+        T::AccountId::decode(&mut &account_bytes[..]).ok()
+    }
+}
