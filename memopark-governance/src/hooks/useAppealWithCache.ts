@@ -34,7 +34,7 @@ async function fetchAppealWithCache(
   
   // 从链上查询
   try {
-    const appealOpt = await api.query.memoAppeals.appeals(appealId);
+    const appealOpt = await api.query.stardustAppeals.appeals(appealId);
     const appealJson = appealOpt.toJSON() as any;
     
     if (!appealJson) {

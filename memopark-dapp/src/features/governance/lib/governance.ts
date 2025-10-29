@@ -387,7 +387,7 @@ export async function fetchContentGovConsts(): Promise<{
   noticeDefaultBlocks: number;
 }> {
   const api = await getApi()
-  const c: any = (api.consts as any).memoContentGovernance || (api.consts as any)['memo_content_governance']
+  const c: any = (api.consts as any).stardustAppeals || (api.consts as any)['stardust_appeals']
   return {
     appealDeposit: (c?.appealDeposit?.toString && c.appealDeposit.toString()) || '0',
     rejectedSlashBps: (c?.rejectedSlashBps?.toNumber && c.rejectedSlashBps.toNumber()) || 0,
@@ -403,12 +403,12 @@ export async function fetchContentGovConsts(): Promise<{
  */
 export async function submitAppeal(domain: number, target: number, action: number, reasonCid: string, evidenceCid: string, password?: string): Promise<string> {
   const api = await getApi()
-  const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  const sec: any = (api.tx as any).stardustAppeals || (api.tx as any)['stardust_appeals']
   if (!sec?.submitAppeal) return `0xappeal_${Date.now()}`
   const tx = sec.submitAppeal(domain, target, action, reasonCid, evidenceCid)
   if ((api as any).signAndSendLocalWithPassword && password) {
     // @ts-ignore
-    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','submitAppeal',[domain,target,action,reasonCid,evidenceCid], password)
+    return await (api as any).signAndSendLocalWithPassword('stardustAppeals','submitAppeal',[domain,target,action,reasonCid,evidenceCid], password)
   }
   return `0xappeal_${Date.now()}`
 }
@@ -417,11 +417,11 @@ export async function submitAppeal(domain: number, target: number, action: numbe
  * 函数级详细中文注释：撤回申诉
  */
 export async function withdrawAppeal(id: number, password?: string): Promise<string> {
-  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  const api = await getApi(); const sec: any = (api.tx as any).stardustAppeals || (api.tx as any)['stardust_appeals']
   if (!sec?.withdrawAppeal) return `0xappeal_withdraw_${Date.now()}`
   if ((api as any).signAndSendLocalWithPassword && password) {
     // @ts-ignore
-    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','withdrawAppeal',[id], password)
+    return await (api as any).signAndSendLocalWithPassword('stardustAppeals','withdrawAppeal',[id], password)
   }
   return `0xappeal_withdraw_${Date.now()}`
 }
@@ -430,12 +430,12 @@ export async function withdrawAppeal(id: number, password?: string): Promise<str
  * 函数级详细中文注释：审批申诉（通过）
  */
 export async function approveAppeal(id: number, noticeBlocks?: number, password?: string): Promise<string> {
-  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  const api = await getApi(); const sec: any = (api.tx as any).stardustAppeals || (api.tx as any)['stardust_appeals']
   if (!sec?.approveAppeal) return `0xappeal_approve_${Date.now()}`
   const args = noticeBlocks && noticeBlocks>0 ? [id, noticeBlocks] : [id]
   if ((api as any).signAndSendLocalWithPassword && password) {
     // @ts-ignore
-    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','approveAppeal', args, password)
+    return await (api as any).signAndSendLocalWithPassword('stardustAppeals','approveAppeal', args, password)
   }
   return `0xappeal_approve_${Date.now()}`
 }
@@ -444,11 +444,11 @@ export async function approveAppeal(id: number, noticeBlocks?: number, password?
  * 函数级详细中文注释：审批申诉（驳回）
  */
 export async function rejectAppeal(id: number, password?: string): Promise<string> {
-  const api = await getApi(); const sec: any = (api.tx as any).memoContentGovernance || (api.tx as any)['memo_content_governance']
+  const api = await getApi(); const sec: any = (api.tx as any).stardustAppeals || (api.tx as any)['stardust_appeals']
   if (!sec?.rejectAppeal) return `0xappeal_reject_${Date.now()}`
   if ((api as any).signAndSendLocalWithPassword && password) {
     // @ts-ignore
-    return await (api as any).signAndSendLocalWithPassword('memoContentGovernance','rejectAppeal',[id], password)
+    return await (api as any).signAndSendLocalWithPassword('stardustAppeals','rejectAppeal',[id], password)
   }
   return `0xappeal_reject_${Date.now()}`
 }

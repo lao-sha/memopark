@@ -1344,7 +1344,7 @@ const OwnerTransferAppealInline: React.FC<{ defaultDeceasedId: number; onSubmitt
 
   const resolveGovSection = React.useCallback(async (): Promise<string> => {
     const api = await getApi(); const txRoot: any = (api.tx as any)
-    const cands = ['memoContentGovernance','memo_content_governance','contentGovernance', ...Object.keys(txRoot)]
+    const cands = ['stardustAppeals','stardust_appeals','contentGovernance', ...Object.keys(txRoot)]
     for (const s of cands) { if (txRoot[s]?.submitOwnerTransferAppeal) return s }
     throw new Error('未找到内容治理提交入口')
   }, [])

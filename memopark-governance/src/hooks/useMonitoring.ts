@@ -122,11 +122,11 @@ async function collectAppealMetrics(api: ApiPromise): Promise<MonitoringMetrics[
   try {
     // 使用索引快速查询各状态申诉
     const [pendingIds, approvedIds, rejectedIds, withdrawnIds, executedIds] = await Promise.all([
-      api.query.memoAppeals.appealsByStatus(0),  // Pending
-      api.query.memoAppeals.appealsByStatus(1),  // Approved
-      api.query.memoAppeals.appealsByStatus(2),  // Rejected
-      api.query.memoAppeals.appealsByStatus(3),  // Withdrawn
-      api.query.memoAppeals.appealsByStatus(4),  // Executed
+      api.query.stardustAppeals.appealsByStatus(0),  // Pending
+      api.query.stardustAppeals.appealsByStatus(1),  // Approved
+      api.query.stardustAppeals.appealsByStatus(2),  // Rejected
+      api.query.stardustAppeals.appealsByStatus(3),  // Withdrawn
+      api.query.stardustAppeals.appealsByStatus(4),  // Executed
     ]);
     
     const pending = pendingIds.toJSON() as number[];
@@ -188,7 +188,7 @@ async function collectPerformanceMetrics(api: ApiPromise): Promise<MonitoringMet
     const testAccount = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'; // Alice测试账户
     
     const start = performance.now();
-    await api.query.memoAppeals.appealsByUser(testAccount);
+    await api.query.stardustAppeals.appealsByUser(testAccount);
     const queryTime = performance.now() - start;
     
     // 测量API连接延迟
@@ -221,7 +221,7 @@ async function collectPerformanceMetrics(api: ApiPromise): Promise<MonitoringMet
 async function collectBusinessMetrics(api: ApiPromise): Promise<MonitoringMetrics['business']> {
   try {
     // 获取所有申诉详情以计算押金和罚没
-    const nextId = await api.query.memoAppeals.nextAppealId();
+    const nextId = await api.query.stardustAppeals.nextAppealId();
     const maxId = (nextId.toJSON() as number) - 1;
     
     let totalDeposit = BigInt(0);
@@ -236,7 +236,7 @@ async function collectBusinessMetrics(api: ApiPromise): Promise<MonitoringMetric
     if (queryIds > 0) {
       const appeals = await Promise.all(
         Array.from({ length: queryIds }, (_, i) => 
-          api.query.memoAppeals.appeals(maxId - i)
+          api.query.stardustAppeals.appeals(maxId - i)
         )
       );
       
@@ -304,7 +304,7 @@ async function collectSystemMetrics(api: ApiPromise): Promise<MonitoringMetrics[
     
     const queues = await Promise.all(
       Array.from({ length: checkBlocks }, (_, i) =>
-        api.query.memoAppeals.executionQueue(blockHeight + i)
+        api.query.stardustAppeals.executionQueue(blockHeight + i)
       )
     );
     
@@ -314,7 +314,7 @@ async function collectSystemMetrics(api: ApiPromise): Promise<MonitoringMetrics[
     }
     
     // 估算存储占用（粗略估算）
-    const nextId = await api.query.memoAppeals.nextAppealId();
+    const nextId = await api.query.stardustAppeals.nextAppealId();
     const totalAppeals = (nextId.toJSON() as number) - 1;
     // 假设每个申诉约1KB存储
     const storageKB = totalAppeals;

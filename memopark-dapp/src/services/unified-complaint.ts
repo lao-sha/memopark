@@ -220,13 +220,13 @@ export class UnifiedComplaintService {
 
     // 选择合适的extrinsic
     const extrinsic = newOwner
-      ? this.api.tx.memoAppeals.submitOwnerTransferAppeal(
+      ? this.api.tx.stardustAppeals.submitOwnerTransferAppeal(
           targetId,
           newOwner,
           evidenceCid,
           reasonCid
         )
-      : this.api.tx.memoAppeals.submitAppeal(
+      : this.api.tx.stardustAppeals.submitAppeal(
           domain,
           targetId,
           action,
@@ -291,7 +291,7 @@ export class UnifiedComplaintService {
   async withdrawAppeal(appealId: string): Promise<string> {
     console.log('[UnifiedComplaint] 撤回申诉...', appealId);
 
-    const extrinsic = this.api.tx.memoAppeals.withdrawAppeal(appealId);
+    const extrinsic = this.api.tx.stardustAppeals.withdrawAppeal(appealId);
     const result = await this.signAndSend(extrinsic);
 
     return result.status.asInBlock.toString();
@@ -301,7 +301,7 @@ export class UnifiedComplaintService {
    * 查询申诉详情
    */
   async getAppeal(appealId: string): Promise<AppealDetails | null> {
-    const appeal = await this.api.query.memoAppeals.appeals(appealId);
+    const appeal = await this.api.query.stardustAppeals.appeals(appealId);
 
     if (appeal.isNone) {
       return null;
@@ -356,7 +356,7 @@ export class UnifiedComplaintService {
     limit: number = 20
   ): Promise<string[]> {
     // 调用runtime API
-    const appealIds = await this.api.rpc['memoAppeals']?.listByAccount?.(
+    const appealIds = await this.api.rpc['stardustAppeals']?.listByAccount?.(
       account,
       status !== undefined ? status : null,
       startId,
@@ -391,7 +391,7 @@ export class UnifiedComplaintService {
 
     try {
       // 使用Phase 3.4的AppealsByUser索引（O(1)查询）
-      const appealIds = await this.api.query.memoAppeals.appealsByUser(account);
+      const appealIds = await this.api.query.stardustAppeals.appealsByUser(account);
       
       if (!appealIds || appealIds.isEmpty) {
         return [];
@@ -434,7 +434,7 @@ export class UnifiedComplaintService {
 
     try {
       // 使用Phase 3.4的AppealsByTarget索引（O(1)查询）
-      const appealIds = await this.api.query.memoAppeals.appealsByTarget([domain, targetId]);
+      const appealIds = await this.api.query.stardustAppeals.appealsByTarget([domain, targetId]);
       
       if (!appealIds || appealIds.isEmpty) {
         return [];
@@ -479,7 +479,7 @@ export class UnifiedComplaintService {
 
     try {
       // 使用Phase 3.4的AppealsByStatus索引（O(1)查询）
-      const appealIds = await this.api.query.memoAppeals.appealsByStatus(status);
+      const appealIds = await this.api.query.stardustAppeals.appealsByStatus(status);
       
       if (!appealIds || appealIds.isEmpty) {
         return [];
@@ -685,7 +685,7 @@ export class UnifiedComplaintService {
   private extractAppealId(result: ISubmittableResult): string {
     const event = result.events.find(
       ({ event }) =>
-        event.section === 'memoAppeals' && event.method === 'AppealSubmitted'
+        event.section === 'stardustAppeals' && event.method === 'AppealSubmitted'
     );
 
     if (!event) {

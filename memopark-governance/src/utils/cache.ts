@@ -45,7 +45,7 @@ interface CacheConfig {
  *   console.log('缓存命中');
  * } else {
  *   // 从链上查询
- *   const freshData = await api.query.memoAppeals.appeals(123);
+ *   const freshData = await api.query.stardustAppeals.appeals(123);
  *   cache.set('appeal-123', freshData);
  * }
  * ```
@@ -182,7 +182,7 @@ export const appealCache = new QueryCache({
  * class AppealService {
  *   @cached((id: number) => `appeal-${id}`, 30000)
  *   async getAppeal(id: number): Promise<AppealInfo> {
- *     return await api.query.memoAppeals.appeals(id);
+ *     return await api.query.stardustAppeals.appeals(id);
  *   }
  * }
  * ```
@@ -238,7 +238,7 @@ export function cached<T>(
  *   async (missingKeys) => {
  *     const ids = missingKeys.map(k => Number(k.split('-')[1]));
  *     return await Promise.all(
- *       ids.map(id => api.query.memoAppeals.appeals(id))
+ *       ids.map(id => api.query.stardustAppeals.appeals(id))
  *     );
  *   },
  *   appealCache

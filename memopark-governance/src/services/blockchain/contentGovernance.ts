@@ -67,20 +67,20 @@ export const AppealStatusColors: Record<number, string> = {
 export async function getAllAppeals(api: ApiPromise): Promise<AppealInfo[]> {
   try {
     // 检查pallet是否存在
-    if (!(api.query as any).memoContentGovernance) {
+    if (!(api.query as any).stardustAppeals) {
       console.warn('[ContentGovernance] Pallet未注册')
       return []
     }
 
     // 获取下一个ID
-    const nextId: any = await (api.query as any).memoContentGovernance.nextAppealId()
+    const nextId: any = await (api.query as any).stardustAppeals.nextAppealId()
     const maxId = Number(nextId.toString())
 
     const appeals: AppealInfo[] = []
     const startId = Math.max(0, maxId - 100) // 查询最近100个
 
     for (let id = maxId - 1; id >= startId; id--) {
-      const appealOption: any = await (api.query as any).memoContentGovernance.appeals(id)
+      const appealOption: any = await (api.query as any).stardustAppeals.appeals(id)
 
       if (appealOption.isSome) {
         const appeal = appealOption.unwrap()
@@ -121,7 +121,7 @@ export async function getAllAppeals(api: ApiPromise): Promise<AppealInfo[]> {
 export async function getPendingAppeals(api: ApiPromise): Promise<AppealInfo[]> {
   try {
     // Phase 4.1：使用索引查询（超快！）
-    if ((api.query as any).memoAppeals?.appealsByStatus) {
+    if ((api.query as any).stardustAppeals?.appealsByStatus) {
       console.log('[ContentGovernance] Phase 4.1: 使用索引查询待审核申诉')
       return await getAppealsByStatus(api, AppealStatus.Submitted)
     }
@@ -147,7 +147,7 @@ export async function getPendingAppeals(api: ApiPromise): Promise<AppealInfo[]> 
 export async function getApprovedAppeals(api: ApiPromise): Promise<AppealInfo[]> {
   try {
     // Phase 4.1：使用索引查询（超快！）
-    if ((api.query as any).memoAppeals?.appealsByStatus) {
+    if ((api.query as any).stardustAppeals?.appealsByStatus) {
       console.log('[ContentGovernance] Phase 4.1: 使用索引查询已批准申诉')
       return await getAppealsByStatus(api, AppealStatus.Approved)
     }
@@ -173,7 +173,7 @@ export async function getApprovedAppeals(api: ApiPromise): Promise<AppealInfo[]>
 export async function getRejectedAppeals(api: ApiPromise): Promise<AppealInfo[]> {
   try {
     // Phase 4.1：使用索引查询（超快！）
-    if ((api.query as any).memoAppeals?.appealsByStatus) {
+    if ((api.query as any).stardustAppeals?.appealsByStatus) {
       console.log('[ContentGovernance] Phase 4.1: 使用索引查询已驳回申诉')
       return await getAppealsByStatus(api, AppealStatus.Rejected)
     }
@@ -205,7 +205,7 @@ export async function getAppealsByStatus(
 ): Promise<AppealInfo[]> {
   try {
     // 1. 使用索引获取申诉ID列表（O(1)）
-    const appealIds: any = await (api.query as any).memoAppeals.appealsByStatus(status)
+    const appealIds: any = await (api.query as any).stardustAppeals.appealsByStatus(status)
     
     if (!appealIds || appealIds.isEmpty) {
       console.log(`[ContentGovernance] 状态${status}无申诉`)
@@ -219,7 +219,7 @@ export async function getAppealsByStatus(
     const appeals = await Promise.all(
       idList.map(async (id: number) => {
         try {
-          const appealOption: any = await (api.query as any).memoAppeals.appeals(id)
+          const appealOption: any = await (api.query as any).stardustAppeals.appeals(id)
           
           if (appealOption.isSome) {
             const appeal = appealOption.unwrap()
@@ -269,10 +269,10 @@ export async function getTargetComplaints(
   targetId: number
 ): Promise<AppealInfo[]> {
   try {
-    if ((api.query as any).memoAppeals?.appealsByTarget) {
+    if ((api.query as any).stardustAppeals?.appealsByTarget) {
       console.log(`[ContentGovernance] Phase 4.1.4: 使用索引查询对象投诉 domain=${domain}, target=${targetId}`)
       
-      const appealIds: any = await (api.query as any).memoAppeals.appealsByTarget([domain, targetId])
+      const appealIds: any = await (api.query as any).stardustAppeals.appealsByTarget([domain, targetId])
       
       if (!appealIds || appealIds.isEmpty) {
         return []
@@ -283,7 +283,7 @@ export async function getTargetComplaints(
       const appeals = await Promise.all(
         idList.map(async (id: number) => {
           try {
-            const appealOption: any = await (api.query as any).memoAppeals.appeals(id)
+            const appealOption: any = await (api.query as any).stardustAppeals.appeals(id)
             
             if (appealOption.isSome) {
               const appeal = appealOption.unwrap()
@@ -330,8 +330,8 @@ export async function getUserAppeals(
   account: string
 ): Promise<AppealInfo[]> {
   try {
-    if ((api.query as any).memoAppeals?.appealsByUser) {
-      const appealIds: any = await (api.query as any).memoAppeals.appealsByUser(account)
+    if ((api.query as any).stardustAppeals?.appealsByUser) {
+      const appealIds: any = await (api.query as any).stardustAppeals.appealsByUser(account)
       
       if (!appealIds || appealIds.isEmpty) {
         return []
@@ -342,7 +342,7 @@ export async function getUserAppeals(
       const appeals = await Promise.all(
         idList.map(async (id: number) => {
           try {
-            const appealOption: any = await (api.query as any).memoAppeals.appeals(id)
+            const appealOption: any = await (api.query as any).stardustAppeals.appeals(id)
             
             if (appealOption.isSome) {
               const appeal = appealOption.unwrap()
@@ -388,14 +388,14 @@ export function createApproveAppealTx(
   appealId: number,
   noticeBlocks?: number
 ) {
-  return (api.tx as any).memoAppeals.approveAppeal(appealId, noticeBlocks)
+  return (api.tx as any).stardustAppeals.approveAppeal(appealId, noticeBlocks)
 }
 
 /**
  * 创建驳回申诉交易
  */
 export function createRejectAppealTx(api: ApiPromise, appealId: number) {
-  return (api.tx as any).memoAppeals.rejectAppeal(appealId)
+  return (api.tx as any).stardustAppeals.rejectAppeal(appealId)
 }
 
 /**

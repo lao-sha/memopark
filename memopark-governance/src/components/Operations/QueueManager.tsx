@@ -86,7 +86,7 @@ async function getQueueInfo(
   );
   
   const queueData = await Promise.all(
-    blockNumbers.map(blockNum => api.query.memoAppeals.executionQueue(blockNum))
+    blockNumbers.map(blockNum => api.query.stardustAppeals.executionQueue(blockNum))
   );
   
   for (let i = 0; i < blockNumbers.length; i++) {
@@ -227,7 +227,7 @@ const QueueManager: React.FC = () => {
         setPurgeLoading(true);
         try {
           // 调用purge_execution_queues extrinsic
-          const tx = api.tx.memoAppeals.purgeExecutionQueues(startBlock, endBlock);
+          const tx = api.tx.stardustAppeals.purgeExecutionQueues(startBlock, endBlock);
           
           // 签名并发送交易
           await (window as any).signAndSend(activeAccount, tx, {
