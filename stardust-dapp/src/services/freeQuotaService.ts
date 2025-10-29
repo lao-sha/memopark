@@ -358,14 +358,45 @@ export async function createFreeOrder(
   signer: any,
   onStatusChange?: (status: string) => void
 ): Promise<{ txHash: string; orderId?: number }> {
+  // 🚧 临时禁用：等待 pallet-trading 实现 create_first_purchase 功能
+  // 
+  // 背景说明：
+  // - pallet-otc-order 已从 Runtime 移除
+  // - pallet-trading 尚未实现免费首购订单功能
+  // - 需等待链端完成 create_first_purchase 接口开发
+  // 
+  // TODO: 链端实现后，迁移到 api.tx.trading.createFirstPurchase
+  // 
+  // @deprecated 功能升级中
+  // @see docs/前端API迁移-遗留问题分析.md
+  
+  throw new Error(
+    '⚠️ 首购免费订单功能正在升级中\n\n' +
+    '升级原因：链端架构整合（Phase 2）\n' +
+    '预计上线：请联系技术团队确认\n\n' +
+    '💡 暂时建议：\n' +
+    '1. 使用普通订单创建功能\n' +
+    '2. 关注系统公告获取升级进度\n\n' +
+    '如有疑问，请联系客服支持'
+  );
+  
+  /* ============================================================
+   * 原有实现已注释（等待链端实现后恢复）
+   * ============================================================
+   
   try {
     const qtyWithDecimals = BigInt(qty) * BigInt(1e18);
-    const tx = api.tx.otcOrder.openOrderFree(
-      makerId,
-      qtyWithDecimals.toString(),
-      paymentCommit,
-      contactCommit
-    );
+    
+    // ❌ 旧 API（已移除）
+    // const tx = api.tx.otcOrder.openOrderFree(...);
+    
+    // ✅ 新 API（待链端实现）
+    // const tx = api.tx.trading.createFirstPurchase(
+    //   makerId,
+    //   qtyWithDecimals.toString(),
+    //   paymentCommit,
+    //   contactCommit
+    // );
     
     return new Promise((resolve, reject) => {
       tx.signAndSend(signer, ({ status, events, dispatchError }) => {
@@ -390,7 +421,7 @@ export async function createFreeOrder(
             // 解析订单ID
             let orderId: number | undefined;
             events.forEach(({ event }) => {
-              if (api.events.otcOrder.OrderOpened.is(event)) {
+              if (api.events.trading.OrderOpened.is(event)) {
                 orderId = event.data.id.toNumber();
               }
             });
@@ -410,5 +441,7 @@ export async function createFreeOrder(
     console.error('创建免费订单失败:', error);
     throw error;
   }
+  
+  ============================================================ */
 }
 

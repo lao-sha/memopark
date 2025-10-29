@@ -8,6 +8,10 @@ import { providerRegistry } from '../../lib/providers'
 /**
  * 函数级详细中文注释：首购领取表单组件（支持多提供方选择）
  * 原名: OTC 领取，2025-10-20更名为首购领取以更准确反映业务场景
+ * 
+ * 🚧 状态：功能升级中（2025-10-29）
+ * 原因：链端架构整合（Phase 2），pallet-trading 尚未实现免费首购功能
+ * TODO: 等待链端实现 create_first_purchase 接口后恢复
  */
 export default function ClaimMemoForm() {
   const [loading, setLoading] = useState(false)
@@ -78,6 +82,29 @@ export default function ClaimMemoForm() {
             首次购买或法币入金时使用
           </Typography.Text>
         </div>
+
+        {/* 🚧 功能升级提示 */}
+        <Alert
+          type="warning"
+          icon={<InfoCircleOutlined />}
+          message="⚠️ 功能升级中"
+          description={
+            <div style={{ fontSize: '13px' }}>
+              <p style={{ marginBottom: 4 }}>
+                <strong>首购免费领取功能正在进行架构升级（Phase 2）</strong>
+              </p>
+              <p style={{ marginBottom: 4 }}>
+                升级原因：链端架构整合，pallet-trading 尚未实现免费首购功能
+              </p>
+              <p style={{ marginBottom: 0 }}>
+                预计上线：请联系技术团队确认具体时间
+              </p>
+            </div>
+          }
+          showIcon
+          closable
+          style={{ marginBottom: 0 }}
+        />
 
         {/* 使用场景说明 */}
         <Alert

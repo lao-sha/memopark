@@ -24,6 +24,10 @@ import { keccak256 } from 'ethers';
 
 /**
  * 函数级详细中文注释：买家创建免费订单页面组件
+ * 
+ * 🚧 状态：功能升级中（2025-10-29）
+ * 原因：链端架构整合（Phase 2），pallet-trading 尚未实现免费首购功能
+ * TODO: 等待链端实现 create_first_purchase 接口后恢复
  */
 const CreateFreeOrderPage: React.FC = () => {
   const navigate = useNavigate();
@@ -222,6 +226,39 @@ const CreateFreeOrderPage: React.FC = () => {
         <GiftOutlined style={{ marginRight: 8, color: '#52c41a' }} />
         创建免费订单
       </h2>
+
+      {/* 🚧 功能升级提示 */}
+      <Alert
+        message="⚠️ 功能升级中"
+        description={
+          <div>
+            <p style={{ marginBottom: 8 }}>
+              <strong>首购免费订单功能正在进行架构升级（Phase 2）</strong>
+            </p>
+            <p style={{ marginBottom: 8 }}>
+              <strong>升级原因：</strong>链端架构整合，pallet-trading 尚未实现免费首购功能
+            </p>
+            <p style={{ marginBottom: 8 }}>
+              <strong>预计上线：</strong>请联系技术团队确认具体时间
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              <strong>暂时建议：</strong>
+              <Button 
+                type="link" 
+                style={{ padding: 0, height: 'auto' }}
+                onClick={() => navigate('/otc/create')}
+              >
+                使用普通订单创建功能 →
+              </Button>
+            </p>
+          </div>
+        }
+        type="warning"
+        showIcon
+        closable
+        style={{ marginBottom: 24 }}
+        icon={<InfoCircleOutlined />}
+      />
 
       {/* 免费配额状态 */}
       {renderQuotaCard()}
