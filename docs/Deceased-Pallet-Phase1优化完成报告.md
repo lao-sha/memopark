@@ -37,7 +37,7 @@
 
 ### 第一步：提取normalize_name为Pallet级公共函数
 
-**位置**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs` L611-647
+**位置**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs` L611-647
 
 **新增代码**（37行，含详细注释）:
 ```rust
@@ -70,7 +70,7 @@ pub(crate) fn normalize_name(bytes: &[u8]) -> Vec<u8> {
 
 ### 第二步：提取build_deceased_token为Pallet级公共函数
 
-**位置**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs` L688-731
+**位置**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs` L688-731
 
 **新增代码**（44行，含详细注释）:
 ```rust
@@ -115,7 +115,7 @@ pub(crate) fn build_deceased_token(
 
 ### 第三步：修改create_deceased调用点
 
-**位置**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs` L953-954
+**位置**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs` L953-954
 
 **修改前**（64行局部函数）:
 ```rust
@@ -156,7 +156,7 @@ let deceased_token = Self::build_deceased_token(&gender, &birth_bv, &death_bv, &
 
 ### 第四步：修改update_deceased调用点
 
-**位置**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs` L1122-1123
+**位置**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs` L1122-1123
 
 **修改前**（56行重复代码）:
 ```rust
@@ -187,7 +187,7 @@ let new_token = Self::build_deceased_token(&d.gender, &d.birth_ts, &d.death_ts, 
 
 ### 第五步：修改gov_update_profile调用点
 
-**位置**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs` L1509-1510
+**位置**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs` L1509-1510
 
 **修改前**（56行重复代码）:
 ```rust
@@ -249,7 +249,7 @@ let new_token = Self::build_deceased_token(&d.gender, &d.birth_ts, &d.death_ts, 
 
 ### 编译命令
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release -p pallet-deceased
 ```
 
@@ -480,7 +480,7 @@ pub(crate) fn normalize_name(bytes: &[u8]) -> Vec<u8> { ... }
 
 ### 修改的文件
 
-1. **Pallet源码**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs`
+1. **Pallet源码**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs`
    - L611-647: 新增`normalize_name`函数
    - L688-731: 新增`build_deceased_token`函数
    - L953-954: 修改`create_deceased`调用
@@ -489,9 +489,9 @@ pub(crate) fn normalize_name(bytes: &[u8]) -> Vec<u8> { ... }
 
 ### 生成的文档
 
-2. **冗余分析报告**: `/home/xiaodong/文档/memopark/docs/Deceased-Pallet-冗余代码分析报告.md`
+2. **冗余分析报告**: `/home/xiaodong/文档/stardust/docs/Deceased-Pallet-冗余代码分析报告.md`
 
-3. **Phase1完成报告**: `/home/xiaodong/文档/memopark/docs/Deceased-Pallet-Phase1优化完成报告.md`（本文件）
+3. **Phase1完成报告**: `/home/xiaodong/文档/stardust/docs/Deceased-Pallet-Phase1优化完成报告.md`（本文件）
 
 ### 编译日志
 

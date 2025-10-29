@@ -326,9 +326,9 @@ progress = (current_volume / window_size) * 100
 
 ## 相关文档
 
-- [OTC动态定价使用说明](/home/xiaodong/文档/memopark/memopark-dapp/OTC动态定价使用说明.md)
-- [pallet-pricing README](/home/xiaodong/文档/memopark/pallets/pricing/README.md)
-- [定价基准价格±20%方案分析](/home/xiaodong/文档/memopark/docs/定价基准价格±20%方案分析.md)
+- [OTC动态定价使用说明](/home/xiaodong/文档/stardust/stardust-dapp/OTC动态定价使用说明.md)
+- [pallet-pricing README](/home/xiaodong/文档/stardust/pallets/pricing/README.md)
+- [定价基准价格±20%方案分析](/home/xiaodong/文档/stardust/docs/定价基准价格±20%方案分析.md)
 
 ## 版本信息
 

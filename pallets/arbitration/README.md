@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-arbitration` 是Memopark生态的**争议解决中心**，提供去中心化的仲裁机制，支持多业务域（OTC、Bridge等）的争议登记、证据管理和治理裁决。通过域路由(Domain Router)设计实现与业务pallet的低耦合集成。
+`pallet-arbitration` 是Stardust生态的**争议解决中心**，提供去中心化的仲裁机制，支持多业务域（OTC、Bridge等）的争议登记、证据管理和治理裁决。通过域路由(Domain Router)设计实现与业务pallet的低耦合集成。
 
 ### 设计理念
 
@@ -150,12 +150,12 @@ impl ArbitrationRouter<AccountId> for RuntimeArbitrationRouter {
     fn can_dispute(domain: [u8; 8], who: &AccountId, id: u64) -> bool {
         match domain {
             // OTC域
-            b"memopark/otc_order" => {
+            b"stardust/otc_order" => {
                 // 检查是否为买家或卖家
                 pallet_otc_order::Pallet::<Runtime>::is_participant(who, id)
             },
             // Bridge域
-            b"memopark/simple_bridge" => {
+            b"stardust/simple_bridge" => {
                 // 检查是否为用户或做市商
                 pallet_simple_bridge::Pallet::<Runtime>::is_party(who, id)
             },
@@ -165,10 +165,10 @@ impl ArbitrationRouter<AccountId> for RuntimeArbitrationRouter {
     
     fn apply_decision(domain: [u8; 8], id: u64, decision: Decision) -> DispatchResult {
         match domain {
-            b"memopark/otc_order" => {
+            b"stardust/otc_order" => {
                 pallet_otc_order::Pallet::<Runtime>::apply_arbitration(id, decision)
             },
-            b"memopark/simple_bridge" => {
+            b"stardust/simple_bridge" => {
                 pallet_simple_bridge::Pallet::<Runtime>::apply_arbitration(id, decision)
             },
             _ => Err(DispatchError::Other("Unknown domain")),
@@ -362,7 +362,7 @@ let evidence_id = pallet_evidence::Pallet::<T>::commit(
 // 2. 买家发起争议
 pallet_arbitration::Pallet::<T>::dispute_with_evidence_id(
     origin,
-    *b"memopark/otc_order",  // domain
+    *b"stardust/otc_order",  // domain
     order_id,
     evidence_id,
 )?;
@@ -380,7 +380,7 @@ let counter_evidence_id = pallet_evidence::Pallet::<T>::commit(
 
 pallet_arbitration::Pallet::<T>::append_evidence(
     seller_origin,
-    *b"memopark/otc_order",
+    *b"stardust/otc_order",
     order_id,
     counter_evidence_id,
 )?;
@@ -389,7 +389,7 @@ pallet_arbitration::Pallet::<T>::append_evidence(
 let collective_origin = /* 委员会多签 */;
 pallet_arbitration::Pallet::<T>::arbitrate(
     collective_origin,
-    *b"memopark/otc_order",
+    *b"stardust/otc_order",
     order_id,
     0,     // Release
     None,
@@ -454,7 +454,7 @@ let evidence_id = pallet_evidence::Pallet::<T>::commit(
 
 pallet_arbitration::Pallet::<T>::dispute_with_evidence_id(
     origin,
-    *b"memopark/simple_bridge",
+    *b"stardust/simple_bridge",
     bridge_id,
     evidence_id,
 )?;
@@ -472,7 +472,7 @@ let maker_evidence_id = pallet_evidence::Pallet::<T>::commit(
 
 pallet_arbitration::Pallet::<T>::append_evidence(
     maker_origin,
-    *b"memopark/simple_bridge",
+    *b"stardust/simple_bridge",
     bridge_id,
     maker_evidence_id,
 )?;
@@ -480,7 +480,7 @@ pallet_arbitration::Pallet::<T>::append_evidence(
 // 4. 委员会查链验证后裁决（做市商胜诉）
 pallet_arbitration::Pallet::<T>::arbitrate(
     collective_origin,
-    *b"memopark/simple_bridge",
+    *b"stardust/simple_bridge",
     bridge_id,
     0,     // Release
     None,
@@ -560,7 +560,7 @@ OTC订单/Bridge订单
 
 - 使用8字节固定长度
 - 建议与PalletId对齐
-- 示例：`*b"memopark/otc_order"`, `*b"memopark/simple_bridge"`
+- 示例：`*b"stardust/otc_order"`, `*b"stardust/simple_bridge"`
 
 ### 2. 证据管理
 
@@ -609,4 +609,4 @@ OTC订单/Bridge订单
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

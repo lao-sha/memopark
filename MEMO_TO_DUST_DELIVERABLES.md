@@ -97,7 +97,7 @@
 
 ### 步骤1: 查看方案
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 查看完整方案
 less docs/变量重命名方案-memo变量分析.md
@@ -122,7 +122,7 @@ npm run build
 ### 步骤4: API路径更新（链端就绪后）
 ```bash
 # 确认链端API后执行
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./docs/update-api-paths.sh
 ```
 
@@ -220,7 +220,7 @@ git tag -l "before-*"
 
 ### 核心文档位置
 ```
-/home/xiaodong/文档/memopark/docs/
+/home/xiaodong/文档/stardust/docs/
 ├── 变量重命名方案-memo变量分析.md    # 详细方案
 ├── 变量重命名-快速开始.md             # 执行指南
 ├── 变量重命名-总结报告.md             # 项目总结

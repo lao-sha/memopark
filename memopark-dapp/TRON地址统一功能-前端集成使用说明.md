@@ -19,7 +19,7 @@
 
 ### 1. 做市商申请页面（CreateMarketMakerPage.tsx）✅
 
-**位置**：`/home/xiaodong/文档/memopark/memopark-dapp/src/features/otc/CreateMarketMakerPage.tsx`
+**位置**：`/home/xiaodong/文档/stardust/stardust-dapp/src/features/otc/CreateMarketMakerPage.tsx`
 
 **新增功能**：
 - ✅ 添加TRON地址输入框
@@ -61,7 +61,7 @@ TRON地址 *
 
 ### 2. 做市商配置管理页面（MakerBridgeConfigPage.tsx）✅
 
-**位置**：`/home/xiaodong/文档/memopark/memopark-dapp/src/features/otc/MakerBridgeConfigPage.tsx`
+**位置**：`/home/xiaodong/文档/stardust/stardust-dapp/src/features/otc/MakerBridgeConfigPage.tsx`
 
 **新增功能**：
 - ✅ 显示当前TRON地址

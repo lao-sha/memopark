@@ -352,7 +352,7 @@ RouteEntry {
 
 ---
 
-### 2. `pallet-memo-ipfs`（IPFS 存储模块）
+### 2. `pallet-stardust-ipfs`（IPFS 存储模块）
 
 **集成方式**：费用接收账户切换到存储专用账户
 

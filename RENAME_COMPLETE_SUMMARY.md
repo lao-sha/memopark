@@ -1,7 +1,7 @@
 # 🎊 MEMO → DUST 重命名项目 - 完整总结
 
 **📅 完成日期**: 2025-10-29  
-**🎯 项目**: 项目和代币全面重命名（memopark → stardust, MEMO → DUST）  
+**🎯 项目**: 项目和代币全面重命名（stardust → stardust, MEMO → DUST）  
 **✅ 状态**: **阶段性完成，等待功能测试**
 
 ---
@@ -67,36 +67,36 @@
 ### 变量重命名（12个文件）
 
 #### Bridge相关（6个）
-1. `memopark-dapp/src/components/trading/BridgeTransactionForm.tsx`
-2. `memopark-dapp/src/features/bridge/BridgeLockPage.tsx`
-3. `memopark-dapp/src/features/bridge/MakerBridgeComplaintPage.tsx`
-4. `memopark-dapp/src/features/bridge/MakerBridgeDashboard.tsx`
-5. `memopark-dapp/src/features/bridge/MakerBridgeSwapPage.tsx`
-6. `memopark-dapp/src/features/bridge/SimpleBridgePage.tsx`
+1. `stardust-dapp/src/components/trading/BridgeTransactionForm.tsx`
+2. `stardust-dapp/src/features/bridge/BridgeLockPage.tsx`
+3. `stardust-dapp/src/features/bridge/MakerBridgeComplaintPage.tsx`
+4. `stardust-dapp/src/features/bridge/MakerBridgeDashboard.tsx`
+5. `stardust-dapp/src/features/bridge/MakerBridgeSwapPage.tsx`
+6. `stardust-dapp/src/features/bridge/SimpleBridgePage.tsx`
 
 #### OTC相关（3个）
-7. `memopark-dapp/src/features/otc/CreateMarketMakerPage.tsx`
-8. `memopark-dapp/src/features/otc/CreateOrderPage.tsx`
-9. `memopark-dapp/src/features/otc/MarketMakerConfigPage.tsx`
+7. `stardust-dapp/src/features/otc/CreateMarketMakerPage.tsx`
+8. `stardust-dapp/src/features/otc/CreateOrderPage.tsx`
+9. `stardust-dapp/src/features/otc/MarketMakerConfigPage.tsx`
 
 #### 其他（3个）
-10. `memopark-dapp/src/features/first-purchase/MarketMakerPoolPage.tsx`
-11. `memopark-dapp/src/lib/otc-adapter.ts`
-12. `memopark-dapp/src/services/tradingService.ts`
+10. `stardust-dapp/src/features/first-purchase/MarketMakerPoolPage.tsx`
+11. `stardust-dapp/src/lib/otc-adapter.ts`
+12. `stardust-dapp/src/services/tradingService.ts`
 
 ### API路径更新（8个文件）
 
 #### 治理前端（5个）
-1. `memopark-governance/src/services/blockchain/contentGovernance.ts`
-2. `memopark-governance/src/hooks/useMonitoring.ts`
-3. `memopark-governance/src/utils/cache.ts`
-4. `memopark-governance/src/components/Operations/QueueManager.tsx`
-5. `memopark-governance/src/hooks/useAppealWithCache.ts`
+1. `stardust-governance/src/services/blockchain/contentGovernance.ts`
+2. `stardust-governance/src/hooks/useMonitoring.ts`
+3. `stardust-governance/src/utils/cache.ts`
+4. `stardust-governance/src/components/Operations/QueueManager.tsx`
+5. `stardust-governance/src/hooks/useAppealWithCache.ts`
 
 #### 主前端（3个）
-6. `memopark-dapp/src/services/unified-complaint.ts`
-7. `memopark-dapp/src/features/governance/lib/governance.ts`
-8. `memopark-dapp/src/features/grave/GraveDetailPage.tsx`
+6. `stardust-dapp/src/services/unified-complaint.ts`
+7. `stardust-dapp/src/features/governance/lib/governance.ts`
+8. `stardust-dapp/src/features/grave/GraveDetailPage.tsx`
 
 ---
 
@@ -116,7 +116,7 @@
 
 ### 链端状态确认
 - ✅ `pallet-stardust-appeals` 存在并配置
-- ✅ `pallet-memo-appeals` 已移除
+- ✅ `pallet-stardust-appeals` 已移除
 - ⏸️ `get_memo_market_price_weighted()` 保持不变
 
 ---
@@ -205,15 +205,15 @@ git tag -l "before-*"
 **步骤**:
 ```bash
 # 1. 启动链端节点
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./target/release/stardust-node --dev --tmp
 
 # 2. 启动治理前端
-cd memopark-governance
+cd stardust-governance
 npm run dev
 
 # 3. 启动主前端
-cd memopark-dapp
+cd stardust-dapp
 npm run dev
 ```
 
@@ -238,11 +238,11 @@ npm run dev
 
 ```bash
 # 主前端编译
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run build
 
 # 治理前端编译
-cd /home/xiaodong/文档/memopark/memopark-governance
+cd /home/xiaodong/文档/stardust/stardust-governance
 npm run build
 ```
 
@@ -308,7 +308,7 @@ npm run build 2>&1 | grep -i "dust\|memo\|stardust"
 **检查**: 节点是否使用最新runtime
 ```bash
 # 重新编译链端
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release
 
 # 重启节点
@@ -416,7 +416,7 @@ git reset --hard before-api-path-update
 ## 📈 项目价值
 
 ### 短期价值
-- ✅ 品牌统一（memopark → stardust, MEMO → DUST）
+- ✅ 品牌统一（stardust → stardust, MEMO → DUST）
 - ✅ 代码可读性提升
 - ✅ 开发人员困惑减少
 
@@ -438,7 +438,7 @@ git reset --hard before-api-path-update
 
 ### 文档位置
 ```
-/home/xiaodong/文档/memopark/docs/
+/home/xiaodong/文档/stardust/docs/
 ├── 变量重命名方案-memo变量分析.md
 ├── 变量重命名-快速开始.md
 ├── 变量重命名-总结报告.md
@@ -447,7 +447,7 @@ git reset --hard before-api-path-update
 └── rename-memo-variables.sh (脚本)
 └── update-api-paths.sh (脚本)
 
-/home/xiaodong/文档/memopark/
+/home/xiaodong/文档/stardust/
 └── MEMO_TO_DUST_DELIVERABLES.md
 └── RENAME_COMPLETE_SUMMARY.md (本文档)
 ```

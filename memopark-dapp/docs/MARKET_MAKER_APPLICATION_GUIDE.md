@@ -401,9 +401,9 @@ const cidString = new TextDecoder().decode(new Uint8Array(cidBytes))
 ## 联系支持
 
 如有疑问，请联系：
-- 📧 Email: support@memopark.com
-- 💬 Telegram: @memopark_support
-- 📖 文档: https://docs.memopark.com
+- 📧 Email: support@stardust.com
+- 💬 Telegram: @stardust_support
+- 📖 文档: https://docs.stardust.com
 
 ---
 

@@ -15,7 +15,7 @@
 
 ### 添加联系方式表单字段
 
-**文件**: `memopark-dapp/src/features/otc/CreateOrderPage.tsx`
+**文件**: `stardust-dapp/src/features/otc/CreateOrderPage.tsx`
 
 **位置**: 第936-951行（在"支付方式"字段之后）
 

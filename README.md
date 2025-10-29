@@ -1,4 +1,4 @@
-# Memopark - 区块链纪念平台
+# Stardust - 区块链纪念平台
 
 基于 Substrate 的去中心化纪念与传承平台。
 
@@ -13,7 +13,7 @@
 
 #### 终端 1：启动链节点
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./完全重置并启动.sh
 ```
 
@@ -25,7 +25,7 @@ cd /home/xiaodong/文档/memopark
 
 #### 终端 2：启动前端（等节点启动30秒后）
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./一键修复并启动.sh
 ```
 
@@ -50,9 +50,9 @@ cd /home/xiaodong/文档/memopark
 
 ### 功能文档
 - [委员会提案 UI](./docs/council-proposal-ui.md) - 提案提交/投票/执行
-- [做市商申请指南](./memopark-dapp/docs/MARKET_MAKER_APPLICATION_GUIDE.md)
-- [治理设计](./memopark-dapp/design/governance-design.md)
-- [墓地详情 UI](./memopark-dapp/design/grave_detail_ui_spec.md)
+- [做市商申请指南](./stardust-dapp/docs/MARKET_MAKER_APPLICATION_GUIDE.md)
+- [治理设计](./stardust-dapp/design/governance-design.md)
+- [墓地详情 UI](./stardust-dapp/design/grave_detail_ui_spec.md)
 
 ### 技术文档
 - [Pallet 接口文档](./pallets接口文档.md)
@@ -66,16 +66,16 @@ cd /home/xiaodong/文档/memopark
 ## 🏗️ 项目结构
 
 ```
-memopark/
+stardust/
 ├── node/                    # 节点实现
 ├── runtime/                 # Runtime 配置
 ├── pallets/                 # 自定义 Pallets
 │   ├── market-maker/       # 做市商管理
-│   ├── memo-grave/         # 墓地管理
+│   ├── stardust-grave/         # 墓地管理
 │   ├── memo-offerings/     # 供奉系统
 │   ├── collective/         # 委员会
 │   └── ...                 # 其他 pallets
-├── memopark-dapp/          # React 前端 DApp
+├── stardust-dapp/          # React 前端 DApp
 │   ├── src/
 │   │   ├── features/       # 功能模块
 │   │   ├── components/     # 组件
@@ -122,7 +122,7 @@ memopark/
 
 ### 编译 Runtime
 ```bash
-cargo build --release -p memopark-node
+cargo build --release -p stardust-node
 ```
 
 ### 运行测试
@@ -132,14 +132,14 @@ cargo test -p pallet-market-maker
 
 ### 前端开发
 ```bash
-cd memopark-dapp
+cd stardust-dapp
 npm install
 npm run dev
 ```
 
 ### 生成类型定义
 ```bash
-cd memopark-dapp
+cd stardust-dapp
 npm run generate-types
 ```
 

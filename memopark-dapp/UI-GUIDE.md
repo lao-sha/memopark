@@ -1,8 +1,8 @@
-# Memopark DApp UI 组件库使用指南
+# Stardust DApp UI 组件库使用指南
 
 ## 概述
 
-基于 Talisman 钱包的设计理念，我们为 memopark-dapp 创建了一套现代化的 UI 组件库。该组件库采用玻璃态拟物化（Glassmorphism）设计风格，专为 Web3 纪念园区应用优化。
+基于 Talisman 钱包的设计理念，我们为 stardust-dapp 创建了一套现代化的 UI 组件库。该组件库采用玻璃态拟物化（Glassmorphism）设计风格，专为 Web3 纪念园区应用优化。
 
 ## 设计原则
 
@@ -339,4 +339,4 @@ function CreateMemorialForm() {
 - [ ] 组件文档生成
 - [ ] 单元测试覆盖
 
-这套组件库为 memopark-dapp 提供了现代化、一致性的用户界面基础，能够创造出令人印象深刻的 Web3 纪念园区体验。
+这套组件库为 stardust-dapp 提供了现代化、一致性的用户界面基础，能够创造出令人印象深刻的 Web3 纪念园区体验。

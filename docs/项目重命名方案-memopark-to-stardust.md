@@ -1,8 +1,8 @@
-# 🔄 项目重命名方案：memopark → stardust
+# 🔄 项目重命名方案：stardust → stardust
 
 **📅 方案时间**: 2025-10-29  
 **🎯 重命名目标**: 
-- 项目名：memopark → **stardust**
+- 项目名：stardust → **stardust**
 - 代币名：MEMO → **DUST**
 
 **⏱️ 预计耗时**: 4-6小时  
@@ -16,34 +16,34 @@
 
 ```bash
 # 根目录文件
-memopark/                                    → stardust/
+stardust/                                    → stardust/
 
 # 节点和Runtime
 node/                                        # Cargo.toml中的包名
-├── Cargo.toml (memopark-node)              → stardust-node
+├── Cargo.toml (stardust-node)              → stardust-node
 runtime/                                     # Cargo.toml中的包名
-├── Cargo.toml (memopark-runtime)           → stardust-runtime
+├── Cargo.toml (stardust-runtime)           → stardust-runtime
 
 # 前端项目
-memopark-dapp/                               → stardust-dapp/
-├── package.json (memopark-dapp)            → stardust-dapp
-├── index.html (<title>Memopark</title>)   → Stardust
+stardust-dapp/                               → stardust-dapp/
+├── package.json (stardust-dapp)            → stardust-dapp
+├── index.html (<title>Stardust</title>)   → Stardust
 ├── public/                                  # favicon等资源
 
 # 治理前端
-memopark-governance/                         → stardust-governance/
-├── package.json (memopark-governance)      → stardust-governance
+stardust-governance/                         → stardust-governance/
+├── package.json (stardust-governance)      → stardust-governance
 
 # 治理工具
-memopark-gov/                                → stardust-gov/
-├── package.json (memopark-gov)             → stardust-gov
+stardust-gov/                                → stardust-gov/
+├── package.json (stardust-gov)             → stardust-gov
 
 # 治理脚本
-memopark-gov-scripts/                        → stardust-gov-scripts/
-├── package.json (memopark-gov-scripts)     → stardust-gov-scripts
+stardust-gov-scripts/                        → stardust-gov-scripts/
+├── package.json (stardust-gov-scripts)     → stardust-gov-scripts
 
 # Subsquid
-memopark-squid/                              → stardust-squid/
+stardust-squid/                              → stardust-squid/
 
 # 状态目录
 my-chain-state/                              → 可保持或改为 stardust-chain-state/
@@ -52,13 +52,13 @@ my-chain-state/                              → 可保持或改为 stardust-cha
 ### 2️⃣ Pallet名称（部分需要改）
 
 ```rust
-// 🔴 需要修改的Pallet（包含memopark/memo前缀）
-pallets/memo-park/                           → pallets/stardust-park/
-pallets/memo-grave/                          → pallets/stardust-grave/
-pallets/memo-pet/                            → pallets/stardust-pet/
-pallets/memo-ipfs/                           → pallets/stardust-ipfs/
-pallets/memo-appeals/                        → pallets/stardust-appeals/
-pallets/memo-referrals/                      → pallets/stardust-referrals/
+// 🔴 需要修改的Pallet（包含stardust/memo前缀）
+pallets/stardust-park/                           → pallets/stardust-park/
+pallets/stardust-grave/                          → pallets/stardust-grave/
+pallets/stardust-pet/                            → pallets/stardust-pet/
+pallets/stardust-ipfs/                           → pallets/stardust-ipfs/
+pallets/stardust-appeals/                        → pallets/stardust-appeals/
+pallets/stardust-referrals/                      → pallets/stardust-referrals/
 
 // 🟢 不需要修改的Pallet（通用名称）
 pallets/trading/                             ✅ 保持
@@ -76,8 +76,8 @@ pallets/arbitration/                         ✅ 保持
 #### Rust代码
 ```rust
 // 包名引用
-use memopark_runtime::...                    → use stardust_runtime::...
-memopark-node                                → stardust-node
+use stardust_runtime::...                    → use stardust_runtime::...
+stardust-node                                → stardust-node
 
 // Pallet引用
 pallet_memo_park                             → pallet_stardust_park
@@ -97,8 +97,8 @@ memo_amount                                  → dust_amount (可选，建议保
 #### TypeScript/JavaScript代码
 ```typescript
 // 包名
-"memopark-dapp"                              → "stardust-dapp"
-"memopark-governance"                        → "stardust-governance"
+"stardust-dapp"                              → "stardust-dapp"
+"stardust-governance"                        → "stardust-governance"
 
 // 变量名（可选，建议保持API稳定性）
 memoAmount                                   → 可保持（内部变量）
@@ -110,9 +110,9 @@ MEMO                                         → DUST（显示文本）
 
 #### 文档和注释
 ```markdown
-# Memopark                                   → # Stardust
+# Stardust                                   → # Stardust
 MEMO代币                                     → DUST代币
-Memopark项目                                 → Stardust项目
+Stardust项目                                 → Stardust项目
 纪念园                                       → 可保持或改为"星尘宇宙"
 ```
 
@@ -122,20 +122,20 @@ Memopark项目                                 → Stardust项目
 # Cargo.toml
 [workspace]
 members = [
-    "node",              # memopark-node → stardust-node
-    "runtime",           # memopark-runtime → stardust-runtime
+    "node",              # stardust-node → stardust-node
+    "runtime",           # stardust-runtime → stardust-runtime
     ...
 ]
 
 # package.json
 {
-  "name": "memopark-dapp",                   → "stardust-dapp",
-  "description": "Memopark DApp",            → "Stardust DApp",
+  "name": "stardust-dapp",                   → "stardust-dapp",
+  "description": "Stardust DApp",            → "Stardust DApp",
 }
 
 # chain_spec.rs
-id: "memopark",                              → "stardust",
-protocol_id: "memopark",                     → "stardust",
+id: "stardust",                              → "stardust",
+protocol_id: "stardust",                     → "stardust",
 ```
 
 ---
@@ -146,7 +146,7 @@ protocol_id: "memopark",                     → "stardust",
 
 #### 1.1 创建Git分支
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 git checkout -b rename-to-stardust
 git add -A
 git commit -m "Checkpoint: Before rename to Stardust"
@@ -156,10 +156,10 @@ git commit -m "Checkpoint: Before rename to Stardust"
 ```bash
 # 备份整个项目
 cd /home/xiaodong/文档/
-tar -czf memopark-backup-$(date +%Y%m%d).tar.gz memopark/
+tar -czf stardust-backup-$(date +%Y%m%d).tar.gz stardust/
 
 # 或者使用Git Tag
-cd memopark
+cd stardust
 git tag before-rename-to-stardust
 ```
 
@@ -168,15 +168,15 @@ git tag before-rename-to-stardust
 ### 阶段2: 重命名Pallet目录（15分钟）✅
 
 ```bash
-cd /home/xiaodong/文档/memopark/pallets
+cd /home/xiaodong/文档/stardust/pallets
 
 # 重命名6个memo-前缀的pallet
-mv memo-park stardust-park
-mv memo-grave stardust-grave
-mv memo-pet stardust-pet
-mv memo-ipfs stardust-ipfs
-mv memo-appeals stardust-appeals
-mv memo-referrals stardust-referrals
+mv stardust-park stardust-park
+mv stardust-grave stardust-grave
+mv stardust-pet stardust-pet
+mv stardust-ipfs stardust-ipfs
+mv stardust-appeals stardust-appeals
+mv stardust-referrals stardust-referrals
 
 # 验证
 ls -la | grep stardust
@@ -186,8 +186,8 @@ ls -la | grep stardust
 ```bash
 # 批量替换（示例：stardust-park）
 cd stardust-park
-sed -i 's/pallet-memo-park/pallet-stardust-park/g' Cargo.toml
-sed -i 's/memo-park/stardust-park/g' Cargo.toml
+sed -i 's/pallet-stardust-park/pallet-stardust-park/g' Cargo.toml
+sed -i 's/stardust-park/stardust-park/g' Cargo.toml
 ```
 
 #### 更新每个Pallet的lib.rs
@@ -205,7 +205,7 @@ find pallets/stardust-* -name "lib.rs" -exec sed -i 's/#\[pallet\][\s]*pub mod p
 
 #### 3.1 更新根Cargo.toml
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 编辑 Cargo.toml
 # 将所有 "pallets/memo-" 改为 "pallets/stardust-"
@@ -216,12 +216,12 @@ cd /home/xiaodong/文档/memopark
 [workspace]
 members = [
     # ...
-    "pallets/stardust-park",      # 原 memo-park
-    "pallets/stardust-grave",     # 原 memo-grave
-    "pallets/stardust-pet",       # 原 memo-pet
-    "pallets/stardust-ipfs",      # 原 memo-ipfs
-    "pallets/stardust-appeals",   # 原 memo-appeals
-    "pallets/stardust-referrals", # 原 memo-referrals
+    "pallets/stardust-park",      # 原 stardust-park
+    "pallets/stardust-grave",     # 原 stardust-grave
+    "pallets/stardust-pet",       # 原 stardust-pet
+    "pallets/stardust-ipfs",      # 原 stardust-ipfs
+    "pallets/stardust-appeals",   # 原 stardust-appeals
+    "pallets/stardust-referrals", # 原 stardust-referrals
     # ...
 ]
 ```
@@ -229,11 +229,11 @@ members = [
 #### 3.2 更新node/Cargo.toml
 ```toml
 [package]
-name = "stardust-node"           # 原 memopark-node
+name = "stardust-node"           # 原 stardust-node
 # ...
 
 [dependencies]
-stardust-runtime = { path = "../runtime" }  # 原 memopark-runtime
+stardust-runtime = { path = "../runtime" }  # 原 stardust-runtime
 pallet-stardust-park = { path = "../pallets/stardust-park", default-features = false }
 pallet-stardust-grave = { path = "../pallets/stardust-grave", default-features = false }
 pallet-stardust-pet = { path = "../pallets/stardust-pet", default-features = false }
@@ -245,7 +245,7 @@ pallet-stardust-referrals = { path = "../pallets/stardust-referrals", default-fe
 #### 3.3 更新runtime/Cargo.toml
 ```toml
 [package]
-name = "stardust-runtime"        # 原 memopark-runtime
+name = "stardust-runtime"        # 原 stardust-runtime
 # ...
 
 [dependencies]
@@ -283,7 +283,7 @@ construct_runtime!(
     pub struct Runtime {
         // ...
         #[runtime::pallet_index(20)]
-        pub type StardustPark = pallet_stardust_park;  // 原 MemoPark = pallet_memo_park
+        pub type StardustPark = pallet_stardust_park;  // 原 StarDust = pallet_memo_park
         
         #[runtime::pallet_index(21)]
         pub type StardustGrave = pallet_stardust_grave;  // 原 MemoGrave = pallet_memo_grave
@@ -336,19 +336,19 @@ impl pallet_stardust_appeals::Config for Runtime {  // 原 pallet_memo_appeals
 #### 4.3 更新node/src/chain_spec.rs
 ```rust
 // 链ID和协议ID
-pub fn stardust_testnet_config() -> ChainSpec {  // 原 memopark_testnet_config
+pub fn stardust_testnet_config() -> ChainSpec {  // 原 stardust_testnet_config
     ChainSpec::builder(
         // ...
     )
-    .with_id("stardust")           // 原 "memopark"
-    .with_protocol_id("stardust")  // 原 "memopark"
+    .with_id("stardust")           // 原 "stardust"
+    .with_protocol_id("stardust")  // 原 "stardust"
     .build()
 }
 ```
 
 #### 4.4 更新node/src/service.rs
 ```rust
-// 如果有memopark相关的服务名称，改为stardust
+// 如果有stardust相关的服务名称，改为stardust
 // 通常这个文件不需要大改
 ```
 
@@ -358,7 +358,7 @@ pub fn stardust_testnet_config() -> ChainSpec {  // 原 memopark_testnet_config
 
 #### 5.1 批量替换Rust代码中的引用
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 替换pallet模块引用（注意：先备份！）
 find . -name "*.rs" -type f -exec sed -i 's/pallet_memo_park/pallet_stardust_park/g' {} \;
@@ -372,8 +372,8 @@ find . -name "*.rs" -type f -exec sed -i 's/pallet_memo_referrals/pallet_stardus
 find . -name "*.rs" -type f -exec sed -i 's/use pallet_memo_/use pallet_stardust_/g' {} \;
 
 # 替换注释中的项目名称
-find . -name "*.rs" -type f -exec sed -i 's/Memopark/Stardust/g' {} \;
-find . -name "*.rs" -type f -exec sed -i 's/memopark/stardust/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/Stardust/Stardust/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/stardust/stardust/g' {} \;
 
 # 替换代币名称（注意：这个需要谨慎，可能有false positive）
 # 建议手动查找替换或使用更精确的正则
@@ -397,31 +397,31 @@ find . -name "*.rs" -type f -exec sed -i 's/10_000 MEMO/10_000 DUST/g' {} \;
 #### 6.1 重命名前端目录
 ```bash
 cd /home/xiaodong/文档/
-mv memopark/memopark-dapp memopark/stardust-dapp
-mv memopark/memopark-governance memopark/stardust-governance
-mv memopark/memopark-gov memopark/stardust-gov
-mv memopark/memopark-gov-scripts memopark/stardust-gov-scripts
-mv memopark/memopark-squid memopark/stardust-squid
+mv stardust/stardust-dapp stardust/stardust-dapp
+mv stardust/stardust-governance stardust/stardust-governance
+mv stardust/stardust-gov stardust/stardust-gov
+mv stardust/stardust-gov-scripts stardust/stardust-gov-scripts
+mv stardust/stardust-squid stardust/stardust-squid
 ```
 
 #### 6.2 更新主前端DApp
 ```bash
-cd /home/xiaodong/文档/memopark/stardust-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 
 # 更新package.json
-sed -i 's/"memopark-dapp"/"stardust-dapp"/g' package.json
-sed -i 's/Memopark DApp/Stardust DApp/g' package.json
+sed -i 's/"stardust-dapp"/"stardust-dapp"/g' package.json
+sed -i 's/Stardust DApp/Stardust DApp/g' package.json
 
 # 更新index.html
-sed -i 's/<title>Memopark<\/title>/<title>Stardust<\/title>/g' index.html
-sed -i 's/Memopark/Stardust/g' index.html
+sed -i 's/<title>Stardust<\/title>/<title>Stardust<\/title>/g' index.html
+sed -i 's/Stardust/Stardust/g' index.html
 
 # 更新vite.config.ts（如果有项目名称）
-sed -i 's/memopark/stardust/g' vite.config.ts
+sed -i 's/stardust/stardust/g' vite.config.ts
 
 # 更新README.md
-sed -i 's/Memopark/Stardust/g' README.md
-sed -i 's/memopark/stardust/g' README.md
+sed -i 's/Stardust/Stardust/g' README.md
+sed -i 's/stardust/stardust/g' README.md
 sed -i 's/MEMO/DUST/g' README.md
 ```
 
@@ -434,10 +434,10 @@ cd stardust-dapp/src
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO/DUST/g'
 
 # 显示的项目名称
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/Memopark/Stardust/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/Stardust/Stardust/g'
 
 # 注释
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/memopark/stardust/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/stardust/stardust/g'
 
 # ⚠️ 注意：API接口变量名建议保持（memoAmount等），避免破坏性更改
 # 或者使用IDE的重构功能，更精确地重命名
@@ -446,19 +446,19 @@ find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/memopark/stardust/g'
 #### 6.4 更新其他前端项目
 ```bash
 # stardust-governance
-cd /home/xiaodong/文档/memopark/stardust-governance
-sed -i 's/"memopark-governance"/"stardust-governance"/g' package.json
-sed -i 's/Memopark/Stardust/g' package.json README.md
+cd /home/xiaodong/文档/stardust/stardust-governance
+sed -i 's/"stardust-governance"/"stardust-governance"/g' package.json
+sed -i 's/Stardust/Stardust/g' package.json README.md
 
 # stardust-gov
-cd /home/xiaodong/文档/memopark/stardust-gov
-sed -i 's/"memopark-gov"/"stardust-gov"/g' package.json
-sed -i 's/Memopark/Stardust/g' package.json README.md
+cd /home/xiaodong/文档/stardust/stardust-gov
+sed -i 's/"stardust-gov"/"stardust-gov"/g' package.json
+sed -i 's/Stardust/Stardust/g' package.json README.md
 
 # stardust-gov-scripts
-cd /home/xiaodong/文档/memopark/stardust-gov-scripts
-sed -i 's/"memopark-gov-scripts"/"stardust-gov-scripts"/g' package.json
-sed -i 's/Memopark/Stardust/g' package.json README.md
+cd /home/xiaodong/文档/stardust/stardust-gov-scripts
+sed -i 's/"stardust-gov-scripts"/"stardust-gov-scripts"/g' package.json
+sed -i 's/Stardust/Stardust/g' package.json README.md
 ```
 
 ---
@@ -466,17 +466,17 @@ sed -i 's/Memopark/Stardust/g' package.json README.md
 ### 阶段7: 更新文档（30分钟）✅
 
 ```bash
-cd /home/xiaodong/文档/memopark/docs
+cd /home/xiaodong/文档/stardust/docs
 
 # 批量替换所有Markdown文档
-find . -name "*.md" -exec sed -i 's/Memopark/Stardust/g' {} \;
-find . -name "*.md" -exec sed -i 's/memopark/stardust/g' {} \;
+find . -name "*.md" -exec sed -i 's/Stardust/Stardust/g' {} \;
+find . -name "*.md" -exec sed -i 's/stardust/stardust/g' {} \;
 find . -name "*.md" -exec sed -i 's/\bMEMO\b/DUST/g' {} \;
 
 # 更新根目录README.md
-cd /home/xiaodong/文档/memopark
-sed -i 's/Memopark/Stardust/g' README.md
-sed -i 's/memopark/stardust/g' README.md
+cd /home/xiaodong/文档/stardust
+sed -i 's/Stardust/Stardust/g' README.md
+sed -i 's/stardust/stardust/g' README.md
 sed -i 's/MEMO/DUST/g' README.md
 ```
 
@@ -487,7 +487,7 @@ sed -i 's/MEMO/DUST/g' README.md
 ```bash
 # ⚠️ 这一步最后做！
 cd /home/xiaodong/文档/
-mv memopark stardust
+mv stardust stardust
 
 # 验证
 cd stardust
@@ -520,13 +520,13 @@ cargo check -p stardust-runtime
 
 **可能的错误**:
 ```
-❌ error: package `memopark-runtime` not found
-解决: 检查Cargo.toml中是否还有未替换的memopark引用
+❌ error: package `stardust-runtime` not found
+解决: 检查Cargo.toml中是否还有未替换的stardust引用
 
 ❌ error: unresolved import `pallet_memo_xxx`
 解决: 检查runtime/src/configs/mod.rs中的use语句
 
-❌ error: no pallet in scope named `MemoPark`
+❌ error: no pallet in scope named `StarDust`
 解决: 检查construct_runtime!宏中的pallet类型名称
 ```
 
@@ -591,33 +591,33 @@ npm run dev
 
 | 原内容 | 新内容 | 位置 | 优先级 |
 |--------|--------|------|--------|
-| `memopark-node` | `stardust-node` | Cargo.toml | P0 |
-| `memopark-runtime` | `stardust-runtime` | Cargo.toml | P0 |
-| `memopark-dapp` | `stardust-dapp` | package.json | P0 |
-| `pallet-memo-park` | `pallet-stardust-park` | Cargo.toml | P0 |
-| `pallet-memo-grave` | `pallet-stardust-grave` | Cargo.toml | P0 |
-| `pallet-memo-pet` | `pallet-stardust-pet` | Cargo.toml | P0 |
-| `pallet-memo-ipfs` | `pallet-stardust-ipfs` | Cargo.toml | P0 |
-| `pallet-memo-appeals` | `pallet-stardust-appeals` | Cargo.toml | P0 |
-| `pallet-memo-referrals` | `pallet-stardust-referrals` | Cargo.toml | P0 |
+| `stardust-node` | `stardust-node` | Cargo.toml | P0 |
+| `stardust-runtime` | `stardust-runtime` | Cargo.toml | P0 |
+| `stardust-dapp` | `stardust-dapp` | package.json | P0 |
+| `pallet-stardust-park` | `pallet-stardust-park` | Cargo.toml | P0 |
+| `pallet-stardust-grave` | `pallet-stardust-grave` | Cargo.toml | P0 |
+| `pallet-stardust-pet` | `pallet-stardust-pet` | Cargo.toml | P0 |
+| `pallet-stardust-ipfs` | `pallet-stardust-ipfs` | Cargo.toml | P0 |
+| `pallet-stardust-appeals` | `pallet-stardust-appeals` | Cargo.toml | P0 |
+| `pallet-stardust-referrals` | `pallet-stardust-referrals` | Cargo.toml | P0 |
 | `pallet_memo_park` | `pallet_stardust_park` | *.rs | P0 |
 | `pallet_memo_grave` | `pallet_stardust_grave` | *.rs | P0 |
 | `pallet_memo_pet` | `pallet_stardust_pet` | *.rs | P0 |
 | `pallet_memo_ipfs` | `pallet_stardust_ipfs` | *.rs | P0 |
 | `pallet_memo_appeals` | `pallet_stardust_appeals` | *.rs | P0 |
 | `pallet_memo_referrals` | `pallet_stardust_referrals` | *.rs | P0 |
-| `id: "memopark"` | `id: "stardust"` | chain_spec.rs | P0 |
-| `protocol_id: "memopark"` | `protocol_id: "stardust"` | chain_spec.rs | P0 |
+| `id: "stardust"` | `id: "stardust"` | chain_spec.rs | P0 |
+| `protocol_id: "stardust"` | `protocol_id: "stardust"` | chain_spec.rs | P0 |
 
 ### 🟡 建议替换的内容
 
 | 原内容 | 新内容 | 位置 | 优先级 |
 |--------|--------|------|--------|
-| `Memopark` | `Stardust` | 注释、文档 | P1 |
+| `Stardust` | `Stardust` | 注释、文档 | P1 |
 | `MEMO` (代币) | `DUST` | 注释、UI文本 | P1 |
 | `10 MEMO` | `10 DUST` | 注释 | P1 |
 | `1000 MEMO` | `1000 DUST` | 注释 | P1 |
-| `<title>Memopark</title>` | `<title>Stardust</title>` | index.html | P1 |
+| `<title>Stardust</title>` | `<title>Stardust</title>` | index.html | P1 |
 
 ### 🟢 可选替换的内容
 
@@ -673,7 +673,7 @@ npm run dev
 - [ ] `cargo check -p stardust-node` 通过
 - [ ] `cargo build --release` 通过
 - [ ] `cd stardust-dapp && npm run build` 通过
-- [ ] 无任何编译警告（关于memopark的）
+- [ ] 无任何编译警告（关于stardust的）
 
 ### 功能验证
 - [ ] 节点启动成功，链ID为"stardust"
@@ -689,7 +689,7 @@ npm run dev
 - [ ] README.md更新完毕
 - [ ] docs/目录下所有文档更新
 - [ ] package.json中的描述更新
-- [ ] 无遗漏的"memopark"或"MEMO"引用
+- [ ] 无遗漏的"stardust"或"MEMO"引用
 
 ### Git验证
 - [ ] 所有更改已提交
@@ -712,7 +712,7 @@ git checkout before-rename-to-stardust  # 回到重命名前的标签
 ```bash
 cd /home/xiaodong/文档/
 rm -rf stardust  # 删除失败的版本
-tar -xzf memopark-backup-YYYYMMDD.tar.gz  # 恢复备份
+tar -xzf stardust-backup-YYYYMMDD.tar.gz  # 恢复备份
 ```
 
 ---
@@ -791,7 +791,7 @@ echo "✅ 重命名完成！"
 - [ ] UI显示正确
 
 ### 代码检查 ✅
-- [ ] 无"memopark"残留（除文档说明）
+- [ ] 无"stardust"残留（除文档说明）
 - [ ] 无"MEMO"残留（除API变量名）
 - [ ] Pallet名称全部更新
 - [ ] 包名全部更新
@@ -821,5 +821,5 @@ echo "✅ 重命名完成！"
 
 **📅 方案生成时间**: 2025-10-29  
 **✍️ 方案作者**: AI Assistant  
-**🏷️ 标签**: `项目重命名` `memopark-to-stardust` `MEMO-to-DUST` `重构`
+**🏷️ 标签**: `项目重命名` `stardust-to-stardust` `MEMO-to-DUST` `重构`
 

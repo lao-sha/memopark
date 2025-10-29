@@ -166,7 +166,7 @@ T::IpfsPinner::pin_cid_for_deceased(
 
 - ❌ 仅支持Deceased和Grave两个域
 - ❌ 需要了解deceased_id的含义
-- ❌ 扩展新域需要修改memo-ipfs
+- ❌ 扩展新域需要修改stardust-ipfs
 
 ### 新方案（ContentRegistry trait）
 ```rust
@@ -181,7 +181,7 @@ T::ContentRegistry::register_content(
 
 - ✅ 支持任意自定义域
 - ✅ 自动化处理，无需了解内部细节
-- ✅ 新业务pallet无需修改memo-ipfs
+- ✅ 新业务pallet无需修改stardust-ipfs
 
 ## 🔍 域管理（治理）
 
@@ -245,15 +245,15 @@ fn upload_video_works() {
 
 ## 📚 更多信息
 
-- 详细设计文档：`/docs/memo-ipfs三需求分析报告.md`
-- memo-ipfs README：`/pallets/memo-ipfs/README.md`
-- ContentRegistry trait定义：`/pallets/memo-ipfs/src/lib.rs` (line 180-241)
+- 详细设计文档：`/docs/stardust-ipfs三需求分析报告.md`
+- stardust-ipfs README：`/pallets/stardust-ipfs/README.md`
+- ContentRegistry trait定义：`/pallets/stardust-ipfs/src/lib.rs` (line 180-241)
 
 ## 🤝 技术支持
 
 如有疑问，请查看：
 1. 本示例pallet源代码
-2. memo-ipfs pallet文档
+2. stardust-ipfs pallet文档
 3. 需求分析报告
 
 ---

@@ -17,7 +17,7 @@
 ### 1. 新增组件（MakerCreditBadge.tsx）
 
 #### 位置
-- `memopark-dapp/src/components/MakerCreditBadge.tsx`
+- `stardust-dapp/src/components/MakerCreditBadge.tsx`
 
 #### 功能
 1. **简洁模式** - 仅显示信用等级徽章
@@ -51,7 +51,7 @@ interface MakerCreditBadgeProps {
 ### 2. 页面集成（CreateOrderPage.tsx）
 
 #### 修改位置
-- `memopark-dapp/src/features/otc/CreateOrderPage.tsx`
+- `stardust-dapp/src/features/otc/CreateOrderPage.tsx`
 
 #### 集成点
 
@@ -292,7 +292,7 @@ api.query.makerCredit.credits(makerId)
 
 ### 1. 启动前端开发服务器
 ```bash
-cd memopark-dapp
+cd stardust-dapp
 npm run dev
 ```
 

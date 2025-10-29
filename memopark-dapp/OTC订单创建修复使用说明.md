@@ -17,13 +17,13 @@
 
 ### 1. 启动链节点
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./start-node.sh
 ```
 
 ### 2. 启动前端
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run dev
 ```
 
@@ -117,7 +117,7 @@ api.tx.otcOrder.openOrder(
 ### 1. 必须先创建挂单
 - 使用命令行脚本创建挂单：
   ```bash
-  cd /home/xiaodong/文档/memopark/memopark-gov-scripts
+  cd /home/xiaodong/文档/stardust/stardust-gov-scripts
   node create-listing.js
   ```
 
@@ -140,7 +140,7 @@ api.tx.otcOrder.openOrder(
 ### Q1：页面显示"无可用挂单"
 **A1**：请先使用命令行脚本创建挂单
 ```bash
-cd memopark-gov-scripts
+cd stardust-gov-scripts
 node create-listing.js
 ```
 
@@ -161,14 +161,14 @@ node create-listing.js
 **A4**：检查链节点是否正常运行：
 ```bash
 # 检查节点日志
-tail -f /home/xiaodong/文档/memopark/node.log
+tail -f /home/xiaodong/文档/stardust/node.log
 ```
 
 ### Q5：订单状态一直不更新
 **A5**：手动刷新页面或检查链端订单：
 ```bash
 # 使用脚本查询订单
-cd memopark-gov-scripts
+cd stardust-gov-scripts
 node 查看订单状态.js
 ```
 

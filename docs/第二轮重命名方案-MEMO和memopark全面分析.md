@@ -1,15 +1,15 @@
-# 📊 第二轮重命名方案 - MEMO和memopark全面分析
+# 📊 第二轮重命名方案 - MEMO和stardust全面分析
 
 **📅 日期**: 2025-10-29  
-**🎯 目标**: 全面扫描并重命名项目中所有"MEMO"和"memopark"字样  
-**📈 扫描结果**: MEMO 2760处，memopark 1541处
+**🎯 目标**: 全面扫描并重命名项目中所有"MEMO"和"stardust"字样  
+**📈 扫描结果**: MEMO 2760处，stardust 1541处
 
 ---
 
 ## 📋 执行摘要
 
 ### 统计数据
-| 类型 | MEMO出现次数 | memopark出现次数 |
+| 类型 | MEMO出现次数 | stardust出现次数 |
 |------|-------------|-----------------|
 | **Rust源码** | 265 | 170 |
 | **TypeScript/TSX** | 366 | 32 |
@@ -31,23 +31,23 @@
 #### 需要重命名的目录
 
 **前端项目目录** (3个):
-1. `memopark-dapp` → `stardust-dapp` ⚠️ **已在其他方案中考虑**
-2. `memopark-gov` → `stardust-gov`
-3. `memopark-governance` → `stardust-governance`
+1. `stardust-dapp` → `stardust-dapp` ⚠️ **已在其他方案中考虑**
+2. `stardust-gov` → `stardust-gov`
+3. `stardust-governance` → `stardust-governance`
 
 **其他目录** (1个):
-4. `memopark-squid` → `stardust-squid`
+4. `stardust-squid` → `stardust-squid`
 
 #### 需要重命名的文件
 
 **配置文件中的包名**:
-- `node/Cargo.toml`: `name = "memopark-node"` → `name = "stardust-node"` ⚠️ **已完成**
-- `runtime/Cargo.toml`: `name = "memopark-runtime"` → `name = "stardust-runtime"` ⚠️ **已完成**
+- `node/Cargo.toml`: `name = "stardust-node"` → `name = "stardust-node"` ⚠️ **已完成**
+- `runtime/Cargo.toml`: `name = "stardust-runtime"` → `name = "stardust-runtime"` ⚠️ **已完成**
 
 **编译产物** (自动生成，无需手动修改):
-- `target/release/memopark-node` → 重新编译后自动生成 `stardust-node`
-- `target/release/libmemopark_runtime.rlib` → 自动生成
-- `memopark_runtime.wasm` → 自动生成
+- `target/release/stardust-node` → 重新编译后自动生成 `stardust-node`
+- `target/release/libstardust_runtime.rlib` → 自动生成
+- `stardust_runtime.wasm` → 自动生成
 
 #### 修改难度
 - **代码难度**: 🟠 中等（目录重命名需要更新引用）
@@ -74,8 +74,8 @@ return `${whole}.${fracStr} DUST`
 ```
 
 **影响文件** (估计):
-- `memopark-dapp/src/**/*.tsx` - ~150处
-- `memopark-governance/src/**/*.tsx` - ~50处
+- `stardust-dapp/src/**/*.tsx` - ~150处
+- `stardust-governance/src/**/*.tsx` - ~50处
 
 **修改策略**:
 - 使用全局搜索替换 `MEMO"` → `DUST"`
@@ -153,8 +153,8 @@ const MEMO_PRECISION: Balance = 1_000_000_000_000; // 12位小数
 ```
 
 **影响文件**:
-- `memopark-dapp/src/**/*.ts` - ~50处
-- `memopark-governance/src/**/*.ts` - ~20处
+- `stardust-dapp/src/**/*.ts` - ~50处
+- `stardust-governance/src/**/*.ts` - ~20处
 
 #### 修改难度
 - **代码难度**: 🟢 低（批量替换）
@@ -169,21 +169,21 @@ const MEMO_PRECISION: Balance = 1_000_000_000_000; // 12位小数
 
 **前端DApp**:
 ```json
-// memopark-dapp/package.json
+// stardust-dapp/package.json
 {
-  "name": "memopark-dapp",  // → stardust-dapp
-  "description": "Memopark DApp Frontend",  // → Stardust DApp Frontend
+  "name": "stardust-dapp",  // → stardust-dapp
+  "description": "Stardust DApp Frontend",  // → Stardust DApp Frontend
   "repository": {
-    "url": "https://github.com/lao-sha/memopark.git"  // → stardust.git
+    "url": "https://github.com/lao-sha/stardust.git"  // → stardust.git
   }
 }
 ```
 
 **治理前端**:
 ```json
-// memopark-governance/package.json
+// stardust-governance/package.json
 {
-  "name": "memopark-governance",  // → stardust-governance
+  "name": "stardust-governance",  // → stardust-governance
   // ...
 }
 ```
@@ -193,12 +193,12 @@ const MEMO_PRECISION: Balance = 1_000_000_000_000; // 12位小数
 **根Cargo.toml**:
 ```toml
 [workspace.package]
-repository = "https://github.com/lao-sha/memopark.git"  # → stardust.git
+repository = "https://github.com/lao-sha/stardust.git"  # → stardust.git
 
 [workspace]
 members = [
-    "node",  # 产出: memopark-node → stardust-node
-    "runtime",  # 产出: memopark-runtime → stardust-runtime
+    "node",  # 产出: stardust-node → stardust-node
+    "runtime",  # 产出: stardust-runtime → stardust-runtime
     # ...
 ]
 ```
@@ -207,7 +207,7 @@ members = [
 
 **根README.md**:
 ```markdown
-# Memopark  → # Stardust
+# Stardust  → # Stardust
 
 A blockchain project for memorial park services.  
 Token: MEMO → Token: DUST
@@ -226,7 +226,7 @@ Token: MEMO → Token: DUST
 
 **统计**: 
 - MEMO: 2027处（大部分在文档中）
-- memopark: 1311处（大部分在文档中）
+- stardust: 1311处（大部分在文档中）
 
 **影响文件** (估计):
 - `docs/*.md` - 大量
@@ -236,7 +236,7 @@ Token: MEMO → Token: DUST
 **修改策略**:
 - 批量替换 " MEMO" → " DUST"
 - 批量替换 "MEMO " → "DUST "
-- 批量替换 "memopark" → "stardust"
+- 批量替换 "stardust" → "stardust"
 - 手动检查Git历史、提交信息等特殊场景
 
 #### 修改难度
@@ -255,8 +255,8 @@ Token: MEMO → Token: DUST
 // node/src/chain_spec.rs (如果存在)
 pub fn development_config() -> ChainSpec {
     ChainSpec::from_genesis(
-        "Memopark Development",  // → "Stardust Development"
-        "memopark_dev",  // → "stardust_dev"
+        "Stardust Development",  // → "Stardust Development"
+        "stardust_dev",  // → "stardust_dev"
         // ...
         properties.insert("tokenSymbol".into(), "MEMO".into());  // → "DUST"
         properties.insert("tokenDecimals".into(), 12.into());
@@ -271,8 +271,8 @@ pub fn development_config() -> ChainSpec {
 ```rust
 // runtime/src/lib.rs
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("memopark"),  // → "stardust"
-    impl_name: create_runtime_str!("memopark-node"),  // → "stardust-node"
+    spec_name: create_runtime_str!("stardust"),  // → "stardust"
+    impl_name: create_runtime_str!("stardust-node"),  // → "stardust-node"
     // ...
 };
 ```
@@ -369,7 +369,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 **搜索模式**:
 ```bash
 # 搜索所有 " MEMO" 和 "MEMO "
-grep -r " MEMO\|MEMO " memopark-dapp/src --include="*.tsx" --include="*.ts"
+grep -r " MEMO\|MEMO " stardust-dapp/src --include="*.tsx" --include="*.ts"
 ```
 
 **修改示例**:
@@ -395,16 +395,16 @@ grep -r " MEMO\|MEMO " memopark-dapp/src --include="*.tsx" --include="*.ts"
 
 #### 2. Package配置 (高优先级)
 
-**文件**: `memopark-dapp/package.json`
+**文件**: `stardust-dapp/package.json`
 
 ```json
 // 修改前
 {
-  "name": "memopark-dapp",
-  "description": "Memopark DApp - Memorial Park on Blockchain",
+  "name": "stardust-dapp",
+  "description": "Stardust DApp - Memorial Park on Blockchain",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lao-sha/memopark.git"
+    "url": "https://github.com/lao-sha/stardust.git"
   }
 }
 
@@ -478,12 +478,12 @@ grep -r " MEMO\|MEMO " memopark-dapp/src --include="*.tsx" --include="*.ts"
 **根README.md**:
 ```markdown
 # 修改前
-# Memopark
+# Stardust
 
 A blockchain project for memorial park services.
 
 **Token**: MEMO
-**Network**: Memopark Network
+**Network**: Stardust Network
 
 # 修改后
 # Stardust
@@ -496,7 +496,7 @@ A blockchain project for memorial park services.
 
 **pallet README**:
 - 批量替换所有 pallet README.md中的 "MEMO" → "DUST"
-- 批量替换 "memopark" → "stardust"
+- 批量替换 "stardust" → "stardust"
 
 **预计修改**: ~50个文件
 
@@ -510,7 +510,7 @@ A blockchain project for memorial park services.
 #!/bin/bash
 # rename-ui-text.sh
 
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 echo "=== 阶段1: 前端UI文本重命名 ==="
 
@@ -519,7 +519,7 @@ git tag -f before-ui-text-rename -m "备份：UI文本重命名前"
 
 # 前端DApp
 echo "1️⃣ 更新前端DApp UI文本..."
-cd memopark-dapp/src
+cd stardust-dapp/src
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ MEMO/ DUST/g'
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO /DUST /g'
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO"/DUST"/g'
@@ -528,7 +528,7 @@ find . -name "*.tsx" -o -name "*.ts" | xargs sed -i "s/MEMO'/DUST'/g"
 
 # 治理前端
 echo "2️⃣ 更新治理前端UI文本..."
-cd ../../memopark-governance/src
+cd ../../stardust-governance/src
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ MEMO/ DUST/g'
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO /DUST /g'
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO"/DUST"/g'
@@ -538,11 +538,11 @@ echo "✅ UI文本重命名完成"
 # 验证
 cd ../..
 echo "🔍 验证剩余MEMO..."
-grep -r " MEMO\|MEMO " memopark-dapp/src memopark-governance/src \
+grep -r " MEMO\|MEMO " stardust-dapp/src stardust-governance/src \
   --include="*.ts" --include="*.tsx" | wc -l
 
 # 提交
-git add memopark-dapp/src memopark-governance/src
+git add stardust-dapp/src stardust-governance/src
 git commit -m "UI文本更新: MEMO → DUST
 
 - 前端DApp: ~200处
@@ -558,7 +558,7 @@ git commit -m "UI文本更新: MEMO → DUST
 #!/bin/bash
 # rename-code-comments.sh
 
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 echo "=== 阶段2: 代码注释重命名 ==="
 
@@ -574,7 +574,7 @@ find runtime pallets -name "*.rs" | xargs sed -i 's/（MEMO/（DUST/g'
 
 # TypeScript代码注释
 echo "2️⃣ 更新TypeScript代码注释..."
-cd memopark-dapp/src
+cd stardust-dapp/src
 find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/格式化 MEMO/格式化 DUST/g'
 find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/金额（MEMO）/金额（DUST）/g'
 
@@ -582,7 +582,7 @@ echo "✅ 注释重命名完成"
 
 # 提交
 cd ../..
-git add runtime pallets memopark-dapp memopark-governance
+git add runtime pallets stardust-dapp stardust-governance
 git commit -m "代码注释更新: MEMO → DUST
 
 - Rust注释: ~130处
@@ -598,7 +598,7 @@ git commit -m "代码注释更新: MEMO → DUST
 #!/bin/bash
 # update-package-configs.sh
 
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 echo "=== 阶段3: Package配置更新 ==="
 
@@ -607,24 +607,24 @@ git tag -f before-package-rename -m "备份：Package配置更新前"
 
 # 更新前端DApp package.json
 echo "1️⃣ 更新前端DApp配置..."
-sed -i 's/"name": "memopark-dapp"/"name": "stardust-dapp"/' memopark-dapp/package.json
-sed -i 's/Memopark DApp/Stardust DApp/' memopark-dapp/package.json
-sed -i 's/memopark.git/stardust.git/' memopark-dapp/package.json
+sed -i 's/"name": "stardust-dapp"/"name": "stardust-dapp"/' stardust-dapp/package.json
+sed -i 's/Stardust DApp/Stardust DApp/' stardust-dapp/package.json
+sed -i 's/stardust.git/stardust.git/' stardust-dapp/package.json
 
 # 更新治理前端 package.json
 echo "2️⃣ 更新治理前端配置..."
-sed -i 's/"name": "memopark-governance"/"name": "stardust-governance"/' memopark-governance/package.json
-sed -i 's/memopark.git/stardust.git/' memopark-governance/package.json
+sed -i 's/"name": "stardust-governance"/"name": "stardust-governance"/' stardust-governance/package.json
+sed -i 's/stardust.git/stardust.git/' stardust-governance/package.json
 
 # 更新根Cargo.toml
 echo "3️⃣ 更新根Cargo.toml..."
-sed -i 's/memopark.git/stardust.git/' Cargo.toml
+sed -i 's/stardust.git/stardust.git/' Cargo.toml
 
 echo "✅ Package配置更新完成"
 
 # 提交
-git add memopark-dapp/package.json memopark-governance/package.json Cargo.toml
-git commit -m "配置更新: memopark → stardust
+git add stardust-dapp/package.json stardust-governance/package.json Cargo.toml
+git commit -m "配置更新: stardust → stardust
 
 - 前端DApp package.json
 - 治理前端 package.json
@@ -687,7 +687,7 @@ git commit -m "配置更新: memopark → stardust
 - [ ] 检查API文档
 
 #### 第4步: 文档批量更新（最后）
-- [ ] 批量替换文档中的MEMO和memopark
+- [ ] 批量替换文档中的MEMO和stardust
 - [ ] 手动检查关键文档
 - [ ] 更新README
 
@@ -751,7 +751,7 @@ pub const DUST_PRECISION: Balance = 1_000_000_000_000;
 
 ### 2. Git历史处理
 
-**问题**: 历史提交消息中包含"MEMO"和"memopark"
+**问题**: 历史提交消息中包含"MEMO"和"stardust"
 
 **建议**: **不修改Git历史**
 

@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-memo-ipfs` 是Memopark生态的**IPFS存储管理模块**，提供CID自动Pin、存储费用计算和副本管理功能。通过IpfsPinner trait为其他模块提供标准化的IPFS存储服务，确保内容持久化。
+`pallet-stardust-ipfs` 是Stardust生态的**IPFS存储管理模块**，提供CID自动Pin、存储费用计算和副本管理功能。通过IpfsPinner trait为其他模块提供标准化的IPFS存储服务，确保内容持久化。
 
 ## 🔑 核心功能
 
@@ -99,7 +99,7 @@ T::IpfsPinner::auto_pin_batch(
 )?;
 ```
 
-#### pallet-memo-grave集成
+#### pallet-stardust-grave集成
 ```rust
 // 墓位设置音频时自动Pin
 T::IpfsPinner::auto_pin(&audio_cid, &owner)?;
@@ -232,7 +232,7 @@ let record = pallet_memo_ipfs::IpfsRecords::<T>::get(&cid);
 ## 🔗 相关模块
 
 - **pallet-deceased**: 逝者管理（Pin逝者CID）
-- **pallet-memo-grave**: 墓地管理（Pin音频CID）
+- **pallet-stardust-grave**: 墓地管理（Pin音频CID）
 - **pallet-evidence**: 证据管理（Pin证据CID）
 - **pallet-chat**: 聊天系统（Pin消息CID）
 
@@ -245,4 +245,4 @@ let record = pallet_memo_ipfs::IpfsRecords::<T>::get(&cid);
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

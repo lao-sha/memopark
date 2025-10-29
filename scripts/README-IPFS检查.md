@@ -29,7 +29,7 @@ systemctl status ipfs
 
 ```bash
 # 进入项目目录
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 运行检查脚本
 ./scripts/check-ipfs-public-network.sh
@@ -83,7 +83,7 @@ Peer ID: QmXXXXXXXXXXXXXXXX...
 ========================================
 报告位置
 ========================================
-完整路径: /home/xiaodong/文档/memopark/ipfs-public-network-check-20251027-143025.md
+完整路径: /home/xiaodong/文档/stardust/ipfs-public-network-check-20251027-143025.md
 ```
 
 ### 查看报告
@@ -302,10 +302,10 @@ telnet <远程节点IP> 5001
 crontab -e
 
 # 2. 添加每日检查（每天凌晨2点）
-0 2 * * * cd /home/xiaodong/文档/memopark && ./scripts/check-ipfs-public-network.sh >> logs/ipfs-check.log 2>&1
+0 2 * * * cd /home/xiaodong/文档/stardust && ./scripts/check-ipfs-public-network.sh >> logs/ipfs-check.log 2>&1
 
 # 3. 添加每周检查（每周一上午9点）
-0 9 * * 1 cd /home/xiaodong/文档/memopark && ./scripts/check-ipfs-public-network.sh && mail -s "IPFS Weekly Check" admin@example.com < ipfs-public-network-check-*.md
+0 9 * * 1 cd /home/xiaodong/文档/stardust && ./scripts/check-ipfs-public-network.sh && mail -s "IPFS Weekly Check" admin@example.com < ipfs-public-network-check-*.md
 
 # 4. 保存并退出
 ```
@@ -322,7 +322,7 @@ crontab -e
 ## 📖 相关文档
 
 - [IPFS核心节点公网连接检查指南](../docs/IPFS核心节点公网连接检查指南.md)
-- [memo-ipfs三需求分析报告](../docs/memo-ipfs三需求分析报告.md)
+- [stardust-ipfs三需求分析报告](../docs/stardust-ipfs三需求分析报告.md)
 - [IPFS官方文档 - Configuration](https://docs.ipfs.tech/how-to/configure-node/)
 - [IPFS官方文档 - DHT](https://docs.ipfs.tech/concepts/dht/)
 

@@ -1,9 +1,9 @@
-# pallet-memo-ipfs 冗余代码分析报告
+# pallet-stardust-ipfs 冗余代码分析报告
 
 ## 📋 执行概要
 
 **分析时间**: 2025年10月26日  
-**文件**: `pallets/memo-ipfs/src/lib.rs`  
+**文件**: `pallets/stardust-ipfs/src/lib.rs`  
 **总代码行数**: 5,288行  
 **识别的冗余模块**: 7个主要类别  
 **建议清理代码行数**: 约1,200-1,500行（23-28%）
@@ -735,7 +735,7 @@ if LayeredPinAssignments::<T>::get(&cid_hash).is_none() {
 
 ### 核心问题
 
-pallet-memo-ipfs 存在**严重的代码冗余问题**：
+pallet-stardust-ipfs 存在**严重的代码冗余问题**：
 - **4套扣费逻辑**并存（直扣费、双重、三重、四层）
 - **4套运营者选择算法**并存（旧版、中间版、Layer 1/2、公网简化）
 - **3套PIN分配记录**并存（旧版、Layer 1/2、公网简化）

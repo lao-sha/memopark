@@ -546,7 +546,7 @@ const templates = [
 | 文档 | 路径 | 说明 |
 |-----|------|------|
 | **可行性分析** | `docs/OTC做市商完整收款信息-聊天传递方案分析.md` | 详细的可行性和合理性分析 |
-| **实施报告** | `memopark-dapp/OTC聊天集成-完成报告.md` | 本文档，实施完成报告 |
+| **实施报告** | `stardust-dapp/OTC聊天集成-完成报告.md` | 本文档，实施完成报告 |
 | **代码文件** | `src/lib/chat-validator.ts` | 姓名校验和收款信息工具 |
 | **代码文件** | `src/lib/chat.ts` | 聊天辅助函数（会话管理） |
 | **代码文件** | `src/features/otc/CreateOrderPage.tsx` | 订单创建页面（集成聊天） |

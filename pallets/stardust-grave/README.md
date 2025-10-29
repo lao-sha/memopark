@@ -1,17 +1,17 @@
 # Pallet Memo Grave - 墓地管理系统
 
 > **⚠️ 重要变更（Phase 3.3）**  
-> **投诉功能已迁移到`pallet-memo-appeals`**  
+> **投诉功能已迁移到`pallet-stardust-appeals`**  
 > - ❌ 墓地投诉记录列表（`ComplaintsByGrave`）已废弃  
-> - ✅ 请使用`pallet-memo-appeals`统一投诉治理系统  
+> - ✅ 请使用`pallet-stardust-appeals`统一投诉治理系统  
 > - 📚 [迁移指南](../../docs/投诉申诉治理-Phase3.3迁移指南.md)  
 > - **主网未上线，破坏式变更，无需兼容旧API**
 
 ## 📋 模块概述
 
-`pallet-memo-grave` 是Memopark生态的**核心墓地管理模块**，提供墓位创建、安葬管理、封面/音频设置、关注系统等功能。通过低耦合设计（GraveInspector trait）与逝者模块交互，支持IPFS自动Pin和关注押金管理。
+`pallet-stardust-grave` 是Stardust生态的**核心墓地管理模块**，提供墓位创建、安葬管理、封面/音频设置、关注系统等功能。通过低耦合设计（GraveInspector trait）与逝者模块交互，支持IPFS自动Pin和关注押金管理。
 
-**注意**: 投诉举报功能已统一迁移到`pallet-memo-appeals`，获得完整的治理流程（公示期、应答否决等），本模块专注于墓地管理功能。
+**注意**: 投诉举报功能已统一迁移到`pallet-stardust-appeals`，获得完整的治理流程（公示期、应答否决等），本模块专注于墓地管理功能。
 
 ## 🔑 核心功能
 
@@ -183,7 +183,7 @@ pub trait GraveInspector<AccountId, GraveId> {
 }
 ```
 
-**用途**：pallet-deceased通过此trait与pallet-memo-grave交互，保持低耦合
+**用途**：pallet-deceased通过此trait与pallet-stardust-grave交互，保持低耦合
 
 ## 📦 存储结构
 
@@ -382,7 +382,7 @@ pallet_memo_grave::Pallet::<T>::set_audio_playlist(
 ## 🔗 相关模块
 
 - **pallet-deceased**: 逝者管理（通过GraveInspector交互）
-- **pallet-memo-ipfs**: IPFS存储（自动Pin CID）
+- **pallet-stardust-ipfs**: IPFS存储（自动Pin CID）
 - **pallet-memo-offerings**: 供奉系统（查询墓位信息）
 - **pallet-ledger**: 供奉账本（统计墓位供奉）
 
@@ -396,4 +396,4 @@ pallet_memo_grave::Pallet::<T>::set_audio_playlist(
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

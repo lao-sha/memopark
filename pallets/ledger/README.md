@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-ledger` 是Memopark生态的**供奉统计模块**，维护墓位和逝者的累计供奉次数、金额和周活跃度标记。采用精简设计，仅保留必要统计数据，供前端查询和业务分析使用。
+`pallet-ledger` 是Stardust生态的**供奉统计模块**，维护墓位和逝者的累计供奉次数、金额和周活跃度标记。采用精简设计，仅保留必要统计数据，供前端查询和业务分析使用。
 
 ## 🔑 核心功能
 
@@ -196,7 +196,7 @@ pallet_ledger::Pallet::<T>::mark_weekly_active_batch(
 
 - **pallet-memo-offerings**: 供奉系统（调用Hook记录）
 - **pallet-membership**: 会员系统（标记活跃周）
-- **pallet-memo-grave**: 墓地管理（提供grave_id）
+- **pallet-stardust-grave**: 墓地管理（提供grave_id）
 
 ## 📚 参考资源
 
@@ -207,4 +207,4 @@ pallet_ledger::Pallet::<T>::mark_weekly_active_batch(
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

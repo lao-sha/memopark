@@ -55,7 +55,7 @@
 ## 文件结构
 
 ```
-memopark-dapp/src/
+stardust-dapp/src/
 ├── services/
 │   └── creditService.ts          # 统一信用服务（买家+做市商）
 ├── components/
@@ -904,5 +904,5 @@ api.query.system.events((events) => {
 
 **文档版本**: v1.0.0  
 **最后更新**: 2025-10-28  
-**维护者**: Memopark 前端团队
+**维护者**: Stardust 前端团队
 

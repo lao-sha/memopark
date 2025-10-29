@@ -1,8 +1,8 @@
-# Memopark DApp UI 改进方案
+# Stardust DApp UI 改进方案
 
 ## 项目背景
 
-基于对 Talisman 钱包前端架构的深入研究，我们为 memopark-dapp 设计了一套现代化的 UI 组件系统。虽然由于网络问题未能完全构建 Talisman 项目，但通过分析其源码结构和设计模式，我们成功提取了关键的设计理念。
+基于对 Talisman 钱包前端架构的深入研究，我们为 stardust-dapp 设计了一套现代化的 UI 组件系统。虽然由于网络问题未能完全构建 Talisman 项目，但通过分析其源码结构和设计模式，我们成功提取了关键的设计理念。
 
 ## 从 Talisman 学到的设计模式
 
@@ -12,9 +12,9 @@
 - `apps/extension/src/ui/` - 应用层 UI 组件
 - 清晰的组件层次结构
 
-**应用到 Memopark：**
+**应用到 Stardust：**
 ```
-memopark-dapp/src/components/
+stardust-dapp/src/components/
 ├── ui/                    # 基础 UI 组件库
 │   ├── Button.tsx
 │   ├── Modal.tsx
@@ -274,7 +274,7 @@ function GovernanceProposal() {
 ### 1. 组件库安装
 ```bash
 # 组件库已集成在项目中
-cd memopark-dapp/src/components/ui/
+cd stardust-dapp/src/components/ui/
 ```
 
 ### 2. 使用示例
@@ -329,7 +329,7 @@ const customTheme = {
 
 ## 总结
 
-通过研究 Talisman 钱包的设计模式，我们为 memopark-dapp 创建了一套现代化、专业的 UI 组件系统。这套系统不仅提升了应用的视觉品质，还改善了用户体验，使其更符合现代 Web3 应用的标准。
+通过研究 Talisman 钱包的设计模式，我们为 stardust-dapp 创建了一套现代化、专业的 UI 组件系统。这套系统不仅提升了应用的视觉品质，还改善了用户体验，使其更符合现代 Web3 应用的标准。
 
 主要成果包括：
 - 完整的玻璃态设计系统
@@ -338,4 +338,4 @@ const customTheme = {
 - 响应式和无障碍设计
 - 类型安全的开发体验
 
-这些改进将显著提升 memopark-dapp 的用户体验和开发效率，为项目的长期发展奠定坚实基础。
+这些改进将显著提升 stardust-dapp 的用户体验和开发效率，为项目的长期发展奠定坚实基础。

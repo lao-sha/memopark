@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-deceased` 是Memopark生态的**核心业务模块**，提供逝者信息的创建、管理、迁移和查询功能。通过低耦合设计与`pallet-grave`(墓地系统)协作，实现逝者与墓位的关联管理，并集成IPFS自动Pin功能保障媒体文件的持久化存储。
+`pallet-deceased` 是Stardust生态的**核心业务模块**，提供逝者信息的创建、管理、迁移和查询功能。通过低耦合设计与`pallet-grave`(墓地系统)协作，实现逝者与墓位的关联管理，并集成IPFS自动Pin功能保障媒体文件的持久化存储。
 
 ### 设计理念
 
@@ -652,8 +652,8 @@ IPFS自动Pin
 
 ## 🔗 相关模块
 
-- **pallet-memo-grave**: 墓地系统（提供GraveInspector实现）
-- **pallet-memo-ipfs**: IPFS管理（自动Pin媒体）
+- **pallet-stardust-grave**: 墓地系统（提供GraveInspector实现）
+- **pallet-stardust-ipfs**: IPFS管理（自动Pin媒体）
 - **pallet-deceased-media**: 逝者媒体扩展（更多媒体管理）
 - **pallet-deceased-text**: 逝者文本扩展（生平文本）
 - **pallet-memo-offerings**: 供奉系统（供奉对象）
@@ -669,5 +669,5 @@ IPFS自动Pin
 
 **版本**: 1.5.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队  
+**维护者**: Stardust 开发团队  
 **Phase**: 1.5（已解决逝者-墓地同步问题 + 准入策略保护）

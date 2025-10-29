@@ -18,7 +18,7 @@
 - ✅ 添加首购资金池最小值验证（>= 10,000 MEMO）
 
 #### 修复文件
-- `memopark-dapp/src/features/otc/CreateMarketMakerPage.tsx`
+- `stardust-dapp/src/features/otc/CreateMarketMakerPage.tsx`
 
 #### 代码变更
 ```typescript
@@ -165,7 +165,7 @@ const raw = BigInt(amountInt) * BigInt(10 ** decimals) + BigInt(amountDec)
 | **完整诊断方案** | `docs/Wasm_Unreachable错误完整诊断和修复方案.md` | 技术详细分析 ⭐⭐⭐⭐☆ |
 | **NotFound 错误** | `docs/做市商NotFound错误诊断和解决方案.md` | NotFound 错误专项 ⭐⭐⭐⭐☆ |
 | **资金池分析** | `docs/首购资金池最小值合理性分析.md` | 业务合理性分析 ⭐⭐⭐⭐☆ |
-| **资金池配置** | `memopark-dapp/首购资金池配置最终方案.md` | 配置说明 ⭐⭐⭐⭐☆ |
+| **资金池配置** | `stardust-dapp/首购资金池配置最终方案.md` | 配置说明 ⭐⭐⭐⭐☆ |
 
 ---
 
@@ -220,7 +220,7 @@ const raw = BigInt(amountInt) * BigInt(10 ** decimals) + BigInt(amountDec)
 ### 1. 更新代码
 
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 git pull  # 或手动应用修复
 ```
 
@@ -331,7 +331,7 @@ npm run dev
 
 **修复版本**: v1.1.0  
 **修复日期**: 2025-10-14  
-**修复人员**: MemoPark 开发团队  
+**修复人员**: StarDust 开发团队  
 **状态**: ✅ 已完成并测试  
 **文档完整度**: ⭐⭐⭐⭐⭐
 

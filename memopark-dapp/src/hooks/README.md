@@ -67,7 +67,7 @@ const { ipfsPool, arweavePool, operatorEscrow, loading, refresh } = useStoragePo
 ### 当前状态：模拟数据模式
 
 所有Hooks当前都使用**模拟数据**，原因：
-- pallet-memo-ipfs尚未启用到runtime
+- pallet-stardust-ipfs尚未启用到runtime
 - 链上查询API暂不可用
 - 为了不阻塞前端开发，先使用模拟数据
 
@@ -89,7 +89,7 @@ const { ipfsPool, arweavePool, operatorEscrow, loading, refresh } = useStoragePo
 
 ### 升级到实际数据
 
-等pallet-memo-ipfs启用后，只需修改Hooks中的数据获取函数：
+等pallet-stardust-ipfs启用后，只需修改Hooks中的数据获取函数：
 
 **示例：usePinStatus**
 ```typescript
@@ -313,7 +313,7 @@ export const PoolAccountsDashboard: React.FC = () => {
 
 ## 📝 迁移清单
 
-等pallet-memo-ipfs启用后，按以下清单迁移到实际数据：
+等pallet-stardust-ipfs启用后，按以下清单迁移到实际数据：
 
 - [ ] 实现Polkadot.js API连接（`getPolkadotApi()`）
 - [ ] 修改`usePinStatus`的数据获取函数
@@ -327,13 +327,13 @@ export const PoolAccountsDashboard: React.FC = () => {
 ## ❓ 常见问题
 
 **Q: 为什么使用模拟数据？**
-A: 因为pallet-memo-ipfs尚未启用，链上查询API暂不可用。使用模拟数据可以不阻塞前端开发。
+A: 因为pallet-stardust-ipfs尚未启用，链上查询API暂不可用。使用模拟数据可以不阻塞前端开发。
 
 **Q: 模拟数据会影响实际使用吗？**
 A: 不会。模拟数据的类型结构与实际数据完全一致，迁移时只需替换数据获取函数。
 
 **Q: 什么时候可以使用实际数据？**
-A: 等pallet-memo-ipfs启用到runtime后，约需2-3小时实现实际API连接。
+A: 等pallet-stardust-ipfs启用到runtime后，约需2-3小时实现实际API连接。
 
 **Q: 如何判断是否在使用模拟数据？**
 A: 查看各Hook文件中的数据获取函数，如果有"模拟延迟"和"模拟返回数据"注释，说明在使用模拟数据。
@@ -342,5 +342,5 @@ A: 查看各Hook文件中的数据获取函数，如果有"模拟延迟"和"模�
 
 **文档版本**：v1.0  
 **最后更新**：2025-10-12  
-**状态**：⚠️ 当前使用模拟数据，等待pallet-memo-ipfs启用
+**状态**：⚠️ 当前使用模拟数据，等待pallet-stardust-ipfs启用
 

@@ -257,10 +257,10 @@ max_allowed = 0.500000 × (1 + 0.20) = 0.600000 USDT
 
 ## 相关文档
 
-- [pallet-otc-listing README](/home/xiaodong/文档/memopark/pallets/otc-listing/README.md)
-- [pallet-otc-order README](/home/xiaodong/文档/memopark/pallets/otc-order/README.md)
-- [pallet-pricing README](/home/xiaodong/文档/memopark/pallets/pricing/README.md)
-- [定价基准价格±20%方案分析](/home/xiaodong/文档/memopark/docs/定价基准价格±20%方案分析.md)
+- [pallet-otc-listing README](/home/xiaodong/文档/stardust/pallets/otc-listing/README.md)
+- [pallet-otc-order README](/home/xiaodong/文档/stardust/pallets/otc-order/README.md)
+- [pallet-pricing README](/home/xiaodong/文档/stardust/pallets/pricing/README.md)
+- [定价基准价格±20%方案分析](/home/xiaodong/文档/stardust/docs/定价基准价格±20%方案分析.md)
 
 ## 版本信息
 

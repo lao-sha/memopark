@@ -88,7 +88,7 @@
 #### 1. 创建轨道服务层（今天就可以开始）
 
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-governance
+cd /home/xiaodong/文档/stardust/stardust-governance
 
 # 创建目录
 mkdir -p src/types
@@ -306,12 +306,12 @@ console.log('查询到的轨道:', tracks)
 
 1. **查看详细方案**
 ```bash
-cat /home/xiaodong/文档/memopark/docs/Phase4实施方案-轨道系统和多委员会.md
+cat /home/xiaodong/文档/stardust/docs/Phase4实施方案-轨道系统和多委员会.md
 ```
 
 2. **创建工作分支**（可选）
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-governance
+cd /home/xiaodong/文档/stardust/stardust-governance
 git checkout -b feat/phase4-tracks-committees
 ```
 

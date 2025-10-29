@@ -421,7 +421,7 @@ A: 可以，您可以：
 
 ### 联系方式
 
-- 📧 开发团队：memopark-dev@example.com
+- 📧 开发团队：stardust-dev@example.com
 - 💬 用户反馈：GitHub Issues
 - 📱 技术文档：/docs/
 
@@ -445,5 +445,5 @@ A: 可以，您可以：
 
 **文档版本**: v1.0.0  
 **更新时间**: 2025-10-14  
-**维护团队**: MemoPark 开发团队
+**维护团队**: StarDust 开发团队
 

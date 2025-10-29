@@ -340,7 +340,7 @@ Phase 2后: 2460行
 
 ### 编译命令
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release -p pallet-deceased
 ```
 

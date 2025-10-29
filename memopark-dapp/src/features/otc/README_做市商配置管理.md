@@ -44,7 +44,7 @@ http://127.0.0.1:5173/#/otc/bridge-config
 ### 前端组件
 
 ```
-memopark-dapp/src/features/otc/
+stardust-dapp/src/features/otc/
 ├── MakerBridgeConfigPage.tsx    # 配置管理主页面（695 行）
 ├── MarketMakerConfigPage.tsx    # Epay 配置页面（602 行）
 ├── CreateMarketMakerPage.tsx    # 做市商申请页面
@@ -129,24 +129,24 @@ memopark-dapp/src/features/otc/
 
 ### 用户文档
 
-- [做市商配置管理-快速开始](/home/xiaodong/文档/memopark/docs/做市商配置管理-快速开始.md)
+- [做市商配置管理-快速开始](/home/xiaodong/文档/stardust/docs/做市商配置管理-快速开始.md)
   - 5 分钟上手指南
   - 常用操作演示
   - 常见错误解决
 
-- [做市商配置管理前端使用指南](/home/xiaodong/文档/memopark/docs/做市商配置管理前端使用指南.md)
+- [做市商配置管理前端使用指南](/home/xiaodong/文档/stardust/docs/做市商配置管理前端使用指南.md)
   - 详细功能说明
   - 完整操作流程
   - 常见问题解答
 
 ### 技术文档
 
-- [做市商配置管理前端集成完成报告](/home/xiaodong/文档/memopark/docs/做市商配置管理前端集成完成报告.md)
+- [做市商配置管理前端集成完成报告](/home/xiaodong/文档/stardust/docs/做市商配置管理前端集成完成报告.md)
   - 实施总结
   - 技术实现
   - 测试场景
 
-- [做市商字段维护分析与优化建议](/home/xiaodong/文档/memopark/docs/做市商字段维护分析与优化建议.md)
+- [做市商字段维护分析与优化建议](/home/xiaodong/文档/stardust/docs/做市商字段维护分析与优化建议.md)
   - 问题分析
   - 优化建议
   - 实施计划
@@ -162,7 +162,7 @@ memopark-dapp/src/features/otc/
 3. **重新启用桥接服务**
 4. **更新业务配置**
 
-详细测试步骤请参考：[做市商配置管理前端集成完成报告](/home/xiaodong/文档/memopark/docs/做市商配置管理前端集成完成报告.md#测试场景)
+详细测试步骤请参考：[做市商配置管理前端集成完成报告](/home/xiaodong/文档/stardust/docs/做市商配置管理前端集成完成报告.md#测试场景)
 
 ---
 
@@ -188,8 +188,8 @@ memopark-dapp/src/features/otc/
 ## 📞 联系与支持
 
 如有问题或建议，请：
-1. 查看[详细使用指南](/home/xiaodong/文档/memopark/docs/做市商配置管理前端使用指南.md)
-2. 查看[常见问题](/home/xiaodong/文档/memopark/docs/做市商配置管理前端使用指南.md#常见问题)
+1. 查看[详细使用指南](/home/xiaodong/文档/stardust/docs/做市商配置管理前端使用指南.md)
+2. 查看[常见问题](/home/xiaodong/文档/stardust/docs/做市商配置管理前端使用指南.md#常见问题)
 3. 联系开发团队
 
 ---

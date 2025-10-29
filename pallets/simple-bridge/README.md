@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-simple-bridge` 是Memopark生态的**跨链桥接模块**，提供MEMO↔USDT(TRC20)双向兑换功能。支持**官方托管式**和**做市商OCW式**两种桥接模式，实现安全高效的跨链资产流通。
+`pallet-simple-bridge` 是Stardust生态的**跨链桥接模块**，提供MEMO↔USDT(TRC20)双向兑换功能。支持**官方托管式**和**做市商OCW式**两种桥接模式，实现安全高效的跨链资产流通。
 
 ### 设计理念
 
@@ -764,4 +764,4 @@ pallet_simple_bridge::Pallet::<T>::arbitrate_ocw_swap(
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

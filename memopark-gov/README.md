@@ -1,4 +1,4 @@
-# Memopark 做市商治理平台
+# Stardust 做市商治理平台
 
 全新的做市商审批与挂单管理前端应用。
 
@@ -24,7 +24,7 @@
 ### 1. 安装依赖
 
 ```bash
-cd /home/xiaodong/文档/memopark/memopar-gov
+cd /home/xiaodong/文档/stardust/memopar-gov
 npm install
 ```
 
@@ -203,7 +203,7 @@ npm run dev -- --port 3003
 **问题**：提示"链端连接失败"
 
 **解决**：
-- 确保链端节点在运行：`./target/release/memopark-node --dev --rpc-cors all`
+- 确保链端节点在运行：`./target/release/stardust-node --dev --rpc-cors all`
 - 检查 WebSocket 地址是否正确
 - 检查防火墙设置
 

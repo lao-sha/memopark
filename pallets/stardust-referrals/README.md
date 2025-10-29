@@ -1,4 +1,4 @@
-# pallet-memo-referrals
+# pallet-stardust-referrals
 
 - 职责：一次性绑定推荐关系（单父、防环/自荐、不可变更），为计酬等模块提供只读关系视图。
 - 解耦：计酬层级与关系遍历各自治理（MaxLevels vs MaxHops）。

@@ -18,7 +18,7 @@ http://localhost:5173/#/storage-treasury
 **提示**：需要先启动前端开发服务器
 
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run dev
 ```
 
@@ -309,13 +309,13 @@ Dashboard 采用响应式设计，支持移动端访问：
 **解决方案**：
 1. 检查节点是否启动
 ```bash
-ps aux | grep memopark-node
+ps aux | grep stardust-node
 ```
 
 2. 启动节点（如未启动）
 ```bash
-cd /home/xiaodong/文档/memopark
-./target/release/memopark-node --dev --tmp --rpc-cors all --rpc-methods unsafe
+cd /home/xiaodong/文档/stardust
+./target/release/stardust-node --dev --tmp --rpc-cors all --rpc-methods unsafe
 ```
 
 3. 检查 WebSocket 连接

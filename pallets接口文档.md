@@ -1,4 +1,4 @@
-MemoPark项目 区块链前端 API 接口统一文档
+StarDust项目 区块链前端 API 接口统一文档
 
 ## pallet-deceased
 
@@ -128,7 +128,7 @@ Storage：
 - Extrinsic 返回类型为 DispatchResult(WithPostInfo)；业务层“返回值”通过事件 Event 暴露。
 - 前端通常通过 Polkadot.js 调用：`api.tx.<pallet>.<call>(...)`，监听交易内事件解析业务结果。
 
-## pallet-memo-park（陵园）
+## pallet-stardust-park（陵园）
 
 - 作用：登记陵园、更新管理与状态；与官方治理/多签低耦合（由 runtime 适配 `ParkAdmin`）。
 - Extrinsics：
@@ -145,7 +145,7 @@ Storage：
     - 权限：owner
     - 事件：ParkTransferred { id, new_owner }
 
-## pallet-memo-grave（墓位/纪念堂）
+## pallet-stardust-grave（墓位/纪念堂）
 
 - 作用：创建/更新/转让墓位，安葬/起掘；分类/宗教；投诉与园区审核；名称哈希索引；墓位管理员。
 - Extrinsics：
@@ -171,7 +171,7 @@ Storage：
   - offer(target: (u8,u64), kind_code: u8, amount?: u128, media: Vec<(cid, commit?)>, duration_weeks?: u32) -> OfferingCommitted
   - batch_offer(calls: Vec<...offer 参数...>) -> ()
 
-## pallet-memo-referrals（推荐关系）
+## pallet-stardust-referrals（推荐关系）
 
 - 作用：一次性绑定直属推荐人；为联盟计酬提供稳定、低耦合的推荐图来源。
 - Extrinsics：

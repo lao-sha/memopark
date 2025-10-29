@@ -10,7 +10,7 @@ Pallet Memo Appeals 是一个通用的申诉治理模块，支持多域（墓地
 
 ### 主要变更（v0.2.0）
 
-1. ✅ **模块重命名**: `pallet-memo-content-governance` → `pallet-memo-appeals`
+1. ✅ **模块重命名**: `pallet-memo-content-governance` → `pallet-stardust-appeals`
    - 更准确地反映模块功能范围
    - 不仅限于"内容"治理，支持多种域的申诉
 
@@ -707,13 +707,13 @@ async function getObjectComplaints(domain, targetId) {
 
 ```bash
 # 编译pallet
-cargo check -p pallet-memo-appeals
+cargo check -p pallet-stardust-appeals
 
 # 运行单元测试
-cargo test -p pallet-memo-appeals
+cargo test -p pallet-stardust-appeals
 
 # 运行基准测试
-cargo bench -p pallet-memo-appeals
+cargo bench -p pallet-stardust-appeals
 ```
 
 ### 常见问题

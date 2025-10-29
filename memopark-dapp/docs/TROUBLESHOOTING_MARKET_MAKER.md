@@ -70,16 +70,16 @@ catch (queryError) {
 ##### **方案 3：清理并重新编译链**
 
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 清理
 cargo clean
 
 # 重新编译 runtime
-cargo build --release -p memopark-runtime
+cargo build --release -p stardust-runtime
 
 # 重新编译并启动节点
-cargo run --release -p memopark-node -- --dev --tmp --rpc-cors=all
+cargo run --release -p stardust-node -- --dev --tmp --rpc-cors=all
 ```
 
 ---
@@ -112,7 +112,7 @@ grep "MarketMaker" runtime/src/lib.rs
 
 **步骤 3**: 重新编译节点
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo clean
 cargo build --release
 ```
@@ -122,7 +122,7 @@ cargo build --release
 # 停止旧节点（Ctrl+C）
 
 # 启动新节点
-./target/release/memopark-node --dev --tmp --rpc-cors=all
+./target/release/stardust-node --dev --tmp --rpc-cors=all
 ```
 
 ---
@@ -171,7 +171,7 @@ formatMemoAmount(100.5)    // "100500000000000" (100.5 MEMO)
 **步骤 1**: 检查本地钱包
 ```javascript
 // 打开浏览器控制台
-localStorage.getItem('memopark_keystore_v2')
+localStorage.getItem('stardust_keystore_v2')
 // 应该返回加密的 JSON 字符串
 ```
 
@@ -239,10 +239,10 @@ console.table(txHistory)
 
 ```javascript
 // 清理浏览器缓存（保留钱包）
-const keystore = localStorage.getItem('memopark_keystore_v2')
+const keystore = localStorage.getItem('stardust_keystore_v2')
 localStorage.clear()
 if (keystore) {
-  localStorage.setItem('memopark_keystore_v2', keystore)
+  localStorage.setItem('stardust_keystore_v2', keystore)
 }
 location.reload()
 ```
@@ -255,7 +255,7 @@ location.reload()
 
 ```bash
 # 使用 --tmp 参数启动干净的测试链
-./target/release/memopark-node --dev --tmp --rpc-cors=all
+./target/release/stardust-node --dev --tmp --rpc-cors=all
 
 # 或者手动清理数据目录
 rm -rf /tmp/substrate*
@@ -265,11 +265,11 @@ rm -rf /tmp/substrate*
 
 ```bash
 # 重新编译链
-cd /home/xiaodong/文档/memopark
-cargo build --release -p memopark-node
+cd /home/xiaodong/文档/stardust
+cargo build --release -p stardust-node
 
 # 重新构建前端
-cd memopark-dapp
+cd stardust-dapp
 npm run build
 ```
 
@@ -277,7 +277,7 @@ npm run build
 
 ```bash
 # 启动节点时增加日志级别
-./target/release/memopark-node \
+./target/release/stardust-node \
   --dev \
   --tmp \
   --rpc-cors=all \
@@ -341,7 +341,7 @@ api.query.system.events((events) => {
 3. **账户地址**
 4. **节点版本**
    ```bash
-   ./target/release/memopark-node --version
+   ./target/release/stardust-node --version
    ```
 5. **Runtime 版本**
    ```bash
@@ -350,9 +350,9 @@ api.query.system.events((events) => {
 
 ### 联系方式
 
-- 📧 Email: support@memopark.com
-- 💬 Telegram: @memopark_support
-- 🐛 GitHub Issues: https://github.com/lao-sha/memopark/issues
+- 📧 Email: support@stardust.com
+- 💬 Telegram: @stardust_support
+- 🐛 GitHub Issues: https://github.com/lao-sha/stardust/issues
 
 ---
 

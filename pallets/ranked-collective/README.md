@@ -33,11 +33,11 @@
 
 ---
 
-## Memopark 项目集成状态
+## Stardust 项目集成状态
 
 ### ⚠️ 当前状态：**未集成**
 
-本 pallet 已存在于 Memopark 项目中，但**尚未在 Runtime 中集成**。
+本 pallet 已存在于 Stardust 项目中，但**尚未在 Runtime 中集成**。
 
 ### 是否需要使用？
 
@@ -46,11 +46,11 @@
 **理由：**
 
 1. **功能重叠**
-   - Memopark 已有三个 `pallet-collective` 实例（Council、TechnicalCommittee、ContentCommittee）
+   - Stardust 已有三个 `pallet-collective` 实例（Council、TechnicalCommittee、ContentCommittee）
    - 现有体系已满足当前的治理需求
 
 2. **项目定位不匹配**
-   - Memopark 是纪念园服务平台，核心业务是墓地管理、逝者纪念、供奉系统
+   - Stardust 是纪念园服务平台，核心业务是墓地管理、逝者纪念、供奉系统
    - 不是复杂的链上治理平台，无需精细化等级体系
 
 3. **增加系统复杂度**
@@ -78,7 +78,7 @@
 - **等级设计**：贡献者 → 维护者 → 核心开发者 → 架构师 → 技术主管
 
 #### 场景3：与 OpenGov 集成
-- **触发条件**：Memopark 成为 Polkadot 平行链
+- **触发条件**：Stardust 成为 Polkadot 平行链
 - **适用方式**：使用 Ranked Collective 作为 Fellowship 实现
 - **集成方式**：与 Polkadot 的 Referenda 系统对接
 

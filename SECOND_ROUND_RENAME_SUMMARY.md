@@ -1,7 +1,7 @@
 # 📊 第二轮重命名 - 执行清单
 
 **📅 日期**: 2025-10-29  
-**🎯 目标**: 全面重命名项目中所有"MEMO"和"memopark"字样  
+**🎯 目标**: 全面重命名项目中所有"MEMO"和"stardust"字样  
 **✅ 状态**: **方案就绪，待执行**
 
 ---
@@ -9,7 +9,7 @@
 ## 🏆 扫描结果
 
 ### 统计数据
-| 类型 | MEMO出现 | memopark出现 | 总计 |
+| 类型 | MEMO出现 | stardust出现 | 总计 |
 |------|---------|-------------|------|
 | Rust源码 | 265 | 170 | 435 |
 | TypeScript/TSX | 366 | 32 | 398 |
@@ -44,7 +44,7 @@
 - **可立即执行**: ✅
 
 #### 3. update-package-configs.sh 🟡 中优先级
-- **功能**: 更新Package配置 (memopark → stardust)
+- **功能**: 更新Package配置 (stardust → stardust)
 - **范围**: ~10处
 - **风险**: 🟡 中
 - **时间**: 3分钟
@@ -52,7 +52,7 @@
 
 ### 文档（1份）
 
-#### 第二轮重命名方案-MEMO和memopark全面分析.md
+#### 第二轮重命名方案-MEMO和stardust全面分析.md
 - **内容**: 完整的分析和修改方案
 - **章节**: 6类修改，4阶段方案
 - **页数**: ~1400行
@@ -89,13 +89,13 @@
 
 **步骤**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 执行UI文本重命名
 ./docs/rename-ui-text.sh
 
 # 编译验证
-cd memopark-dapp
+cd stardust-dapp
 npm run build
 ```
 
@@ -168,8 +168,8 @@ return `${value} DUST`
 ```
 
 **影响文件**:
-- `memopark-dapp/src/**/*.tsx` - ~200处
-- `memopark-governance/src/**/*.tsx` - ~50处
+- `stardust-dapp/src/**/*.tsx` - ~200处
+- `stardust-governance/src/**/*.tsx` - ~50处
 
 **修改点**: ~250处
 
@@ -181,15 +181,15 @@ return `${value} DUST`
 ```json
 // package.json
 {
-  "name": "memopark-dapp",  → "stardust-dapp"
-  "repository": "memopark.git"  → "stardust.git"
+  "name": "stardust-dapp",  → "stardust-dapp"
+  "repository": "stardust.git"  → "stardust.git"
 }
 ```
 
 **影响文件**:
-- `memopark-dapp/package.json`
-- `memopark-governance/package.json`
-- `memopark-gov/package.json`
+- `stardust-dapp/package.json`
+- `stardust-governance/package.json`
+- `stardust-gov/package.json`
 - `Cargo.toml`
 
 **修改点**: ~10处
@@ -219,7 +219,7 @@ return `${value} DUST`
 
 **影响文件**:
 - Rust: `runtime/`, `pallets/` - ~130处
-- TypeScript: `memopark-dapp/`, `memopark-governance/` - ~70处
+- TypeScript: `stardust-dapp/`, `stardust-governance/` - ~70处
 
 **修改点**: ~200处
 
@@ -314,7 +314,7 @@ git reset --hard before-comment-rename
 ### 第二轮重命名（待执行）⏳
 - **UI文本**: MEMO → DUST (~250处)
 - **代码注释**: MEMO → DUST (~200处)
-- **Package配置**: memopark → stardust (~10处)
+- **Package配置**: stardust → stardust (~10处)
 - **文档**: 可选（~3000处）
 
 ### 总计
@@ -351,7 +351,7 @@ git reset --hard before-comment-rename
 - `RENAME_COMPLETE_SUMMARY.md`
 
 ### 第二轮重命名
-- `docs/第二轮重命名方案-MEMO和memopark全面分析.md`
+- `docs/第二轮重命名方案-MEMO和stardust全面分析.md`
 - `docs/rename-ui-text.sh`
 - `docs/rename-code-comments.sh`
 - `docs/update-package-configs.sh`
@@ -370,7 +370,7 @@ git reset --hard before-comment-rename
 
 **执行**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./docs/rename-ui-text.sh
 ```
 

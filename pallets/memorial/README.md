@@ -2,7 +2,7 @@
 
 ## 📋 总览
 
-**pallet-memorial** 是 Memopark 项目的统一纪念服务系统，整合了原 `pallet-memo-offerings`（供奉业务）和 `pallet-memo-sacrifice`（祭祀品目录）的所有功能。
+**pallet-memorial** 是 Stardust 项目的统一纪念服务系统，整合了原 `pallet-memo-offerings`（供奉业务）和 `pallet-memo-sacrifice`（祭祀品目录）的所有功能。
 
 **整合日期**: 2025-10-28  
 **版本**: 0.1.0  
@@ -576,7 +576,7 @@ memorial.batch_offer(
 
 ## 👥 维护者
 
-- Memopark Team
+- Stardust Team
 - AI Assistant (Claude Sonnet 4.5)
 
 ---
@@ -588,5 +588,5 @@ Apache-2.0
 ---
 
 *文档生成日期: 2025-10-28*  
-*Memopark 项目 - Pallet Memorial*
+*Stardust 项目 - Pallet Memorial*
 

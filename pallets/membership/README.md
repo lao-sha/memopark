@@ -35,9 +35,9 @@
 
 ### 3. 推荐关系管理
 
-- **推荐码统一管理**：推荐码由 `pallet-memo-referrals` 统一生成和管理（8位大写HEX）
-- **推荐验证**：购买时必须提供有效推荐码（创始会员除外），通过 `pallet-memo-referrals` 验证
-- **关系绑定**：购买会员时自动绑定到 `pallet-memo-referrals` 推荐关系图
+- **推荐码统一管理**：推荐码由 `pallet-stardust-referrals` 统一生成和管理（8位大写HEX）
+- **推荐验证**：购买时必须提供有效推荐码（创始会员除外），通过 `pallet-stardust-referrals` 验证
+- **关系绑定**：购买会员时自动绑定到 `pallet-stardust-referrals` 推荐关系图
 - **推荐码自动分配**：购买会员成功后自动为用户分配推荐码（如已绑定推荐人）
 - **推荐统计**：记录每个会员的推荐人数
 
@@ -93,7 +93,7 @@ pub fn purchase_membership(
 5. 生成唯一推荐码
 6. 计算有效期
 7. 创建会员信息
-8. 绑定推荐关系到 `pallet-memo-referrals`
+8. 绑定推荐关系到 `pallet-stardust-referrals`
 9. 增加推荐人的奖励代数
 10. 发出 `MembershipPurchased` 事件
 
@@ -276,17 +276,17 @@ pub struct MembershipInfo {
     pub total_generations: u8,           // 总代数（最多15）
     pub referrer: Option<AccountId>,     // 推荐人
     pub referral_count: u32,             // 已推荐人数
-    // 注意：referral_code 已移除，统一由 pallet-memo-referrals 管理
+    // 注意：referral_code 已移除，统一由 pallet-stardust-referrals 管理
 }
 ```
 
 ### 2. 推荐码索引
 
-**已移除：** 推荐码索引 `ReferralCodeToAccount` 已移除，统一由 `pallet-memo-referrals::OwnerOfCode` 管理。
+**已移除：** 推荐码索引 `ReferralCodeToAccount` 已移除，统一由 `pallet-stardust-referrals::OwnerOfCode` 管理。
 
 **查询推荐码：**
-- 通过 `pallet-memo-referrals::CodeOf` 查询账户的推荐码
-- 通过 `pallet-memo-referrals::OwnerOfCode` 查找推荐码对应的账户
+- 通过 `pallet-stardust-referrals::CodeOf` 查询账户的推荐码
+- 通过 `pallet-stardust-referrals::OwnerOfCode` 查找推荐码对应的账户
 - 或使用 `ReferralProvider::find_account_by_code()` trait 方法
 
 ### 3. 会员统计
@@ -398,7 +398,7 @@ impl pallet_membership::Config for Runtime {
     type PalletId = MembershipPalletId;
     type BlocksPerYear = BlocksPerYear;
     type Units = Units;
-    type ReferralProvider = MemoReferrals;  // 使用 pallet-memo-referrals
+    type ReferralProvider = MemoReferrals;  // 使用 pallet-stardust-referrals
     type MaxCodeLength = MaxCodeLength;
     type WeightInfo = pallet_membership::weights::SubstrateWeight<Runtime>;
 }
@@ -415,7 +415,7 @@ construct_runtime!(
 
 ### 3. 实现 ReferralProvider
 
-需要在 runtime 中为 `pallet-memo-referrals` 实现 `ReferralProvider` trait：
+需要在 runtime 中为 `pallet-stardust-referrals` 实现 `ReferralProvider` trait：
 
 ```rust
 impl pallet_membership::ReferralProvider<AccountId> for MemoReferrals {
@@ -465,8 +465,8 @@ cargo test
 
 ### 1. 推荐关系验证
 
-- **防循环推荐**：依赖 `pallet-memo-referrals` 的循环检测
-- **防自推**：`pallet-memo-referrals` 保证不能推荐自己
+- **防循环推荐**：依赖 `pallet-stardust-referrals` 的循环检测
+- **防自推**：`pallet-stardust-referrals` 保证不能推荐自己
 - **推荐码唯一性**：哈希+重试机制确保推荐码唯一
 
 ### 2. 会员验证
@@ -491,7 +491,7 @@ cargo test
 
 ## 🔗 与其他模块的交互
 
-### 1. pallet-memo-referrals（推荐关系）
+### 1. pallet-stardust-referrals（推荐关系）
 
 **依赖关系：** 强依赖
 
@@ -583,7 +583,7 @@ async function getMembershipInfo(api: ApiPromise, account: string) {
   if (membership.isSome) {
     const data = membership.unwrap();
     
-    // 从 pallet-memo-referrals 查询推荐码
+    // 从 pallet-stardust-referrals 查询推荐码
     const referralCode = await api.query.memoReferrals.codeOf(account);
     
     return {
@@ -765,7 +765,7 @@ GenesisConfig {
 - [年费会员和推荐系统需求](/docs/年费会员和推荐系统需求.md)
 - [年费会员系统技术实施方案](/docs/年费会员系统技术实施方案.md)
 - [年费会员系统-快速参考](/docs/年费会员系统-快速参考.md)
-- [pallet-memo-referrals](/pallets/memo-referrals/README.md)
+- [pallet-stardust-referrals](/pallets/stardust-referrals/README.md)
 - [pallet-memo-affiliate](/pallets/memo-affiliate/README.md)
 
 ---
@@ -779,5 +779,5 @@ GenesisConfig {
 **版本：** v0.1.0  
 **创建日期：** 2025-10-06  
 **最后更新：** 2025-10-06  
-**维护者：** Memopark Team  
+**维护者：** Stardust Team  
 **许可证：** Apache-2.0

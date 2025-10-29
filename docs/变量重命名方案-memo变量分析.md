@@ -125,13 +125,13 @@ api.query.pricing.getMemoMarketPriceWeighted
 ```
 
 #### 影响范围
-**治理前端** (memopark-governance):
+**治理前端** (stardust-governance):
 - `useAppealWithCache.ts` (1处)
 - `useMonitoring.ts` (10处)
 - `QueueManager.tsx` (2处)
 - `contentGovernance.ts` (16处)
 
-**主前端** (memopark-dapp):
+**主前端** (stardust-dapp):
 - `PriceDashboard.tsx` (1处)
 - `CreateListingForm.tsx` (2处)
 
@@ -435,7 +435,7 @@ buildSwapTx(params: {
 **预计修改**: 30+处（分布在4个文件）  
 **测试重点**: 申诉查询功能
 
-**⚠️ 重要前提**: 链端`pallet-memo-appeals` → `pallet-stardust-appeals`已完成
+**⚠️ 重要前提**: 链端`pallet-stardust-appeals` → `pallet-stardust-appeals`已完成
 
 ---
 
@@ -461,7 +461,7 @@ buildSwapTx(params: {
 #!/bin/bash
 # rename-memo-variables.sh
 
-cd /home/xiaodong/文档/memopark/stardust-dapp/src
+cd /home/xiaodong/文档/stardust/stardust-dapp/src
 
 # 阶段1: 重命名局部变量（TypeScript/TSX）
 echo "🔄 重命名局部变量..."
@@ -529,7 +529,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 1
 fi
 
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 更新stardust-governance
 echo "🔄 更新治理前端API路径..."

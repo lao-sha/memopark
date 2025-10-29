@@ -1,4 +1,4 @@
-# Memopark DApp 前端（本地钱包模式）
+# Stardust DApp 前端（本地钱包模式）
 
 本前端已切换为"本地钱包模式"，不依赖浏览器扩展。用户在"创建钱包"页生成助记词并设置密码，前端使用 PBKDF2 + AES-GCM 将助记词加密存储于浏览器 `localStorage`，后续在"登录"页输入密码解密并使用本地 sr25519 密钥进行签名与上链。
 
@@ -16,7 +16,7 @@
   - ✅ OTC交易和做市商申请
 
 ### 🖥️ Web 治理平台（桌面端优先）
-- **地址**：https://governance.memopark.com（开发：http://localhost:3000）
+- **地址**：https://governance.stardust.com（开发：http://localhost:3000）
 - **定位**：专业治理，批量操作
 - **功能**：
   - ✅ 内容治理（申诉审批、批量处理）
@@ -35,7 +35,7 @@
 3. 我的治理（`#/gov/me`）→ 点击快捷入口
 
 **直接访问**：
-- 生产环境：https://governance.memopark.com
+- 生产环境：https://governance.stardust.com
 - 开发环境：http://localhost:3000
 
 ## 当前模式
@@ -67,24 +67,24 @@
 
 ### 做市商功能
 - **申请页面**: `#/otc/mm-apply` - [使用指南](./docs/MARKET_MAKER_APPLICATION_GUIDE.md)
-- **审核页面**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/applications
+- **审核页面**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/applications
 
 ### 治理功能（已迁移）
-- **委员会提案**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/proposals
-- **内容治理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/content-governance
-- **仲裁管理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/arbitration
-- **墓地治理**: ⚠️ **已迁移到Web平台** - https://governance.memopark.com/grave-governance
+- **委员会提案**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/proposals
+- **内容治理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/content-governance
+- **仲裁管理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/arbitration
+- **墓地治理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/grave-governance
 
 ## 快速开始
 
 1. 启动链节点（本地测试网，默认 9944）：
 ```bash
-cargo run -p memopark-node --release -- --dev --tmp --rpc-port 9944 --rpc-cors=all
+cargo run -p stardust-node --release -- --dev --tmp --rpc-port 9944 --rpc-cors=all
 ```
 
 2. 启动前端：
 ```bash
-cd memopark-dapp
+cd stardust-dapp
 VITE_WS=ws://127.0.0.1:9944 npm run dev -- --host 127.0.0.1
 ```
 
@@ -114,7 +114,7 @@ VITE_ALLOW_DEV_SESSION=1
 
 - 签名与发送：统一通过 `signAndSendLocalFromKeystore(section, method, args)` 完成；旧调用 `signAndSend` 已重定向到本地签名。
 - 会话握手：开发环境使用本地签名与后端交互；可通过 `VITE_ALLOW_DEV_SESSION=1` 启用开发回退会话。
-- 数据查询：高变动/易膨胀查询建议下沉到 Subsquid（详见 `memopark-squid`）。
+- 数据查询：高变动/易膨胀查询建议下沉到 Subsquid（详见 `stardust-squid`）。
 
 ### 墓位背景音乐（Grave Audio）
 

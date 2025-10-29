@@ -374,7 +374,7 @@ pub fn some_query(id: T::DeceasedId, who: T::AccountId) -> Result<...> {
 
 ```bash
 # Phase 1验证
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release -p pallet-deceased
 # ✅ Finished in 3.45s
 

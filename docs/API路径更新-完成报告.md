@@ -41,29 +41,29 @@
 ## 📋 修改的文件列表
 
 ### 治理前端（5个文件）
-1. `memopark-governance/src/services/blockchain/contentGovernance.ts` - 32行修改
+1. `stardust-governance/src/services/blockchain/contentGovernance.ts` - 32行修改
    - 核心服务文件，包含申诉查询和管理逻辑
    
-2. `memopark-governance/src/hooks/useMonitoring.ts` - 20行修改
+2. `stardust-governance/src/hooks/useMonitoring.ts` - 20行修改
    - 监控Hook，用于统计和性能跟踪
    
-3. `memopark-governance/src/utils/cache.ts` - 6行修改
+3. `stardust-governance/src/utils/cache.ts` - 6行修改
    - 缓存工具，涉及申诉数据缓存
    
-4. `memopark-governance/src/components/Operations/QueueManager.tsx` - 4行修改
+4. `stardust-governance/src/components/Operations/QueueManager.tsx` - 4行修改
    - 队列管理组件
    
-5. `memopark-governance/src/hooks/useAppealWithCache.ts` - 2行修改
+5. `stardust-governance/src/hooks/useAppealWithCache.ts` - 2行修改
    - 申诉查询Hook
 
 ### 主前端（3个文件）
-6. `memopark-dapp/src/services/unified-complaint.ts` - 18行修改
+6. `stardust-dapp/src/services/unified-complaint.ts` - 18行修改
    - 统一申诉服务
    
-7. `memopark-dapp/src/features/governance/lib/governance.ts` - 18行修改
+7. `stardust-dapp/src/features/governance/lib/governance.ts` - 18行修改
    - 治理库函数
    
-8. `memopark-dapp/src/features/grave/GraveDetailPage.tsx` - 2行修改
+8. `stardust-dapp/src/features/grave/GraveDetailPage.tsx` - 2行修改
    - 墓碑详情页（候选API列表）
 
 ---
@@ -125,7 +125,7 @@ event.section === 'stardustAppeals' && event.method === 'AppealSubmitted'
   ```
 - **Cargo.toml**: 已添加依赖
 
-#### ✅ pallet-memo-appeals
+#### ✅ pallet-stardust-appeals
 - **状态**: 已移除
 - **确认**: 旧pallet目录不存在
 
@@ -200,8 +200,8 @@ API路径更新: memoAppeals → stardustAppeals
 - **状态**: ⏸️ 保持不变
 - **原因**: 链端函数名仍为 `get_memo_market_price_weighted()`
 - **位置**: 
-  - `memopark-dapp/src/features/otc/CreateListingForm.tsx` (2处)
-  - `memopark-dapp/src/features/monitoring/PriceDashboard.tsx` (1处)
+  - `stardust-dapp/src/features/otc/CreateListingForm.tsx` (2处)
+  - `stardust-dapp/src/features/monitoring/PriceDashboard.tsx` (1处)
 
 **重要说明**: 如果未来链端重命名此函数，需要同步更新前端的这3处引用。
 
@@ -219,19 +219,19 @@ API路径更新: memoAppeals → stardustAppeals
 
 **步骤1: 启动链端节点**
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./target/release/stardust-node --dev --tmp
 ```
 
 **步骤2: 启动治理前端**
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-governance
+cd /home/xiaodong/文档/stardust/stardust-governance
 npm run dev
 ```
 
 **步骤3: 启动主前端**
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run dev
 ```
 
@@ -252,13 +252,13 @@ npm run dev
 
 **治理前端编译**:
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-governance
+cd /home/xiaodong/文档/stardust/stardust-governance
 npm run build
 ```
 
 **主前端编译**:
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run build
 ```
 
@@ -300,7 +300,7 @@ npm run build
 **解决**:
 ```bash
 # 确认runtime版本
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release
 
 # 重启节点
@@ -316,8 +316,8 @@ killall stardust-node
 **排查**:
 ```bash
 # 检查是否有遗漏的引用
-cd /home/xiaodong/文档/memopark
-grep -r "\.memoAppeals" memopark-governance/src --include="*.ts" --include="*.tsx"
+cd /home/xiaodong/文档/stardust
+grep -r "\.memoAppeals" stardust-governance/src --include="*.ts" --include="*.tsx"
 
 # 如果有遗漏，手动修复
 ```
@@ -336,7 +336,7 @@ grep -r "\.memoAppeals" memopark-governance/src --include="*.ts" --include="*.ts
 
 **解决**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 git reset --hard before-api-path-update
 
 # 验证回滚成功

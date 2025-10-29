@@ -1,4 +1,4 @@
-# Memopark 治理管理平台
+# Stardust 治理管理平台
 
 企业级治理管理平台，为委员会成员提供专业的提案管理、投票决策、申诉审核、数据分析工具。
 
@@ -68,7 +68,7 @@ npm install
 
 ```env
 VITE_CHAIN_WS=ws://127.0.0.1:9944
-VITE_APP_TITLE=Memopark 治理平台
+VITE_APP_TITLE=Stardust 治理平台
 ```
 
 ### 启动开发服务器
@@ -291,7 +291,7 @@ MIT
 
 ## 联系方式
 
-- 项目主页: https://memopark.com
-- 项目路径: `/home/xiaodong/文档/memopark/memopark-governance/`
+- 项目主页: https://stardust.com
+- 项目路径: `/home/xiaodong/文档/stardust/stardust-governance/`
 - 问题反馈: 查看文档或联系开发团队
 

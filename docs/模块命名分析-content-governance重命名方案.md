@@ -286,7 +286,7 @@ submitAppeal({
 
 | 方案 | 名称 | 优点 | 缺点 | 评分 |
 |-----|------|------|------|------|
-| **A** | `pallet-memo-appeals` | 最简洁，准确 | 无 | ⭐⭐⭐⭐⭐ |
+| **A** | `pallet-stardust-appeals` | 最简洁，准确 | 无 | ⭐⭐⭐⭐⭐ |
 | **B** | `pallet-memo-appeal-governance` | 明确包含治理 | 稍长 | ⭐⭐⭐⭐ |
 | **C** | `pallet-memo-governance` | 简洁 | 可能与其他治理混淆 | ⭐⭐⭐ |
 | **D** | `pallet-memo-dispute` | 突出纠纷解决 | "dispute"可能过于法律化 | ⭐⭐⭐ |
@@ -294,7 +294,7 @@ submitAppeal({
 
 ### 推荐方案
 
-#### 方案 A：`pallet-memo-appeals` ⭐⭐⭐⭐⭐（强烈推荐）
+#### 方案 A：`pallet-stardust-appeals` ⭐⭐⭐⭐⭐（强烈推荐）
 
 **理由**：
 
@@ -304,7 +304,7 @@ submitAppeal({
    - 符合法律/治理领域术语
 
 2. **简洁明了** ✅
-   - 3个单词：`pallet-memo-appeals`
+   - 3个单词：`pallet-stardust-appeals`
    - 易读、易记、易输入
    - 符合Substrate命名风格
 
@@ -395,7 +395,7 @@ docs/
 **需要修改的文件**：
 
 ```typescript
-// memopark-dapp/src/
+// stardust-dapp/src/
 
 // API调用
 hooks/useMemoContentGovernance.ts  → useMemoAppeals.ts
@@ -497,24 +497,24 @@ locales/en-US.json
 #### Step 1: 重命名目录
 ```bash
 cd pallets/
-mv memo-content-governance memo-appeals
+mv memo-content-governance stardust-appeals
 ```
 
 #### Step 2: 修改 Cargo.toml
 ```toml
-# pallets/memo-appeals/Cargo.toml
+# pallets/stardust-appeals/Cargo.toml
 [package]
-name = "pallet-memo-appeals"  # ← 改名
+name = "pallet-stardust-appeals"  # ← 改名
 # ...
 
 # runtime/Cargo.toml
 [dependencies]
-pallet-memo-appeals = { path = "../pallets/memo-appeals" }  # ← 改名
+pallet-stardust-appeals = { path = "../pallets/stardust-appeals" }  # ← 改名
 ```
 
 #### Step 3: 修改模块代码
 ```rust
-// pallets/memo-appeals/src/lib.rs
+// pallets/stardust-appeals/src/lib.rs
 
 //! 函数级详细中文注释：通用申诉系统 + 委员会治理 + 自动执行。
 //! - 支持多域申诉：墓地、逝者、供奉品、媒体、文本、未来功能等。
@@ -552,7 +552,7 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
 
 #### Step 5: 更新文档
 ```markdown
-# pallets/memo-appeals/README.md
+# pallets/stardust-appeals/README.md
 
 # Pallet Memo Appeals
 
@@ -584,7 +584,7 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
 
 #### Step 1: 重命名文件结构
 ```bash
-cd memopark-dapp/src/
+cd stardust-dapp/src/
 
 # 重命名目录
 mv pages/ContentGovernance pages/Appeals
@@ -697,7 +697,7 @@ const routes = [
 
 **链端测试**：
 - [ ] 编译通过：`cargo build --release`
-- [ ] 单元测试：`cargo test -p pallet-memo-appeals`
+- [ ] 单元测试：`cargo test -p pallet-stardust-appeals`
 - [ ] 集成测试：启动测试链
 - [ ] 功能测试：
   - [ ] 提交申诉
@@ -732,7 +732,7 @@ const routes = [
 ## [Unreleased]
 
 ### Changed
-- **Breaking**: 重命名 `pallet-memo-content-governance` 为 `pallet-memo-appeals`
+- **Breaking**: 重命名 `pallet-memo-content-governance` 为 `pallet-stardust-appeals`
   - 原因：更准确反映模块功能（通用申诉系统，非仅限内容）
   - 影响：
     - 链端：pallet 名称从 `MemoContentGovernance` 改为 `MemoAppeals`
@@ -870,7 +870,7 @@ ROI：(25 - 1.8) / 1.8 ≈ 1289%
 
 | 选择 | 描述 | 优点 | 缺点 | 推荐 |
 |-----|------|------|------|------|
-| **A. 立即重命名** | 现在改为 `pallet-memo-appeals` | ✅ 无历史包袱<br>✅ 成本最低<br>✅ 收益最大 | 需要2天工作量 | ⭐⭐⭐⭐⭐ |
+| **A. 立即重命名** | 现在改为 `pallet-stardust-appeals` | ✅ 无历史包袱<br>✅ 成本最低<br>✅ 收益最大 | 需要2天工作量 | ⭐⭐⭐⭐⭐ |
 | **B. 主网后重命名** | 等主网上线再改 | 可以拖延 | ❌ 成本×3<br>❌ 需要数据迁移<br>❌ 影响用户 | ⭐ |
 | **C. 永不改** | 保持现有名称 | 无工作量 | ❌ 长期技术债<br>❌ 扩展受限<br>❌ 理解困难 | ❌ |
 
@@ -883,7 +883,7 @@ ROI：(25 - 1.8) / 1.8 ≈ 1289%
 4. ✅ **收益高**：ROI 1289%，长期受益
 5. ✅ **符合最佳实践**：Substrate官方命名习惯
 
-**新名称**：`pallet-memo-appeals`
+**新名称**：`pallet-stardust-appeals`
 - ✅ 简洁明了
 - ✅ 语义准确
 - ✅ 扩展性强
@@ -918,7 +918,7 @@ ROI：(25 - 1.8) / 1.8 ≈ 1289%
 
 ### 推荐方案
 
-**新名称**：`pallet-memo-appeals`
+**新名称**：`pallet-stardust-appeals`
 
 **实施**：
 - 时机：立即（主网前）
@@ -940,6 +940,6 @@ ROI：(25 - 1.8) / 1.8 ≈ 1289%
 ---
 
 *模块命名分析报告 | 生成时间：2025-10-25*
-*结论：强烈建议重命名为 pallet-memo-appeals*
+*结论：强烈建议重命名为 pallet-stardust-appeals*
 *推荐指数：⭐⭐⭐⭐⭐*
 

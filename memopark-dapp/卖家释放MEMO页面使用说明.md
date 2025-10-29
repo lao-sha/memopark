@@ -183,7 +183,7 @@ http://127.0.0.1:5173/#/otc/release
 #### 1. 创建测试订单（买家）
 
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 node 自动创建买单.js
 ```
 
@@ -196,7 +196,7 @@ node 自动创建买单.js
 #### 2. 买家标记已支付
 
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 node 买家标记已支付.js
 ```
 
@@ -216,7 +216,7 @@ node 买家标记已支付.js
 
 **方式B: 使用脚本**
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 node 卖家释放MEMO.js
 ```
 
@@ -421,11 +421,11 @@ api.tx.otcOrder.refundOnTimeout(orderId).signAndSend(signer)
 
 | 文件路径 | 说明 |
 |---------|------|
-| `/home/xiaodong/文档/memopark/memopark-dapp/src/features/otc/SellerReleasePage.tsx` | 卖家释放页面组件 |
-| `/home/xiaodong/文档/memopark/memopark-dapp/src/routes.tsx` | 路由配置（#/otc/release） |
-| `/home/xiaodong/文档/memopark/自动创建买单.js` | 创建测试订单脚本 |
-| `/home/xiaodong/文档/memopark/买家标记已支付.js` | 买家标记已支付脚本 |
-| `/home/xiaodong/文档/memopark/pallets/otc-order/src/lib.rs` | OTC订单pallet源码 |
+| `/home/xiaodong/文档/stardust/stardust-dapp/src/features/otc/SellerReleasePage.tsx` | 卖家释放页面组件 |
+| `/home/xiaodong/文档/stardust/stardust-dapp/src/routes.tsx` | 路由配置（#/otc/release） |
+| `/home/xiaodong/文档/stardust/自动创建买单.js` | 创建测试订单脚本 |
+| `/home/xiaodong/文档/stardust/买家标记已支付.js` | 买家标记已支付脚本 |
+| `/home/xiaodong/文档/stardust/pallets/otc-order/src/lib.rs` | OTC订单pallet源码 |
 
 ---
 

@@ -698,7 +698,7 @@ pub(crate) fn ensure_owner(id: T::DeceasedId, who: &T::AccountId) -> DispatchRes
 
 ### 编译验证
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 cargo build --release -p pallet-deceased
 ```
 
@@ -793,7 +793,7 @@ ROI = 🌟🌟🌟🌟🌟 (强烈推荐)
 
 ## 📚 相关资源
 
-- **Pallet源码**: `/home/xiaodong/文档/memopark/pallets/deceased/src/lib.rs`
+- **Pallet源码**: `/home/xiaodong/文档/stardust/pallets/deceased/src/lib.rs`
 - **Rust最佳实践**: [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - **Substrate最佳实践**: [Pallet Best Practices](https://docs.substrate.io/learn/runtime-development/)
 - **重构方法论**: [Extract Function](https://refactoring.com/catalog/extractFunction.html)

@@ -62,7 +62,7 @@ docs/做市商NotFound错误诊断和解决方案.md
 
 #### 🔧 快速修复脚本
 ```
-memopark-dapp/修复做市商NotFound错误.js
+stardust-dapp/修复做市商NotFound错误.js
 ```
 
 **功能：**
@@ -100,7 +100,7 @@ location.reload()
 
 **步骤：**
 1. 打开浏览器控制台（F12）
-2. 打开文件：`memopark-dapp/修复做市商NotFound错误.js`
+2. 打开文件：`stardust-dapp/修复做市商NotFound错误.js`
 3. 复制全部内容到控制台
 4. 按回车执行
 5. 按提示操作
@@ -240,8 +240,8 @@ if (cachedMmId) {
 | 文档 | 路径 |
 |------|------|
 | 详细诊断文档 | `docs/做市商NotFound错误诊断和解决方案.md` |
-| 快速修复脚本 | `memopark-dapp/修复做市商NotFound错误.js` |
-| 做市商配置指南 | `memopark-dapp/做市商epay配置快速使用指南.md` |
+| 快速修复脚本 | `stardust-dapp/修复做市商NotFound错误.js` |
+| 做市商配置指南 | `stardust-dapp/做市商epay配置快速使用指南.md` |
 
 ---
 
@@ -279,5 +279,5 @@ if (cachedMmId) {
 
 **修复完成时间**: 2025-10-14  
 **版本**: v1.1.0  
-**维护团队**: MemoPark 开发团队
+**维护团队**: StarDust 开发团队
 

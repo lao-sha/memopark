@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Substrate-based blockchain project called **Memopark** - a memorial park system with affiliate marketing and IPFS storage integration. The project consists of:
+This is a Substrate-based blockchain project called **Stardust** - a memorial park system with affiliate marketing and IPFS storage integration. The project consists of:
 
 - **Substrate Node**: Rust blockchain runtime with custom pallets using Polkadot SDK
 - **React DApp**: Mobile-first frontend using React 19 + TypeScript + Ant Design 5 + Vite
-- **Subsquid ETL**: Data indexing layer (in memopark-squid folder)
+- **Subsquid ETL**: Data indexing layer (in stardust-squid folder)
 
 ## Architecture
 
@@ -24,14 +24,14 @@ The system implements a **15-level affiliate marketing model** with escrow settl
 
 **Core Memorial Pallets:**
 - `pallet-memo-offerings`: Offering directory and order records with affiliate hooks
-- `pallet-memo-grave`: Memorial grave management
-- `pallet-memo-ipfs`: IPFS content management
-- `pallet-memo-park`: Memorial park system
+- `pallet-stardust-grave`: Memorial grave management
+- `pallet-stardust-ipfs`: IPFS content management
+- `pallet-stardust-park`: Memorial park system
 - `pallet-deceased`: Deceased person records
 - `pallet-deceased-data`: Media/Data attachments for deceased records (renamed from pallet-deceased-media)
 
 **Affiliate & Financial Pallets:**
-- `pallet-memo-referrals`: Minimal referral relationships (SponsorOf mapping only)  
+- `pallet-stardust-referrals`: Minimal referral relationships (SponsorOf mapping only)  
 - `pallet-memo-affiliate`: Escrow settlement with 15-level compression (5%/level, 10% burn, 15% treasury)
 - `pallet-ledger`: Weekly activity tracking and statistics
 - `pallet-memo-endowment`: Endowment fund management
@@ -85,7 +85,7 @@ cargo check --workspace
 ### Frontend (React DApp)
 
 ```bash
-cd memopark-dapp
+cd stardust-dapp
 
 # Development server (runs on http://localhost:5173)
 npm run dev
@@ -122,7 +122,7 @@ npx tsc --noEmit
 - **Component-based architecture**
 - **Mobile DApp only** - no desktop web interface
 - Technology stack: React 19 + TypeScript + Ant Design 5 + Vite
-- Frontend code location: `memopark-dapp/` directory
+- Frontend code location: `stardust-dapp/` directory
 - Maintain frontend-backend synchronization with clear usage instructions
 - Optimize user operation **reasonability and convenience**
 
@@ -130,7 +130,7 @@ npx tsc --noEmit
 
 - Use **Subsquid** for blockchain data ETL (extract-transform-load) and query layer
 - Handle complex/high-variance queries through Subsquid rather than runtime
-- Subsquid code location: `memopark-squid/` directory
+- Subsquid code location: `stardust-squid/` directory
 
 ## Key Configuration
 
@@ -145,12 +145,12 @@ npx tsc --noEmit
 ## Project Structure
 
 ```
-memopark/
+stardust/
 ├── node/                     # Substrate node implementation
 ├── runtime/                  # Runtime configuration and logic
 ├── pallets/                  # Custom pallets (30+ pallets)
-├── memopark-dapp/           # React frontend application
-├── memopark-squid/          # Subsquid ETL layer
+├── stardust-dapp/           # React frontend application
+├── stardust-squid/          # Subsquid ETL layer
 └── .cursor/rules/           # Development guidelines
 ```
 

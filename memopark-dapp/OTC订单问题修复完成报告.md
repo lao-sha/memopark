@@ -57,7 +57,7 @@ node -e "
 
 ### 2. 前端修复：订单过滤逻辑
 
-**文件**: `memopark-dapp/src/features/otc/MyOrdersCard.tsx`
+**文件**: `stardust-dapp/src/features/otc/MyOrdersCard.tsx`
 
 **问题**: 只显示买方订单，遗漏卖方订单
 
@@ -283,21 +283,21 @@ pub struct Listing {
 
 ### 已修改文件
 
-1. `memopark-dapp/src/features/otc/MyOrdersCard.tsx`
+1. `stardust-dapp/src/features/otc/MyOrdersCard.tsx`
    - 修改订单过滤逻辑
    - 添加角色标签显示
 
 ### 诊断文档
 
-1. `memopark-dapp/OTC订单创建失败诊断.md`
+1. `stardust-dapp/OTC订单创建失败诊断.md`
    - 详细的问题分析
    - 技术细节说明
 
-2. `memopark-dapp/我的订单显示修复说明.md`
+2. `stardust-dapp/我的订单显示修复说明.md`
    - 前端修复说明
    - 使用方法
 
-3. `memopark-dapp/OTC订单问题修复完成报告.md`
+3. `stardust-dapp/OTC订单问题修复完成报告.md`
    - 本文档
    - 完整的修复总结
 

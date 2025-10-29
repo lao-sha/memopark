@@ -204,7 +204,7 @@ Nay: 0.3M MEMO (红色)
 ### 完整功能导航
 
 ```
-🖥️ Memopark 治理平台功能:
+🖥️ Stardust 治理平台功能:
 
 治理决策:
   /proposals           委员会提案

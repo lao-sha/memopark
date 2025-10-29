@@ -96,7 +96,7 @@ import IpfsFeeDashboard from './features/storage-treasury/IpfsFeeDashboard';
 ### 当前状态：使用模拟数据
 
 **IpfsFeeDashboard当前使用模拟数据**，原因：
-- pallet-memo-ipfs尚未启用到runtime
+- pallet-stardust-ipfs尚未启用到runtime
 - 链上查询API和事件暂不可用
 - 底层useStoragePoolAccounts Hook使用模拟数据
 
@@ -108,7 +108,7 @@ import IpfsFeeDashboard from './features/storage-treasury/IpfsFeeDashboard';
 
 ### 升级到实际数据
 
-等pallet-memo-ipfs启用后：
+等pallet-stardust-ipfs启用后：
 
 1. **升级底层Hooks**：
    - useStoragePoolAccounts - 查询实际池账户余额和配额
@@ -180,7 +180,7 @@ api.query.system.events((events) => {
 
 ## 📝 迁移清单
 
-等pallet-memo-ipfs启用后：
+等pallet-stardust-ipfs启用后：
 
 - [ ] 升级useStoragePoolAccounts Hook
 - [ ] 实现事件监听逻辑

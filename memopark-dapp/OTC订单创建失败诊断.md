@@ -141,10 +141,10 @@ await api.tx.otcListing.increaseListingQuantity(0, qty).signAndSend(account)
 
 ### 步骤 1: 检查前端错误处理
 
-检查 `memopark-dapp/src/features/otc/CreateOrderPage.tsx` 中的交易处理代码：
+检查 `stardust-dapp/src/features/otc/CreateOrderPage.tsx` 中的交易处理代码：
 
 ```bash
-grep -A 20 "signAndSend" memopark-dapp/src/features/otc/CreateOrderPage.tsx
+grep -A 20 "signAndSend" stardust-dapp/src/features/otc/CreateOrderPage.tsx
 ```
 
 ### 步骤 2: 修改交易监听逻辑
@@ -281,8 +281,8 @@ events.forEach(({ event }) => {
 
 ## 🔗 相关文件
 
-- 前端组件: `memopark-dapp/src/features/otc/CreateOrderPage.tsx`
-- 订单列表: `memopark-dapp/src/features/otc/MyOrdersCard.tsx`
+- 前端组件: `stardust-dapp/src/features/otc/CreateOrderPage.tsx`
+- 订单列表: `stardust-dapp/src/features/otc/MyOrdersCard.tsx`
 - 链端 Pallet: `pallets/otc-order/src/lib.rs`
 - 挂单 Pallet: `pallets/otc-listing/src/lib.rs`
 

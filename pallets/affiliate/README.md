@@ -370,4 +370,4 @@ let total_withdrawn = Affiliate::total_withdrawn();
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

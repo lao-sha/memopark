@@ -195,7 +195,7 @@ UI文本更新: MEMO → DUST
 
 **步骤**:
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run build
 ```
 
@@ -221,7 +221,7 @@ npm run build
 
 **启动服务**:
 ```bash
-cd /home/xiaodong/文档/memopark/memopark-dapp
+cd /home/xiaodong/文档/stardust/stardust-dapp
 npm run dev
 ```
 
@@ -233,7 +233,7 @@ npm run dev
 
 **执行**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./docs/update-package-configs.sh
 ```
 
@@ -243,7 +243,7 @@ cd /home/xiaodong/文档/memopark
 
 **执行**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./docs/rename-code-comments.sh
 ```
 
@@ -274,7 +274,7 @@ npm run build 2>&1 | grep -i "dust\|memo"
 **排查**:
 ```bash
 # 搜索剩余的MEMO
-cd /home/xiaodong/文档/memopark/memopark-dapp/src
+cd /home/xiaodong/文档/stardust/stardust-dapp/src
 grep -r "MEMO" . --include="*.tsx" --include="*.ts" | grep -v "useMemo\|useCallback"
 ```
 
@@ -283,7 +283,7 @@ grep -r "MEMO" . --include="*.tsx" --include="*.ts" | grep -v "useMemo\|useCallb
 
 **解决**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 git reset --hard before-ui-text-rename
 
 # 验证回滚成功
@@ -363,7 +363,7 @@ git log --oneline -3
 
 ## 📞 相关文档
 
-- **方案文档**: `docs/第二轮重命名方案-MEMO和memopark全面分析.md`
+- **方案文档**: `docs/第二轮重命名方案-MEMO和stardust全面分析.md`
 - **执行清单**: `SECOND_ROUND_RENAME_SUMMARY.md`
 - **第一轮报告**: `docs/变量重命名-执行完成报告.md`
 - **API更新报告**: `docs/API路径更新-完成报告.md`
@@ -399,7 +399,7 @@ git log --oneline -3
 
 1. **立即执行**: 编译验证
    ```bash
-   cd memopark-dapp && npm run build
+   cd stardust-dapp && npm run build
    ```
 
 2. **建议执行**: 功能测试

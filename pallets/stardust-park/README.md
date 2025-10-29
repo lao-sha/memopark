@@ -2,7 +2,7 @@
 
 ## 📋 概述
 
-`pallet-memo-park` 是Memopark区块链的陵园（纪念园区）管理模块，提供园区的创建、更新、管理员设置、所有权转移等核心功能。
+`pallet-stardust-park` 是Stardust区块链的陵园（纪念园区）管理模块，提供园区的创建、更新、管理员设置、所有权转移等核心功能。
 
 ### 核心功能
 
@@ -59,7 +59,7 @@ pub struct Park<T: Config> {
 
 **示例**:
 ```rust
-MemoPark::create_park(
+StarDust::create_park(
     origin,
     *b"CN",
     b"Shanghai".to_vec().try_into().unwrap(),
@@ -81,7 +81,7 @@ MemoPark::create_park(
 
 **示例**:
 ```rust
-MemoPark::update_park(
+StarDust::update_park(
     origin,
     park_id,
     Some(new_region),
@@ -103,10 +103,10 @@ MemoPark::update_park(
 **示例**:
 ```rust
 // 设置管理员
-MemoPark::set_park_admin(origin, park_id, Some(admin_group_id))?;
+StarDust::set_park_admin(origin, park_id, Some(admin_group_id))?;
 
 // 清空管理员
-MemoPark::set_park_admin(origin, park_id, None)?;
+StarDust::set_park_admin(origin, park_id, None)?;
 ```
 
 #### 4. transfer_park
@@ -121,7 +121,7 @@ MemoPark::set_park_admin(origin, park_id, None)?;
 
 **示例**:
 ```rust
-MemoPark::transfer_park(origin, park_id, new_owner)?;
+StarDust::transfer_park(origin, park_id, new_owner)?;
 ```
 
 ### 治理操作
@@ -209,13 +209,13 @@ MemoPark::transfer_park(origin, park_id, new_owner)?;
 
 ```bash
 # 运行所有测试
-cargo test -p pallet-memo-park --lib
+cargo test -p pallet-stardust-park --lib
 
 # 查看详细输出
-cargo test -p pallet-memo-park --lib -- --nocapture
+cargo test -p pallet-stardust-park --lib -- --nocapture
 
 # 运行特定测试
-cargo test -p pallet-memo-park --lib create_park_works
+cargo test -p pallet-stardust-park --lib create_park_works
 ```
 
 ### 测试覆盖
@@ -331,7 +331,7 @@ let parks_in_cn = ParksByCountry::<T>::get(*b"CN");
 
 ## 🔗 相关模块
 
-- `pallet-memo-grave` - 墓地管理（需关联园区）
+- `pallet-stardust-grave` - 墓地管理（需关联园区）
 - `pallet-deceased` - 逝者记录
 - `pallet-memo-offerings` - 供奉品管理
 

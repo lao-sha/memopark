@@ -4,7 +4,7 @@
 
 ### 概述
 
-Trading Pallet 是 MemoPark Phase 2 架构优化的核心成果，整合了三个交易相关模块：
+Trading Pallet 是 StarDust Phase 2 架构优化的核心成果，整合了三个交易相关模块：
 
 1. **OTC Order** (场外交易订单) - 原 `pallet-otc-order`
 2. **Market Maker** (做市商管理) - 原 `pallet-market-maker`  
@@ -576,7 +576,7 @@ Unlicense
 
 ## ✨ 总结
 
-Trading Pallet 是 MemoPark Phase 2 的核心成果：
+Trading Pallet 是 StarDust Phase 2 的核心成果：
 
 - **架构优化**：3 → 1 Pallet，降低维护成本
 - **功能完整**：保留所有现有功能

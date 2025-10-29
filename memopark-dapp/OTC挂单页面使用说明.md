@@ -368,16 +368,16 @@ const draft = await createOrder(req)
 
 - **申请做市商**: `#/otc/mm-apply`
 - **做市商配置**: `#/otc/market-maker-config`
-- **创建挂单**: 使用 `memopark-governance` 平台
+- **创建挂单**: 使用 `stardust-governance` 平台
 - **领取 MEMO**: `#/otc/claim`
 - **我的钱包**: `#/profile` 或底部导航栏
 
 ## 📚 技术文档
 
-- **前端源码**: `/home/xiaodong/文档/memopark/memopark-dapp/src/features/otc/CreateOrderPage.tsx`
-- **挂单 pallet**: `/home/xiaodong/文档/memopark/pallets/otc-listing/`
-- **做市商 pallet**: `/home/xiaodong/文档/memopark/pallets/market-maker/`
-- **创建挂单脚本**: `/home/xiaodong/文档/memopark/memopark-gov-scripts/create-listing.js`
+- **前端源码**: `/home/xiaodong/文档/stardust/stardust-dapp/src/features/otc/CreateOrderPage.tsx`
+- **挂单 pallet**: `/home/xiaodong/文档/stardust/pallets/otc-listing/`
+- **做市商 pallet**: `/home/xiaodong/文档/stardust/pallets/market-maker/`
+- **创建挂单脚本**: `/home/xiaodong/文档/stardust/stardust-gov-scripts/create-listing.js`
 
 ## 🎉 更新日志
 

@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-chat` 是Memopark生态的**通讯基础设施模块**，提供去中心化的聊天功能。采用混合架构：链上存储消息元数据（发送方、接收方、IPFS CID、时间戳等），IPFS存储加密的消息内容，前端实现端到端加密。支持私聊、会话管理、已读未读状态、消息软删除等功能。
+`pallet-chat` 是Stardust生态的**通讯基础设施模块**，提供去中心化的聊天功能。采用混合架构：链上存储消息元数据（发送方、接收方、IPFS CID、时间戳等），IPFS存储加密的消息内容，前端实现端到端加密。支持私聊、会话管理、已读未读状态、消息软删除等功能。
 
 ### 设计理念
 
@@ -592,17 +592,17 @@ pallet_chat::Pallet::<T>::mark_batch_as_read(
 - **pallet-otc-order**: OTC订单（买卖双方聊天）
 - **pallet-simple-bridge**: 桥接服务（用户与做市商聊天）
 - **pallet-evidence**: 证据管理（聊天记录作为证据）
-- **pallet-memo-ipfs**: IPFS管理（消息内容存储）
+- **pallet-stardust-ipfs**: IPFS管理（消息内容存储）
 
 ## 📚 参考资源
 
 - [去中心化聊天设计文档](../../docs/chat-design.md)
 - [端到端加密方案](../../docs/e2e-encryption.md)
 - [消息同步机制](../../docs/message-sync.md)
-- [前端集成指南](../../../memopark-dapp/OTC聊天集成-完成报告.md)
+- [前端集成指南](../../../stardust-dapp/OTC聊天集成-完成报告.md)
 
 ---
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

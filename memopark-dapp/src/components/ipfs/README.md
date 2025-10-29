@@ -333,7 +333,7 @@ describe('PinStatusBadge', () => {
 ### 当前状态：使用模拟数据
 
 所有组件当前依赖的Hooks使用**模拟数据**，原因：
-- pallet-memo-ipfs尚未启用到runtime
+- pallet-stardust-ipfs尚未启用到runtime
 - 链上查询API暂不可用
 
 ### 组件功能完整性
@@ -348,13 +348,13 @@ describe('PinStatusBadge', () => {
 
 ### 升级到实际数据
 
-等pallet-memo-ipfs启用后，组件无需任何修改，只需升级底层Hooks即可。
+等pallet-stardust-ipfs启用后，组件无需任何修改，只需升级底层Hooks即可。
 
 ---
 
 ## 📝 迁移清单
 
-等pallet-memo-ipfs启用后：
+等pallet-stardust-ipfs启用后：
 
 - [ ] 升级底层Hooks（usePinStatus等）
 - [ ] 测试组件显示实际链上数据
@@ -372,7 +372,7 @@ A: 可以。UI和交互完全可用，只是数据是模拟的。
 A: 查看底层Hooks的实现，如果有"模拟数据"注释，说明在使用模拟数据。
 
 **Q: 什么时候可以显示真实数据？**
-A: 等pallet-memo-ipfs启用后，升级Hooks即可，组件无需修改。
+A: 等pallet-stardust-ipfs启用后，升级Hooks即可，组件无需修改。
 
 **Q: 为什么不直接在组件中集成真实API？**
 A: 遵循关注点分离原则，组件只负责展示，数据获取由Hooks负责，便于维护和测试。

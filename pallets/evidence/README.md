@@ -2,7 +2,7 @@
 
 ## 📋 模块概述
 
-`pallet-evidence` 是Memopark生态的**证据基础设施模块**，提供跨域证据管理功能，支持图片、视频、文档等多媒体证据的链上元数据存储、IPFS内容存储、私有内容加密、访问控制和自动Pin功能。为仲裁、争议、审计等场景提供可信证据支持。
+`pallet-evidence` 是Stardust生态的**证据基础设施模块**，提供跨域证据管理功能，支持图片、视频、文档等多媒体证据的链上元数据存储、IPFS内容存储、私有内容加密、访问控制和自动Pin功能。为仲裁、争议、审计等场景提供可信证据支持。
 
 ### 设计理念
 
@@ -558,7 +558,7 @@ let evidence_id = pallet_evidence::Pallet::<T>::commit(
 // 发起仲裁时引用evidence_id
 pallet_arbitration::Pallet::<T>::dispute_with_evidence_id(
     origin,
-    *b"memopark/otc_order",
+    *b"stardust/otc_order",
     order_id,
     evidence_id,
 )?;
@@ -679,7 +679,7 @@ let decrypted_content = aes_decrypt(cid_encrypted_content, aes_key);
 - **pallet-otc-order**: OTC订单（争议证据）
 - **pallet-simple-bridge**: 桥接服务（转账凭证）
 - **pallet-market-maker**: 做市商管理（审核材料）
-- **pallet-memo-ipfs**: IPFS管理（自动Pin）
+- **pallet-stardust-ipfs**: IPFS管理（自动Pin）
 
 ## 📚 参考资源
 
@@ -692,4 +692,4 @@ let decrypted_content = aes_decrypt(cid_encrypted_content, aes_key);
 
 **版本**: 1.0.0  
 **最后更新**: 2025-10-27  
-**维护者**: Memopark 开发团队
+**维护者**: Stardust 开发团队

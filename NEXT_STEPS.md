@@ -34,7 +34,7 @@
 
 **执行方式**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 ./docs/重命名脚本-前端项目.sh
 ```
 
@@ -80,7 +80,7 @@ cat docs/重命名快速参考卡片.md
 
 **执行**:
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 chmod +x docs/重命名脚本-前端项目.sh  # 已添加执行权限
 ./docs/重命名脚本-前端项目.sh
 ```
@@ -110,13 +110,13 @@ cat docs/重命名手动操作指南.md
 
 # 按步骤执行
 # 步骤1: 创建备份
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 git add -A && git commit -m "Checkpoint: 前端重命名前"
 git tag -a before-frontend-rename -m "备份点"
 
 # 步骤2: 重命名目录
-mv memopark-dapp stardust-dapp
-mv memopark-governance stardust-governance
+mv stardust-dapp stardust-dapp
+mv stardust-governance stardust-governance
 # ... 继续按指南执行
 ```
 
@@ -180,7 +180,7 @@ mv memopark-governance stardust-governance
 如果需要回滚到重命名前的状态：
 
 ```bash
-cd /home/xiaodong/文档/memopark
+cd /home/xiaodong/文档/stardust
 
 # 回滚到链端重命名前（撤销所有重命名）
 git reset --hard before-rename-to-stardust

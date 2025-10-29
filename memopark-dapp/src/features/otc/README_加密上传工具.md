@@ -206,6 +206,6 @@ ipfs get <CID>
 ## 技术支持
 
 如有问题，请联系技术团队或查看源代码：
-- 加密组件：`memopark-dapp/src/components/FileEncryptUpload.tsx`
-- 申请页面：`memopark-dapp/src/features/otc/CreateMarketMakerPage.tsx`
+- 加密组件：`stardust-dapp/src/components/FileEncryptUpload.tsx`
+- 申请页面：`stardust-dapp/src/features/otc/CreateMarketMakerPage.tsx`
 

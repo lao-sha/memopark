@@ -169,7 +169,7 @@ let _ = pallet_balance_tiers::Pallet::<T>::grant_balance(
 ### 4. 前端集成更新
 
 #### 服务层
-**`memopark-dapp/src/services/balanceTiersService.ts`**：
+**`stardust-dapp/src/services/balanceTiersService.ts`**：
 - ✅ 新增多层级余额查询接口
 - ✅ 支持按层级类型查询和汇总
 - ✅ 提供格式化和国际化辅助函数
@@ -190,7 +190,7 @@ queryTierConfig(api): Promise<TierConfiguration>
 ```
 
 #### 组件层
-**`memopark-dapp/src/components/TieredBalanceCard.tsx`**：
+**`stardust-dapp/src/components/TieredBalanceCard.tsx`**：
 - ✅ 显示多层级余额（Gas、Points、VIP 等）
 - ✅ 支持标签页切换不同层级
 - ✅ 显示 Gas 每日限额使用情况
@@ -204,7 +204,7 @@ queryTierConfig(api): Promise<TierConfiguration>
 - 🏷️ 来源标签（空投/首购/邀请/活动等）
 
 #### 页面集成
-**`memopark-dapp/src/features/profile/MyWalletPage.tsx`**：
+**`stardust-dapp/src/features/profile/MyWalletPage.tsx`**：
 ```tsx
 import { TieredBalanceCard } from '../../components/TieredBalanceCard';
 
@@ -320,8 +320,8 @@ pallets/balance-tiers/               [新建目录]
 │   └── tests.rs                     [新建]
 └── README.md                        [新建]
 
-memopark-dapp/src/services/balanceTiersService.ts    [新建]
-memopark-dapp/src/components/TieredBalanceCard.tsx   [新建]
+stardust-dapp/src/services/balanceTiersService.ts    [新建]
+stardust-dapp/src/components/TieredBalanceCard.tsx   [新建]
 
 # 修改文件
 runtime/Cargo.toml                   [已修改]
@@ -329,7 +329,7 @@ runtime/src/lib.rs                   [已修改]
 runtime/src/configs/mod.rs           [已修改]
 pallets/first-purchase/Cargo.toml    [已修改]
 pallets/first-purchase/src/lib.rs    [已修改]
-memopark-dapp/src/features/profile/MyWalletPage.tsx  [已修改]
+stardust-dapp/src/features/profile/MyWalletPage.tsx  [已修改]
 pallets/balance-tiers/README.md      [已修改]
 pallets接口文档.md                    [已修改]
 ```

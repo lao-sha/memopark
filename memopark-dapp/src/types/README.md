@@ -281,7 +281,7 @@ export class IpfsService {
 
 ## 📚 参考资料
 
-- [链端IpfsPinner trait定义](../../../pallets/memo-ipfs/src/lib.rs#L66-L116)
+- [链端IpfsPinner trait定义](../../../pallets/stardust-ipfs/src/lib.rs#L66-L116)
 - [三重扣款机制设计](../../../docs/三重扣款机制实施报告.md)
 - [IpfsPinner集成最终实施报告](../../../docs/IpfsPinner集成最终实施报告.md)
 
