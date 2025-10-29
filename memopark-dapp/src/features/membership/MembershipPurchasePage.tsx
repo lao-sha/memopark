@@ -101,7 +101,7 @@ const MembershipPurchasePage: React.FC = () => {
             const raw = await sec.membershipPrices(i)
             if (raw && raw.isSome) {
               const priceRaw = raw.unwrap()
-              const priceUnits = Number(priceRaw.toString()) / 1_000_000_000_000 // 转换为 MEMO 单位
+              const priceUnits = Number(priceRaw.toString()) / 1_000_000_000_000 // 转换为 DUST 单位
               setPrices(prev => ({ ...prev, [i]: priceUnits.toString() }))
             }
           }
@@ -313,7 +313,7 @@ const MembershipPurchasePage: React.FC = () => {
                         {level.description}
                       </div>
                       <div style={{ marginTop: '8px', fontSize: '12px', color: '#999' }}>
-                        价格: <Text strong style={{ fontSize: '16px', color: level.color }}>{level.price} MEMO</Text>
+                        价格: <Text strong style={{ fontSize: '16px', color: level.color }}>{level.price} DUST</Text>
                         {' '}|{' '}
                         基础代数: <Text strong>{level.baseGenerations}代</Text>
                         {' '}|{' '}
@@ -405,7 +405,7 @@ const MembershipPurchasePage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text>支付金额：</Text>
                 <Text strong style={{ fontSize: '20px', color: currentLevel.color }}>
-                  {currentLevel.price} MEMO
+                  {currentLevel.price} DUST
                 </Text>
               </div>
             </Space>
@@ -421,7 +421,7 @@ const MembershipPurchasePage: React.FC = () => {
               size="large"
               style={{ height: '48px', fontSize: '16px' }}
             >
-              {loading ? '购买中...' : `支付 ${currentLevel.price} MEMO`}
+              {loading ? '购买中...' : `支付 ${currentLevel.price} DUST`}
             </Button>
           </Form.Item>
 

@@ -383,7 +383,7 @@ const MarketMakerGovernance: React.FC = () => {
       title: '押金',
       dataIndex: 'deposit',
       key: 'deposit',
-      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} MEMO`,
+      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} DUST`,
     },
     {
       title: 'Epay网关',
@@ -649,7 +649,7 @@ const MarketMakerGovernance: React.FC = () => {
                 </Text>
               </Descriptions.Item>
               <Descriptions.Item label="押金">
-                {(BigInt(selectedApplication.deposit) / BigInt(1e12)).toString()} MEMO
+                {(BigInt(selectedApplication.deposit) / BigInt(1e12)).toString()} DUST
               </Descriptions.Item>
               <Descriptions.Item label="操作类型">
                 {actionType === 'approve' ? (

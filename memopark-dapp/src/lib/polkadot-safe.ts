@@ -92,7 +92,7 @@ export async function queryFreeBalance(address: string): Promise<{ free: string;
   const accountInfo: any = await api.query.system.account(address)
   const free = accountInfo?.data?.free?.toString?.() || '0'
     const decimals = api.registry.chainDecimals?.[0] ?? 12
-    const symbol = (api.registry.chainTokens?.[0] as string) || 'MEMO'
+    const symbol = (api.registry.chainTokens?.[0] as string) || 'DUST'
     const formatted = formatAmount(free, decimals)
     return { free, formatted, decimals, symbol }
   } catch (error) {
@@ -102,7 +102,7 @@ export async function queryFreeBalance(address: string): Promise<{ free: string;
       free: '1000000000000',
       formatted: '1.0000',
       decimals: 12,
-      symbol: 'MEMO'
+      symbol: 'DUST'
     }
   }
 }

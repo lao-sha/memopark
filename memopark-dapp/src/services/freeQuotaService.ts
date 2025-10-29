@@ -120,7 +120,7 @@ export async function getDefaultQuota(
  * ```typescript
  * const stats = await getSponsoredStats(api, 1);
  * console.log('累计代付次数:', stats.totalCount);
- * console.log('累计代付金额:', stats.totalAmount, 'MEMO');
+ * console.log('累计代付金额:', stats.totalAmount, 'DUST');
  * ```
  */
 export async function getSponsoredStats(

@@ -427,13 +427,13 @@ const MarketMakerQuickApproval: React.FC = () => {
       title: '押金',
       dataIndex: 'deposit',
       key: 'deposit',
-      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} MEMO`,
+      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} DUST`,
     },
     {
       title: '首购资金池',
       dataIndex: 'firstPurchasePool',
       key: 'firstPurchasePool',
-      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} MEMO`,
+      render: (val: string) => `${(BigInt(val) / BigInt(1e12)).toString()} DUST`,
     },
     {
       title: 'Epay配置',
@@ -577,10 +577,10 @@ const MarketMakerQuickApproval: React.FC = () => {
                       <Text copyable={{ text: record.owner }}>{record.owner}</Text>
                     </Descriptions.Item>
                     <Descriptions.Item label="押金">
-                      {(BigInt(record.deposit) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(record.deposit) / BigInt(1e12)).toString()} DUST
                     </Descriptions.Item>
                     <Descriptions.Item label="首购资金池">
-                      {(BigInt(record.firstPurchasePool) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(record.firstPurchasePool) / BigInt(1e12)).toString()} DUST
                     </Descriptions.Item>
                     <Descriptions.Item label="Epay网关">
                       {record.epayGateway || '未配置'}

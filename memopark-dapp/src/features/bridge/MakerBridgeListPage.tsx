@@ -228,7 +228,7 @@ export const MakerBridgeListPage: React.FC = () => {
       width: 140,
       render: (amount: number) => (
         <Tooltip title="押金越高，做市商承诺越大">
-          <Text type="secondary">{amount.toLocaleString()} MEMO</Text>
+          <Text type="secondary">{amount.toLocaleString()} DUST</Text>
         </Tooltip>
       ),
     },
@@ -266,7 +266,7 @@ export const MakerBridgeListPage: React.FC = () => {
             <SwapOutlined /> 做市商桥接服务
           </Title>
           <Paragraph type="secondary">
-            选择信誉良好的做市商，享受快速、安全的 MEMO → USDT (TRC20) 兑换服务。
+            选择信誉良好的做市商，享受快速、安全的 DUST → USDT (TRC20) 兑换服务。
             做市商由押金保障，超时未转账将受到惩罚。
           </Paragraph>
         </Space>

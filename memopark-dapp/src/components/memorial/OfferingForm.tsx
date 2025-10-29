@@ -109,7 +109,7 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
       const api = await getApi()
       const service = createMemorialService(api)
       
-      // 转换金额（MEMO -> 最小单位）
+      // 转换金额（DUST -> 最小单位）
       const amount = (BigInt(values.amount) * BigInt(1_000_000)).toString()
       
       const tx = service.buildOfferTx({
@@ -212,7 +212,7 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
         tooltip="供奉的MEMO数量"
       >
         <Input
-          addonBefore="MEMO"
+          addonBefore="DUST"
           placeholder="0.001"
         />
       </Form.Item>

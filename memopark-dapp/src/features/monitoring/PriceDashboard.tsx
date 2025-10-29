@@ -169,7 +169,7 @@ const PriceDashboard: React.FC = () => {
               title="市场加权均价"
               value={marketPrice / 1_000_000}
               precision={6}
-              suffix="USDT/MEMO"
+              suffix="USDT/DUST"
               prefix={<DollarOutlined />}
               valueStyle={{ color: isColdStart ? '#999' : '#1890ff' }}
             />
@@ -185,7 +185,7 @@ const PriceDashboard: React.FC = () => {
               title="OTC 平均价格"
               value={otcAvgPrice / 1_000_000}
               precision={6}
-              suffix="USDT/MEMO"
+              suffix="USDT/DUST"
               prefix={<RiseOutlined />}
               valueStyle={{ color: otcAvgPrice > 0 ? '#52c41a' : '#999' }}
             />
@@ -201,7 +201,7 @@ const PriceDashboard: React.FC = () => {
               title="Bridge 平均价格"
               value={bridgeAvgPrice / 1_000_000}
               precision={6}
-              suffix="USDT/MEMO"
+              suffix="USDT/DUST"
               prefix={<FallOutlined />}
               valueStyle={{ color: bridgeAvgPrice > 0 ? '#fa8c16' : '#999' }}
             />
@@ -257,11 +257,11 @@ const PriceDashboard: React.FC = () => {
                 <Text strong style={{ fontSize: 24 }}>
                   {(otcVolume / 1e18).toFixed(2)}
                 </Text>
-                <Text type="secondary"> MEMO</Text>
+                <Text type="secondary"> DUST</Text>
               </div>
               <div>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  滑动窗口大小: {(otcWindowSize / 1e18).toFixed(0)} MEMO
+                  滑动窗口大小: {(otcWindowSize / 1e18).toFixed(0)} DUST
                 </Text>
               </div>
               <Progress
@@ -280,11 +280,11 @@ const PriceDashboard: React.FC = () => {
                 <Text strong style={{ fontSize: 24 }}>
                   {(bridgeVolume / 1e18).toFixed(2)}
                 </Text>
-                <Text type="secondary"> MEMO</Text>
+                <Text type="secondary"> DUST</Text>
               </div>
               <div>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  滑动窗口大小: {(bridgeWindowSize / 1e18).toFixed(0)} MEMO
+                  滑动窗口大小: {(bridgeWindowSize / 1e18).toFixed(0)} DUST
                 </Text>
               </div>
               <Progress
@@ -360,7 +360,7 @@ const PriceDashboard: React.FC = () => {
         description={
           <Space direction="vertical" size="small">
             <Text>• 市场加权均价 = (OTC均价 × OTC成交量 + Bridge均价 × Bridge成交量) / (OTC成交量 + Bridge成交量)</Text>
-            <Text>• 滑动窗口：统计最近 N MEMO 的成交均价，防止单笔大额交易影响过大</Text>
+            <Text>• 滑动窗口：统计最近 N DUST 的成交均价，防止单笔大额交易影响过大</Text>
             <Text>• 价格偏离检查：挂单创建时，链上自动检查价格是否在市场均价 ±{maxDeviation / 100}% 范围内</Text>
             <Text>• 冷启动保护：市场价格为 0 时，允许自由定价，不进行偏离检查</Text>
             <Text>• 数据刷新：页面每 30 秒自动刷新价格数据</Text>

@@ -353,7 +353,7 @@ const MarketMakerListing: React.FC = () => {
       render: (record: Listing) => {
         const min = (BigInt(record.minQty) / BigInt(1e12)).toString();
         const max = (BigInt(record.maxQty) / BigInt(1e12)).toString();
-        return `${min} - ${max} MEMO`;
+        return `${min} - ${max} DUST`;
       },
     },
     {
@@ -479,7 +479,7 @@ const MarketMakerListing: React.FC = () => {
           onFinish={handleCreateListing}
           initialValues={{
             side: 1, // 默认卖出
-            base: 0, // MEMO
+            base: 0, // DUST
             quote: 1, // CNY
             pricingSpreadBps: 200, // 2% spread
             partial: true,

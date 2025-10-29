@@ -243,7 +243,7 @@ const CreateFreeOrderPage: React.FC = () => {
             value={qty}
             onChange={(e) => setQty(e.target.value)}
             size="large"
-            suffix="MEMO"
+            suffix="DUST"
           />
           <div style={{ marginTop: 4, color: '#8c8c8c', fontSize: 12 }}>
             最小购买数量以做市商设置为准

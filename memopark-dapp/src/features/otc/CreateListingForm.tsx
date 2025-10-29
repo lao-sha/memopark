@@ -244,7 +244,7 @@ const CreateListingForm: React.FC = () => {
               showIcon
               message={<span style={{ fontSize: 12 }}>
                 仅允许发布卖单；创建限频窗口 {consts.createWindow} 块，最多 {consts.createMax} 次；
-                上架费 {(BigInt(consts.listingFee) / BigInt(1e12)).toString()} MEMO，保证金 {(BigInt(consts.listingBond) / BigInt(1e12)).toString()} MEMO
+                上架费 {(BigInt(consts.listingFee) / BigInt(1e12)).toString()} DUST，保证金 {(BigInt(consts.listingBond) / BigInt(1e12)).toString()} DUST
               </span>}
             />
           )}
@@ -260,7 +260,7 @@ const CreateListingForm: React.FC = () => {
           
           <Form.Item name="side" label="方向" rules={[{ required: true }]}> 
             <Select 
-              options={[{ label: '卖出 MEMO', value: 1 }]} 
+              options={[{ label: '卖出 DUST', value: 1 }]} 
               size="large" 
               disabled
             />
@@ -407,12 +407,12 @@ const CreateListingForm: React.FC = () => {
 
           <Row gutter={8}>
             <Col span={12}>
-              <Form.Item name="price_min" label="价带下限 (可选, MEMO)" >
+              <Form.Item name="price_min" label="价带下限 (可选, DUST)" >
                 <InputNumber min={0} style={{ width: '100%' }} size="large" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="price_max" label="价带上限 (可选, MEMO)">
+              <Form.Item name="price_max" label="价带上限 (可选, DUST)">
                 <InputNumber min={0} style={{ width: '100%' }} size="large" />
               </Form.Item>
             </Col>

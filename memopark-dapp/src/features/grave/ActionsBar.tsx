@@ -128,9 +128,9 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
       title: `供奉${selectedOffering.name}`,
       description: `为墓地 #${graveId} 供奉${selectedOffering.name}${selectedOffering.duration ? ` ${duration}${selectedOffering.unit}` : ''}${isMember && selectedOffering.id !== 19 ? ' (会员3折)' : ''}`,
       icon: selectedOffering.icon,
-      amount: `${finalAmount.toFixed(3)} MEMO${isMember && selectedOffering.id !== 19 ? ` (原价 ${originalAmount} MEMO)` : ''}`,
-      gasFee: '~0.001 MEMO',
-      total: `${(finalAmount + 0.001).toFixed(3)} MEMO`,
+      amount: `${finalAmount.toFixed(3)} DUST${isMember && selectedOffering.id !== 19 ? ` (原价 ${originalAmount} DUST)` : ''}`,
+      gasFee: '~0.001 DUST',
+      total: `${(finalAmount + 0.001).toFixed(3)} DUST`,
       target: `墓地 #${graveId}`,
       metadata: {
         graveId,
@@ -279,7 +279,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
                   step={0.1}
                   value={customAmount ? Number(customAmount) : undefined}
                   onChange={(val) => setCustomAmount(String(val || ''))}
-                  addonAfter="MEMO"
+                  addonAfter="DUST"
                   style={{ width: '100%' }}
                   size="large"
                   placeholder="输入金额"
@@ -321,7 +321,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
                     textDecoration: 'line-through',
                     marginBottom: 4
                   }}>
-                    原价 {calculateOriginalAmount()} MEMO
+                    原价 {calculateOriginalAmount()} DUST
                   </div>
                 )}
                 {/* 最终价格 */}
@@ -330,7 +330,7 @@ export default function ActionsBar({ graveId }: { graveId: number }) {
                   fontWeight: 'bold',
                   color: isMember && selectedOffering.id !== 19 ? '#f5222d' : 'var(--color-primary)'
                 }}>
-                  {calculateFinalAmount().toFixed(3)} MEMO
+                  {calculateFinalAmount().toFixed(3)} DUST
                 </span>
               </div>
             </div>

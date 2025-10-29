@@ -14,9 +14,9 @@ export interface TransactionInfo {
   title: string              // 交易标题，如"供奉蜡烛"
   description: string        // 交易描述，如"为 张三 供奉蜡烛1周"
   icon?: string             // 可选图标，如"🕯️"
-  amount?: string           // 金额，如"10 MEMO"
-  gasFee?: string           // Gas费，如"0.001 MEMO"
-  total?: string            // 总计，如"10.001 MEMO"
+  amount?: string           // 金额，如"10 DUST"
+  gasFee?: string           // Gas费，如"0.001 DUST"
+  total?: string            // 总计，如"10.001 DUST"
   target?: string           // 目标地址或ID
   metadata?: Record<string, any>  // 额外元数据
 }

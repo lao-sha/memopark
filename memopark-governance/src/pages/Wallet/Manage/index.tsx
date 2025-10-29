@@ -247,7 +247,7 @@ export const ManageWallet: React.FC = () => {
       width: 150,
       render: (balance: string) => (
         <Text strong style={{ color: '#1890ff' }}>
-          {balance} MEMO
+          {balance} DUST
         </Text>
       )
     },

@@ -66,7 +66,7 @@ export default function TracksPage() {
       dataIndex: 'decisionDeposit',
       key: 'decisionDeposit',
       width: 150,
-      render: (deposit) => `${formatBalance(deposit)} MEMO`
+      render: (deposit) => `${formatBalance(deposit)} DUST`
     },
     {
       title: '最大并发',
@@ -165,7 +165,7 @@ export default function TracksPage() {
                 </Descriptions.Item>
 
                 <Descriptions.Item label="决策押金">
-                  {formatBalance(record.decisionDeposit)} MEMO
+                  {formatBalance(record.decisionDeposit)} DUST
                 </Descriptions.Item>
                 <Descriptions.Item label="最大同时决策数">
                   {record.maxDeciding}

@@ -17,7 +17,7 @@ const CreateGraveForm: React.FC = () => {
   const [loading, setLoading] = React.useState(false)
   const [maxCidLen, setMaxCidLen] = React.useState<number>(0)
   const [createFee, setCreateFee] = React.useState<string>('0')
-  const [tokenSymbol, setTokenSymbol] = React.useState<string>('MEMO')
+  const [tokenSymbol, setTokenSymbol] = React.useState<string>('DUST')
   const [decimals, setDecimals] = React.useState<number>(12)
   const [pwdOpen, setPwdOpen] = React.useState(false)
   const [pwdVal, setPwdVal] = React.useState('')
@@ -32,7 +32,7 @@ const CreateGraveForm: React.FC = () => {
     ;(async () => {
       try {
         const api = await getApi()
-        const sym = (api.registry.chainTokens?.[0] as string) || 'MEMO'
+        const sym = (api.registry.chainTokens?.[0] as string) || 'DUST'
         const dec = api.registry.chainDecimals?.[0] ?? 12
         const feeConst: any = (api.consts as any)?.memoGrave?.createFee
         const maxLenConst: any = (api.consts as any)?.memoGrave?.maxCidLen

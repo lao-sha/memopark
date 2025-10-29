@@ -255,7 +255,7 @@ const WalletSwitcher: React.FC<WalletSwitcherProps> = ({
                         color: isCurrent ? '#1890ff' : '#262626',
                       }}
                     >
-                      {wallet.isLoading ? '...' : `${wallet.balance} MEMO`}
+                      {wallet.isLoading ? '...' : `${wallet.balance} DUST`}
                     </Text>
                   </div>
                 </div>

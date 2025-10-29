@@ -5,7 +5,7 @@ import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 
 /**
  * 函数级详细中文注释：存储下单最小实现表单
- * - 允许用户输入 `cid_hash`（十六进制 H256）、大小（字节）、副本数、一次性价格（MEMO 单位的最小单位）。
+ * - 允许用户输入 `cid_hash`（十六进制 H256）、大小（字节）、副本数、一次性价格（DUST 单位的最小单位）。
  * - 使用本地 keystore 签名并发送，调用 `memoIpfs.requestPin` extrinsic。
  * - 仅作 MVP 示例：未做价格预估/校验，cid_hash 也未在前端计算。
  */

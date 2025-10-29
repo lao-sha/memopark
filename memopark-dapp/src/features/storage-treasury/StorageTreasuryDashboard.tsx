@@ -110,11 +110,11 @@ const StorageTreasuryDashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
 
   /**
-   * 格式化余额（从 Planck 到 MEMO）
+   * 格式化余额（从 Planck 到 DUST）
    */
   const formatBalance = (balance: string): string => {
     const value = BigInt(balance);
-    const decimals = 18; // MEMO 代币精度
+    const decimals = 18; // DUST 代币精度
     const divisor = BigInt(10 ** decimals);
     const integerPart = value / divisor;
     const fractionalPart = value % divisor;
@@ -344,7 +344,7 @@ const StorageTreasuryDashboard: React.FC = () => {
       key: 'totalAmount',
       render: (amount: string) => (
         <Text strong style={{ color: '#52c41a' }}>
-          {formatBalance(amount)} MEMO
+          {formatBalance(amount)} DUST
         </Text>
       ),
     },
@@ -386,7 +386,7 @@ const StorageTreasuryDashboard: React.FC = () => {
             <Statistic
               title="累计收集"
               value={formatBalance(totalCollected)}
-              suffix="MEMO"
+              suffix="DUST"
               precision={4}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -397,7 +397,7 @@ const StorageTreasuryDashboard: React.FC = () => {
             <Statistic
               title="累计分配"
               value={formatBalance(totalDistributed)}
-              suffix="MEMO"
+              suffix="DUST"
               precision={4}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -458,7 +458,7 @@ const StorageTreasuryDashboard: React.FC = () => {
                 <Statistic
                   title="当前余额"
                   value={balance ? formatBalance(balance.total) : '0'}
-                  suffix="MEMO"
+                  suffix="DUST"
                   precision={4}
                   valueStyle={{ color: pool.color }}
                 />

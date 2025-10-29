@@ -101,9 +101,9 @@ const stateConfig = {
 /**
  * 函数级详细中文注释：格式化MEMO金额
  */
-const formatMEMO = (amount: string): string => {
+const formatDUST = (amount: string): string => {
   const memo = BigInt(amount) / BigInt(1_000_000)
-  return memo.toLocaleString() + ' MEMO'
+  return memo.toLocaleString() + ' DUST'
 }
 
 /**
@@ -203,7 +203,7 @@ export const OTCOrderCard: React.FC<OTCOrderCardProps> = ({
    */
   const handleRelease = async () => {
     Modal.confirm({
-      title: '确认释放MEMO',
+      title: '确认释放DUST',
       icon: <ExclamationCircleOutlined />,
       content: '确认买家已完成付款？释放后无法撤销。',
       okText: '确认释放',

@@ -261,7 +261,7 @@ const FreeQuotaManagementPage: React.FC = () => {
           <Statistic
             title="累计代付金额"
             value={sponsoredStats.totalAmount}
-            suffix="MEMO"
+            suffix="DUST"
             precision={4}
             prefix={<BarChartOutlined />}
             valueStyle={{ color: '#faad14' }}
@@ -275,7 +275,7 @@ const FreeQuotaManagementPage: React.FC = () => {
           <Statistic
             title="平均每笔Gas"
             value={sponsoredStats.avgGasPerOrder}
-            suffix="MEMO"
+            suffix="DUST"
             precision={6}
             valueStyle={{ color: '#722ed1' }}
           />
@@ -312,7 +312,7 @@ const FreeQuotaManagementPage: React.FC = () => {
           <Statistic
             title="月度Gas成本"
             value={monthlyGasCost}
-            suffix="MEMO"
+            suffix="DUST"
             precision={4}
             valueStyle={{ color: '#ff4d4f' }}
           />
@@ -340,7 +340,7 @@ const FreeQuotaManagementPage: React.FC = () => {
         </div>
 
         <Alert
-          message={`做市商成本几乎可以忽略不计！每月仅需 ${monthlyGasCost.toFixed(4)} MEMO，即可获得 ${monthlyRevenue.toFixed(2)} USDT 的溢价收益。`}
+          message={`做市商成本几乎可以忽略不计！每月仅需 ${monthlyGasCost.toFixed(4)} DUST，即可获得 ${monthlyRevenue.toFixed(2)} USDT 的溢价收益。`}
           type="success"
           showIcon
           style={{ marginTop: 16 }}

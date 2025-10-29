@@ -78,11 +78,11 @@ export interface UseStoragePoolAccountsResult {
  *     <Statistic 
  *       title="余额" 
  *       value={formatBalance(ipfsPool?.balance || 0n)} 
- *       suffix="MEMO"
+ *       suffix="DUST"
  *     />
  *     <Progress 
  *       percent={(ipfsPool?.quotaUsed || 0n) * 100n / (ipfsPool?.quotaTotal || 1n)}
- *       format={() => `${ipfsPool?.quotaUsed}/${ipfsPool?.quotaTotal} MEMO`}
+ *       format={() => `${ipfsPool?.quotaUsed}/${ipfsPool?.quotaTotal} DUST`}
  *     />
  *   </Card>
  * );

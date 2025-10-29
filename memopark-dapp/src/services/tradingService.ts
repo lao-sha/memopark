@@ -141,7 +141,7 @@ export interface SwapRequest {
   id: number;
   /** 用户地址 */
   user: string;
-  /** MEMO数量 */
+  /** DUST数量 */
   dustAmount: string;
   /** TRON地址 */
   tronAddress: string;
@@ -163,7 +163,7 @@ export interface MakerSwapRecord {
   makerId: number;
   /** 用户地址 */
   user: string;
-  /** MEMO数量 */
+  /** DUST数量 */
   dustAmount: string;
   /** USDT数量（精度6） */
   usdtAmount: number;

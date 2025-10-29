@@ -9,7 +9,7 @@ import FileEncryptUpload from '../../components/FileEncryptUpload'
 /**
  * 函数级详细中文注释：做市商申请（两步式：先质押 → 再提交资料）
  * 设计目标：
- * 1）先质押 MEMO，生成 mmId（链上返回）；
+ * 1）先质押 DUST，生成 mmId（链上返回）；
  * 2）在有效期内提交资料（公开 CID、私密 CID、费率与交易对参数等）；
  * 3）集成链上调用，不依赖浏览器扩展，使用本地 keystore 签名。
  * 4）CID 检查遵循项目规则：CID 一律不加密（明文 CID）；私密内容加密，但 CID 指向密文文件的明文 CID。
@@ -500,7 +500,7 @@ export default function CreateMarketMakerPage() {
         const minAmountMemo = Number(BigInt(appDetails.minAmount) / BigInt(1e12))
         fieldsToFill.min_amount = minAmountMemo
         fieldCount++
-        console.log('✅ 填充 min_amount:', minAmountMemo, 'MEMO')
+        console.log('✅ 填充 min_amount:', minAmountMemo, 'DUST')
       }
 
       // 🔹 Buy溢价（注意：0也是有效值，需要填充）
@@ -552,7 +552,7 @@ export default function CreateMarketMakerPage() {
         if (poolMemo > 0) {
           fieldsToFill.first_purchase_pool = poolMemo
           fieldCount++
-          console.log('✅ 填充 first_purchase_pool:', poolMemo, 'MEMO')
+          console.log('✅ 填充 first_purchase_pool:', poolMemo, 'DUST')
         }
       }
 
@@ -590,7 +590,7 @@ export default function CreateMarketMakerPage() {
   }
 
   /**
-   * 函数级详细中文注释：格式化 MEMO 金额（12 位小数）
+   * 函数级详细中文注释：格式化 DUST 金额（12 位小数）
    * - 使用 BigInt 避免 JavaScript number 精度问题
    * - 返回整数字符串，供 Polkadot.js 使用
    */
@@ -598,7 +598,7 @@ export default function CreateMarketMakerPage() {
     if (!amount || amount <= 0) return '0'
     try {
       // 🔧 修复大数精度丢失问题
-      // MEMO 使用 12 位小数：1 MEMO = 1,000,000,000,000
+      // DUST 使用 12 位小数：1 DUST = 1,000,000,000,000
       // ❌ 错误：BigInt(Math.floor(amount * Math.pow(10, 12))) - 当 amount 很大时会精度丢失
       // ✅ 正确：先转 BigInt 再乘法，避免 JavaScript Number 精度问题
       const decimals = 12
@@ -635,7 +635,7 @@ export default function CreateMarketMakerPage() {
         throw new Error('pallet-market-maker 尚未在 runtime 中注册，请联系管理员')
       }
 
-      // 格式化金额（MEMO 使用 12 位小数）
+      // 格式化金额（DUST 使用 12 位小数）
       const depositAmount = formatDustAmount(amount)
       
       console.log('[质押] 原始金额:', amount)
@@ -899,7 +899,7 @@ if (opt.isSome) {
       console.log('mmId:', mmId)
       console.log('publicCid length:', publicCid.length, '字节')
       console.log('privateCid length:', privateCid.length, '字节')
-      console.log('minAmount:', minAmt, 'MEMO → formatted:', minAmountFormatted)
+      console.log('minAmount:', minAmt, 'DUST → formatted:', minAmountFormatted)
       console.log('tron_address:', tron_address.trim(), '→ bytes:', tronAddressBytes.length)
       console.log('full_name:', full_name.trim(), '→ bytes:', fullNameBytes.length, '（链端自动脱敏）')
       console.log('id_card:', id_card.trim().substring(0, 6) + '****', '→ bytes:', idCardBytes.length, '（链端自动脱敏）')
@@ -1370,16 +1370,16 @@ if (opt.isSome) {
                   name="deposit_amount" 
                   rules={[
                     { required: true, message: '请输入质押金额' },
-                    { type: 'number', min: config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1, message: `质押金额必须大于等于 ${config ? (BigInt(config.minDeposit) / BigInt(1e12)).toString() : '1000'} MEMO` }
+                    { type: 'number', min: config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1, message: `质押金额必须大于等于 ${config ? (BigInt(config.minDeposit) / BigInt(1e12)).toString() : '1000'} DUST` }
                   ]}
-                  extra={config ? `最低质押金额：${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} MEMO（链上配置）` : '最低质押金额：1000 MEMO（链上配置）'}
+                  extra={config ? `最低质押金额：${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST（链上配置）` : '最低质押金额：1000 DUST（链上配置）'}
                 > 
                   <InputNumber 
                     min={config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1} 
                     precision={2} 
                     step={100} 
                     style={{ width: '100%' }}
-                    placeholder={config ? `最少 ${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} MEMO` : '请输入质押金额'}
+                    placeholder={config ? `最少 ${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST` : '请输入质押金额'}
                     disabled={loading}
                   />
                 </Form.Item>
@@ -1459,13 +1459,13 @@ if (opt.isSome) {
                     <Descriptions column={2} size="small" bordered>
                       <Descriptions.Item label={config.isUserApplication ? '已质押金额' : '最小质押金额'}>
                         <Typography.Text strong style={{ color: config.isUserApplication ? '#52c41a' : '#1890ff' }}>
-                          {(BigInt(config.minDeposit) / BigInt(1e12)).toString()} MEMO
+                          {(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST
                         </Typography.Text>
                       </Descriptions.Item>
                       <Descriptions.Item label={config.isUserApplication ? '设置最小下单额' : '最小下单额'}>
                         <Typography.Text>
                           {config.minAmount !== '0' 
-                            ? `${(BigInt(config.minAmount) / BigInt(1e12)).toString()} MEMO`
+                            ? `${(BigInt(config.minAmount) / BigInt(1e12)).toString()} DUST`
                             : '未设置'
                           }
                         </Typography.Text>
@@ -1706,7 +1706,7 @@ if (opt.isSome) {
                       </Typography.Text>
                     </Descriptions.Item>
                     <Descriptions.Item label="质押金额">
-                      {(BigInt(appDetails.deposit) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(appDetails.deposit) / BigInt(1e12)).toString()} DUST
                     </Descriptions.Item>
                     <Descriptions.Item label="创建时间">
                       {new Date(appDetails.createdAt * 1000).toLocaleString('zh-CN')}
@@ -1740,7 +1740,7 @@ if (opt.isSome) {
                           </Typography.Text>
                         </Descriptions.Item>
                         <Descriptions.Item label="最小下单额">
-                          {(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO
+                          {(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST
                         </Descriptions.Item>
                         <Descriptions.Item label="审核截止时间">
                           {new Date(appDetails.reviewDeadline * 1000).toLocaleString('zh-CN')}
@@ -1784,13 +1784,13 @@ if (opt.isSome) {
                       <ul style={{ paddingLeft: 20, margin: 0, columnCount: 2, columnGap: '16px' }}>
                         {appDetails.publicCid && <li style={{ breakInside: 'avoid' }}>✅ 公开资料 CID</li>}
                         {appDetails.privateCid && <li style={{ breakInside: 'avoid' }}>✅ 私密资料 CID</li>}
-                        {appDetails.minAmount && BigInt(appDetails.minAmount) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 最小下单额（{(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO）</li>}
+                        {appDetails.minAmount && BigInt(appDetails.minAmount) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 最小下单额（{(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST）</li>}
                         {(appDetails.buyPremiumBps !== undefined && appDetails.buyPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Buy溢价（{(appDetails.buyPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Buy溢价（默认0%）</li>}
                         {(appDetails.sellPremiumBps !== undefined && appDetails.sellPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Sell溢价（{(appDetails.sellPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Sell溢价（默认0%）</li>}
                         {appDetails.tronAddress && <li style={{ breakInside: 'avoid' }}>✅ TRON地址（{appDetails.tronAddress.substring(0, 10)}...）</li>}
                         {appDetails.epayPid && <li style={{ breakInside: 'avoid' }}>✅ Epay商户ID</li>}
                         {appDetails.epayKey && appDetails.epayKey.length > 0 && <li style={{ breakInside: 'avoid' }}>✅ Epay商户密钥</li>}
-                        {appDetails.firstPurchasePool && BigInt(appDetails.firstPurchasePool) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 首购资金池（{(BigInt(appDetails.firstPurchasePool) / BigInt(1e12)).toString()} MEMO）</li>}
+                        {appDetails.firstPurchasePool && BigInt(appDetails.firstPurchasePool) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 首购资金池（{(BigInt(appDetails.firstPurchasePool) / BigInt(1e12)).toString()} DUST）</li>}
                       </ul>
                       <p style={{ margin: '8px 0 0 0', color: '#1890ff', fontWeight: 'bold' }}>
                         {!appDetails.tronAddress || !appDetails.epayPid
@@ -1976,7 +1976,7 @@ if (opt.isSome) {
                   }
                   extra={
                     appDetails && appDetails.minAmount
-                      ? `当前值：${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO（留空则不修改）`
+                      ? `当前值：${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST（留空则不修改）`
                       : "用户单笔交易的最小金额限制"
                   }
                 >
@@ -1987,7 +1987,7 @@ if (opt.isSome) {
                     style={{ width: '100%' }}
                     placeholder={
                       appDetails && appDetails.minAmount
-                        ? `当前 ${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} MEMO`
+                        ? `当前 ${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST`
                         : "例如 100.00"
                     }
                     disabled={loading}
@@ -2004,7 +2004,7 @@ if (opt.isSome) {
                   description={
                     <>
                       <p><strong>用途：</strong>此TRON地址将用于所有USDT业务</p>
-                      <p>• <strong>OTC订单</strong>：买家向此地址转账USDT购买MEMO</p>
+                      <p>• <strong>OTC订单</strong>：买家向此地址转账USDT购买DUST</p>
                       <p>• <strong>Bridge订单</strong>：您从此地址向买家发送USDT</p>
                       <p>• <strong>格式要求</strong>：34字符，以'T'开头的TRON主网地址</p>
                       <p>• <strong>示例</strong>：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS</p>

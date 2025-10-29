@@ -760,7 +760,7 @@ export default function MakerBridgeConfigPage() {
                             {bridgeService.totalSwaps}
                           </Descriptions.Item>
                           <Descriptions.Item label="累计交易量">
-                            {(BigInt(bridgeService.totalVolume) / BigInt(1e12)).toString()} MEMO
+                            {(BigInt(bridgeService.totalVolume) / BigInt(1e12)).toString()} DUST
                           </Descriptions.Item>
                           <Descriptions.Item label="成功兑换数">
                             {bridgeService.successCount}
@@ -769,7 +769,7 @@ export default function MakerBridgeConfigPage() {
                             {bridgeService.avgTimeSeconds} 秒
                           </Descriptions.Item>
                           <Descriptions.Item label="押金额度">
-                            {(BigInt(bridgeService.deposit) / BigInt(1e12)).toString()} MEMO
+                            {(BigInt(bridgeService.deposit) / BigInt(1e12)).toString()} DUST
                           </Descriptions.Item>
                         </Descriptions>
 
@@ -880,7 +880,7 @@ export default function MakerBridgeConfigPage() {
                         description={
                           <>
                             <p>• TRON 地址更换：热钱包升级时可更新</p>
-                            <p>• 最大兑换额：增加额度需要追加押金（押金 = 最大额度 × 100 MEMO）</p>
+                            <p>• 最大兑换额：增加额度需要追加押金（押金 = 最大额度 × 100 DUST）</p>
                             <p>• 手续费率：调整费率需在 5-500 bps 范围内（0.05%-5%）</p>
                             <p>• 配置更新后立即生效，请确保配置正确</p>
                           </>
@@ -1027,7 +1027,7 @@ export default function MakerBridgeConfigPage() {
                       rules={[
                         { type: 'number', min: 0, message: '最小下单额必须大于 0' }
                       ]}
-                      extra={`当前值：${(BigInt(marketMakerInfo.minAmount) / BigInt(1e12)).toString()} MEMO（留空则不修改）`}
+                      extra={`当前值：${(BigInt(marketMakerInfo.minAmount) / BigInt(1e12)).toString()} DUST（留空则不修改）`}
                     >
                       <InputNumber 
                         min={0}

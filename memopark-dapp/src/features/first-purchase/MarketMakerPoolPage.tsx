@@ -85,7 +85,7 @@ interface WithdrawalRequest {
 }
 
 /**
- * 函数级详细中文注释：格式化 MEMO 金额（BigInt -> 数字）
+ * 函数级详细中文注释：格式化 DUST 金额（BigInt -> 数字）
  */
 const formatBalance = (balance: string): number => {
   try {
@@ -96,7 +96,7 @@ const formatBalance = (balance: string): number => {
 };
 
 /**
- * 函数级详细中文注释：格式化 MEMO 金额（数字 -> BigInt 字符串）
+ * 函数级详细中文注释：格式化 DUST 金额（数字 -> BigInt 字符串）
  */
 const formatDustAmount = (amount: number): string => {
   try {
@@ -276,12 +276,12 @@ export const MarketMakerPoolPage: React.FC = () => {
     const minBalance = formatBalance(poolInfo.minPoolBalance);
 
     if (withdrawAmount > available) {
-      message.error(`提取金额不能超过可用余额 ${available.toFixed(2)} MEMO`);
+      message.error(`提取金额不能超过可用余额 ${available.toFixed(2)} DUST`);
       return;
     }
 
     if (available - withdrawAmount < minBalance) {
-      message.error(`提取后余额不能低于最小值 ${minBalance.toFixed(2)} MEMO`);
+      message.error(`提取后余额不能低于最小值 ${minBalance.toFixed(2)} DUST`);
       return;
     }
 
@@ -492,7 +492,7 @@ export const MarketMakerPoolPage: React.FC = () => {
                 title="总额"
                 value={totalBalance}
                 precision={2}
-                suffix="MEMO"
+                suffix="DUST"
                 valueStyle={{ color: '#1890ff' }}
                 prefix={<DollarOutlined />}
               />
@@ -502,7 +502,7 @@ export const MarketMakerPoolPage: React.FC = () => {
                 title="可用余额"
                 value={availableBalance}
                 precision={2}
-                suffix="MEMO"
+                suffix="DUST"
                 valueStyle={{ color: '#52c41a' }}
                 prefix={<UnlockOutlined />}
               />
@@ -518,7 +518,7 @@ export const MarketMakerPoolPage: React.FC = () => {
                 title="已使用"
                 value={usedBalance}
                 precision={2}
-                suffix="MEMO"
+                suffix="DUST"
                 valueStyle={{ color: '#faad14' }}
                 prefix={<CheckCircleOutlined />}
               />
@@ -534,7 +534,7 @@ export const MarketMakerPoolPage: React.FC = () => {
                 title="冻结中"
                 value={frozenBalance}
                 precision={2}
-                suffix="MEMO"
+                suffix="DUST"
                 valueStyle={{ color: '#ff4d4f' }}
                 prefix={<LockOutlined />}
               />
@@ -548,10 +548,10 @@ export const MarketMakerPoolPage: React.FC = () => {
               <Text strong>{poolInfo?.usersServed || 0}</Text> 人
             </Descriptions.Item>
             <Descriptions.Item label="每次首购金额">
-              <Text strong>{firstPurchaseAmount.toFixed(2)}</Text> MEMO
+              <Text strong>{firstPurchaseAmount.toFixed(2)}</Text> DUST
             </Descriptions.Item>
             <Descriptions.Item label="最小保留余额">
-              <Text strong>{minPoolBalance.toFixed(2)}</Text> MEMO
+              <Text strong>{minPoolBalance.toFixed(2)}</Text> DUST
             </Descriptions.Item>
             <Descriptions.Item label="可服务剩余人数">
               <Text strong>
@@ -585,7 +585,7 @@ export const MarketMakerPoolPage: React.FC = () => {
             <Descriptions column={1} bordered>
               <Descriptions.Item label="申请金额">
                 <Text strong style={{ color: '#1890ff', fontSize: 18 }}>
-                  {formatBalance(withdrawalRequest.amount).toFixed(2)} MEMO
+                  {formatBalance(withdrawalRequest.amount).toFixed(2)} DUST
                 </Text>
               </Descriptions.Item>
               <Descriptions.Item label="冷却期状态">
@@ -739,7 +739,7 @@ export const MarketMakerPoolPage: React.FC = () => {
                 <li>提取申请提交后进入 7 天冷却期</li>
                 <li>冷却期内资金被冻结，无法用于首购服务</li>
                 <li>冷却期结束后可以执行提取操作</li>
-                <li>提取后余额必须 ≥ {minPoolBalance.toFixed(2)} MEMO</li>
+                <li>提取后余额必须 ≥ {minPoolBalance.toFixed(2)} DUST</li>
                 <li>可以选择是否暂停服务（冻结期间）</li>
               </ul>
             }
@@ -749,7 +749,7 @@ export const MarketMakerPoolPage: React.FC = () => {
           <div>
             <Text strong>可用余额: </Text>
             <Text style={{ fontSize: 18, color: '#52c41a' }}>
-              {availableBalance.toFixed(2)} MEMO
+              {availableBalance.toFixed(2)} DUST
             </Text>
           </div>
 
@@ -765,7 +765,7 @@ export const MarketMakerPoolPage: React.FC = () => {
               placeholder="输入提取金额"
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              最大可提取: {(availableBalance - minPoolBalance).toFixed(2)} MEMO
+              最大可提取: {(availableBalance - minPoolBalance).toFixed(2)} DUST
             </Text>
           </div>
 
@@ -787,8 +787,8 @@ export const MarketMakerPoolPage: React.FC = () => {
           {withdrawAmount > 0 && (
             <Alert
               type="warning"
-              message={`提取后余额: ${(availableBalance - withdrawAmount).toFixed(2)} MEMO`}
-              description={`冻结金额: ${withdrawAmount.toFixed(2)} MEMO | 冷却期: 7天`}
+              message={`提取后余额: ${(availableBalance - withdrawAmount).toFixed(2)} DUST`}
+              description={`冻结金额: ${withdrawAmount.toFixed(2)} DUST | 冷却期: 7天`}
               showIcon
             />
           )}

@@ -60,14 +60,14 @@ export const DEFAULT_TRACKS: TrackMetadata[] = [
   {
     id: 3,
     name: 'Medium Spender',
-    description: '中等金额支出（1K-10K MEMO）',
+    description: '中等金额支出（1K-10K DUST）',
     riskLevel: 3,
     category: 'treasury'
   },
   {
     id: 4,
     name: 'Big Spender',
-    description: '大额支出（>10K MEMO）',
+    description: '大额支出（>10K DUST）',
     riskLevel: 4,
     category: 'treasury'
   },

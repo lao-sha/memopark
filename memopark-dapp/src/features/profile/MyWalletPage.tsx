@@ -634,7 +634,7 @@ const MyWalletPage: React.FC = () => {
         {/* 购买MEMO卡片 */}
         <div
           onClick={() => {
-            message.info('跳转到购买MEMO');
+            message.info('跳转到购买DUST');
             window.location.hash = '#/otc/order';
           }}
           style={{
@@ -681,7 +681,7 @@ const MyWalletPage: React.FC = () => {
         {/* 兑换MEMO卡片 */}
         <div
           onClick={() => {
-            message.info('跳转到兑换MEMO');
+            message.info('跳转到兑换DUST');
             window.location.hash = '#/bridge/simple';
           }}
           style={{

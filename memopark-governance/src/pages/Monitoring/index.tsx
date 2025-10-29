@@ -381,7 +381,7 @@ const MonitoringPage: React.FC = () => {
               <Statistic
                 title="押金池总额"
                 value={formatBalance(metrics.business.totalDeposit)}
-                suffix="MEMO"
+                suffix="DUST"
                 precision={2}
                 valueStyle={{ color: '#1890ff' }}
               />
@@ -392,7 +392,7 @@ const MonitoringPage: React.FC = () => {
               <Statistic
                 title="罚没总额"
                 value={formatBalance(metrics.business.totalSlashed)}
-                suffix="MEMO"
+                suffix="DUST"
                 precision={2}
                 valueStyle={{ color: '#ff4d4f' }}
               />

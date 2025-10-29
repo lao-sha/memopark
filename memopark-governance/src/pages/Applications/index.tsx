@@ -129,7 +129,7 @@ export default function Applications() {
       dataIndex: 'deposit',
       key: 'deposit',
       width: 150,
-      render: (deposit) => `${formatBalance(deposit)} MEMO`
+      render: (deposit) => `${formatBalance(deposit)} DUST`
     },
     {
       title: '费率',
@@ -145,7 +145,7 @@ export default function Applications() {
       dataIndex: 'min_amount',
       key: 'min_amount',
       width: 150,
-      render: (amount) => `${formatBalance(amount)} MEMO`
+      render: (amount) => `${formatBalance(amount)} DUST`
     },
     {
       title: '状态',
@@ -312,14 +312,14 @@ export default function Applications() {
             </Descriptions.Item>
 
             <Descriptions.Item label="押金">
-              {formatBalance(selectedApp.deposit)} MEMO
+              {formatBalance(selectedApp.deposit)} DUST
             </Descriptions.Item>
             <Descriptions.Item label="费率">
               {(selectedApp.fee_bps / 100).toFixed(2)}% ({selectedApp.fee_bps} bps)
             </Descriptions.Item>
 
             <Descriptions.Item label="最小金额" span={2}>
-              {formatBalance(selectedApp.min_amount)} MEMO
+              {formatBalance(selectedApp.min_amount)} DUST
             </Descriptions.Item>
 
             <Descriptions.Item label="公开资料CID" span={2}>

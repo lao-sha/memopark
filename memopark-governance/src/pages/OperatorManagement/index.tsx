@@ -360,7 +360,7 @@ const OperatorManagement: React.FC = () => {
       dataIndex: 'bond',
       key: 'bond',
       width: 120,
-      render: (bond: string) => `${(Number(bond) / 10 ** 12).toFixed(2)} MEMO`,
+      render: (bond: string) => `${(Number(bond) / 10 ** 12).toFixed(2)} DUST`,
     },
     {
       title: '状态',
@@ -570,7 +570,7 @@ const OperatorManagement: React.FC = () => {
             name="bond_amount"
             rules={[
               { required: true, message: '请输入保证金数量' },
-              { type: 'number', min: 1000, message: '最小保证金为 1000 MEMO' },
+              { type: 'number', min: 1000, message: '最小保证金为 1000 DUST' },
             ]}
           >
             <InputNumber
@@ -587,7 +587,7 @@ const OperatorManagement: React.FC = () => {
               <li>部署并运行 IPFS 节点</li>
               <li>部署并运行 IPFS Cluster</li>
               <li>提供至少 100 GB 存储空间</li>
-              <li>质押至少 1000 MEMO 作为保证金</li>
+              <li>质押至少 1000 DUST 作为保证金</li>
               <li>保持节点在线（建议 &gt; 95%）</li>
             </ul>
           </div>
@@ -616,7 +616,7 @@ const OperatorManagement: React.FC = () => {
         cancelText="取消"
       >
         <div style={{ marginBottom: '16px' }}>
-          <p><strong>当前托管账户余额:</strong> {stats.escrow_balance} MEMO</p>
+          <p><strong>当前托管账户余额:</strong> {stats.escrow_balance} DUST</p>
           <p><strong>活跃运营者数量:</strong> {stats.active_operators}</p>
         </div>
         

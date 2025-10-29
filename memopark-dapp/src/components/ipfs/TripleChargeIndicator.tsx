@@ -99,7 +99,7 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>预估费用：</span>
-          <strong>{formatBalance(estimatedCost)} MEMO</strong>
+          <strong>{formatBalance(estimatedCost)} DUST</strong>
         </div>
         {!canAfford && (
           <Alert
@@ -142,11 +142,11 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
           <Statistic
             title="预估费用"
             value={formatBalance(estimatedCost)}
-            suffix="MEMO"
+            suffix="DUST"
             valueStyle={{ fontSize: 16 }}
           />
           <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-            {replicas} 副本 × {formatBalance(CHAIN_CONSTANTS.DEFAULT_STORAGE_PRICE)} MEMO/月
+            {replicas} 副本 × {formatBalance(CHAIN_CONSTANTS.DEFAULT_STORAGE_PRICE)} DUST/月
           </div>
         </Col>
       </Row>
@@ -174,12 +174,12 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
                 <span>1️⃣ IPFS公共池</span>
                 {hasPoolQuota && <Tag color="success">可用</Tag>}
               </Space>
-              <span>{formatBalance(info.poolBalance)} MEMO</span>
+              <span>{formatBalance(info.poolBalance)} DUST</span>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#999', marginBottom: 4 }}>
                 <span>月度配额使用</span>
-                <span>{formatBalance(info.poolQuotaUsed)} / {formatBalance(info.poolQuotaTotal)} MEMO</span>
+                <span>{formatBalance(info.poolQuotaUsed)} / {formatBalance(info.poolQuotaTotal)} DUST</span>
               </div>
               <Progress 
                 percent={quotaPercent}
@@ -187,7 +187,7 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
                 strokeColor={quotaPercent > 80 ? '#ff4d4f' : '#52c41a'}
               />
               <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-                配额剩余：{formatBalance(info.poolQuotaRemaining)} MEMO
+                配额剩余：{formatBalance(info.poolQuotaRemaining)} DUST
               </div>
             </div>
           </div>
@@ -200,7 +200,7 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
                 <span>2️⃣ 逝者专户</span>
                 {hasSubjectBalance && <Tag color="success">可用</Tag>}
               </Space>
-              <span>{formatBalance(info.subjectFundingBalance)} MEMO</span>
+              <span>{formatBalance(info.subjectFundingBalance)} DUST</span>
             </div>
           </div>
 
@@ -212,7 +212,7 @@ export const TripleChargeIndicator: React.FC<TripleChargeIndicatorProps> = ({
                 <span>3️⃣ 您的账户</span>
                 {hasCallerBalance && <Tag color="success">可用</Tag>}
               </Space>
-              <span>{formatBalance(info.callerBalance)} MEMO</span>
+              <span>{formatBalance(info.callerBalance)} DUST</span>
             </div>
           </div>
         </div>

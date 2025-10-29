@@ -6,7 +6,7 @@ import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 /**
  * 函数级详细中文注释：桥-锁定（报价保护）页面
  * - 展示链上价格、陈旧与暂停标识、费率（bps）
- * - 允许输入锁定 MEMO 金额、ETH 地址与最小可得 ETH（支持自动估算+滑点）
+ * - 允许输入锁定 DUST 金额、ETH 地址与最小可得 ETH（支持自动估算+滑点）
  * - 点击提交调用 memoBridge.lockMemoWithProtection
  */
 const BridgeLockPage: React.FC = () => {
@@ -101,7 +101,7 @@ const BridgeLockPage: React.FC = () => {
 
       <Card size="small" title="锁定（报价保护）" extra={<Segmented size="small" value={showWei ? 'wei' : 'ETH'} onChange={(v) => setShowWei(v === 'wei')} options={[{ label: 'ETH', value: 'ETH' }, { label: 'wei', value: 'wei' }]} />}>
         <Form form={form} layout="vertical" onFinish={onSubmit}>
-          <Form.Item label="锁定 MEMO 数量" name="amount" rules={[{ required: true, message: '请输入数量' }]}>
+          <Form.Item label="锁定 DUST 数量" name="amount" rules={[{ required: true, message: '请输入数量' }]}>
             <Input type="number" min={0} placeholder="例如 1.23" onBlur={onEstimateMin} />
           </Form.Item>
           <Form.Item label="ETH 收款地址" name="eth" rules={[{ required: true, message: '请输入 ETH 地址' }]}>
@@ -148,7 +148,7 @@ const BridgeLockPage: React.FC = () => {
       const net = raw - fee
       const q = quoteEthOut(net)
       const eth = showWei ? q : q / 10n ** 18n
-      return `预估：手续费 ${formatDust(fee)} MEMO，净额 ${formatDust(net)} MEMO；预计可得 ${showWei ? nf.format(Number(eth)) + ' wei' : nf.format(Number(eth)) + ' ETH'}`
+      return `预估：手续费 ${formatDust(fee)} DUST，净额 ${formatDust(net)} DUST；预计可得 ${showWei ? nf.format(Number(eth)) + ' wei' : nf.format(Number(eth)) + ' ETH'}`
     } catch { return null }
   }
 

@@ -115,7 +115,7 @@ export default function ReferendumDetail() {
                 {track && (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     决策期: {formatBlocks(track.decisionPeriod)} | 
-                    押金: {formatBalance(track.decisionDeposit)} MEMO
+                    押金: {formatBalance(track.decisionDeposit)} DUST
                   </Typography.Text>
                 )}
               </Space>
@@ -129,7 +129,7 @@ export default function ReferendumDetail() {
             </Descriptions.Item>
 
             <Descriptions.Item label="提交押金">
-              {formatBalance(referendum.submissionDeposit.amount)} MEMO
+              {formatBalance(referendum.submissionDeposit.amount)} DUST
             </Descriptions.Item>
             <Descriptions.Item label="提交人">
               <Typography.Text
@@ -144,7 +144,7 @@ export default function ReferendumDetail() {
             {referendum.decisionDeposit && (
               <>
                 <Descriptions.Item label="决策押金">
-                  {formatBalance(referendum.decisionDeposit.amount)} MEMO
+                  {formatBalance(referendum.decisionDeposit.amount)} DUST
                 </Descriptions.Item>
                 <Descriptions.Item label="决策人">
                   <Typography.Text
@@ -180,7 +180,7 @@ export default function ReferendumDetail() {
                 <Statistic
                   title="Aye票数"
                   value={formatBalance(referendum.tally.ayes)}
-                  suffix="MEMO"
+                  suffix="DUST"
                   valueStyle={{ color: '#52c41a' }}
                 />
               </Card>
@@ -190,7 +190,7 @@ export default function ReferendumDetail() {
                 <Statistic
                   title="Nay票数"
                   value={formatBalance(referendum.tally.nays)}
-                  suffix="MEMO"
+                  suffix="DUST"
                   valueStyle={{ color: '#ff4d4f' }}
                 />
               </Card>

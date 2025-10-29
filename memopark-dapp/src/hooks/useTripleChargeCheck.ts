@@ -135,7 +135,7 @@ export function useTripleChargeCheck(
         // 步骤 3: 查询配额
         // ========================================
         
-        const monthlyQuota = BigInt(consts[sec]?.monthlyPublicFeeQuota?.toString?.() || '100000000000000') // 100 MEMO
+        const monthlyQuota = BigInt(consts[sec]?.monthlyPublicFeeQuota?.toString?.() || '100000000000000') // 100 DUST
         
         const query: any = api.query
         const quotaData = await query[sec]?.publicFeeQuotaUsage?.(deceasedId)
@@ -280,18 +280,18 @@ export function useTripleChargeCheck(
 }
 
 /**
- * 函数级中文注释：格式化 MEMO 金额
+ * 函数级中文注释：格式化 DUST 金额
  * 
- * 将最小单位转换为 MEMO（除以 10^12）
+ * 将最小单位转换为 DUST（除以 10^12）
  */
 function formatMEMO(amount: bigint): string {
   const UNIT = 1000000000000n // 10^12
   const whole = amount / UNIT
   const frac = amount % UNIT
   if (frac === 0n) {
-    return `${whole} MEMO`
+    return `${whole} DUST`
   }
   const fracStr = frac.toString().padStart(12, '0').slice(0, 4) // 保留 4 位小数
-  return `${whole}.${fracStr} MEMO`
+  return `${whole}.${fracStr} DUST`
 }
 

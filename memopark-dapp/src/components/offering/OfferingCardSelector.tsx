@@ -179,7 +179,7 @@ export const OfferingCardSelector: React.FC<SelectorProps> = ({
                   fontWeight: 'bold',
                   color: isSelected ? 'var(--color-primary)' : 'var(--color-text-secondary)'
                 }}>
-                  {item.price} MEMO/{item.unit}
+                  {item.price} DUST/{item.unit}
                 </div>
               ) : (
                 <div style={{

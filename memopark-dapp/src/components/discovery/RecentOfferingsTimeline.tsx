@@ -151,7 +151,7 @@ export const RecentOfferingsTimeline: React.FC = () => {
                   {getOfferingIcon(activity.kind)} {getOfferingName(activity.kind)}
                 </Tag>
                 <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-                  {activity.amount} MEMO
+                  {activity.amount} DUST
                 </span>
               </div>
               

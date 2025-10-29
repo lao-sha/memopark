@@ -216,7 +216,7 @@ export const PaymentPage: React.FC = () => {
                   <Text type="secondary">购买数量:</Text>
                 </Col>
                 <Col span={16}>
-                  <Text strong>{orderData?.amount} MEMO</Text>
+                  <Text strong>{orderData?.amount} DUST</Text>
                 </Col>
               </Row>
               
@@ -265,7 +265,7 @@ export const PaymentPage: React.FC = () => {
             description={
               <ul style={{ margin: 0, paddingLeft: 20 }}>
                 <li>请在 15 分钟内完成支付，超时订单将自动作废</li>
-                <li>支付成功后，MEMO 将自动发送到您的钱包地址</li>
+                <li>支付成功后，DUST 将自动发送到您的钱包地址</li>
                 <li>如遇问题，请联系客服</li>
               </ul>
             }

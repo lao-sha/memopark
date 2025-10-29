@@ -18,7 +18,7 @@ const { Title, Text, Paragraph } = Typography;
  * 做市商兑换页面
  * 
  * 功能：
- * - 用户选择做市商进行 MEMO → USDT 兑换
+ * - 用户选择做市商进行 DUST → USDT 兑换
  * - 显示做市商信息和手续费
  * - 实时计算兑换金额
  * - 兑换流程追踪（Pending → Completed）
@@ -57,7 +57,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [isTimeout, setIsTimeout] = useState(false);
   
-  const MIN_AMOUNT = 10; // 最小 10 MEMO
+  const MIN_AMOUNT = 10; // 最小 10 DUST
   
   /**
    * 加载做市商信息
@@ -373,7 +373,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
                 {Math.floor(serviceConfig.avgTime / 60)} 分钟
               </Descriptions.Item>
               <Descriptions.Item label="押金">
-                {serviceConfig.deposit.toLocaleString()} MEMO
+                {serviceConfig.deposit.toLocaleString()} DUST
               </Descriptions.Item>
             </Descriptions>
           </Card>
@@ -424,16 +424,16 @@ export const MakerBridgeSwapPage: React.FC = () => {
                   { 
                     type: 'number', 
                     min: MIN_AMOUNT, 
-                    message: `最小兑换 ${MIN_AMOUNT} MEMO` 
+                    message: `最小兑换 ${MIN_AMOUNT} DUST` 
                   },
                 ]}
               >
                 <InputNumber
                   style={{ width: '100%' }}
-                  placeholder={`最小 ${MIN_AMOUNT} MEMO`}
+                  placeholder={`最小 ${MIN_AMOUNT} DUST`}
                   min={MIN_AMOUNT}
                   onChange={(value) => setDustAmount(value || 0)}
-                  addonAfter="MEMO"
+                  addonAfter="DUST"
                 />
               </Form.Item>
               
@@ -487,7 +487,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
               
               {/* 余额显示 */}
               <Alert
-                message={`当前余额: ${balance} MEMO`}
+                message={`当前余额: ${balance} DUST`}
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}

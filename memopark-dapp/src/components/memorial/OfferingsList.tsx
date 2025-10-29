@@ -61,9 +61,9 @@ interface OfferingsListProps {
 /**
  * 函数级详细中文注释：格式化MEMO金额
  */
-const formatMEMO = (amount: string): string => {
+const formatDUST = (amount: string): string => {
   const memo = BigInt(amount) / BigInt(1_000_000)
-  return memo.toLocaleString() + ' MEMO'
+  return memo.toLocaleString() + ' DUST'
 }
 
 /**

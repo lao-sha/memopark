@@ -218,7 +218,7 @@ const UIShowcase: React.FC = () => {
                   description="献花一束"
                   status="success"
                   timestamp="2分钟前"
-                  amount="50 MEMO"
+                  amount="50 DUST"
                 />
                 <ActivityCard
                   title="创建纪念馆"

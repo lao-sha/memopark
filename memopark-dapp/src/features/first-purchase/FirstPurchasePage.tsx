@@ -2,7 +2,7 @@
  * 函数级详细中文注释：首购页面组件
  * 
  * 功能：
- * 1. 选择购买金额（50-100 MEMO）
+ * 1. 选择购买金额（50-100 DUST）
  * 2. 可选填写推荐码（享9折优惠）
  * 3. 创建订单并跳转支付
  * 4. 实时显示折扣金额
@@ -74,7 +74,7 @@ export const FirstPurchasePage: React.FC = () => {
   const [mmLoading, setMmLoading] = useState<boolean>(false);
   
   // 计算支付金额
-  const memoToCnyRate = 0.01; // 1 MEMO = 0.01 CNY
+  const memoToCnyRate = 0.01; // 1 DUST = 0.01 CNY
   const hasReferrer = referralCode.trim().length > 0;
   const totalAmount = amount * memoToCnyRate;
   const discount = hasReferrer ? totalAmount * 0.1 : 0;
@@ -206,7 +206,7 @@ export const FirstPurchasePage: React.FC = () => {
           <Alert
             type="warning"
             message="请先创建钱包"
-            description="您需要先创建或导入钱包才能购买 MEMO"
+            description="您需要先创建或导入钱包才能购买 DUST"
             showIcon
             action={
               <Button type="primary" onClick={() => navigate('/wallet/create')}>
@@ -227,7 +227,7 @@ export const FirstPurchasePage: React.FC = () => {
           <Alert
             type="info"
             message="您已完成首购"
-            description="每个地址仅可首购一次，您可以通过其他方式购买 MEMO"
+            description="每个地址仅可首购一次，您可以通过其他方式购买 DUST"
             showIcon
             action={
               <Button type="primary" onClick={() => navigate('/otc')}>
@@ -250,10 +250,10 @@ export const FirstPurchasePage: React.FC = () => {
           {/* 标题 */}
           <div style={{ textAlign: 'center' }}>
             <Title level={2}>
-              <WalletOutlined /> 首次购买 MEMO
+              <WalletOutlined /> 首次购买 DUST
             </Title>
             <Paragraph type="secondary">
-              获取少量 MEMO 作为 GAS 费，开始您的 MemoPark 之旅
+              获取少量 DUST 作为 GAS 费，开始您的 MemoPark 之旅
             </Paragraph>
           </div>
 
@@ -264,7 +264,7 @@ export const FirstPurchasePage: React.FC = () => {
             description={
               <ul style={{ margin: 0, paddingLeft: 20 }}>
                 <li>每个地址仅限首购一次</li>
-                <li>购买金额限制：50-100 MEMO</li>
+                <li>购买金额限制：50-100 DUST</li>
                 <li>支持支付宝/微信支付</li>
                 <li>填写推荐码可享 9 折优惠</li>
                 <li>订单有效期 15 分钟</li>
@@ -309,9 +309,9 @@ export const FirstPurchasePage: React.FC = () => {
                       <Col span={12}>
                         <Space>
                           <Text type="secondary">可用余额:</Text>
-                          <Tooltip title={`总额: ${selectedMM.totalBalance} MEMO | 已用: ${selectedMM.usedBalance} MEMO | 冻结: ${selectedMM.frozenBalance} MEMO`}>
+                          <Tooltip title={`总额: ${selectedMM.totalBalance} DUST | 已用: ${selectedMM.usedBalance} DUST | 冻结: ${selectedMM.frozenBalance} DUST`}>
                             <Tag color={selectedMM.availableBalance >= 100 ? 'success' : 'warning'}>
-                              {selectedMM.availableBalance.toFixed(2)} MEMO
+                              {selectedMM.availableBalance.toFixed(2)} DUST
                             </Tag>
                           </Tooltip>
                         </Space>
@@ -325,7 +325,7 @@ export const FirstPurchasePage: React.FC = () => {
                           <Space>
                             <LockOutlined />
                             <Text>
-                              做市商当前有 {selectedMM.frozenBalance.toFixed(2)} MEMO 资金冻结中（提取申请中）
+                              做市商当前有 {selectedMM.frozenBalance.toFixed(2)} DUST 资金冻结中（提取申请中）
                             </Text>
                           </Space>
                         }
@@ -385,11 +385,11 @@ export const FirstPurchasePage: React.FC = () => {
                   75: '75',
                   100: '100',
                 }}
-                tooltip={{ formatter: (value) => `${value} MEMO` }}
+                tooltip={{ formatter: (value) => `${value} DUST` }}
               />
               <div style={{ textAlign: 'center', marginTop: 16 }}>
                 <Text style={{ fontSize: 24, fontWeight: 'bold' }}>
-                  {amount} MEMO
+                  {amount} DUST
                 </Text>
                 <br />
                 <Text type="secondary">

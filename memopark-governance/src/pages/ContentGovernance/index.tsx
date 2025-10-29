@@ -308,7 +308,7 @@ export default function ContentGovernance() {
       dataIndex: 'deposit',
       key: 'deposit',
       width: 120,
-      render: (deposit) => `${formatBalance(deposit)} MEMO`
+      render: (deposit) => `${formatBalance(deposit)} DUST`
     },
     {
       title: '状态',
@@ -571,7 +571,7 @@ export default function ContentGovernance() {
             </Descriptions.Item>
 
             <Descriptions.Item label="押金" span={2}>
-              {formatBalance(selectedAppeal.deposit)} MEMO
+              {formatBalance(selectedAppeal.deposit)} DUST
             </Descriptions.Item>
 
             <Descriptions.Item label="理由CID" span={2}>

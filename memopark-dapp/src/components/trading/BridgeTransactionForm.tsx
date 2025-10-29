@@ -2,8 +2,8 @@
  * 跨链桥交易表单组件
  * 
  * 功能说明：
- * 1. MEMO → TRON：将MEMO兑换为USDT并发送到TRON地址
- * 2. USDT → MEMO：通过USDT购买MEMO（首购优惠）
+ * 1. DUST → TRON：将MEMO兑换为USDT并发送到TRON地址
+ * 2. USDT → DUST：通过USDT购买MEMO（首购优惠）
  * 3. 动态价格计算（含溢价）
  * 4. 首购资格验证和优惠提示
  * 5. TRON地址验证
@@ -63,8 +63,8 @@ const validateTronAddress = (address: string): boolean => {
 /**
  * 函数级详细中文注释：格式化MEMO金额
  */
-const formatMEMO = (amount: number): string => {
-  return amount.toLocaleString() + ' MEMO'
+const formatDUST = (amount: number): string => {
+  return amount.toLocaleString() + ' DUST'
 }
 
 /**
@@ -130,7 +130,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }, [account])
 
   /**
-   * 函数级详细中文注释：计算 MEMO → TRON 的实际价格
+   * 函数级详细中文注释：计算 DUST → TRON 的实际价格
    */
   const calculateMemoToTronPrice = (): number => {
     // 卖出MEMO：应用卖出溢价
@@ -139,7 +139,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：计算 USDT → MEMO 的实际价格
+   * 函数级详细中文注释：计算 USDT → DUST 的实际价格
    */
   const calculateUsdtToMemoPrice = (): number => {
     // 买入MEMO：如果符合首购，使用首购价；否则应用买入溢价
@@ -152,7 +152,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：MEMO → TRON 转换
+   * 函数级详细中文注释：DUST → TRON 转换
    */
   const calculateMemoToUsdt = (memo: number): number => {
     const price = calculateMemoToTronPrice()
@@ -160,7 +160,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：USDT → MEMO 转换
+   * 函数级详细中文注释：USDT → DUST 转换
    */
   const calculateUsdtToMemo = (usdt: number): number => {
     const price = calculateUsdtToMemoPrice()
@@ -168,7 +168,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：提交 MEMO → TRON 交易
+   * 函数级详细中文注释：提交 DUST → TRON 交易
    */
   const handleMemoToTron = async (values: any) => {
     setLoading(true)
@@ -176,7 +176,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
       const api = await getApi()
       const service = createTradingService(api)
       
-      // 转换数量（MEMO → 最小单位）
+      // 转换数量（DUST → 最小单位）
       const qtyMinimalUnits = (BigInt(Math.floor(values.dustAmount * 1_000_000))).toString()
       
       const tx = service.buildBridgeMemoToTronTx({
@@ -210,7 +210,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：提交 USDT → MEMO 交易
+   * 函数级详细中文注释：提交 USDT → DUST 交易
    */
   const handleUsdtToMemo = async (values: any) => {
     setLoading(true)
@@ -245,14 +245,14 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
         }
       )
     } catch (error: any) {
-      console.error('USDT→MEMO 失败:', error)
+      console.error('USDT→DUST 失败:', error)
       message.error(error.message || '交易失败')
       setLoading(false)
     }
   }
 
   /**
-   * 函数级详细中文注释：渲染 MEMO → TRON 表单
+   * 函数级详细中文注释：渲染 DUST → TRON 表单
    */
   const renderMemoToTronForm = () => {
     const price = calculateMemoToTronPrice()
@@ -272,7 +272,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             <Space>
               <Text>当前汇率：</Text>
               <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                1 MEMO = {price.toFixed(4)} USDT
+                1 DUST = {price.toFixed(4)} USDT
               </Text>
               {premium !== 0 && (
                 <Tag color={premium > 0 ? 'red' : 'green'}>
@@ -287,7 +287,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
           style={{ marginBottom: 24 }}
         />
 
-        {/* MEMO数量 */}
+        {/* DUST数量 */}
         <Form.Item
           label="兑换数量（MEMO）"
           name="dustAmount"
@@ -303,7 +303,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             precision={6}
             style={{ width: '100%' }}
             placeholder="输入MEMO数量"
-            addonAfter="MEMO"
+            addonAfter="DUST"
             onChange={(value) => setDustAmount(value || 0)}
           />
         </Form.Item>
@@ -350,7 +350,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
               
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">汇率：</Text>
-                <Text>{price.toFixed(4)} USDT/MEMO</Text>
+                <Text>{price.toFixed(4)} USDT/DUST</Text>
               </div>
 
               <Divider style={{ margin: '8px 0' }} />
@@ -401,7 +401,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：渲染 USDT → MEMO 表单
+   * 函数级详细中文注释：渲染 USDT → DUST 表单
    */
   const renderUsdtToMemoForm = () => {
     const price = calculateUsdtToMemoPrice()
@@ -431,7 +431,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
               <Space direction="vertical" size="small">
                 <Text>您符合首购资格，享受特惠价格！</Text>
                 <Text strong style={{ fontSize: 16, color: '#52c41a' }}>
-                  1 MEMO = {firstPurchasePrice.toFixed(4)} USDT
+                  1 DUST = {firstPurchasePrice.toFixed(4)} USDT
                 </Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   比市场价优惠 {savingsPercent}%
@@ -450,7 +450,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             <Space>
               <Text>当前汇率：</Text>
               <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                1 MEMO = {price.toFixed(4)} USDT
+                1 DUST = {price.toFixed(4)} USDT
               </Text>
               {!isFirstPurchase && buyPremiumBps !== 0 && (
                 <Tag color={buyPremiumBps > 0 ? 'red' : 'green'}>
@@ -519,7 +519,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
               
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">汇率：</Text>
-                <Text>{price.toFixed(4)} USDT/MEMO</Text>
+                <Text>{price.toFixed(4)} USDT/DUST</Text>
               </div>
 
               {isFirstPurchase && (
@@ -607,7 +607,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             label: (
               <Space>
                 <ArrowRightOutlined />
-                <span>MEMO → TRON</span>
+                <span>DUST → TRON</span>
               </Space>
             ),
             children: renderMemoToTronForm(),
@@ -617,7 +617,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             label: (
               <Space>
                 <ArrowRightOutlined />
-                <span>USDT → MEMO</span>
+                <span>USDT → DUST</span>
                 {isFirstPurchaseEligible && (
                   <Tag color="success" icon={<GiftOutlined />}>
                     首购优惠

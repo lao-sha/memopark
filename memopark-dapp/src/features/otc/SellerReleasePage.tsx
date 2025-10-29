@@ -39,7 +39,7 @@ interface OrderData {
  * 
  * 功能说明：
  * 1. 显示所有需要处理的订单（当前用户是卖家且状态为 PaidOrCommitted）
- * 2. 提供"释放MEMO"按钮，让卖家确认收到法币后释放MEMO给买家
+ * 2. 提供"释放DUST"按钮，让卖家确认收到法币后释放MEMO给买家
  * 3. 显示订单详情，包括买家地址、购买数量、金额等
  * 4. 实时刷新订单状态
  * 
@@ -179,7 +179,7 @@ export const SellerReleasePage: React.FC = () => {
 
   /**
    * 函数级中文注释：格式化余额显示
-   * - 将最小单位转换为 MEMO
+   * - 将最小单位转换为 DUST
    */
   const formatBalance = (balance: string): string => {
     try {
@@ -227,15 +227,15 @@ export const SellerReleasePage: React.FC = () => {
     }
 
     Modal.confirm({
-      title: '确认释放MEMO',
+      title: '确认释放DUST',
       content: (
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>您确认要释放 MEMO 给买家吗？</Text>
+          <Text>您确认要释放 DUST 给买家吗？</Text>
           <Divider style={{ margin: '12px 0' }} />
           <Descriptions column={1} size="small">
             <Descriptions.Item label="订单 ID">#{order.id}</Descriptions.Item>
             <Descriptions.Item label="买家地址">{order.taker}</Descriptions.Item>
-            <Descriptions.Item label="数量">{formatBalance(order.qty)} MEMO</Descriptions.Item>
+            <Descriptions.Item label="数量">{formatBalance(order.qty)} DUST</Descriptions.Item>
             <Descriptions.Item label="USDT单价">
               <Tag color="blue">{parseChainUsdt(order.price).toFixed(4)} USDT</Tag>
             </Descriptions.Item>
@@ -354,7 +354,7 @@ export const SellerReleasePage: React.FC = () => {
             disabled={expired || releasingOrderId !== null}
             icon={<CheckCircleOutlined />}
           >
-            {expired ? '已过期' : '释放MEMO'}
+            {expired ? '已过期' : '释放DUST'}
           </Button>
         ]}
       >
@@ -378,7 +378,7 @@ export const SellerReleasePage: React.FC = () => {
               </Space>
               <Space>
                 <Text type="secondary">数量:</Text>
-                <Text strong style={{ color: '#52c41a' }}>{qtyFormatted} MEMO</Text>
+                <Text strong style={{ color: '#52c41a' }}>{qtyFormatted} DUST</Text>
               </Space>
               <Space>
                 <Text type="secondary">金额:</Text>
@@ -527,7 +527,7 @@ export const SellerReleasePage: React.FC = () => {
               <Space direction="vertical" size={8}>
                 <Text>1. 买家创建订单后，会转入"等待支付"状态</Text>
                 <Text>2. 买家完成法币支付并标记"已支付"后，订单会出现在此页面</Text>
-                <Text>3. 请确认收到买家的法币支付后，点击"释放MEMO"按钮</Text>
+                <Text>3. 请确认收到买家的法币支付后，点击"释放DUST"按钮</Text>
                 <Text>4. 释放后，MEMO会从托管账户自动转给买家，订单完成</Text>
                 <Text strong type="warning">⚠️ 释放前请务必确认已收到法币，释放操作不可撤销</Text>
               </Space>
@@ -578,7 +578,7 @@ export const SellerReleasePage: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="购买数量">
               <Text strong style={{ color: '#52c41a' }}>
-                {formatBalance(selectedOrder.qty)} MEMO
+                {formatBalance(selectedOrder.qty)} DUST
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="USDT单价">

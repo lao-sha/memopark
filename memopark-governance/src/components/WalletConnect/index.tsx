@@ -63,7 +63,7 @@ export const WalletConnect: React.FC = () => {
           可用余额：
         </Text>
         <Text strong style={{ fontSize: 14, color: '#1890ff', display: 'block', lineHeight: 1.4 }}>
-          {balance} MEMO
+          {balance} DUST
         </Text>
       </div>
 

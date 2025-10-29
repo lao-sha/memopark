@@ -34,7 +34,7 @@ interface MarketMakerInfo {
 }
 
 /**
- * 函数级详细中文注释：格式化 MEMO 金额（12 位小数）
+ * 函数级详细中文注释：格式化 DUST 金额（12 位小数）
  */
 function formatDustAmount(amount: number): string {
   if (!amount || amount <= 0) return '0'
@@ -490,17 +490,17 @@ export default function MarketMakerConfigPage() {
                 <Descriptions column={2} size="small" bordered>
                   <Descriptions.Item label="资金池总额">
                     <Text strong style={{ color: '#52c41a' }}>
-                      {(BigInt(marketMakerInfo.firstPurchasePool) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(marketMakerInfo.firstPurchasePool) / BigInt(1e12)).toString()} DUST
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label="已使用金额">
                     <Text strong style={{ color: '#1890ff' }}>
-                      {(BigInt(marketMakerInfo.firstPurchaseUsed) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(marketMakerInfo.firstPurchaseUsed) / BigInt(1e12)).toString()} DUST
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label="冻结金额">
                     <Text strong style={{ color: '#faad14' }}>
-                      {(BigInt(marketMakerInfo.firstPurchaseFrozen) / BigInt(1e12)).toString()} MEMO
+                      {(BigInt(marketMakerInfo.firstPurchaseFrozen) / BigInt(1e12)).toString()} DUST
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label="可用金额">
@@ -509,7 +509,7 @@ export default function MarketMakerConfigPage() {
                         (BigInt(marketMakerInfo.firstPurchasePool) - 
                          BigInt(marketMakerInfo.firstPurchaseUsed) - 
                          BigInt(marketMakerInfo.firstPurchaseFrozen)) / BigInt(1e12)
-                      ).toString()} MEMO
+                      ).toString()} DUST
                     </Text>
                   </Descriptions.Item>
                 </Descriptions>

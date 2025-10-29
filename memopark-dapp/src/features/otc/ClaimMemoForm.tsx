@@ -72,7 +72,7 @@ export default function ClaimMemoForm() {
         <div>
           <Typography.Title level={4} style={{ marginBottom: 8 }}>
             <GiftOutlined style={{ marginRight: 8, color: '#52c41a' }} />
-            首购领取 MEMO
+            首购领取 DUST
           </Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: '13px' }}>
             首次购买或法币入金时使用
@@ -86,7 +86,7 @@ export default function ClaimMemoForm() {
           message="使用场景"
           description={
             <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, fontSize: '13px' }}>
-              <li>✅ 新用户首次购买MEMO</li>
+              <li>✅ 新用户首次购买DUST</li>
               <li>✅ 老用户法币入金（微信/支付宝/银行转账）</li>
               <li>💡 如需出金卖出MEMO，请前往 <a href="#/otc/order">OTC订单</a> 创建卖单</li>
             </ul>
@@ -160,7 +160,7 @@ export default function ClaimMemoForm() {
                   订单号: <Typography.Text code>{auth.order_id}</Typography.Text>
                 </Typography.Text>
                 <Typography.Text style={{ fontSize: '12px' }}>
-                  领取金额: <Typography.Text strong>{auth.amount_memo} MEMO</Typography.Text>
+                  领取金额: <Typography.Text strong>{auth.amount_memo} DUST</Typography.Text>
                 </Typography.Text>
                 <Typography.Text style={{ fontSize: '12px' }}>
                   截止区块: {auth.deadline_block}

@@ -69,8 +69,8 @@ const statusConfig = {
  * 函数级详细中文注释：方向标签配置
  */
 const directionConfig = {
-  [Direction.Buy]: { label: '买入MEMO', color: 'green', icon: <RiseOutlined /> },
-  [Direction.Sell]: { label: '卖出MEMO', color: 'red', icon: <FallOutlined /> },
+  [Direction.Buy]: { label: '买入DUST', color: 'green', icon: <RiseOutlined /> },
+  [Direction.Sell]: { label: '卖出DUST', color: 'red', icon: <FallOutlined /> },
   [Direction.BuyAndSell]: { label: '双向', color: 'blue', icon: <CrownOutlined /> },
 }
 
@@ -223,8 +223,8 @@ export const MarketMakerList: React.FC<MarketMakerListProps> = ({
             value={localFilterDirection}
             onChange={setLocalFilterDirection}
           >
-            <Select.Option value={Direction.Buy}>买入MEMO</Select.Option>
-            <Select.Option value={Direction.Sell}>卖出MEMO</Select.Option>
+            <Select.Option value={Direction.Buy}>买入DUST</Select.Option>
+            <Select.Option value={Direction.Sell}>卖出DUST</Select.Option>
             <Select.Option value={Direction.BuyAndSell}>双向</Select.Option>
           </Select>
         </Space>

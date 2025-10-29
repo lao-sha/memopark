@@ -160,7 +160,7 @@ export default function ArbitrationPage() {
       dataIndex: 'amount',
       key: 'amount',
       width: 120,
-      render: (amount) => `${formatBalance(amount)} MEMO`
+      render: (amount) => `${formatBalance(amount)} DUST`
     },
     {
       title: '状态',
@@ -373,7 +373,7 @@ export default function ArbitrationPage() {
             </Descriptions.Item>
 
             <Descriptions.Item label="争议金额" span={2}>
-              {formatBalance(selectedCase.amount)} MEMO
+              {formatBalance(selectedCase.amount)} DUST
             </Descriptions.Item>
 
             <Descriptions.Item label="争议原因" span={2}>

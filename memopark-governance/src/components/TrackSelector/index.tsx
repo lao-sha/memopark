@@ -102,7 +102,7 @@ export default function TrackSelector({ value, onChange, showDetails = true, fil
                 {showDetails && (
                   <Descriptions size="small" column={2}>
                     <Descriptions.Item label="决策押金">
-                      <strong>{formatBalance(track.decisionDeposit)} MEMO</strong>
+                      <strong>{formatBalance(track.decisionDeposit)} DUST</strong>
                     </Descriptions.Item>
                     <Descriptions.Item label="最大并发">
                       {track.maxDeciding}
@@ -154,7 +154,7 @@ export function TrackInfoCard({ track, onClick }: TrackInfoCardProps) {
         <Space>
           <Tag color={getTrackColor(track.id)}>{track.name}</Tag>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            押金: {formatBalance(track.decisionDeposit)} MEMO
+            押金: {formatBalance(track.decisionDeposit)} DUST
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             决策期: {formatBlocks(track.decisionPeriod)}

@@ -95,7 +95,7 @@ const MarketMakerCenterPage: React.FC = () => {
       case 'DepositLocked':
         return { text: '已质押', color: 'warning', desc: '已完成质押，请提交完整资料' }
       case 'Pending':
-        return { text: '待质押', color: 'default', desc: '请先质押 1,000,000 MEMO' }
+        return { text: '待质押', color: 'default', desc: '请先质押 1,000,000 DUST' }
       case 'Rejected':
         return { text: '已拒绝', color: 'error', desc: '您的申请未通过审核' }
       default:
@@ -368,7 +368,7 @@ const MarketMakerCenterPage: React.FC = () => {
             <div>
               <Text strong>1. 新做市商申请流程：</Text>
               <Paragraph style={{ marginLeft: 16, marginBottom: 8 }}>
-                点击"做市商申请" → 质押 1,000,000 MEMO → 提交资料 → 等待审批 → Active 状态
+                点击"做市商申请" → 质押 1,000,000 DUST → 提交资料 → 等待审批 → Active 状态
               </Paragraph>
             </div>
             <div>

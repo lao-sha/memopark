@@ -96,7 +96,7 @@ const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({
           <span style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>₿</span>
         </div>
 
-        {/* 右上角 - MEMO 代币 */}
+        {/* 右上角 - DUST 代币 */}
         <div
           style={{
             position: 'absolute',

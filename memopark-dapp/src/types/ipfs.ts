@@ -356,7 +356,7 @@ export interface SubjectFundingDerivation {
  * 格式化选项
  */
 export interface FormatOptions {
-  /** 是否显示单位（如 MEMO） */
+  /** 是否显示单位（如 DUST） */
   showUnit?: boolean;
   /** 小数位数 */
   decimals?: number;
@@ -370,13 +370,13 @@ export interface FormatOptions {
  * 链上常量
  */
 export const CHAIN_CONSTANTS = {
-  /** MEMO代币精度（10^12） */
+  /** DUST代币精度（10^12） */
   UNIT: 1_000_000_000_000n,
-  /** 月度公共费用配额（100 MEMO） */
+  /** 月度公共费用配额（100 DUST） */
   MONTHLY_PUBLIC_FEE_QUOTA: 100n * 1_000_000_000_000n,
   /** 配额重置周期（28天，以6秒/块计算） */
   QUOTA_RESET_PERIOD_BLOCKS: 100_800 * 4,
-  /** 默认存储单价（1 MEMO/副本/月） */
+  /** 默认存储单价（1 DUST/副本/月） */
   DEFAULT_STORAGE_PRICE: 1n * 1_000_000_000_000n,
   /** 默认副本数 */
   DEFAULT_REPLICAS: 3,

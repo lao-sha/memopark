@@ -401,7 +401,7 @@ const AppealStatistics: React.FC = () => {
               <Statistic
                 title="总押金"
                 value={formatBalance(statistics.totalDeposit)}
-                suffix="MEMO"
+                suffix="DUST"
                 precision={2}
                 valueStyle={{ color: '#52c41a' }}
               />
@@ -413,7 +413,7 @@ const AppealStatistics: React.FC = () => {
               <Statistic
                 title="平均押金"
                 value={formatBalance(statistics.avgDeposit)}
-                suffix="MEMO"
+                suffix="DUST"
                 precision={2}
               />
             </Card>

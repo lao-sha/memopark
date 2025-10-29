@@ -147,11 +147,11 @@ export function formatPriceDisplay(priceUsdt: number | string | bigint): string 
 /**
  * 计算订单总金额（USDT）
  * @param priceUsdt - 链上USDT单价
- * @param quantity - MEMO数量
+ * @param quantity - DUST数量
  * @returns USDT总金额
  * 
  * @example
- * calculateTotalUsdt(500000, 1000) // 返回 500 (1000 MEMO * 0.5 USDT)
+ * calculateTotalUsdt(500000, 1000) // 返回 500 (1000 DUST * 0.5 USDT)
  */
 export function calculateTotalUsdt(priceUsdt: number | string | bigint, quantity: number): number {
   const unitPrice = parseChainUsdt(priceUsdt);
@@ -161,11 +161,11 @@ export function calculateTotalUsdt(priceUsdt: number | string | bigint, quantity
 /**
  * 计算订单总金额（CNY）
  * @param priceUsdt - 链上USDT单价
- * @param quantity - MEMO数量
+ * @param quantity - DUST数量
  * @returns CNY总金额
  * 
  * @example
- * calculateTotalCny(500000, 1000) // 返回 3560 (1000 MEMO * 0.5 USDT * 7.12)
+ * calculateTotalCny(500000, 1000) // 返回 3560 (1000 DUST * 0.5 USDT * 7.12)
  */
 export function calculateTotalCny(priceUsdt: number | string | bigint, quantity: number): number {
   const totalUsdt = calculateTotalUsdt(priceUsdt, quantity);

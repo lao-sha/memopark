@@ -63,7 +63,7 @@ interface Listing {
 /**
  * 函数级详细中文注释：OTC 下单页（创建订单 + 二维码 + 轮询状态）
  * - 目标：为用户生成一次性短时有效的订单与支付二维码，引导完成支付；
- * - 实现：显示做市商出价列表 + 金额（法币或 MEMO 二选一）+ 通道，创建订单后展示二维码/链接；
+ * - 实现：显示做市商出价列表 + 金额（法币或 DUST 二选一）+ 通道，创建订单后展示二维码/链接；
  * - 轮询：每 5 秒查询一次状态，进入 paid_confirmed 后提供"前往领取"入口；
  * - 安全：关键字段均来自服务端返回（memo_amount/expired_at/url 等），前端不做价格计算。
  * - UI风格：与欢迎、创建钱包、恢复钱包页面保持一致
@@ -121,7 +121,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         if (price) {
           const priceValue = Number(price.toString())
           setBasePrice(priceValue)
-          console.log('✅ 基准价格加载成功:', (priceValue / 1_000_000).toFixed(6), 'USDT/MEMO')
+          console.log('✅ 基准价格加载成功:', (priceValue / 1_000_000).toFixed(6), 'USDT/DUST')
         }
       } catch (e: any) {
         console.error('加载基准价格失败:', e)
@@ -405,9 +405,9 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       if (values.mode === 'memo' && values.dustAmount) {
         qty = BigInt(Math.floor(Number(values.dustAmount) * 1e12))
       } else if (values.mode === 'fiat' && values.fiatAmount) {
-        // 如果用户输入法币金额，需要根据挂单价格计算 MEMO 数量
+        // 如果用户输入法币金额，需要根据挂单价格计算 DUST 数量
         // 这里简化处理，实际应该从链上预言机或挂单规则获取价格
-        message.warning('暂不支持按法币金额下单，请切换为 MEMO 数量模式')
+        message.warning('暂不支持按法币金额下单，请切换为 DUST 数量模式')
         setCreating(false)
         return
       } else {
@@ -417,7 +417,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       }
 
       // 🆕 2025-10-20：验证订单数量是否满足做市商最小要求
-      // ✅ 修复 Bug：直接比较 MEMO 数量，不要乘以价格！
+      // ✅ 修复 Bug：直接比较 DUST 数量，不要乘以价格！
       // - qty: 订单MEMO数量（最小单位，1e12精度）
       // - minAmount: 做市商最小MEMO数量（最小单位，1e12精度）
       const qtyBigInt = BigInt(qty)
@@ -425,7 +425,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       
       if (qtyBigInt < minAmountBigInt) {
         const minAmountMemo = (Number(minAmountBigInt) / 1e12).toFixed(4)
-        message.warning(`订单数量不能低于做市商最小数量：${minAmountMemo} MEMO`)
+        message.warning(`订单数量不能低于做市商最小数量：${minAmountMemo} DUST`)
         setCreating(false)
         return
       }
@@ -483,15 +483,15 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       console.log('🔍 创建订单参数:', {
         maker_id: selectedMaker.mmId,                        // 🆕 maker_id
         qty: qty.toString(),
-        qty_memo: (Number(qty) / 1e12).toFixed(4) + ' MEMO',
+        qty_memo: (Number(qty) / 1e12).toFixed(4) + ' DUST',
         paymentCommit,
         contactCommit,
         做市商详情: {
           mmId: selectedMaker.mmId,
           owner: selectedMaker.owner,
           sellPremiumBps: selectedMaker.sellPremiumBps,     // 🆕 sell溢价
-          minAmount: (Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4) + ' MEMO',
-          deposit: (Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4) + ' MEMO'
+          minAmount: (Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4) + ' DUST',
+          deposit: (Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4) + ' DUST'
         }
       })
       
@@ -761,7 +761,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
           <ShoppingCartOutlined style={{ fontSize: '40px', color: '#fff' }} />
         </div>
         <Title level={2} style={{ color: '#667eea', marginBottom: '8px' }}>
-          购买 MEMO
+          购买 DUST
         </Title>
         <Text type="secondary" style={{ fontSize: '14px' }}>
           选择挂单并完成支付
@@ -888,13 +888,13 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
                         return (finalPrice / 1_000_000).toFixed(6)
                       })()}
                     </Text>
-                    {' USDT/MEMO'}
+                    {' USDT/DUST'}
                   </Descriptions.Item>
                   <Descriptions.Item label="最小金额">
-                    {(Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4)} MEMO
+                    {(Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4)} DUST
                   </Descriptions.Item>
                   <Descriptions.Item label="保证金">
-                    {(Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4)} MEMO
+                    {(Number(BigInt(selectedMaker.deposit) / BigInt(1e12))).toFixed(4)} DUST
                   </Descriptions.Item>
                 </Descriptions>
                 
@@ -970,7 +970,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
         <Form.Item label="计价模式" name="mode">
           <Radio.Group>
             <Radio.Button value="fiat">按法币金额</Radio.Button>
-            <Radio.Button value="memo">按 MEMO 数量</Radio.Button>
+            <Radio.Button value="memo">按 DUST 数量</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
@@ -984,8 +984,8 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
                     <InputNumber min={1} precision={2} style={{ width: '100%' }} placeholder="输入法币金额" />
                   </Form.Item>
                 ) : (
-                  <Form.Item name="dustAmount" label="MEMO 数量" rules={[{ required: true }]}> 
-                    <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="输入 MEMO 数量" />
+                  <Form.Item name="dustAmount" label="DUST 数量" rules={[{ required: true }]}> 
+                    <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="输入 DUST 数量" />
                   </Form.Item>
                 )}
               </>
@@ -1096,7 +1096,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             </Text>
           </div>
           <Text style={{ fontSize: '13px', color: '#595959', display: 'block', paddingLeft: '24px' }}>
-            支付完成后，请耐心等待做市商确认。确认后，MEMO 将自动到账，请稍等片刻。
+            支付完成后，请耐心等待做市商确认。确认后，DUST 将自动到账，请稍等片刻。
           </Text>
         </div>
       )}
@@ -1114,7 +1114,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
           <Space direction="vertical" style={{ width: '100%' }}>
             <Descriptions column={1} size="small" bordered>
               <Descriptions.Item label="订单号">{order.order_id}</Descriptions.Item>
-              <Descriptions.Item label="购买MEMO">{order.memo_amount}</Descriptions.Item>
+              <Descriptions.Item label="购买DUST">{order.memo_amount}</Descriptions.Item>
               <Descriptions.Item label="法币金额">{order.fiat_amount}</Descriptions.Item>
               <Descriptions.Item label="状态">
                 {paidOk ? <Tag color="green">{status}</Tag> : remainSec > 0 ? <Tag color="blue">{status}</Tag> : <Tag color="red">expired</Tag>}
@@ -1177,7 +1177,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             </Text>
           </div>
           <Text style={{ fontSize: '13px', color: '#595959', display: 'block', paddingLeft: '24px' }}>
-            支付完成后，请耐心等待做市商确认。确认后，MEMO 将自动到账，请稍等片刻。
+            支付完成后，请耐心等待做市商确认。确认后，DUST 将自动到账，请稍等片刻。
           </Text>
         </div>
       )}

@@ -278,11 +278,11 @@ export const MakerBridgeDashboard: React.FC = () => {
       ),
     },
     {
-      title: 'MEMO 数量',
+      title: 'DUST 数量',
       dataIndex: 'dustAmount',
       key: 'dustAmount',
       width: 120,
-      render: (amount: number) => `${amount.toFixed(2)} MEMO`,
+      render: (amount: number) => `${amount.toFixed(2)} DUST`,
     },
     {
       title: 'USDT 金额',
@@ -359,7 +359,7 @@ export const MakerBridgeDashboard: React.FC = () => {
                   <Tag color="green">{makerInfo.status}</Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="押金余额">
-                  {makerInfo.deposit.toLocaleString()} MEMO
+                  {makerInfo.deposit.toLocaleString()} DUST
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -435,7 +435,7 @@ export const MakerBridgeDashboard: React.FC = () => {
                       <Statistic 
                         title="累计交易量" 
                         value={serviceConfig.totalVolume} 
-                        suffix="MEMO"
+                        suffix="DUST"
                         precision={2}
                       />
                     </Card>
@@ -455,7 +455,7 @@ export const MakerBridgeDashboard: React.FC = () => {
                       <Statistic 
                         title="服务押金" 
                         value={serviceConfig.deposit} 
-                        suffix="MEMO"
+                        suffix="DUST"
                         precision={0}
                       />
                     </Card>
@@ -527,7 +527,7 @@ export const MakerBridgeDashboard: React.FC = () => {
               <Card style={{ marginBottom: 24, textAlign: 'center' }}>
                 <Title level={4}>您尚未启用桥接服务</Title>
                 <Paragraph type="secondary">
-                  点击下方按钮启用桥接服务，开始为用户提供 MEMO → USDT 兑换。
+                  点击下方按钮启用桥接服务，开始为用户提供 DUST → USDT 兑换。
                 </Paragraph>
                 <Button 
                   type="primary" 
@@ -600,7 +600,7 @@ export const MakerBridgeDashboard: React.FC = () => {
             message="押金计算"
             description={
               form.getFieldValue('maxSwapAmount') 
-                ? `所需押金: ${(form.getFieldValue('maxSwapAmount') * 100).toLocaleString()} MEMO`
+                ? `所需押金: ${(form.getFieldValue('maxSwapAmount') * 100).toLocaleString()} DUST`
                 : '填写最大兑换额后自动计算'
             }
             type="info"

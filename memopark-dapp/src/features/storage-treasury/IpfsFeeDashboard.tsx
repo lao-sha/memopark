@@ -101,7 +101,7 @@ export const IpfsFeeDashboard: React.FC = () => {
             <Statistic
               title="IPFS池余额"
               value={formatBalance(ipfsPool.balance)}
-              suffix="MEMO"
+              suffix="DUST"
               prefix={<BankOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -113,7 +113,7 @@ export const IpfsFeeDashboard: React.FC = () => {
             <Statistic
               title="月度配额剩余"
               value={formatBalance(quotaRemaining)}
-              suffix="MEMO"
+              suffix="DUST"
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: quotaPercent > 80 ? '#ff4d4f' : '#52c41a' }}
             />
@@ -145,12 +145,12 @@ export const IpfsFeeDashboard: React.FC = () => {
             <Statistic
               title="运营者托管"
               value={formatBalance(operatorEscrow?.balance || 0n)}
-              suffix="MEMO"
+              suffix="DUST"
               prefix={<WalletOutlined />}
               valueStyle={{ color: '#52c41a' }}
             />
             <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
-              累计: {formatBalance(operatorEscrow?.totalReceived || 0n)} MEMO
+              累计: {formatBalance(operatorEscrow?.totalReceived || 0n)} DUST
             </div>
           </Card>
         </Col>
@@ -163,16 +163,16 @@ export const IpfsFeeDashboard: React.FC = () => {
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text>已使用</Text>
-                <Text strong>{formatBalance(ipfsPool.quotaUsed || 0n)} MEMO</Text>
+                <Text strong>{formatBalance(ipfsPool.quotaUsed || 0n)} DUST</Text>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text>总配额</Text>
-                <Text>{formatBalance(ipfsPool.quotaTotal || 0n)} MEMO</Text>
+                <Text>{formatBalance(ipfsPool.quotaTotal || 0n)} DUST</Text>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                 <Text>剩余配额</Text>
                 <Text type={quotaPercent > 80 ? 'danger' : 'success'} strong>
-                  {formatBalance(quotaRemaining)} MEMO
+                  {formatBalance(quotaRemaining)} DUST
                 </Text>
               </div>
               <Progress 
@@ -185,7 +185,7 @@ export const IpfsFeeDashboard: React.FC = () => {
             {quotaPercent > 80 && (
               <Alert
                 message="配额即将用尽"
-                description={`本月配额已使用${quotaPercent.toFixed(1)}%，剩余${formatBalance(quotaRemaining)} MEMO。配额用尽后将从逝者专户或调用者账户扣款。`}
+                description={`本月配额已使用${quotaPercent.toFixed(1)}%，剩余${formatBalance(quotaRemaining)} DUST。配额用尽后将从逝者专户或调用者账户扣款。`}
                 type="warning"
                 showIcon
               />
@@ -203,7 +203,7 @@ export const IpfsFeeDashboard: React.FC = () => {
                 </Space>
                 <Space>
                   <Tag color="success">{stats.poolChargeCount} 次</Tag>
-                  <Text strong>{formatBalance(stats.totalFromPool)} MEMO</Text>
+                  <Text strong>{formatBalance(stats.totalFromPool)} DUST</Text>
                 </Space>
               </div>
 
@@ -214,7 +214,7 @@ export const IpfsFeeDashboard: React.FC = () => {
                 </Space>
                 <Space>
                   <Tag color="processing">{stats.subjectChargeCount} 次</Tag>
-                  <Text strong>{formatBalance(stats.totalFromSubject)} MEMO</Text>
+                  <Text strong>{formatBalance(stats.totalFromSubject)} DUST</Text>
                 </Space>
               </div>
 
@@ -225,7 +225,7 @@ export const IpfsFeeDashboard: React.FC = () => {
                 </Space>
                 <Space>
                   <Tag color="warning">{stats.callerChargeCount} 次</Tag>
-                  <Text strong>{formatBalance(stats.totalFromCaller)} MEMO</Text>
+                  <Text strong>{formatBalance(stats.totalFromCaller)} DUST</Text>
                 </Space>
               </div>
 
@@ -235,7 +235,7 @@ export const IpfsFeeDashboard: React.FC = () => {
                   <Space>
                     <Tag>{stats.totalChargeCount} 次</Tag>
                     <Text strong style={{ fontSize: 16 }}>
-                      {formatBalance(stats.totalCharged)} MEMO
+                      {formatBalance(stats.totalCharged)} DUST
                     </Text>
                   </Space>
                 </div>
@@ -296,7 +296,7 @@ function getFeeRecordColumns(): ColumnsType<FeeRecord> {
       title: '金额',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount: bigint) => `${formatBalance(amount)} MEMO`,
+      render: (amount: bigint) => `${formatBalance(amount)} DUST`,
       align: 'right',
     },
     {

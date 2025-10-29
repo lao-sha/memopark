@@ -354,7 +354,7 @@ export async function decodePreimageHex(hex: string): Promise<{ section?: string
 export async function getTokenInfo(): Promise<{ decimals: number; symbol: string }> {
   const api = await getApi()
   const decimals = (api.registry.chainDecimals && api.registry.chainDecimals[0]) || 12
-  const symbol = (api.registry.chainTokens && api.registry.chainTokens[0]) || 'MEMO'
+  const symbol = (api.registry.chainTokens && api.registry.chainTokens[0]) || 'DUST'
   return { decimals, symbol }
 }
 

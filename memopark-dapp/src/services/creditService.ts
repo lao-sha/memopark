@@ -484,7 +484,7 @@ export async function getMakerCreditDetail(
     
     const canAcceptOrders = credit.status !== 'Suspended';
     
-    // 基础保证金：1,000,000 MEMO
+    // 基础保证金：1,000,000 DUST
     const baseDeposit = '1000000000000000000000000'; // 1,000,000 * 10^18
     const requiredDeposit = (BigInt(baseDeposit) * BigInt(depositDiscount) / BigInt(100)).toString();
     

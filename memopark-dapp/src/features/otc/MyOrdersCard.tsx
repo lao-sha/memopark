@@ -407,7 +407,7 @@ export const MyOrdersCard: React.FC = () => {
                           挂单: <Text strong>#{order.listingId}</Text>
                         </Text>
                         <Text type="secondary" style={{ fontSize: '13px' }}>
-                          数量: <Text strong>{(Number(BigInt(order.qty) / BigInt(1e12))).toFixed(4)} MEMO</Text>
+                          数量: <Text strong>{(Number(BigInt(order.qty) / BigInt(1e12))).toFixed(4)} DUST</Text>
                         </Text>
                       </Space>
                       

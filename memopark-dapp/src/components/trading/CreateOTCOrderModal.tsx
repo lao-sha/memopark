@@ -56,11 +56,11 @@ interface CreateOTCOrderModalProps {
 /**
  * 函数级详细中文注释：格式化MEMO金额
  */
-const formatMEMO = (amount: string | number): string => {
+const formatDUST = (amount: string | number): string => {
   const memo = typeof amount === 'string' 
     ? BigInt(amount) / BigInt(1_000_000)
     : BigInt(Math.floor(amount * 1_000_000)) / BigInt(1_000_000)
-  return memo.toLocaleString() + ' MEMO'
+  return memo.toLocaleString() + ' DUST'
 }
 
 /**
@@ -161,7 +161,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
       const api = await getApi()
       const service = createTradingService(api)
       
-      // 转换数量（MEMO -> 最小单位）
+      // 转换数量（DUST -> 最小单位）
       const qtyMinimalUnits = (BigInt(Math.floor(values.qty * 1_000_000))).toString()
       
       const tx = service.buildCreateOrderTx({
@@ -216,7 +216,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <Text type="secondary">基准价：</Text>
-            <Text>{basePrice.toFixed(4)} USDT/MEMO</Text>
+            <Text>{basePrice.toFixed(4)} USDT/DUST</Text>
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -238,7 +238,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <Text strong>购买数量：</Text>
             <Text strong style={{ fontSize: 16 }}>
-              {qty.toLocaleString()} MEMO
+              {qty.toLocaleString()} DUST
             </Text>
           </div>
 
@@ -349,7 +349,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
                 precision={6}
                 style={{ width: '100%' }}
                 placeholder="输入购买数量"
-                addonAfter="MEMO"
+                addonAfter="DUST"
                 onChange={(value) => setQty(value || 0)}
               />
             </Form.Item>

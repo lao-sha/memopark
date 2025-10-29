@@ -10,11 +10,11 @@ const { Title, Text, Paragraph } = Typography;
  * 极简桥接页面组件（动态均价版）
  * 
  * 功能：
- * - MEMO → USDT (TRC20) 兑换
+ * - DUST → USDT (TRC20) 兑换
  * - 动态汇率：基于 pallet-pricing 的市场加权均价（OTC + Bridge）
  * - 冷启动阶段：使用 pallet-pricing 的默认价格（当前为 0.000001 USDT/MEMO）
  * - 手续费：0.3%
- * - 最小兑换：100 MEMO
+ * - 最小兑换：100 DUST
  */
 export const SimpleBridgePage: React.FC = () => {
     const { api, currentAccount } = usePolkadot();
@@ -40,7 +40,7 @@ export const SimpleBridgePage: React.FC = () => {
     
     // 固定配置
     const FEE_RATE = 0.003;     // 0.3% 手续费
-    const MIN_AMOUNT = 100;     // 最小 100 MEMO
+    const MIN_AMOUNT = 100;     // 最小 100 DUST
     const FALLBACK_RATE = 0.000001;  // 备用汇率（与 pallet-pricing DefaultPrice 一致）
     
     // 使用市场价格（如果为0则使用备用汇率）
@@ -96,7 +96,7 @@ export const SimpleBridgePage: React.FC = () => {
              * 现在 SimpleBridge 直接使用 pallet-pricing::get_memo_market_price_weighted() 的返回值。
              * 
              * pallet-pricing 的价格返回逻辑：
-             * 1. 冷启动阶段（交易量 < 1亿 MEMO）：返回 DefaultPrice（当前为 0.000001 USDT/MEMO）
+             * 1. 冷启动阶段（交易量 < 1亿 DUST）：返回 DefaultPrice（当前为 0.000001 USDT/MEMO）
              * 2. 正常运行阶段：返回市场加权均价
              * 3. 无交易数据：返回 DefaultPrice
              * 
@@ -112,7 +112,7 @@ export const SimpleBridgePage: React.FC = () => {
             const priceUsdt = priceU64 / 1e6;
             setMarketPrice(priceUsdt);
             
-            console.log('pallet-pricing 默认价格:', priceUsdt, 'USDT/MEMO');
+            console.log('pallet-pricing 默认价格:', priceUsdt, 'USDT/DUST');
             console.log('原始值（精度 10^6）:', priceU64);
         } catch (error: any) {
             console.error('加载默认价格失败:', error);
@@ -132,7 +132,7 @@ export const SimpleBridgePage: React.FC = () => {
         
         // 验证表单
         if (!dustAmount || dustAmount < MIN_AMOUNT) {
-            message.error(`最小兑换金额为 ${MIN_AMOUNT} MEMO`);
+            message.error(`最小兑换金额为 ${MIN_AMOUNT} DUST`);
             return;
         }
         
@@ -146,7 +146,7 @@ export const SimpleBridgePage: React.FC = () => {
         try {
             // 调用 trading.swap（🆕 pallet-trading）
             const tx = api.tx.trading.swap(
-                BigInt(dustAmount * 1e12), // MEMO 12位小数
+                BigInt(dustAmount * 1e12), // DUST 12位小数
                 tronAddress
             );
             
@@ -169,7 +169,7 @@ export const SimpleBridgePage: React.FC = () => {
                                     if (priceUsdt) {
                                         const actualRate = priceUsdt / 1e6;
                                         setActualPrice(actualRate);
-                                        console.log('Swap ID:', id, '实际汇率:', actualRate, 'USDT/MEMO');
+                                        console.log('Swap ID:', id, '实际汇率:', actualRate, 'USDT/DUST');
                                     }
                                 }
                             });
@@ -216,7 +216,7 @@ export const SimpleBridgePage: React.FC = () => {
             {/* 标题 */}
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
                 <Title level={2}>
-                    <SwapOutlined /> MEMO → USDT 快速兑换
+                    <SwapOutlined /> DUST → USDT 快速兑换
                 </Title>
                 <Paragraph type="secondary">
                     极简托管式桥接 · 动态市场均价 · 1-2分钟到账
@@ -271,7 +271,7 @@ export const SimpleBridgePage: React.FC = () => {
                                             title="市场均价"
                                             value={currentRate}
                                             precision={6}
-                                            suffix="USDT/MEMO"
+                                            suffix="USDT/DUST"
                                             valueStyle={{ color: isFallback ? '#faad14' : '#3f8600' }}
                                         />
                                         {isFallback && (
@@ -297,7 +297,7 @@ export const SimpleBridgePage: React.FC = () => {
                                 message={
                                     <Space>
                                         <Text>当前余额:</Text>
-                                        <Text strong>{balance} MEMO</Text>
+                                        <Text strong>{balance} DUST</Text>
                                     </Space>
                                 }
                                 type="info"
@@ -308,9 +308,9 @@ export const SimpleBridgePage: React.FC = () => {
                         
                         <Form form={form} layout="vertical">
                             <Form.Item 
-                                label="MEMO 数量" 
+                                label="DUST 数量" 
                                 required
-                                help={`最小 ${MIN_AMOUNT} MEMO`}
+                                help={`最小 ${MIN_AMOUNT} DUST`}
                             >
                                 <InputNumber
                                     value={dustAmount}
@@ -319,7 +319,7 @@ export const SimpleBridgePage: React.FC = () => {
                                     max={parseFloat(balance)}
                                     style={{ width: '100%' }}
                                     size="large"
-                                    addonAfter="MEMO"
+                                    addonAfter="DUST"
                                     placeholder={`输入 ${MIN_AMOUNT} 或更多`}
                                 />
                             </Form.Item>
@@ -352,7 +352,7 @@ export const SimpleBridgePage: React.FC = () => {
                                     <Statistic 
                                         title="当前汇率" 
                                         value={currentRate}
-                                        suffix="USDT/MEMO"
+                                        suffix="USDT/DUST"
                                         precision={6}
                                         valueStyle={{ color: isFallback ? '#faad14' : undefined }}
                                     />
@@ -461,13 +461,13 @@ export const SimpleBridgePage: React.FC = () => {
                                     <Tag color="blue">{swapId}</Tag>
                                 </div>
                                 <div>
-                                    <Text type="secondary">MEMO 数量:</Text>{' '}
-                                    <Text strong>{dustAmount} MEMO</Text>
+                                    <Text type="secondary">DUST 数量:</Text>{' '}
+                                    <Text strong>{dustAmount} DUST</Text>
                                 </div>
                                 {actualPrice > 0 && (
                                     <div>
                                         <Text type="secondary">实际汇率:</Text>{' '}
-                                        <Text strong style={{ color: '#1890ff' }}>{actualPrice.toFixed(6)} USDT/MEMO</Text>
+                                        <Text strong style={{ color: '#1890ff' }}>{actualPrice.toFixed(6)} USDT/DUST</Text>
                                     </div>
                                 )}
                                 <div>
@@ -519,7 +519,7 @@ export const SimpleBridgePage: React.FC = () => {
                 </Paragraph>
                 <Paragraph>
                     <Text strong>Q: 最小兑换金额是多少？</Text><br />
-                    A: 最小 {MIN_AMOUNT} MEMO。
+                    A: 最小 {MIN_AMOUNT} DUST。
                 </Paragraph>
                 <Paragraph>
                     <Text strong>Q: 手续费怎么算？</Text><br />
@@ -531,10 +531,10 @@ export const SimpleBridgePage: React.FC = () => {
                 </Paragraph>
                 <Paragraph>
                     <Text strong>Q: 什么是冷启动阶段？</Text><br />
-                    A: 在系统启动初期（交易量 &lt; 1亿 MEMO），系统使用 pallet-pricing 的默认价格 {FALLBACK_RATE} USDT/MEMO。待市场活跃后，自动切换到市场加权均价。
+                    A: 在系统启动初期（交易量 &lt; 1亿 DUST），系统使用 pallet-pricing 的默认价格 {FALLBACK_RATE} USDT/MEMO。待市场活跃后，自动切换到市场加权均价。
                 </Paragraph>
                 <Paragraph>
-                    <Text strong>Q: 支持反向兑换吗（USDT → MEMO）？</Text><br />
+                    <Text strong>Q: 支持反向兑换吗（USDT → DUST）？</Text><br />
                     A: 暂不支持，后续版本会添加。
                 </Paragraph>
             </Card>

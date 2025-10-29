@@ -62,7 +62,7 @@ const TreasuryPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       const map: Record<string, { text: string }> = {}
-      const { decimals, symbol } = await getTokenInfo().catch(()=>({ decimals: 12, symbol: 'MEMO' }))
+      const { decimals, symbol } = await getTokenInfo().catch(()=>({ decimals: 12, symbol: 'DUST' }))
       for (const r of txList) {
         try {
           if (r.section === 'preimage' && (r.method || '').toLowerCase().includes('notepreimage')) {

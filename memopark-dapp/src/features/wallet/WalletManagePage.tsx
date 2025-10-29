@@ -18,7 +18,7 @@ const { Text } = Typography;
  * 函数级详细中文注释：钱包管理页面组件
  * - 显示钱包地址和余额
  * - 提供转账和收款功能入口
- * - 展示资产列表（显示所有已登录的 MEMO 账户）
+ * - 展示资产列表（显示所有已登录的 DUST 账户）
  * - 移动端优先设计，最大宽度 640px 居中
  */
 
@@ -270,7 +270,7 @@ const WalletManagePage: React.FC = () => {
               {walletAlias}
             </Text>
             <Text strong style={{ fontSize: '24px', color: '#fff' }}>
-              {balance} MEMO
+              {balance} DUST
             </Text>
           </div>
 
@@ -382,7 +382,7 @@ const WalletManagePage: React.FC = () => {
         </button>
       </div>
 
-      {/* 资产列表 - 显示所有已登录的 MEMO 账户 */}
+      {/* 资产列表 - 显示所有已登录的 DUST 账户 */}
       <div style={{ padding: '0 16px' }}>
         <div
           style={{
@@ -393,7 +393,7 @@ const WalletManagePage: React.FC = () => {
           }}
         >
           <Text strong style={{ fontSize: '16px' }}>
-            MEMO 资产
+            DUST 资产
           </Text>
           <SyncOutlined
             spin={loadingAccounts}
@@ -502,7 +502,7 @@ const WalletManagePage: React.FC = () => {
                     {acc.balance}
                   </Text>
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    MEMO
+                    DUST
                   </Text>
                 </div>
               </div>

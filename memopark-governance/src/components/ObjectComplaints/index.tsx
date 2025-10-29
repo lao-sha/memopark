@@ -160,7 +160,7 @@ export default function ObjectComplaints({
       dataIndex: 'deposit',
       key: 'deposit',
       width: 120,
-      render: (deposit) => `${formatBalance(deposit)} MEMO`
+      render: (deposit) => `${formatBalance(deposit)} DUST`
     },
     {
       title: '状态',
