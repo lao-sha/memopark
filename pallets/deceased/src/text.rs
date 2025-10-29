@@ -17,7 +17,7 @@ use super::pallet::BalanceOf;  // 函数级中文注释：导入Balance类型别
 use alloc::vec::Vec;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use pallet_memo_ipfs::IpfsPinner;
+use pallet_stardust_ipfs::IpfsPinner;
 
 /// 函数级中文注释：文本类型（Article/Message）。
 #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]

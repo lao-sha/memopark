@@ -41,8 +41,8 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::Get;
 use sp_runtime::{traits::AccountIdConversion, traits::One, Perbill};
 use sp_version::RuntimeVersion;
-// ===== memo-content-governance 运行时配置（占位骨架） =====
-impl pallet_memo_appeals::Config for Runtime {
+// ===== stardust-appeals 运行时配置（占位骨架） =====
+impl pallet_stardust_appeals::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     
     /// Phase 1.5优化：使用Fungible traits替代Currency
@@ -86,7 +86,7 @@ impl pallet_memo_appeals::Config for Runtime {
     /// 函数级中文注释：动态押金策略实现：按 domain/action 给出基准押金倍数；没有匹配则回退固定押金。
     type AppealDepositPolicy = ContentAppealDepositPolicy;
     /// 权重实现（占位）
-    type WeightInfo = pallet_memo_appeals::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = pallet_stardust_appeals::weights::SubstrateWeight<Runtime>;
     /// 函数级中文注释：最近活跃度提供者（用于"应答自动否决"判断）。
     type LastActiveProvider = ContentLastActiveProvider;
     /// 函数级中文注释：CID 最小长度默认值（示例：10字节）。
@@ -114,7 +114,7 @@ impl pallet_memo_appeals::Config for Runtime {
 /// - 逝者档案域(2)：主图/可见性调整(1/2/3) → 1× 基准；治理转移拥有者(4) → 1.5× 基准
 /// - 其他 → None（回退到固定押金）
 pub struct ContentAppealDepositPolicy;
-impl pallet_memo_appeals::AppealDepositPolicy for ContentAppealDepositPolicy {
+impl pallet_stardust_appeals::AppealDepositPolicy for ContentAppealDepositPolicy {
     type AccountId = AccountId;
     type Balance = Balance;
     type BlockNumber = BlockNumber;
@@ -175,7 +175,7 @@ impl pallet_memo_appeals::AppealDepositPolicy for ContentAppealDepositPolicy {
 /// 函数级详细中文注释：内容治理最近活跃度提供者实现。
 /// - 仅对 2=deceased 域返回最近活跃块高：读取 `pallet-deceased::LastActiveOf`；其他域返回 None。
 pub struct ContentLastActiveProvider;
-impl pallet_memo_appeals::LastActiveProvider for ContentLastActiveProvider {
+impl pallet_stardust_appeals::LastActiveProvider for ContentLastActiveProvider {
     type BlockNumber = BlockNumber;
     fn last_active_of(domain: u8, target: u64) -> Option<Self::BlockNumber> {
         match domain {
@@ -305,7 +305,7 @@ use alloc::vec;
 
 // Local module imports
 use super::{
-    AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, MemoIpfs, Nonce, PalletInfo, Runtime,
+    AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, StardustIpfs, Nonce, PalletInfo, Runtime,
     RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
     System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
 };
@@ -539,7 +539,7 @@ parameter_types! {
     pub const GraveMaxFollowers: u32 = 100_000;
 }
 pub struct RootOnlyParkAdmin;
-impl pallet_memo_park::Config for Runtime {
+impl pallet_stardust_park::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxRegionLen = ParkMaxRegionLen;
     type MaxCidLen = ParkMaxCidLen;
@@ -569,10 +569,10 @@ parameter_types! {
     pub const GraveMaxCoverOptions: u32 = 256;
 }
 pub struct NoopIntermentHook;
-// 重命名 crate：从 pallet_grave → pallet_memo_grave
-impl pallet_memo_grave::Config for Runtime {
+// 重命名 crate：从 pallet_grave → pallet_stardust_grave
+impl pallet_stardust_grave::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = pallet_memo_grave::weights::TestWeights;
+    type WeightInfo = pallet_stardust_grave::weights::TestWeights;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
     type MaxIntermentsPerGrave = GraveMaxIntermentsPerGrave;
@@ -609,7 +609,7 @@ impl pallet_memo_grave::Config for Runtime {
     type MaxLinkLen = frame_support::traits::ConstU32<128>;
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
-    type IpfsPinner = MemoIpfs;
+    type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
@@ -631,24 +631,24 @@ pub struct GraveProviderAdapter;
 impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     /// 检查墓位是否存在：读取 `pallet-memo-grave` 的存储 `Graves`
     fn grave_exists(grave_id: u64) -> bool {
-        pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
+        pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
     }
     /// 校验 `who` 是否可在该墓位下管理逝者：当前仅墓主可管理（后续可扩展授权）
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
-        if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
+        if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(grave_id) {
             // 1) 墓主放行
             if grave.owner == *who {
                 return true;
             }
             // 2) 墓位管理员放行
-            let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
+            let admins = pallet_stardust_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
             if admins.iter().any(|a| a == who) {
                 return true;
             }
             // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
             if let Some(pid) = grave.park_id {
-                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
+                <RootOnlyParkAdmin as pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
             } else {
                 false
             }
@@ -690,7 +690,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
             };
         
         // 调用grave pallet的内部函数
-        pallet_memo_grave::pallet::Pallet::<Runtime>::do_inter_internal(
+        pallet_stardust_grave::pallet::Pallet::<Runtime>::do_inter_internal(
             grave_id,
             deceased_id,
             slot,
@@ -715,7 +715,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
         deceased_id: u64,
     ) -> Result<(), sp_runtime::DispatchError> {
         // 调用grave pallet的内部函数
-        pallet_memo_grave::pallet::Pallet::<Runtime>::do_exhume_internal(
+        pallet_stardust_grave::pallet::Pallet::<Runtime>::do_exhume_internal(
             grave_id,
             deceased_id,
         )
@@ -754,7 +754,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
         grave_id: u64,
     ) -> Result<(), sp_runtime::DispatchError> {
         // 调用grave pallet的公共方法
-        pallet_memo_grave::pallet::Pallet::<Runtime>::check_admission_policy(who, grave_id)
+        pallet_stardust_grave::pallet::Pallet::<Runtime>::check_admission_policy(who, grave_id)
             .map_err(|e| e.into())
     }
     
@@ -762,22 +762,22 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
 }
 
 // 为 memo-pet 复用同一墓位适配逻辑
-impl pallet_memo_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAdapter {
+impl pallet_stardust_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     fn grave_exists(grave_id: u64) -> bool {
-        pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
+        pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
     }
     fn can_attach(who: &AccountId, grave_id: u64) -> bool {
-        if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(grave_id) {
+        if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(grave_id) {
             if grave.owner == *who {
                 return true;
             }
-            let admins = pallet_memo_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
+            let admins = pallet_stardust_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
             if admins.iter().any(|a| a == who) {
                 return true;
             }
             let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
             if let Some(pid) = grave.park_id {
-                <RootOnlyParkAdmin as pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
+                <RootOnlyParkAdmin as pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
             } else {
                 false
             }
@@ -804,7 +804,7 @@ impl pallet_deceased::Config for Runtime {
     >;
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
-    type IpfsPinner = MemoIpfs;
+    type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 
@@ -856,7 +856,7 @@ pub struct DeceasedProviderAdapter;
 
 /// 函数级中文注释：Deceased token 适配器，将 `pallet-deceased` 的 `deceased_token` 转换为 `BoundedVec<u8, GraveMaxCidLen>`。
 pub struct DeceasedTokenProviderAdapter;
-impl pallet_memo_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen>
+impl pallet_stardust_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen>
     for DeceasedTokenProviderAdapter
 {
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, GraveMaxCidLen>> {
@@ -982,7 +982,7 @@ impl pallet_deceased_media::Config for Runtime {
     type ComplaintPeriod = MediaComplaintPeriod;
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
-    type IpfsPinner = MemoIpfs;
+    type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
@@ -1012,7 +1012,7 @@ impl pallet_deceased_text::Config for Runtime {
     type ComplaintPeriod = MediaComplaintPeriod;
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
-    type IpfsPinner = MemoIpfs;
+    type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
@@ -1147,7 +1147,7 @@ impl pallet_ledger::Config for Runtime {
 //         const DOMAIN_GRAVE: u8 = 1;
 //         if target.0 == DOMAIN_GRAVE {
 //             if let Some(primary_id) =
-//                 pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
+//                 pallet_stardust_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
 //             {
 //                 if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
 //                     // 函数级中文注释：降级逻辑也使用 creator 确保账户稳定性
@@ -1191,7 +1191,7 @@ impl pallet_ledger::Config for Runtime {
 //             (0, _) => {
 //                 if target.0 == DOMAIN_GRAVE {
 //                     if let Some(primary_id) =
-//                         pallet_memo_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
+//                         pallet_stardust_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
 //                     {
 //                         if let Some(d) =
 //                             pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id)
@@ -1497,7 +1497,7 @@ impl pallet_pricing::pallet::Config for Runtime {
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
 // 修正命名：由旧 crate 前缀 memorial 切换为 memo，保证与 `pallets/memo-park` 对应
-impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+impl pallet_stardust_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
     /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
@@ -1509,7 +1509,7 @@ impl pallet_memo_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAd
     }
 }
 
-impl pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
+impl pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
     /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
         if frame_system::EnsureRoot::<AccountId>::try_origin(origin.clone()).is_ok() {
@@ -1521,7 +1521,7 @@ impl pallet_memo_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkA
     }
 }
 
-impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
+impl pallet_stardust_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
     /// 函数级中文注释：安葬回调空实现，占位方便后续接入统计/KPI。
     fn on_interment(_grave_id: u64, _deceased_id: u64) {}
 }
@@ -1536,10 +1536,10 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 //         const DOMAIN_GRAVE: u8 = 1;
 //         const DOMAIN_PET: u8 = 3;
 //         if target.0 == DOMAIN_GRAVE {
-//             return pallet_memo_grave::pallet::Graves::<Runtime>::contains_key(target.1);
+//             return pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(target.1);
 //         }
 //         if target.0 == DOMAIN_PET {
-//             return pallet_memo_pet::pallet::PetOf::<Runtime>::contains_key(target.1);
+//             return pallet_stardust_pet::pallet::PetOf::<Runtime>::contains_key(target.1);
 //         }
 //         true
 //     }
@@ -1552,12 +1552,12 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 //         const DOMAIN_GRAVE: u8 = 1;
 //         if target.0 == DOMAIN_GRAVE {
 //             // 若墓位公开则放行，否则必须为成员
-//             let is_public = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1)
+//             let is_public = pallet_stardust_grave::pallet::Graves::<Runtime>::get(target.1)
 //                 .map(|g| g.is_public)
 //                 .unwrap_or(false);
 //             if !is_public {
 //                 ensure!(
-//                     pallet_memo_grave::pallet::Members::<Runtime>::contains_key(target.1, &who),
+//                     pallet_stardust_grave::pallet::Members::<Runtime>::contains_key(target.1, &who),
 //                     sp_runtime::DispatchError::Other("NotMember")
 //                 );
 //             }
@@ -1636,7 +1636,7 @@ impl pallet_memo_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
 //                 }
 //             }
 //             // 3) 累计到逝者总额：若墓位绑定了 primary_deceased_id 则累加（不含押金，amount 已为实付）
-//             if let Some(grave) = pallet_memo_grave::pallet::Graves::<Runtime>::get(target.1) {
+//             if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(target.1) {
 //                 if let Some(primary) = grave.deceased_tokens.first() {
 //                     // 说明：这里假设第一个 token 对应 primary deceased；若有更严格的 primary 字段，可改为读取专用字段。
 //                     if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::iter()
@@ -1716,7 +1716,7 @@ impl pallet_evidence::Config for Runtime {
     type MaxKeyLen = frame_support::traits::ConstU32<4096>;
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
-    type IpfsPinner = MemoIpfs;
+    type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
@@ -1932,9 +1932,9 @@ impl pallet_identity::Config for Runtime {
     // 新版 pallet-identity 已不需要 BenchmarkHelper 关联类型
 }
 
-// ===== memo-pet 配置（最小实现） =====
+// ===== stardust-pet 配置（最小实现） =====
 parameter_types! { pub const PetStringLimit: u32 = 64; }
-impl pallet_memo_pet::Config for Runtime {
+impl pallet_stardust_pet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type StringLimit = PetStringLimit;
     // 复用墓位适配器，沿用人类主体相同的权限判断
@@ -2038,7 +2038,7 @@ impl pallet_trading::Config for Runtime {
     
     // ===== 托管和推荐配置 =====
     type Escrow = pallet_escrow::Pallet<Runtime>;
-    // 🔴 2025-10-29：暂时使用空实现（pallet_memo_referrals未配置）
+    // 🔴 2025-10-29：暂时使用空实现（pallet_stardust_referrals未配置）
     type ReferralProvider = EmptyReferralProvider;
     type AffiliateDistributor = EmptyAffiliateDistributor;
     
@@ -2061,7 +2061,7 @@ impl pallet_trading::Config for Runtime {
 
 /// 函数级详细中文注释：空的推荐关系提供者（Trading暂不使用推荐功能）
 pub struct EmptyReferralProvider;
-impl pallet_memo_referrals::ReferralProvider<AccountId> for EmptyReferralProvider {
+impl pallet_stardust_referrals::ReferralProvider<AccountId> for EmptyReferralProvider {
     fn sponsor_of(_who: &AccountId) -> Option<AccountId> { None }
     fn ancestors(_who: &AccountId, _max: u32) -> alloc::vec::Vec<AccountId> { alloc::vec::Vec::new() }
     fn is_banned(_who: &AccountId) -> bool { false }
@@ -2216,7 +2216,7 @@ pub struct ContentGovernanceRouter;
 /// - 根据 (domain, action) 将调用分发到相应 pallet 的 gov*/force* 接口；
 /// - MVP：先覆盖常见内容域（grave/deceased/deceased-text/deceased-media/offerings/park）；
 /// - 安全：仅在 memo-content-governance Pallet 审批通过后由 Hooks 调用，无需二次权限判断。
-impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
+impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
     fn execute(
         _who: &AccountId,
         domain: u8,
@@ -2227,32 +2227,32 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
             // 1=grave：治理强制执行（示例：10=清空封面；11=强制转让墓地 owner 到平台账户）
             (1, 10) => {
                 // 清空封面
-                pallet_memo_grave::pallet::Pallet::<Runtime>::clear_cover_via_governance(
+                pallet_stardust_grave::pallet::Pallet::<Runtime>::clear_cover_via_governance(
                     RuntimeOrigin::root(),
                     target,
                 )
             }
-            (1, 11) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_transfer_grave(
+            (1, 11) => pallet_stardust_grave::pallet::Pallet::<Runtime>::gov_transfer_grave(
                 RuntimeOrigin::root(),
                 target,
                 PlatformAccount::get(),
                 vec![],
             ),
             // 1=grave：12=设置限制；13=软删除；14=恢复
-            (1, 12) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_set_restricted(
+            (1, 12) => pallet_stardust_grave::pallet::Pallet::<Runtime>::gov_set_restricted(
                 RuntimeOrigin::root(),
                 target,
                 true,
                 1u8,
                 vec![],
             ),
-            (1, 13) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_remove_grave(
+            (1, 13) => pallet_stardust_grave::pallet::Pallet::<Runtime>::gov_remove_grave(
                 RuntimeOrigin::root(),
                 target,
                 1u8,
                 vec![],
             ),
-            (1, 14) => pallet_memo_grave::pallet::Pallet::<Runtime>::gov_restore_grave(
+            (1, 14) => pallet_stardust_grave::pallet::Pallet::<Runtime>::gov_restore_grave(
                 RuntimeOrigin::root(),
                 target,
                 vec![],
@@ -2286,7 +2286,7 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
             // 2=deceased：4=治理转移拥有者
             (2, 4) => {
                 // 运行时通过治理 Pallet 的只读接口查找 new_owner
-                if let Some((_id, new_owner)) = pallet_memo_appeals::pallet::Pallet::<
+                if let Some((_id, new_owner)) = pallet_stardust_appeals::pallet::Pallet::<
                     Runtime,
                 >::find_owner_transfer_params(target)
                 {
@@ -2353,14 +2353,14 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
             }
             */
             // 5=park：转移园区所有权（占位，new_owner=平台账户）
-            (5, 40) => pallet_memo_park::pallet::Pallet::<Runtime>::gov_transfer_park(
+            (5, 40) => pallet_stardust_park::pallet::Pallet::<Runtime>::gov_transfer_park(
                 RuntimeOrigin::root(),
                 target as u64,
                 PlatformAccount::get(),
                 vec![],
             ),
             // 5=park：41=设置园区封面（事件化）
-            (5, 41) => pallet_memo_park::pallet::Pallet::<Runtime>::gov_set_park_cover(
+            (5, 41) => pallet_stardust_park::pallet::Pallet::<Runtime>::gov_set_park_cover(
                 RuntimeOrigin::root(),
                 target as u64,
                 None,
@@ -2401,7 +2401,7 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
 //     /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
 //     pub const RefMaxHops: u32 = 10;
 // }
-// impl pallet_memo_referrals::Config for Runtime {
+// impl pallet_stardust_referrals::Config for Runtime {
 //     /// 函数级中文注释：事件类型绑定到运行时事件。
 //     type RuntimeEvent = RuntimeEvent;
 //     /// 函数级中文注释：最大层级限制（防环遍历的边界）。
@@ -2416,8 +2416,8 @@ impl pallet_memo_appeals::AppealRouter<AccountId> for ContentGovernanceRouter {
 
 // ===== memo-ipfs（存储+OCW）配置 =====
 parameter_types! { pub const IpfsMaxCidHashLen: u32 = 64; }
-/// 函数级中文注释：为 memo-ipfs 绑定运行时类型。注意 OCW 需要签名类型约束。
-impl pallet_memo_ipfs::Config for Runtime {
+/// 函数级中文注释：为 stardust-ipfs 绑定运行时类型。注意 OCW 需要签名类型约束。
+impl pallet_stardust_ipfs::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Balance = Balance;
@@ -2510,7 +2510,7 @@ impl pallet_memo_ipfs::Config for Runtime {
 /// - 返回creator字段
 /// - 如果deceased不存在返回None
 pub struct DeceasedCreatorAdapter;
-impl pallet_memo_ipfs::CreatorProvider<AccountId> for DeceasedCreatorAdapter {
+impl pallet_stardust_ipfs::CreatorProvider<AccountId> for DeceasedCreatorAdapter {
     /// 函数级详细中文注释：从pallet-deceased读取creator字段
     /// 
     /// ### 参数
@@ -2546,7 +2546,7 @@ impl pallet_memo_ipfs::CreatorProvider<AccountId> for DeceasedCreatorAdapter {
 /// - 返回owner字段
 /// - 如果deceased不存在返回None
 pub struct DeceasedOwnerAdapter;
-impl pallet_memo_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
+impl pallet_stardust_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
     /// 函数级详细中文注释：从pallet-deceased读取owner字段
     /// 
     /// ### 参数
@@ -2571,7 +2571,7 @@ pub struct SlaFromIpfs;
 impl SlaFromIpfs {
     /// 函数级中文注释：占位保留工具函数，可被迁移脚本或索引层复用（不依赖 endowment trait）。
     pub fn foreach_active_operator<F: FnMut(&AccountId, u32, u32, BlockNumber)>(mut f: F) {
-        use pallet_memo_ipfs::pallet::{OperatorSla as SlaMap, Operators as OpMap};
+        use pallet_stardust_ipfs::pallet::{OperatorSla as SlaMap, Operators as OpMap};
         for (op, s) in SlaMap::<Runtime>::iter() {
             if let Some(info) = OpMap::<Runtime>::get(&op) {
                 if info.status == 0 {
@@ -2819,7 +2819,7 @@ impl pallet_storage_treasury::Config for Runtime {
 //     /// 货币实现
 //     type Currency = Balances;
 //     /// 推荐关系只读提供者
-//     type Referrals = pallet_memo_referrals::Pallet<Runtime>;
+//     type Referrals = pallet_stardust_referrals::Pallet<Runtime>;
 //     /// 周对应区块数
 //     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
 //     /// 函数级中文注释：从托管层读取托管账户（类似 affiliate-instant 的设计）
@@ -2875,7 +2875,7 @@ impl pallet_storage_treasury::Config for Runtime {
 // /// - 用于推荐码申请时检查会员状态
 /// 函数级中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-referrals 的 MembershipProvider trait
 pub struct ReferralsMembershipProviderAdapter;
-impl pallet_memo_referrals::MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
+impl pallet_stardust_referrals::MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
     /// 函数级中文注释：检查账户是否为有效会员
     /// - 调用 pallet-membership 的 is_member_valid 方法
     fn is_valid_member(who: &AccountId) -> bool {
@@ -2914,7 +2914,7 @@ impl pallet_memo_referrals::MembershipProvider<AccountId> for ReferralsMembershi
 //     /// - 返回从直接推荐人到最顶层推荐人的有序列表
 //     /// - 用于供奉分成时逐层分配奖励
 //     fn get_sponsor_chain(who: &AccountId, max_depth: u8) -> alloc::vec::Vec<AccountId> {
-//         pallet_memo_referrals::Pallet::<Runtime>::ancestors(who, max_depth as u32)
+//         pallet_stardust_referrals::Pallet::<Runtime>::ancestors(who, max_depth as u32)
 //     }
 // }
 //
@@ -2962,8 +2962,8 @@ impl pallet_memo_referrals::MembershipProvider<AccountId> for ReferralsMembershi
 //     /// 函数级中文注释：通过推荐码查找推荐人
 //     fn get_referrer_by_code(code: &[u8]) -> Option<AccountId> {
 //         // 函数级中文注释：使用 pallet-memo-referrals 的 ReferralProvider trait 方法
-//         use pallet_memo_referrals::ReferralProvider;
-//         pallet_memo_referrals::Pallet::<Runtime>::find_account_by_code(&code.to_vec())
+//         use pallet_stardust_referrals::ReferralProvider;
+//         pallet_stardust_referrals::Pallet::<Runtime>::find_account_by_code(&code.to_vec())
 //     }
 // }
 //

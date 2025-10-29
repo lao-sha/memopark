@@ -19,7 +19,7 @@ pub mod pallet {
     use super::*;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use pallet_memo_ipfs::{ContentRegistry, PinTier};
+    use pallet_stardust_ipfs::{ContentRegistry, PinTier};
 
     /// 函数级详细中文注释：Pallet配置接口
     #[pallet::config]

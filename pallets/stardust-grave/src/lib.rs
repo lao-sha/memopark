@@ -10,10 +10,10 @@ pub mod weights;
 // 函数级中文注释：导入log用于记录自动pin失败的警告
 extern crate log;
 // 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
-extern crate pallet_memo_ipfs;
+extern crate pallet_stardust_ipfs;
 
 // 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
-// 作用：便于 runtime 以 `pallet_memo_grave::Call` 等路径引用，同时满足集成宏的默认部件查找。
+// 作用：便于 runtime 以 `pallet_stardust_grave::Call` 等路径引用，同时满足集成宏的默认部件查找。
 pub use pallet::*;
 
 #[cfg(test)]
@@ -38,7 +38,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_runtime::{SaturatedConversion, Saturating};
     use sp_runtime::traits::AtLeast32BitUnsigned;
-    use pallet_memo_ipfs::IpfsPinner;
+    use pallet_stardust_ipfs::IpfsPinner;
     // 取消 VisibilityPolicy 后不再需要 DecodeWithMemTracking
 
     /// 函数级中文注释：安葬回调接口，供外部统计/联动。
@@ -165,7 +165,7 @@ pub mod pallet {
         /// - add_audio_option: 添加公共音频时自动pin（治理）
         /// - add_private_audio_option: 添加私有音频时自动pin
         /// - set_audio_playlist: 设置播放列表时批量pin
-        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        type IpfsPinner: pallet_stardust_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
         
         /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
         type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;

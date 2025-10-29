@@ -177,7 +177,7 @@ impl pallet_deceased::Config for Test {
 /// 函数级中文注释：Mock的IpfsPinner实现，简化pin逻辑
 pub struct MockIpfsPinner;
 
-impl pallet_memo_ipfs::IpfsPinner<u64, u64> for MockIpfsPinner {
+impl pallet_stardust_ipfs::IpfsPinner<u64, u64> for MockIpfsPinner {
     fn pin_cid_for_deceased(
         _caller: u64,
         _deceased_id: u64,

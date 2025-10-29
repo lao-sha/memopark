@@ -264,13 +264,13 @@ impl pallet_maker_credit::MakerCreditInterface for MockMakerCredit {
 
 // Mock Membership Provider
 pub struct MockMembership;
-impl pallet_memo_referrals::MembershipProvider<u64> for MockMembership {
+impl pallet_stardust_referrals::MembershipProvider<u64> for MockMembership {
     fn is_valid_member(_who: &u64) -> bool { false }
 }
 
 // Mock Referral Provider
 pub struct MockReferral;
-impl pallet_memo_referrals::ReferralProvider<u64> for MockReferral {
+impl pallet_stardust_referrals::ReferralProvider<u64> for MockReferral {
     fn get_referrer(_who: &u64) -> Option<u64> { None }
     fn sponsor_of(_who: &u64) -> Option<u64> { None }
     fn ancestors(_who: &u64, _levels: u32) -> sp_std::vec::Vec<u64> { sp_std::vec![] }

@@ -58,7 +58,7 @@ impl frame_system::Config for Test {
 
 /// Mock ParkAdminOrigin - 简单实现：账户ID 99 被认为是所有园区的管理员
 pub struct MockParkAdmin;
-impl pallet_memo_park::ParkAdminOrigin<RuntimeOrigin> for MockParkAdmin {
+impl pallet_stardust_park::ParkAdminOrigin<RuntimeOrigin> for MockParkAdmin {
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> sp_runtime::DispatchResult {
         let who = frame_system::ensure_signed(origin)?;
         // 简化：账户99是全局管理员
@@ -90,7 +90,7 @@ impl frame_support::traits::EnsureOrigin<RuntimeOrigin> for EnsureRootOr100 {
     }
 }
 
-impl pallet_memo_park::Config for Test {
+impl pallet_stardust_park::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type MaxRegionLen = ConstU32<64>;
     type MaxCidLen = ConstU32<128>;

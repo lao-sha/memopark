@@ -31,7 +31,7 @@ pallet-escrow = { path = "../escrow", default-features = false }
 pallet-credit = { path = "../credit", default-features = false }  # 替代 buyer-credit 和 maker-credit
 pallet-affiliate = { path = "../affiliate", default-features = false }  # 替代 affiliate-config
 
-pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
+pallet-stardust-referrals = { path = "../stardust-referrals", default-features = false }
 pallet-evidence = { path = "../evidence", default-features = false }
 
 [dev-dependencies]
@@ -56,7 +56,7 @@ std = [
 	"pallet-escrow/std",
 	"pallet-credit/std",  # 🆕 2025-10-29: 替代 buyer-credit 和 maker-credit
 	"pallet-affiliate/std",  # 🆕 2025-10-29: 替代 affiliate-config
-	"pallet-memo-referrals/std",
+	"pallet-stardust-referrals/std",
 	"pallet-evidence/std",
 ]
 runtime-benchmarks = [

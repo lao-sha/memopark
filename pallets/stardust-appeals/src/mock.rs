@@ -85,7 +85,7 @@ impl crate::AppealRouter<u64> for NoopRouter {
 
 /// Mock deposit policy
 pub struct MockDepositPolicy;
-impl pallet_memo_appeals::AppealDepositPolicy for MockDepositPolicy {
+impl pallet_stardust_appeals::AppealDepositPolicy for MockDepositPolicy {
     type AccountId = u64;
     type Balance = u128;
     type BlockNumber = u64;
@@ -96,7 +96,7 @@ impl pallet_memo_appeals::AppealDepositPolicy for MockDepositPolicy {
 
 /// Mock last active provider
 pub struct MockLastActiveProvider;
-impl pallet_memo_appeals::LastActiveProvider for MockLastActiveProvider {
+impl pallet_stardust_appeals::LastActiveProvider for MockLastActiveProvider {
     type BlockNumber = u64;
     fn last_active_of(_domain: u8, _target: u64) -> Option<Self::BlockNumber> {
         None
@@ -128,7 +128,7 @@ impl pallet_deposits::DepositManager<u64, u128> for MockDepositManager {
     }
 }
 
-impl pallet_memo_appeals::pallet::Config for Test {
+impl pallet_stardust_appeals::pallet::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type Currency = pallet_balances::Pallet<Test>;
     type DepositManager = MockDepositManager;

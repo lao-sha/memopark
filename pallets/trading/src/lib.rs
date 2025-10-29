@@ -251,10 +251,10 @@ pub mod pallet {
         type MaxFirstPurchaseAmount: Get<BalanceOf<Self>>;
         
         /// 会员信息提供者
-        type MembershipProvider: pallet_memo_referrals::MembershipProvider<Self::AccountId>;
+        type MembershipProvider: pallet_stardust_referrals::MembershipProvider<Self::AccountId>;
         
         /// 推荐关系提供者
-        type ReferralProvider: pallet_memo_referrals::ReferralProvider<Self::AccountId>;
+        type ReferralProvider: pallet_stardust_referrals::ReferralProvider<Self::AccountId>;
         
         /// 联盟计酬分配器
         /// 🆕 2025-10-29: 使用新的 pallet-affiliate

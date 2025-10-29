@@ -5515,112 +5515,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memopark-node"
-version = "0.1.0"
-dependencies = [
- "clap",
- "frame-benchmarking-cli",
- "frame-metadata-hash-extension",
- "frame-system 40.2.0",
- "futures",
- "jsonrpsee",
- "memopark-runtime",
- "pallet-template",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc",
- "sc-basic-authorship",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-consensus-aura",
- "sc-consensus-grandpa",
- "sc-executor",
- "sc-network",
- "sc-offchain",
- "sc-service",
- "sc-telemetry",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sp-api 36.0.1",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus-aura",
- "sp-core 36.1.0",
- "sp-genesis-builder 0.17.0",
- "sp-inherents 36.0.0",
- "sp-io 40.0.1",
- "sp-keyring",
- "sp-runtime 41.1.0",
- "sp-timestamp",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
-]
-
-[[package]]
-name = "memopark-runtime"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking 40.2.1",
- "frame-executive",
- "frame-metadata-hash-extension",
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "frame-try-runtime",
- "pallet-affiliate",
- "pallet-arbitration",
- "pallet-aura",
- "pallet-balances 41.1.1",
- "pallet-chat",
- "pallet-collective",
- "pallet-credit",
- "pallet-deceased",
- "pallet-deposits",
- "pallet-escrow",
- "pallet-evidence",
- "pallet-grandpa",
- "pallet-identity",
- "pallet-ledger",
- "pallet-membership",
- "pallet-memo-appeals",
- "pallet-memo-grave",
- "pallet-memo-ipfs",
- "pallet-memo-park",
- "pallet-memo-pet",
- "pallet-memo-referrals",
- "pallet-memorial",
- "pallet-origin-restriction",
- "pallet-pricing",
- "pallet-storage-treasury",
- "pallet-sudo",
- "pallet-template",
- "pallet-timestamp",
- "pallet-trading",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "pallet-treasury",
- "parity-scale-codec",
- "scale-info",
- "serde_json",
- "sp-api 36.0.1",
- "sp-block-builder",
- "sp-consensus-aura",
- "sp-consensus-grandpa",
- "sp-core 36.1.0",
- "sp-genesis-builder 0.17.0",
- "sp-inherents 36.0.0",
- "sp-keyring",
- "sp-offchain",
- "sp-runtime 41.1.0",
- "sp-session",
- "sp-storage 22.0.0",
- "sp-transaction-pool",
- "sp-version 39.0.0",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "memory-db"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6397,7 +6291,7 @@ dependencies = [
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "log",
- "pallet-memo-ipfs",
+ "pallet-stardust-ipfs",
  "parity-scale-codec",
  "scale-info",
  "sp-core 36.1.0",
@@ -6446,7 +6340,7 @@ dependencies = [
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "log",
- "pallet-memo-ipfs",
+ "pallet-stardust-ipfs",
  "parity-scale-codec",
  "scale-info",
  "sp-core 36.1.0",
@@ -6525,95 +6419,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-memo-appeals"
-version = "0.2.0"
-dependencies = [
- "frame-benchmarking 40.2.1",
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "pallet-balances 41.1.1",
- "pallet-deposits",
- "pallet-evidence",
- "parity-scale-codec",
- "scale-info",
- "sp-core 36.1.0",
- "sp-io 40.0.1",
- "sp-runtime 41.1.0",
- "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?tag=polkadot-v1.18.9)",
-]
-
-[[package]]
-name = "pallet-memo-grave"
-version = "0.1.0"
-dependencies = [
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "log",
- "pallet-balances 41.1.1",
- "pallet-memo-ipfs",
- "parity-scale-codec",
- "scale-info",
- "sp-core 36.1.0",
- "sp-io 40.0.1",
- "sp-runtime 41.1.0",
-]
-
-[[package]]
-name = "pallet-memo-ipfs"
-version = "0.1.0"
-dependencies = [
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "hex",
- "pallet-balances 41.1.1",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "serde_json",
- "sp-application-crypto 40.1.0",
- "sp-core 36.1.0",
- "sp-io 40.0.1",
- "sp-offchain",
- "sp-runtime 41.1.0",
- "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?tag=polkadot-v1.18.9)",
-]
-
-[[package]]
-name = "pallet-memo-park"
-version = "0.1.0"
-dependencies = [
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "parity-scale-codec",
- "scale-info",
- "sp-core 36.1.0",
- "sp-io 40.0.1",
- "sp-runtime 41.1.0",
-]
-
-[[package]]
-name = "pallet-memo-pet"
-version = "0.1.0"
-dependencies = [
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "parity-scale-codec",
- "scale-info",
-]
-
-[[package]]
-name = "pallet-memo-referrals"
-version = "0.1.0"
-dependencies = [
- "frame-support 40.1.0",
- "frame-system 40.2.0",
- "parity-scale-codec",
- "scale-info",
- "sp-core 36.1.0",
- "sp-runtime 41.1.0",
-]
-
-[[package]]
 name = "pallet-memorial"
 version = "0.1.0"
 dependencies = [
@@ -6679,6 +6484,95 @@ dependencies = [
  "sp-staking 38.0.0",
  "sp-state-machine 0.45.0",
  "sp-trie 39.1.0",
+]
+
+[[package]]
+name = "pallet-stardust-appeals"
+version = "0.2.0"
+dependencies = [
+ "frame-benchmarking 40.2.1",
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "pallet-balances 41.1.1",
+ "pallet-deposits",
+ "pallet-evidence",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 36.1.0",
+ "sp-io 40.0.1",
+ "sp-runtime 41.1.0",
+ "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?tag=polkadot-v1.18.9)",
+]
+
+[[package]]
+name = "pallet-stardust-grave"
+version = "0.1.0"
+dependencies = [
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "log",
+ "pallet-balances 41.1.1",
+ "pallet-stardust-ipfs",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 36.1.0",
+ "sp-io 40.0.1",
+ "sp-runtime 41.1.0",
+]
+
+[[package]]
+name = "pallet-stardust-ipfs"
+version = "0.1.0"
+dependencies = [
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "hex",
+ "pallet-balances 41.1.1",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "serde_json",
+ "sp-application-crypto 40.1.0",
+ "sp-core 36.1.0",
+ "sp-io 40.0.1",
+ "sp-offchain",
+ "sp-runtime 41.1.0",
+ "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?tag=polkadot-v1.18.9)",
+]
+
+[[package]]
+name = "pallet-stardust-park"
+version = "0.1.0"
+dependencies = [
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 36.1.0",
+ "sp-io 40.0.1",
+ "sp-runtime 41.1.0",
+]
+
+[[package]]
+name = "pallet-stardust-pet"
+version = "0.1.0"
+dependencies = [
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "parity-scale-codec",
+ "scale-info",
+]
+
+[[package]]
+name = "pallet-stardust-referrals"
+version = "0.1.0"
+dependencies = [
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 36.1.0",
+ "sp-runtime 41.1.0",
 ]
 
 [[package]]
@@ -6755,8 +6649,8 @@ dependencies = [
  "pallet-credit",
  "pallet-escrow",
  "pallet-evidence",
- "pallet-memo-referrals",
  "pallet-pricing",
+ "pallet-stardust-referrals",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -11441,6 +11335,112 @@ dependencies = [
  "sp-runtime 41.1.0",
  "sp-weights 31.1.0 (git+https://github.com/paritytech/polkadot-sdk.git?tag=polkadot-v1.18.9)",
  "xcm-procedural",
+]
+
+[[package]]
+name = "stardust-node"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "frame-benchmarking-cli",
+ "frame-metadata-hash-extension",
+ "frame-system 40.2.0",
+ "futures",
+ "jsonrpsee",
+ "pallet-template",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc",
+ "sc-basic-authorship",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-aura",
+ "sc-consensus-grandpa",
+ "sc-executor",
+ "sc-network",
+ "sc-offchain",
+ "sc-service",
+ "sc-telemetry",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sp-api 36.0.1",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus-aura",
+ "sp-core 36.1.0",
+ "sp-genesis-builder 0.17.0",
+ "sp-inherents 36.0.0",
+ "sp-io 40.0.1",
+ "sp-keyring",
+ "sp-runtime 41.1.0",
+ "sp-timestamp",
+ "stardust-runtime",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+]
+
+[[package]]
+name = "stardust-runtime"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 40.2.1",
+ "frame-executive",
+ "frame-metadata-hash-extension",
+ "frame-support 40.1.0",
+ "frame-system 40.2.0",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
+ "pallet-affiliate",
+ "pallet-arbitration",
+ "pallet-aura",
+ "pallet-balances 41.1.1",
+ "pallet-chat",
+ "pallet-collective",
+ "pallet-credit",
+ "pallet-deceased",
+ "pallet-deposits",
+ "pallet-escrow",
+ "pallet-evidence",
+ "pallet-grandpa",
+ "pallet-identity",
+ "pallet-ledger",
+ "pallet-membership",
+ "pallet-memorial",
+ "pallet-origin-restriction",
+ "pallet-pricing",
+ "pallet-stardust-appeals",
+ "pallet-stardust-grave",
+ "pallet-stardust-ipfs",
+ "pallet-stardust-park",
+ "pallet-stardust-pet",
+ "pallet-stardust-referrals",
+ "pallet-storage-treasury",
+ "pallet-sudo",
+ "pallet-template",
+ "pallet-timestamp",
+ "pallet-trading",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-treasury",
+ "parity-scale-codec",
+ "scale-info",
+ "serde_json",
+ "sp-api 36.0.1",
+ "sp-block-builder",
+ "sp-consensus-aura",
+ "sp-consensus-grandpa",
+ "sp-core 36.1.0",
+ "sp-genesis-builder 0.17.0",
+ "sp-inherents 36.0.0",
+ "sp-keyring",
+ "sp-offchain",
+ "sp-runtime 41.1.0",
+ "sp-session",
+ "sp-storage 22.0.0",
+ "sp-transaction-pool",
+ "sp-version 39.0.0",
+ "substrate-wasm-builder",
 ]
 
 [[package]]

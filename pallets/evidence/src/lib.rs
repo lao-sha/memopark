@@ -10,8 +10,8 @@ use sp_core::Get;
 // 函数级中文注释：导入log用于记录自动pin失败的警告
 extern crate log;
 // 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
-extern crate pallet_memo_ipfs;
-use pallet_memo_ipfs::IpfsPinner;
+extern crate pallet_stardust_ipfs;
+use pallet_stardust_ipfs::IpfsPinner;
 
 // 函数级中文注释：权重模块导入，提供 WeightInfo 接口用于基于输入规模计算交易权重。
 #[cfg(feature = "runtime-benchmarks")]
@@ -200,8 +200,8 @@ pub mod pallet {
         /// 
         /// 注意：
         /// - 证据通常关联到deceased_id（通过target_id）
-        /// - 由Runtime注入实现（pallet_memo_ipfs::Pallet<Runtime>）
-        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        /// - 由Runtime注入实现（pallet_stardust_ipfs::Pallet<Runtime>）
+        type IpfsPinner: pallet_stardust_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
         
         /// 函数级中文注释：余额类型（用于IPFS存储费用支付）
         type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;

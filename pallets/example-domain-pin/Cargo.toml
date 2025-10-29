@@ -16,7 +16,7 @@ sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "po
 sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.11.0", default-features = false }
 
 # Local dependencies
-pallet-memo-ipfs = { path = "../memo-ipfs", default-features = false }
+pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
 
 [features]
 default = ["std"]
@@ -28,7 +28,7 @@ std = [
     "frame-system/std",
     "sp-runtime/std",
     "sp-std/std",
-    "pallet-memo-ipfs/std",
+    "pallet-stardust-ipfs/std",
 ]
 runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]
 try-runtime = ["frame-support/try-runtime"]

@@ -16,15 +16,15 @@ members = [
     "pallets/escrow",
     "pallets/arbitration",
 
-    "pallets/memo-park",
-    "pallets/memo-grave",
-    # "pallets/memo-hall",  # 已移除 - 从未在 runtime 启用，功能已在 memo-grave 实现
+    "pallets/stardust-park",
+    "pallets/stardust-grave",
+    # "pallets/stardust-hall",  # 已移除 - 从未在 runtime 启用，功能已在 stardust-grave 实现
     "pallets/ledger",
     "pallets/deceased",
     # 已迁移：删除旧 deceased-data
     # 🔴 2025-10-29：已整合到 pallet-memorial
-    # "pallets/memo-offerings",
-    "pallets/memo-referrals",
+    # "pallets/stardust-offerings",
+    "pallets/stardust-referrals",
     "pallets/affiliate",
     # 🔴 2025-10-29：已整合到 pallet-affiliate
     # "pallets/affiliate-weekly",
@@ -33,10 +33,10 @@ members = [
     # "pallets/affiliate-instant",
     # "pallets/affiliate-config",
     "pallets/evidence",
-    "pallets/memo-ipfs",
-    "pallets/memo-pet",
+    "pallets/stardust-ipfs",
+    "pallets/stardust-pet",
     # 🔴 2025-10-29：已整合到 pallet-memorial
-    # "pallets/memo-sacrifice",
+    # "pallets/stardust-sacrifice",
     "pallets/origin-restriction",
     # "pallets/fee-guard",  # 已移除 - 使用官方 pallet-proxy 纯代理替代
     "pallets/pricing",
@@ -54,7 +54,7 @@ exclude = []
 resolver = "2"
 
 [workspace.dependencies]
-solochain-template-runtime = { package = "memopark-runtime", path = "./runtime", default-features = false }
+solochain-template-runtime = { package = "stardust-runtime", path = "./runtime", default-features = false }
 pallet-template = { path = "./pallets/template", default-features = false }
 enumflags2 = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false }

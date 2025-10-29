@@ -76,7 +76,7 @@ impl pallet_balances::Config for Test {
 
 /// Mock OnIntermentCommitted - 简化实现，不记录任何内容
 pub struct MockOnInterment;
-impl pallet_memo_grave::OnIntermentCommitted for MockOnInterment {
+impl pallet_stardust_grave::OnIntermentCommitted for MockOnInterment {
     fn on_interment(_grave_id: u64, _deceased_id: u64) {
         // 空实现
     }
@@ -84,7 +84,7 @@ impl pallet_memo_grave::OnIntermentCommitted for MockOnInterment {
 
 /// Mock ParkAdminOrigin - 账户99是全局园区管理员
 pub struct MockParkAdmin;
-impl pallet_memo_grave::ParkAdminOrigin<RuntimeOrigin> for MockParkAdmin {
+impl pallet_stardust_grave::ParkAdminOrigin<RuntimeOrigin> for MockParkAdmin {
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> sp_runtime::DispatchResult {
         let who = frame_system::ensure_signed(origin)?;
         if who == 99 {
@@ -97,7 +97,7 @@ impl pallet_memo_grave::ParkAdminOrigin<RuntimeOrigin> for MockParkAdmin {
 
 /// Mock DeceasedTokenAccess - 返回模拟的deceased token
 pub struct MockDeceasedToken;
-impl pallet_memo_grave::DeceasedTokenAccess<ConstU32<128>> for MockDeceasedToken {
+impl pallet_stardust_grave::DeceasedTokenAccess<ConstU32<128>> for MockDeceasedToken {
     fn token_of(id: u64) -> Option<frame_support::BoundedVec<u8, ConstU32<128>>> {
         // 返回模拟token，格式为 "token_{id}"
         let token_str = alloc::format!("token_{}", id);
@@ -125,7 +125,7 @@ impl frame_support::traits::EnsureOrigin<RuntimeOrigin> for EnsureRootOr100 {
 
 /// Mock IpfsPinner - 简化实现，总是成功
 pub struct MockIpfsPinner;
-impl pallet_memo_ipfs::IpfsPinner<u64, u128> for MockIpfsPinner {
+impl pallet_stardust_ipfs::IpfsPinner<u64, u128> for MockIpfsPinner {
     fn pin_add(
         _who: &u64,
         _cid: &[u8],
@@ -153,7 +153,7 @@ parameter_types! {
 
 /// Mock WeightInfo
 pub struct TestWeightInfo;
-impl pallet_memo_grave::weights::WeightInfo for TestWeightInfo {
+impl pallet_stardust_grave::weights::WeightInfo for TestWeightInfo {
     fn create_grave() -> frame_support::weights::Weight {
         frame_support::weights::Weight::from_parts(10_000, 0)
     }
@@ -234,7 +234,7 @@ impl pallet_memo_grave::weights::WeightInfo for TestWeightInfo {
     }
 }
 
-impl pallet_memo_grave::Config for Test {
+impl pallet_stardust_grave::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = TestWeightInfo;
     type MaxCidLen = ConstU32<128>;

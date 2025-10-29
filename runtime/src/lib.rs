@@ -284,10 +284,10 @@ pub mod runtime {
     pub type Arbitration = pallet_arbitration;
 
     #[runtime::pallet_index(14)]
-    pub type MemorialPark = pallet_memo_park;
+    pub type MemorialPark = pallet_stardust_park;
 
     #[runtime::pallet_index(15)]
-    pub type Grave = pallet_memo_grave;
+    pub type Grave = pallet_stardust_grave;
 
     // 🆕 2025-10-28 已移除: MemorialOfferings 已整合到 Memorial pallet
     // #[runtime::pallet_index(16)]
@@ -312,9 +312,9 @@ pub mod runtime {
     #[runtime::pallet_index(21)]
     pub type GraveLedger = pallet_ledger;
 
-    // 🆕 2025-10-28 已移除: pallet-memo-referrals（已整合到统一 pallet-affiliate）
+    // 🆕 2025-10-28 已移除: pallet-stardust-referrals（已整合到统一 pallet-affiliate）
     // #[runtime::pallet_index(22)]
-    // pub type Referrals = pallet_memo_referrals;
+    // pub type Referrals = pallet_stardust_referrals;
 
     /// 函数级详细中文注释：统一联盟计酬系统 v1.0.0
     /// 
@@ -363,7 +363,7 @@ pub mod runtime {
     // pub type MemoEndowment = pallet_memo_endowment;
 
     #[runtime::pallet_index(26)]
-    pub type MemoIpfs = pallet_memo_ipfs;
+    pub type StardustIpfs = pallet_stardust_ipfs;
 
     #[runtime::pallet_index(29)]
     pub type Treasury = pallet_treasury;
@@ -381,7 +381,7 @@ pub mod runtime {
     // pub type MemoSacrifice = pallet_memo_sacrifice;
 
     #[runtime::pallet_index(35)]
-    pub type MemoPet = pallet_memo_pet;
+    pub type StardustPet = pallet_stardust_pet;
 
     // 委员会（Council）
     #[runtime::pallet_index(38)]
@@ -396,7 +396,7 @@ pub mod runtime {
     pub type ContentCommittee = pallet_collective<Instance3>;
 
     #[runtime::pallet_index(41)]
-    pub type ContentGovernance = pallet_memo_appeals;
+    pub type ContentGovernance = pallet_stardust_appeals;
 
     #[runtime::pallet_index(43)]
     pub type Pricing = pallet_pricing;

@@ -15,8 +15,8 @@ sp-std = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 log = { workspace = true, default-features = false }
 
-# 函数级中文注释：pallet-memo-ipfs依赖用于IpfsPinner trait
-pallet-memo-ipfs = { path = "../memo-ipfs", default-features = false }
+# 函数级中文注释：pallet-stardust-ipfs依赖用于IpfsPinner trait
+pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }
@@ -32,7 +32,7 @@ std = [
   "sp-std/std",
   "sp-core/std",
   "log/std",
-  "pallet-memo-ipfs/std",
+  "pallet-stardust-ipfs/std",
 ]
 
 

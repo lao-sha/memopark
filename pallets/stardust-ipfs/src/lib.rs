@@ -4590,7 +4590,7 @@ pub mod pallet {
 // 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
 // 作用：
 // 1) 让 runtime 集成宏（#[frame_support::runtime]）能够找到 `tt_default_parts_v2` 等默认部件；
-// 2) 便于上层以 `pallet_memo_ipfs::Call` 等简洁路径引用类型，降低路径耦合。
+// 2) 便于上层以 `pallet_stardust_ipfs::Call` 等简洁路径引用类型，降低路径耦合。
 pub use pallet::*;
 
 /// 函数级详细中文注释：为 Pallet<T> 实现 IpfsPinner trait，供其他pallet调用

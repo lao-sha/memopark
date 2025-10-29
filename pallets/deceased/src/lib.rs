@@ -26,10 +26,10 @@ use sp_core::hashing::blake2_256;
 // 函数级中文注释：导入log用于记录自动pin失败的警告
 extern crate log;
 // 函数级中文注释：导入pallet_memo_ipfs用于IpfsPinner trait
-extern crate pallet_memo_ipfs;
+extern crate pallet_stardust_ipfs;
 
 // 函数级中文注释：导入IpfsPinner trait以便使用其方法
-use pallet_memo_ipfs::IpfsPinner;
+use pallet_stardust_ipfs::IpfsPinner;
 
 /// 函数级详细中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合
 /// 
@@ -350,8 +350,8 @@ pub mod pallet {
         /// 
         /// 注意：
         /// - Balance类型需要与IpfsPinner兼容
-        /// - 由Runtime注入实现：pallet_memo_ipfs::Pallet<Runtime>
-        type IpfsPinner: pallet_memo_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
+        /// - 由Runtime注入实现：pallet_stardust_ipfs::Pallet<Runtime>
+        type IpfsPinner: pallet_stardust_ipfs::IpfsPinner<Self::AccountId, Self::Balance>;
 
         /// 函数级中文注释：余额类型（用于存储费用支付）
         /// - 必须与Currency的Balance类型一致
@@ -1149,7 +1149,7 @@ pub mod pallet {
         /// - 2: IPFS网络错误或系统错误
         /// - 3: CID格式无效或参数错误
         /// 
-        /// pallet_memo_ipfs::Error 映射表：
+        /// pallet_stardust_ipfs::Error 映射表：
         /// - BadParams (0) → 3 (CID格式无效)
         /// - BothAccountsInsufficientBalance (12) → 1 (余额不足)
         /// - IpfsPoolInsufficientBalance (13) → 1 (余额不足)
@@ -1173,7 +1173,7 @@ pub mod pallet {
                     // module_err.error 是一个字节数组，第一个字节是错误索引
                     let error_index = module_err.error[0];
                     
-                    // ✅ 根据 pallet_memo_ipfs::Error 的定义进行精确映射
+                    // ✅ 根据 pallet_stardust_ipfs::Error 的定义进行精确映射
                     match error_index {
                         // BadParams (0) - CID格式错误或其他参数错误
                         0 => 3,

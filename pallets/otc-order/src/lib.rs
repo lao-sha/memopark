@@ -145,7 +145,7 @@ pub mod pallet {
         type MaxFirstPurchaseAmount: Get<BalanceOf<Self>>;
         
         /// 函数级中文注释：会员信息提供者
-        type MembershipProvider: pallet_memo_referrals::MembershipProvider<Self::AccountId>;
+        type MembershipProvider: pallet_stardust_referrals::MembershipProvider<Self::AccountId>;
         
         // 🆕 2025-10-28 已移除：ReferralProvider 和 AffiliateDistributor 关联类型
         // 这两个类型已定义但从未使用，可以安全移除
