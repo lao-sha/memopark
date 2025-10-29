@@ -1794,7 +1794,7 @@ impl sp_core::Get<AccountId> for PlatformAccount {
 /// 行业对比：
 /// - 以太坊: 0x000...dead（广泛使用）
 /// - Moonbeam: 0x000...dead（EVM 兼容链）
-/// - Memopark: 0x000...0dead ✅（兼顾 Substrate 与 EVM 惯例）
+/// - Stardust: 0x000...0dead ✅（兼顾 Substrate 与 EVM 惯例）
 /// 
 /// 使用场景：
 /// - 供奉分账中的销毁部分（3%）

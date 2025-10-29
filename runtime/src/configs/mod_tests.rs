@@ -6,7 +6,7 @@
  * 2. ContentLastActiveProvider - 应答否决机制
  * 3. ArbitrationRouter - 域路由权限校验
  * 
- * @author Memopark Team
+ * @author Stardust Team
  * @version 1.0.0
  * @date 2025-10-27
  */

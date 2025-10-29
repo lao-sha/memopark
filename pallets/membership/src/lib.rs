@@ -1,4 +1,4 @@
-// Copyright (C) Memopark Team
+// Copyright (C) Stardust Team
 // SPDX-License-Identifier: Apache-2.0
 
 //! # 年费会员系统 Pallet (pallet-membership)

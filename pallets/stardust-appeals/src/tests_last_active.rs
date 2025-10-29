@@ -3,7 +3,7 @@
  * 
  * 测试LastActiveProvider trait和应答自动否决机制
  * 
- * @author Memopark Team
+ * @author Stardust Team
  * @version 1.0.0
  * @date 2025-10-27
  */

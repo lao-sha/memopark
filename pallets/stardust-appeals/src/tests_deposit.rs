@@ -3,7 +3,7 @@
  * 
  * 测试AppealDepositPolicy trait的使用和回退逻辑
  * 
- * @author Memopark Team
+ * @author Stardust Team
  * @version 1.0.0
  * @date 2025-10-27
  */
