@@ -161,7 +161,7 @@ pallet_ledger::Pallet::<T>::record_from_hook_with_amount(
     grave_id,
     buyer,
     kind_code,
-    Some(100_000_000_000_000u128),  // 100 MEMO
+    Some(100_000_000_000_000u128),  // 100 DUST
     Some(memo),
     Some(tx_hash),  // 去重键
 );

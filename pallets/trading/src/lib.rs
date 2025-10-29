@@ -127,7 +127,7 @@ pub mod pallet {
         // OTC 模块权重
         fn create_order() -> Weight;
         fn mark_paid() -> Weight;
-        fn release_memo() -> Weight;
+        fn release_dust() -> Weight;
         fn cancel_order() -> Weight;
         fn dispute_order() -> Weight;
         
@@ -152,7 +152,7 @@ pub mod pallet {
         fn emergency_withdrawal() -> Weight { Weight::zero() }
         fn create_order() -> Weight { Weight::zero() }
         fn mark_paid() -> Weight { Weight::zero() }
-        fn release_memo() -> Weight { Weight::zero() }
+        fn release_dust() -> Weight { Weight::zero() }
         fn cancel_order() -> Weight { Weight::zero() }
         fn dispute_order() -> Weight { Weight::zero() }
         fn swap() -> Weight { Weight::zero() }
@@ -571,13 +571,13 @@ pub mod pallet {
         
         // ===== OTC 模块事件（已优化）⭐ =====
         
-        /// 🆕 OTC订单已创建 [order_id, maker_id, buyer, memo_amount, is_first_purchase]
+        /// 🆕 OTC订单已创建 [order_id, maker_id, buyer, dust_amount, is_first_purchase]
         /// 优化：合并了FirstPurchaseCreated事件，使用is_first_purchase标志区分
         OrderCreated { 
             order_id: u64, 
             maker_id: u64, 
             buyer: T::AccountId, 
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             is_first_purchase: bool,
         },
         
@@ -599,11 +599,11 @@ pub mod pallet {
         
         // ===== Bridge 模块事件（已优化）⭐ =====
         
-        /// 官方桥接兑换已创建 [swap_id, user, memo_amount, tron_address]
-        SwapCreated { swap_id: u64, user: T::AccountId, memo_amount: BalanceOf<T>, tron_address: TronAddress },
+        /// 官方桥接兑换已创建 [swap_id, user, dust_amount, tron_address]
+        SwapCreated { swap_id: u64, user: T::AccountId, dust_amount: BalanceOf<T>, tron_address: TronAddress },
         
-        /// 做市商兑换已创建 [swap_id, maker_id, user, memo_amount, usdt_amount]
-        MakerSwapCreated { swap_id: u64, maker_id: u64, user: T::AccountId, memo_amount: BalanceOf<T>, usdt_amount: u64 },
+        /// 做市商兑换已创建 [swap_id, maker_id, user, dust_amount, usdt_amount]
+        MakerSwapCreated { swap_id: u64, maker_id: u64, user: T::AccountId, dust_amount: BalanceOf<T>, usdt_amount: u64 },
         
         /// 做市商兑换已标记完成 [swap_id, maker_id, trc20_tx_hash]
         MakerSwapMarkedComplete { swap_id: u64, maker_id: u64, trc20_tx_hash: BoundedVec<u8, ConstU32<128>> },
@@ -896,14 +896,14 @@ pub mod pallet {
         pub fn create_order(
             origin: OriginFor<T>,
             maker_id: u64,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             payment_commit: [u8; 32],
             contact_commit: [u8; 32],
         ) -> DispatchResult {
             let buyer = ensure_signed(origin)?;
             let payment_hash = H256::from(payment_commit);
             let contact_hash = H256::from(contact_commit);
-            crate::otc::do_create_order::<T>(&buyer, maker_id, memo_amount, payment_hash, contact_hash)?;
+            crate::otc::do_create_order::<T>(&buyer, maker_id, dust_amount, payment_hash, contact_hash)?;
             Ok(())
         }
         
@@ -921,10 +921,10 @@ pub mod pallet {
         
         /// 函数级详细中文注释：做市商释放DUST
         #[pallet::call_index(12)]
-        #[pallet::weight(<T as Config>::WeightInfo::release_memo())]
-        pub fn release_memo(origin: OriginFor<T>, order_id: u64) -> DispatchResult {
+        #[pallet::weight(<T as Config>::WeightInfo::release_dust())]
+        pub fn release_dust(origin: OriginFor<T>, order_id: u64) -> DispatchResult {
             let maker = ensure_signed(origin)?;
-            crate::otc::do_release_memo::<T>(&maker, order_id)
+            crate::otc::do_release_dust::<T>(&maker, order_id)
         }
         
         /// 函数级详细中文注释：取消订单
@@ -950,11 +950,11 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::swap())]
         pub fn swap(
             origin: OriginFor<T>,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             tron_address: Vec<u8>,
         ) -> DispatchResult {
             let user = ensure_signed(origin)?;
-            crate::bridge::do_swap::<T>(&user, memo_amount, tron_address)?;
+            crate::bridge::do_swap::<T>(&user, dust_amount, tron_address)?;
             Ok(())
         }
         
@@ -972,11 +972,11 @@ pub mod pallet {
         pub fn maker_swap(
             origin: OriginFor<T>,
             maker_id: u64,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             usdt_address: Vec<u8>,
         ) -> DispatchResult {
             let user = ensure_signed(origin)?;
-            crate::bridge::do_maker_swap::<T>(&user, maker_id, memo_amount, usdt_address)?;
+            crate::bridge::do_maker_swap::<T>(&user, maker_id, dust_amount, usdt_address)?;
             Ok(())
         }
         

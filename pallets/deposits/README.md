@@ -146,7 +146,7 @@ DepositSlashed {
 // 1. 用户发起申诉，冻结押金
 let deposit_id = pallet_deposits::Pallet::<T>::reserve_deposit(
     user_origin,
-    10_000_000_000_000u128,  // 10,000 MEMO
+    10_000_000_000_000u128,  // 10,000 DUST
     DepositPurpose::Appeal {
         appeal_id: 1,
         domain: 1,  // grave

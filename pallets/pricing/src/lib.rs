@@ -36,7 +36,7 @@ pub mod pallet {
         /// USDT 单价（精度 10^6，即 1,000,000 = 1 USDT）
         pub price_usdt: u64,
         /// MEMO 数量（精度 10^12，即 1,000,000,000,000 = 1 DUST）
-        pub memo_qty: u128,
+        pub dust_qty: u128,
     }
 
     /// 函数级中文注释：价格聚合数据
@@ -44,7 +44,7 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
     pub struct PriceAggregateData {
         /// 累计 DUST 数量（精度 10^12）
-        pub total_memo: u128,
+        pub total_dust: u128,
         /// 累计 USDT 金额（精度 10^6）
         pub total_usdt: u128,
         /// 订单数量
@@ -151,14 +151,14 @@ pub mod pallet {
         OtcOrderAdded {
             timestamp: u64,
             price_usdt: u64,
-            memo_qty: u128,
+            dust_qty: u128,
             new_avg_price: u64,
         },
         /// 函数级中文注释：Bridge 兑换添加到价格聚合
         BridgeSwapAdded {
             timestamp: u64,
             price_usdt: u64,
-            memo_qty: u128,
+            dust_qty: u128,
             new_avg_price: u64,
         },
         /// 函数级中文注释：冷启动参数更新事件
@@ -202,7 +202,7 @@ pub mod pallet {
         /// # 参数
         /// - `timestamp`: 订单时间戳（Unix 毫秒）
         /// - `price_usdt`: USDT 单价（精度 10^6）
-        /// - `memo_qty`: DUST 数量（精度 10^12）
+        /// - `dust_qty`: DUST 数量（精度 10^12）
         /// 
         /// # 逻辑
         /// 1. 读取当前聚合数据
@@ -213,18 +213,18 @@ pub mod pallet {
         pub fn add_otc_order(
             timestamp: u64,
             price_usdt: u64,
-            memo_qty: u128,
+            dust_qty: u128,
         ) -> DispatchResult {
             let mut agg = OtcPriceAggregate::<T>::get();
-            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 MEMO（精度 10^12）
+            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 DUST（精度 10^12）
             
             // 如果添加后超过限制，删除最旧的订单
-            let mut new_total = agg.total_memo.saturating_add(memo_qty);
+            let mut new_total = agg.total_dust.saturating_add(dust_qty);
             while new_total > limit && agg.order_count > 0 {
                 if let Some(oldest) = OtcOrderRingBuffer::<T>::take(agg.oldest_index) {
                     // 从聚合数据中减去
-                    agg.total_memo = agg.total_memo.saturating_sub(oldest.memo_qty);
-                    let oldest_usdt = (oldest.memo_qty / 1_000_000_000_000u128)
+                    agg.total_dust = agg.total_dust.saturating_sub(oldest.dust_qty);
+                    let oldest_usdt = (oldest.dust_qty / 1_000_000_000_000u128)
                         .saturating_mul(oldest.price_usdt as u128);
                     agg.total_usdt = agg.total_usdt.saturating_sub(oldest_usdt);
                     agg.order_count = agg.order_count.saturating_sub(1);
@@ -233,7 +233,7 @@ pub mod pallet {
                     agg.oldest_index = (agg.oldest_index + 1) % 10000;
                     
                     // 重新计算新总量
-                    new_total = agg.total_memo.saturating_add(memo_qty);
+                    new_total = agg.total_dust.saturating_add(dust_qty);
                 } else {
                     break;
                 }
@@ -249,13 +249,13 @@ pub mod pallet {
             OtcOrderRingBuffer::<T>::insert(new_index, OrderSnapshot {
                 timestamp,
                 price_usdt,
-                memo_qty,
+                dust_qty,
             });
             
             // 更新聚合数据
-            let order_usdt = (memo_qty / 1_000_000_000_000u128)
+            let order_usdt = (dust_qty / 1_000_000_000_000u128)
                 .saturating_mul(price_usdt as u128);
-            agg.total_memo = agg.total_memo.saturating_add(memo_qty);
+            agg.total_dust = agg.total_dust.saturating_add(dust_qty);
             agg.total_usdt = agg.total_usdt.saturating_add(order_usdt);
             agg.order_count = agg.order_count.saturating_add(1);
             agg.newest_index = new_index;
@@ -270,7 +270,7 @@ pub mod pallet {
             Self::deposit_event(Event::OtcOrderAdded {
                 timestamp,
                 price_usdt,
-                memo_qty,
+                dust_qty,
                 new_avg_price,
             });
             
@@ -282,22 +282,22 @@ pub mod pallet {
         pub fn add_bridge_swap(
             timestamp: u64,
             price_usdt: u64,
-            memo_qty: u128,
+            dust_qty: u128,
         ) -> DispatchResult {
             let mut agg = BridgePriceAggregate::<T>::get();
-            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 MEMO
+            let limit: u128 = 1_000_000u128 * 1_000_000_000_000u128; // 1,000,000 DUST
             
             // 删除旧订单直到满足限制
-            let mut new_total = agg.total_memo.saturating_add(memo_qty);
+            let mut new_total = agg.total_dust.saturating_add(dust_qty);
             while new_total > limit && agg.order_count > 0 {
                 if let Some(oldest) = BridgeOrderRingBuffer::<T>::take(agg.oldest_index) {
-                    agg.total_memo = agg.total_memo.saturating_sub(oldest.memo_qty);
-                    let oldest_usdt = (oldest.memo_qty / 1_000_000_000_000u128)
+                    agg.total_dust = agg.total_dust.saturating_sub(oldest.dust_qty);
+                    let oldest_usdt = (oldest.dust_qty / 1_000_000_000_000u128)
                         .saturating_mul(oldest.price_usdt as u128);
                     agg.total_usdt = agg.total_usdt.saturating_sub(oldest_usdt);
                     agg.order_count = agg.order_count.saturating_sub(1);
                     agg.oldest_index = (agg.oldest_index + 1) % 10000;
-                    new_total = agg.total_memo.saturating_add(memo_qty);
+                    new_total = agg.total_dust.saturating_add(dust_qty);
                 } else {
                     break;
                 }
@@ -313,13 +313,13 @@ pub mod pallet {
             BridgeOrderRingBuffer::<T>::insert(new_index, OrderSnapshot {
                 timestamp,
                 price_usdt,
-                memo_qty,
+                dust_qty,
             });
             
             // 更新聚合数据
-            let order_usdt = (memo_qty / 1_000_000_000_000u128)
+            let order_usdt = (dust_qty / 1_000_000_000_000u128)
                 .saturating_mul(price_usdt as u128);
-            agg.total_memo = agg.total_memo.saturating_add(memo_qty);
+            agg.total_dust = agg.total_dust.saturating_add(dust_qty);
             agg.total_usdt = agg.total_usdt.saturating_add(order_usdt);
             agg.order_count = agg.order_count.saturating_add(1);
             agg.newest_index = new_index;
@@ -331,7 +331,7 @@ pub mod pallet {
             Self::deposit_event(Event::BridgeSwapAdded {
                 timestamp,
                 price_usdt,
-                memo_qty,
+                dust_qty,
                 new_avg_price,
             });
             
@@ -345,17 +345,17 @@ pub mod pallet {
         /// 
         /// # 计算公式
         /// 均价 = 总 USDT / 总 DUST
-        ///      = total_usdt / (total_memo / 10^12)
-        ///      = (total_usdt * 10^12) / total_memo
+        ///      = total_usdt / (total_dust / 10^12)
+        ///      = (total_usdt * 10^12) / total_dust
         pub fn get_otc_average_price() -> u64 {
             let agg = OtcPriceAggregate::<T>::get();
-            if agg.total_memo == 0 {
+            if agg.total_dust == 0 {
                 return 0;
             }
-            // 均价 = (total_usdt * 10^12) / total_memo
+            // 均价 = (total_usdt * 10^12) / total_dust
             let avg = agg.total_usdt
                 .saturating_mul(1_000_000_000_000u128)
-                .checked_div(agg.total_memo)
+                .checked_div(agg.total_dust)
                 .unwrap_or(0);
             avg as u64
         }
@@ -363,12 +363,12 @@ pub mod pallet {
         /// 函数级详细中文注释：获取 Bridge 兑换均价（USDT/DUST，精度 10^6）
         pub fn get_bridge_average_price() -> u64 {
             let agg = BridgePriceAggregate::<T>::get();
-            if agg.total_memo == 0 {
+            if agg.total_dust == 0 {
                 return 0;
             }
             let avg = agg.total_usdt
                 .saturating_mul(1_000_000_000_000u128)
-                .checked_div(agg.total_memo)
+                .checked_div(agg.total_dust)
                 .unwrap_or(0);
             avg as u64
         }
@@ -378,7 +378,7 @@ pub mod pallet {
         pub fn get_otc_stats() -> (u128, u128, u32, u64) {
             let agg = OtcPriceAggregate::<T>::get();
             let avg = Self::get_otc_average_price();
-            (agg.total_memo, agg.total_usdt, agg.order_count, avg)
+            (agg.total_dust, agg.total_usdt, agg.order_count, avg)
         }
 
         /// 函数级详细中文注释：获取 Bridge 聚合统计信息
@@ -386,7 +386,7 @@ pub mod pallet {
         pub fn get_bridge_stats() -> (u128, u128, u32, u64) {
             let agg = BridgePriceAggregate::<T>::get();
             let avg = Self::get_bridge_average_price();
-            (agg.total_memo, agg.total_usdt, agg.order_count, avg)
+            (agg.total_dust, agg.total_usdt, agg.order_count, avg)
         }
 
         /// 函数级详细中文注释：获取 DUST 市场参考价格（简单平均 + 冷启动保护）
@@ -413,7 +413,7 @@ pub mod pallet {
                 let bridge_agg = BridgePriceAggregate::<T>::get();
                 
                 // 如果两个市场都未达阈值，使用默认价格
-                if otc_agg.total_memo < threshold && bridge_agg.total_memo < threshold {
+                if otc_agg.total_dust < threshold && bridge_agg.total_dust < threshold {
                     return DefaultPrice::<T>::get();
                 }
                 
@@ -424,8 +424,8 @@ pub mod pallet {
                 let market_price = Self::calculate_weighted_average();
                 Self::deposit_event(Event::ColdStartExited {
                     final_threshold: threshold,
-                    otc_volume: otc_agg.total_memo,
-                    bridge_volume: bridge_agg.total_memo,
+                    otc_volume: otc_agg.total_dust,
+                    bridge_volume: bridge_agg.total_dust,
                     market_price,
                 });
             }
@@ -461,7 +461,7 @@ pub mod pallet {
         /// - 资产估值（钱包总值计算）
         /// - 清算价格参考
         /// - 市场指数计算
-        pub fn get_memo_market_price_weighted() -> u64 {
+        pub fn get_dust_market_price_weighted() -> u64 {
             // 冷启动检查
             if !ColdStartExited::<T>::get() {
                 let threshold = ColdStartThreshold::<T>::get();
@@ -469,7 +469,7 @@ pub mod pallet {
                 let bridge_agg = BridgePriceAggregate::<T>::get();
                 
                 // 如果两个市场都未达阈值，使用默认价格
-                if otc_agg.total_memo < threshold && bridge_agg.total_memo < threshold {
+                if otc_agg.total_dust < threshold && bridge_agg.total_dust < threshold {
                     return DefaultPrice::<T>::get();
                 }
                 
@@ -480,8 +480,8 @@ pub mod pallet {
                 let market_price = Self::calculate_weighted_average();
                 Self::deposit_event(Event::ColdStartExited {
                     final_threshold: threshold,
-                    otc_volume: otc_agg.total_memo,
-                    bridge_volume: bridge_agg.total_memo,
+                    otc_volume: otc_agg.total_dust,
+                    bridge_volume: bridge_agg.total_dust,
                     market_price,
                 });
             }
@@ -496,8 +496,8 @@ pub mod pallet {
             let otc_agg = OtcPriceAggregate::<T>::get();
             let bridge_agg = BridgePriceAggregate::<T>::get();
             
-            let total_memo = otc_agg.total_memo.saturating_add(bridge_agg.total_memo);
-            if total_memo == 0 {
+            let total_dust = otc_agg.total_dust.saturating_add(bridge_agg.total_dust);
+            if total_dust == 0 {
                 return DefaultPrice::<T>::get(); // 无数据时返回默认价格
             }
             
@@ -505,7 +505,7 @@ pub mod pallet {
             let total_usdt = otc_agg.total_usdt.saturating_add(bridge_agg.total_usdt);
             let avg = total_usdt
                 .saturating_mul(1_000_000_000_000u128)
-                .checked_div(total_memo)
+                .checked_div(total_dust)
                 .unwrap_or(0);
             
             avg as u64
@@ -531,7 +531,7 @@ pub mod pallet {
             
             let otc_price = Self::get_otc_average_price();
             let bridge_price = Self::get_bridge_average_price();
-            let weighted_price = Self::get_memo_market_price_weighted();
+            let weighted_price = Self::get_dust_market_price_weighted();
             let simple_avg_price = Self::get_memo_reference_price();
             
             MarketStats {
@@ -539,9 +539,9 @@ pub mod pallet {
                 bridge_price,
                 weighted_price,
                 simple_avg_price,
-                otc_volume: otc_agg.total_memo,
-                bridge_volume: bridge_agg.total_memo,
-                total_volume: otc_agg.total_memo.saturating_add(bridge_agg.total_memo),
+                otc_volume: otc_agg.total_dust,
+                bridge_volume: bridge_agg.total_dust,
+                total_volume: otc_agg.total_dust.saturating_add(bridge_agg.total_dust),
                 otc_order_count: otc_agg.order_count,
                 bridge_swap_count: bridge_agg.order_count,
             }
@@ -576,7 +576,7 @@ pub mod pallet {
         /// - 防止极端价格订单，保护买卖双方
         pub fn check_price_deviation(order_price_usdt: u64) -> DispatchResult {
             // 1. 获取基准价格（市场加权平均价格）
-            let base_price = Self::get_memo_market_price_weighted();
+            let base_price = Self::get_dust_market_price_weighted();
             
             // 2. 验证基准价格有效
             ensure!(base_price > 0, Error::<T>::InvalidBasePrice);

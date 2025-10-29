@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 //! 函数级中文注释：统一纪念服务系统（精简版）
 //! 
-//! 本 Pallet 整合了原 pallet-memo-sacrifice 和 pallet-memo-offerings 的核心功能
+//! 本 Pallet 整合了原 pallet-memorial 和 pallet-memorial 的核心功能
 //! 
 //! **设计理念**：精简、高效、易用
 //! - 移除60%冗余功能

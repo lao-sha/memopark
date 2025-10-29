@@ -34,7 +34,7 @@
 //! - 更好的类型安全和官方维护
 //!
 //! - **v0.1.0**: 初始版本，名称为 pallet-memo-content-governance
-//! - **v0.2.0**: 重命名为 pallet-memo-appeals，准备集成 pallet-deposits
+//! - **v0.2.0**: 重命名为 pallet-stardust-appeals，准备集成 pallet-deposits
 //!
 #![allow(deprecated)]
 

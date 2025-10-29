@@ -15,13 +15,13 @@
 //! ### OTC模块（场外交易）
 //! - create_order: 创建订单
 //! - mark_paid: 标记已付款
-//! - release_memo: 释放MEMO
+//! - release_dust: 释放DUST
 //! - cancel_order: 取消订单
 //! - dispute_order: 发起争议
 //! 
 //! ### Bridge模块（跨链桥）
-//! - bridge_memo_to_tron: MEMO → USDT
-//! - bridge_usdt_to_memo: USDT → MEMO
+//! - bridge_dust_to_tron: DUST → USDT
+//! - bridge_usdt_to_dust: USDT → DUST
 //! 
 //! 创建日期：2025-10-28
 
@@ -282,14 +282,14 @@ mod benchmarks {
     /// - 信用系统交互
     /// - 联盟奖励计算
     #[benchmark]
-    fn release_memo() {
+    fn release_dust() {
         let maker = create_maker_account::<T>();
         let order_id = 1u64;
         
         // 前置条件：订单已付款
 
         #[extrinsic_call]
-        release_memo(
+        release_dust(
             RawOrigin::Signed(maker),
             order_id,
         );
@@ -363,14 +363,14 @@ mod benchmarks {
     /// - 资金锁定/销毁
     /// - OCW触发
     #[benchmark]
-    fn bridge_memo_to_tron() {
+    fn bridge_dust_to_tron() {
         let caller: T::AccountId = whitelisted_caller();
         
         let qty = 1_000_000_000_000u128; // 1M MEMO
         let tron_address = vec![1u8; 34];
 
         #[extrinsic_call]
-        bridge_memo_to_tron(
+        bridge_dust_to_tron(
             RawOrigin::Signed(caller),
             qty,
             tron_address,
@@ -394,14 +394,14 @@ mod benchmarks {
     /// - 资金铸造/解锁
     /// - 联盟奖励
     #[benchmark]
-    fn bridge_usdt_to_memo() {
+    fn bridge_usdt_to_dust() {
         let caller: T::AccountId = whitelisted_caller();
         
         let usdt_amount = 1000_000_000u128; // 1000 USDT
         let payment_commit = vec![1u8; 32];
 
         #[extrinsic_call]
-        bridge_usdt_to_memo(
+        bridge_usdt_to_dust(
             RawOrigin::Signed(caller),
             usdt_amount,
             payment_commit,

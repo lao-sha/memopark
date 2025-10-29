@@ -1,4 +1,4 @@
-// 函数级中文注释：pallet-memo-grave的Mock Runtime，用于单元测试
+// 函数级中文注释：pallet-stardust-grave的Mock Runtime，用于单元测试
 
 use crate as pallet_memo_grave;
 use frame_support::{

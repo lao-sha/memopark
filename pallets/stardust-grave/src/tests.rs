@@ -1,4 +1,4 @@
-// 函数级中文注释：pallet-memo-grave单元测试
+// 函数级中文注释：pallet-stardust-grave单元测试
 // Phase 3 Week 1 Day 2: 20个核心测试用例
 
 use crate::{mock::*, Error, Event, Graves, NextGraveId};

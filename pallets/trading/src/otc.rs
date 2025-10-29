@@ -10,7 +10,7 @@
 //! 
 //! 2. **订单流程**
 //!    - mark_paid: 买家标记已付款
-//!    - release_memo: 做市商释放MEMO
+//!    - release_dust: 做市商释放DUST
 //!    - cancel_order: 取消订单
 //!    - dispute_order: 发起争议
 //! 
@@ -89,7 +89,7 @@ pub struct Order<T: Config> {
 /// # 参数
 /// - buyer: 买家账户
 /// - maker_id: 做市商ID
-/// - memo_amount: DUST数量
+/// - dust_amount: DUST数量
 /// - payment_commit: 支付承诺哈希
 /// - contact_commit: 联系方式承诺哈希
 /// 
@@ -98,7 +98,7 @@ pub struct Order<T: Config> {
 pub fn do_create_order<T: Config>(
     buyer: &T::AccountId,
     maker_id: u64,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     payment_commit: H256,
     contact_commit: H256,
 ) -> Result<u64, DispatchError> {
@@ -141,7 +141,7 @@ pub fn do_create_order<T: Config>(
         maker: maker_app.owner.clone(),
         taker: buyer.clone(),
         price: BalanceOf::<T>::default(), // TODO: 从pricing获取
-        qty: memo_amount,
+        qty: dust_amount,
         amount: BalanceOf::<T>::default(), // TODO: 计算
         created_at: now,
         expire_at,
@@ -176,7 +176,7 @@ pub fn do_create_order<T: Config>(
         order_id,
         maker_id,
         buyer: buyer.clone(),
-        memo_amount,
+        dust_amount,
         is_first_purchase: false,  // TODO: 实现首购检测逻辑
     });
     
@@ -251,7 +251,7 @@ pub fn do_mark_paid<T: Config>(
 /// 
 /// # 返回
 /// - DispatchResult
-pub fn do_release_memo<T: Config>(
+pub fn do_release_dust<T: Config>(
     maker: &T::AccountId,
     order_id: u64,
 ) -> DispatchResult {

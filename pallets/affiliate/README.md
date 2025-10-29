@@ -150,7 +150,7 @@ pub fn deposit(
 
 **示例**：
 ```rust
-// 用户向托管账户存入 1000 MEMO
+// 用户向托管账户存入 1000 DUST
 affiliate::deposit(origin, 1_000_000_000_000)?;
 ```
 
@@ -185,7 +185,7 @@ pub fn withdraw(
 
 **示例**：
 ```rust
-// Root 从托管账户提取 500 MEMO 到用户账户
+// Root 从托管账户提取 500 DUST 到用户账户
 affiliate::withdraw(RootOrigin, user_account, 500_000_000_000)?;
 ```
 

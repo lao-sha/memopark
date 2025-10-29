@@ -66,8 +66,8 @@ impl_opaque_keys! {
 // https://docs.substrate.io/main-docs/build/upgrade#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
-    impl_name: alloc::borrow::Cow::Borrowed("memopark-runtime"),
+    spec_name: alloc::borrow::Cow::Borrowed("stardust-runtime"),
+    impl_name: alloc::borrow::Cow::Borrowed("stardust-runtime"),
     authoring_version: 1,
     // The version of the runtime specification. A full node will not attempt to use its native
     //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -180,7 +180,7 @@ pub type UncheckedExtrinsic =
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
-// ===== Offchain Worker 签名支持（供 pallet-memo-ipfs 使用）=====
+// ===== Offchain Worker 签名支持（供 pallet-stardust-ipfs 使用）=====
 impl frame_system::offchain::SigningTypes for Runtime {
     /// 函数级中文注释：OCW 使用与交易签名相同的签名类型
     type Public = <Signature as Verify>::Signer;
@@ -413,7 +413,7 @@ pub mod runtime {
     /// - 来源追踪：记录每笔余额的来源和使用情况
     // 函数级中文注释：2025-10-22 已删除 pallet-balance-tiers (index 48)
     // - 功能与固定免费次数重复，复杂度过高（2,000+行代码）
-    // - 成本更高（50,000 MEMO vs 200 DUST，降低99.6%）
+    // - 成本更高（50,000 DUST vs 200 DUST，降低99.6%）
     // - 新用户 Gas 已由固定免费次数覆盖（做市商代付）
     // - 活动空投、邀请奖励改用直接转账 DUST（更简单）
 
@@ -465,7 +465,7 @@ pub mod runtime {
     pub type Deposits = pallet_deposits;
 
     /// 函数级中文注释：统一纪念服务系统（Memorial Integration）
-    /// 🆕 2025-10-28：整合 pallet-memo-offerings 和 pallet-memo-sacrifice
+    /// 🆕 2025-10-28：整合 pallet-memorial 和 pallet-memorial
     /// 
     /// **祭祀品目录（Sacrifice Catalog）**：
     /// - 目录管理：创建/更新/启用/禁用祭祀品规格

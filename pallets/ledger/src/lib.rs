@@ -27,7 +27,7 @@ pub mod pallet {
         /// 事件类型
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        /// 墓位 ID 类型（与 pallet-memo-grave 对齐）
+        /// 墓位 ID 类型（与 pallet-stardust-grave 对齐）
         type GraveId: Parameter + Member + Copy + MaxEncodedLen;
         /// 链上余额类型（与 Runtime::Balance 对齐）
         type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;

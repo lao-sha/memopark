@@ -10,7 +10,7 @@
 //! - 只支持 MEMO → USDT 方向（先验证需求）
 //! - 动态汇率（基于 pallet-pricing 的市场加权均价）
 //! - 价格浮动限制：±20%（可治理配置）
-//! - 最小金额 100 MEMO
+//! - 最小金额 100 DUST
 //! - 极简状态机（只有 completed 布尔值）
 //! 
 //! ## 接口
@@ -69,7 +69,7 @@ pub mod pallet {
         /// 用户地址
         pub user: T::AccountId,
         /// MEMO 数量（12位小数）
-        pub memo_amount: BalanceOf<T>,
+        pub dust_amount: BalanceOf<T>,
         /// TRON 地址（Base58格式，如 T...）
         pub tron_address: BoundedVec<u8, ConstU32<64>>,
         /// 是否已完成
@@ -117,7 +117,7 @@ pub mod pallet {
         /// 用户账户
         pub user: T::AccountId,
         /// MEMO 数量（精度 10^12）
-        pub memo_amount: BalanceOf<T>,
+        pub dust_amount: BalanceOf<T>,
         /// USDT 金额（精度 10^6）
         pub usdt_amount: u64,
         /// USDT 接收地址（TRC20）
@@ -340,7 +340,7 @@ pub mod pallet {
         fn default() -> Self {
             Self {
                 bridge_account: None,
-                min_amount: 100u128.saturated_into(), // 默认 100 MEMO
+                min_amount: 100u128.saturated_into(), // 默认 100 DUST
             }
         }
     }
@@ -394,7 +394,7 @@ pub mod pallet {
             maker_id: u64,
             maker: T::AccountId,
             user: T::AccountId,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             usdt_amount: u64,
             usdt_address: BoundedVec<u8, ConstU32<64>>,
             timeout_at: BlockNumberFor<T>,
@@ -457,7 +457,7 @@ pub mod pallet {
             swap_id: u64,
             maker_id: u64,
             user: T::AccountId,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             usdt_amount: u64,
             tron_address: BoundedVec<u8, ConstU32<64>>,
             timeout_at: BlockNumberFor<T>,
@@ -478,14 +478,14 @@ pub mod pallet {
         OcwMemoReleased {
             swap_id: u64,
             maker: T::AccountId,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             tron_tx_hash: BoundedVec<u8, ConstU32<128>>,
         },
         /// 函数级详细中文注释：OCW 订单超时已退款
         OcwSwapRefunded {
             swap_id: u64,
             user: T::AccountId,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
         },
         /// 函数级详细中文注释：用户举报 OCW 订单
         OcwUserReported {
@@ -630,7 +630,7 @@ pub mod pallet {
         /// 
         /// # 参数
         /// - `origin`: 调用者（签名交易）
-        /// - `memo_amount`: MEMO 数量（12位小数，如 100 DUST = 100_000_000_000_000）
+        /// - `dust_amount`: MEMO 数量（12位小数，如 100 DUST = 100_000_000_000_000）
         /// - `tron_address`: TRON 地址（Base58 格式，如 "TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"）
         /// 
         /// # 验证
@@ -655,7 +655,7 @@ pub mod pallet {
         #[pallet::weight(T::DbWeight::get().reads_writes(5, 2))]
         pub fn swap(
             origin: OriginFor<T>,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             tron_address: BoundedVec<u8, ConstU32<64>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -665,7 +665,7 @@ pub mod pallet {
             
             // 验证最小金额
             ensure!(
-                memo_amount >= MinAmount::<T>::get(),
+                dust_amount >= MinAmount::<T>::get(),
                 Error::<T>::AmountTooSmall
             );
             
@@ -692,7 +692,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &who,
                 &bridge_acc,
-                memo_amount,
+                dust_amount,
                 ExistenceRequirement::KeepAlive,
             )?;
             
@@ -714,7 +714,7 @@ pub mod pallet {
             let request = SwapRequest {
                 id,
                 user: who.clone(),
-                memo_amount,
+                dust_amount,
                 tron_address: tron_address.clone(),
                 completed: false,
                 price_usdt,
@@ -727,7 +727,7 @@ pub mod pallet {
             Self::deposit_event(Event::SwapCreated {
                 id,
                 user: who,
-                amount: memo_amount,
+                amount: dust_amount,
                 tron_address,
                 price_usdt, // 输出实际使用的汇率
             });
@@ -759,9 +759,9 @@ pub mod pallet {
             ensure_root(origin)?;
             
             // 函数级中文注释：提取兑换信息用于价格聚合更新
-            let (price_usdt, memo_amount, timestamp) = {
+            let (price_usdt, dust_amount, timestamp) = {
                 let req = Swaps::<T>::get(swap_id).ok_or(Error::<T>::SwapNotFound)?;
-                let memo_qty: u128 = req.memo_amount.saturated_into();
+                let memo_qty: u128 = req.dust_amount.saturated_into();
                 // 转换区块号为秒级时间戳（6秒/块）
                 let timestamp: u64 = req.created_at.saturated_into::<u64>() * 6u64 * 1000u64; // 转换为毫秒
                 (req.price_usdt, memo_qty, timestamp)
@@ -778,7 +778,7 @@ pub mod pallet {
             
             // 函数级中文注释：兑换完成后，添加到 pallet-pricing 的 Bridge 价格聚合统计
             // 忽略错误（不影响兑换流程）
-            let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(timestamp, price_usdt, memo_amount);
+            let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(timestamp, price_usdt, dust_amount);
             
             Self::deposit_event(Event::SwapCompleted { id: swap_id });
             Ok(())
@@ -827,7 +827,7 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 用户账户
         /// - `maker_id`: 做市商 ID
-        /// - `memo_amount`: DUST 数量（精度 10^12）
+        /// - `dust_amount`: DUST 数量（精度 10^12）
         /// - `usdt_address`: USDT（TRC20）接收地址
         /// 
         /// # 流程
@@ -843,7 +843,7 @@ pub mod pallet {
         pub fn swap_with_maker(
             origin: OriginFor<T>,
             maker_id: u64,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             usdt_address: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -868,7 +868,7 @@ pub mod pallet {
             ensure!(price_usdt > 0, Error::<T>::MarketPriceNotAvailable);
             
             // 4. 计算 USDT 金额
-            let memo_in_units: u128 = memo_amount.saturated_into();
+            let memo_in_units: u128 = dust_amount.saturated_into();
             let memo_whole = memo_in_units / 1_000_000_000_000u128; // 转为整数 MEMO
             
             // 计算基础 USDT 金额
@@ -891,7 +891,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &who,
                 &custody_account,
-                memo_amount,
+                dust_amount,
                 ExistenceRequirement::KeepAlive
             )?;
             
@@ -905,7 +905,7 @@ pub mod pallet {
                 maker_id,
                 maker: maker_app.owner.clone(),
                 user: who.clone(),
-                memo_amount,
+                dust_amount,
                 usdt_amount,
                 usdt_address: usdt_address.clone(),
                 created_at: now,
@@ -926,7 +926,7 @@ pub mod pallet {
                 maker_id,
                 maker: maker_app.owner,
                 user: who,
-                memo_amount,
+                dust_amount,
                 usdt_amount,
                 usdt_address,
                 timeout_at,
@@ -985,7 +985,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
                 &maker,
-                record.memo_amount,
+                record.dust_amount,
                 ExistenceRequirement::AllowDeath
             )?;
             
@@ -993,14 +993,14 @@ pub mod pallet {
             let time_seconds = now.saturating_sub(record.created_at).saturated_into::<u64>() * 6;
             let _ = pallet_market_maker::Pallet::<T>::update_bridge_stats(
                 record.maker_id,
-                record.memo_amount,
+                record.dust_amount,
                 time_seconds,
                 true,
             );
             
             // 上报价格数据
             let timestamp = record.created_at.saturated_into::<u64>() * 6 * 1000; // 转毫秒
-            let memo_qty: u128 = record.memo_amount.saturated_into();
+            let memo_qty: u128 = record.dust_amount.saturated_into();
             let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(
                 timestamp,
                 record.price_usdt,
@@ -1137,7 +1137,7 @@ pub mod pallet {
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.maker,
-                    record.memo_amount,
+                    record.dust_amount,
                     ExistenceRequirement::AllowDeath
                 )?;
                 
@@ -1149,7 +1149,7 @@ pub mod pallet {
                 let time_seconds = now.saturating_sub(record.created_at).saturated_into::<u64>() * 6;
                 let _ = pallet_market_maker::Pallet::<T>::update_bridge_stats(
                     record.maker_id,
-                    record.memo_amount,
+                    record.dust_amount,
                     time_seconds,
                     true,
                 );
@@ -1167,7 +1167,7 @@ pub mod pallet {
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.user,
-                    record.memo_amount,
+                    record.dust_amount,
                     ExistenceRequirement::AllowDeath
                 )?;
                 
@@ -1182,7 +1182,7 @@ pub mod pallet {
                 let time_seconds = now.saturating_sub(record.created_at).saturated_into::<u64>() * 6;
                 let _ = pallet_market_maker::Pallet::<T>::update_bridge_stats(
                     record.maker_id,
-                    record.memo_amount,
+                    record.dust_amount,
                     time_seconds,
                     false,
                 );
@@ -1190,7 +1190,7 @@ pub mod pallet {
                 Self::deposit_event(Event::MakerSwapArbitrated {
                     swap_id,
                     approved: false,
-                    penalty: Some(record.memo_amount / 5u32.into()), // 20% 补偿
+                    penalty: Some(record.dust_amount / 5u32.into()), // 20% 补偿
                 });
             }
             
@@ -1341,7 +1341,7 @@ pub mod pallet {
         /// - `maker_id`: 做市商 ID
         /// - `maker_account`: 做市商账户（接收 DUST）
         /// - `maker_tron_address`: 做市商 TRON 地址（发送 USDT）
-        /// - `memo_amount`: DUST 数量（12位小数）
+        /// - `dust_amount`: DUST 数量（12位小数）
         /// - `buyer_tron_address`: 买家的 TRON 地址（接收 USDT）
         /// 
         /// # 验证
@@ -1361,14 +1361,14 @@ pub mod pallet {
         pub fn create_maker_swap(
             origin: OriginFor<T>,
             maker_id: u64,
-            memo_amount: BalanceOf<T>,
+            dust_amount: BalanceOf<T>,
             buyer_tron_address: BoundedVec<u8, ConstU32<64>>,
         ) -> DispatchResult {
             let user = ensure_signed(origin)?;
             
             // 验证 DUST 数量
             ensure!(
-                memo_amount >= T::OcwMinSwapAmount::get(),
+                dust_amount >= T::OcwMinSwapAmount::get(),
                 Error::<T>::AmountTooSmall
             );
             
@@ -1417,8 +1417,8 @@ pub mod pallet {
             pallet_pricing::Pallet::<T>::check_price_deviation(final_price_u64)?;
             
             // USDT 金额 = DUST 数量 * 最终价格（精度转换）
-            // memo_amount: 12位小数，final_price_u64: 6位小数
-            let memo_u128: u128 = memo_amount.saturated_into();
+            // dust_amount: 12位小数，final_price_u64: 6位小数
+            let memo_u128: u128 = dust_amount.saturated_into();
             let usdt_amount = (memo_u128 * final_price_u64 as u128) / 1_000_000_000_000u128;
             let usdt_amount_u64: u64 = usdt_amount.saturated_into();
             
@@ -1433,7 +1433,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &user,
                 &custody_account,
-                memo_amount,
+                dust_amount,
                 ExistenceRequirement::KeepAlive,
             )?;
             
@@ -1454,7 +1454,7 @@ pub mod pallet {
                 maker_memo_account: maker_account.clone(),
                 buyer: user.clone(),
                 buyer_tron_address: buyer_tron_address.clone(),
-                memo_amount,
+                dust_amount,
                 usdt_amount: usdt_amount_u64,
                 status: crate::OcwMakerSwapStatus::Pending,
                 tron_tx_hash: None,
@@ -1468,7 +1468,7 @@ pub mod pallet {
                 swap_id,
                 maker_id,
                 user,
-                memo_amount,
+                dust_amount,
                 usdt_amount: usdt_amount_u64,
                 tron_address: buyer_tron_address,
                 timeout_at,
@@ -1604,7 +1604,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
                 &user,
-                record.memo_amount,
+                record.dust_amount,
                 ExistenceRequirement::AllowDeath,
             )?;
             
@@ -1618,7 +1618,7 @@ pub mod pallet {
             Self::deposit_event(Event::OcwSwapRefunded {
                 swap_id,
                 user,
-                memo_amount: record.memo_amount,
+                dust_amount: record.dust_amount,
             });
             
             Ok(())
@@ -1719,7 +1719,7 @@ pub mod pallet {
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.maker_memo_account,
-                    record.memo_amount,
+                    record.dust_amount,
                     ExistenceRequirement::AllowDeath,
                 )?;
                 
@@ -1729,7 +1729,7 @@ pub mod pallet {
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.buyer,
-                    record.memo_amount,
+                    record.dust_amount,
                     ExistenceRequirement::AllowDeath,
                 )?;
                 
@@ -1817,7 +1817,7 @@ pub mod pallet {
         /// 4. 从验证队列中移除
         #[pallet::call_index(19)]
         #[pallet::weight(T::DbWeight::get().reads_writes(2, 3))]
-        pub fn release_memo(
+        pub fn release_dust(
             origin: OriginFor<T>,
             swap_id: u64,
         ) -> DispatchResult {
@@ -1838,7 +1838,7 @@ pub mod pallet {
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
                 &record.maker_memo_account,
-                record.memo_amount,
+                record.dust_amount,
                 ExistenceRequirement::AllowDeath,
             )?;
             
@@ -1852,7 +1852,7 @@ pub mod pallet {
             Self::deposit_event(Event::OcwMemoReleased {
                 swap_id,
                 maker: record.maker_memo_account,
-                memo_amount: record.memo_amount,
+                dust_amount: record.dust_amount,
                 tron_tx_hash: record.tron_tx_hash.unwrap_or_default(),
             });
             
@@ -1895,7 +1895,7 @@ pub mod pallet {
                         let result = <T as pallet_market_maker::Config>::Currency::transfer(
                             &bridge_acc,
                             &swap.user,
-                            swap.memo_amount,
+                            swap.dust_amount,
                             ExistenceRequirement::KeepAlive,
                         );
                         
@@ -1913,7 +1913,7 @@ pub mod pallet {
                             Self::deposit_event(Event::SwapRefunded {
                                 id,
                                 user: swap.user.clone(),
-                                amount: swap.memo_amount,
+                                amount: swap.dust_amount,
                             });
                             
                             refunded_count += 1;
@@ -2063,7 +2063,7 @@ pub mod pallet {
                 }
                 
                 // 验证订单
-                if let Err(e) = Self::verify_and_release_memo(swap_id) {
+                if let Err(e) = Self::verify_and_release_dust(swap_id) {
                     log::error!("❌ OCW 验证订单失败 swap_id={}: {:?}", swap_id, e);
                 } else {
                     log::info!("✅ OCW 验证订单成功 swap_id={}", swap_id);
@@ -2090,7 +2090,7 @@ pub mod pallet {
         /// 3. 验证交易参数（接收地址、金额、确认数）
         /// 4. 提交无签名交易释放 DUST
         /// 5. 更新订单状态
-        fn verify_and_release_memo(swap_id: u64) -> Result<(), &'static str> {
+        fn verify_and_release_dust(swap_id: u64) -> Result<(), &'static str> {
             // 读取订单记录
             let record = OcwMakerSwaps::<T>::get(swap_id)
                 .ok_or("订单不存在")?;
@@ -2112,7 +2112,7 @@ pub mod pallet {
             Self::validate_tron_transaction(&record, &tx_data)?;
             
             // 提交无签名交易释放 DUST
-            Self::submit_release_memo(swap_id)?;
+            Self::submit_release_dust(swap_id)?;
             
             Ok(())
         }
@@ -2237,13 +2237,13 @@ pub mod pallet {
         /// 
         /// # TODO
         /// Phase 2 实现：需要在 Runtime 中配置 CreateSignedTransaction
-        /// 当前版本：OCW 验证成功后记录日志，需要治理手动调用 release_memo
+        /// 当前版本：OCW 验证成功后记录日志，需要治理手动调用 release_dust
         #[allow(unused_variables)]
-        fn submit_release_memo(swap_id: u64) -> Result<(), &'static str> {
+        fn submit_release_dust(swap_id: u64) -> Result<(), &'static str> {
             // TODO: Phase 2 实现无签名交易提交
             // 当前阶段，OCW 只负责验证，释放 DUST 需要治理手动调用
             
-            log::info!("✅ OCW 验证成功，待治理调用 release_memo，swap_id={}", swap_id);
+            log::info!("✅ OCW 验证成功，待治理调用 release_dust，swap_id={}", swap_id);
             
             // 标记验证成功（Phase 2 可添加单独的 VerifiedSwaps 存储项）
             Ok(())
@@ -2257,7 +2257,7 @@ pub mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::release_memo { swap_id } => {
+                Call::release_dust { swap_id } => {
                     // 验证订单存在
                     let record = OcwMakerSwaps::<T>::get(swap_id)
                         .ok_or(InvalidTransaction::Custom(1))?;

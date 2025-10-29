@@ -163,9 +163,9 @@ pub trait IpfsPinner<AccountId, Balance> {
     /// - `tier`: 分层等级（None则使用默认Standard）✅ 新增
     /// 
     /// 适用场景：
-    /// - 墓位封面图（pallet-memo-grave::set_cover）
-    /// - 墓位背景音乐（pallet-memo-grave::set_audio）
-    /// - 墓位播放列表（pallet-memo-grave::set_audio_playlist）
+    /// - 墓位封面图（pallet-stardust-grave::set_cover）
+    /// - 墓位背景音乐（pallet-stardust-grave::set_audio）
+    /// - 墓位播放列表（pallet-stardust-grave::set_audio_playlist）
     /// 
     /// 注意：墓位维度的SubjectFunding派生方式与逝者维度不同
     /// （使用 `b"grave"` 作为domain前缀）

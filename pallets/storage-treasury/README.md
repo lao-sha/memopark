@@ -140,7 +140,7 @@ withdraw(
 
 **示例**：
 ```javascript
-// 提取 10,000 MEMO 到治理账户
+// 提取 10,000 DUST 到治理账户
 await api.tx.storageTreasury
     .withdraw(governanceAccount, 10_000_000_000_000_000n)
     .signAndSend(sudoAccount);
@@ -154,7 +154,7 @@ await api.tx.storageTreasury
 
 ```javascript
 const totalCollected = await api.query.storageTreasury.totalCollected();
-console.log(`累计收集: ${totalCollected} MEMO`);
+console.log(`累计收集: ${totalCollected} DUST`);
 ```
 
 ---
@@ -163,7 +163,7 @@ console.log(`累计收集: ${totalCollected} MEMO`);
 
 ```javascript
 const totalDistributed = await api.query.storageTreasury.totalDistributed();
-console.log(`累计分配: ${totalDistributed} MEMO`);
+console.log(`累计分配: ${totalDistributed} DUST`);
 ```
 
 ---
@@ -174,7 +174,7 @@ console.log(`累计分配: ${totalDistributed} MEMO`);
 // 方法1：查询托管账户余额
 const accountId = api.consts.storageTreasury.storagePalletId;
 const account = await api.query.system.account(accountId);
-console.log(`当前余额: ${account.data.free} MEMO`);
+console.log(`当前余额: ${account.data.free} DUST`);
 ```
 
 ---
@@ -453,9 +453,9 @@ async function checkStorageTreasuryStatus() {
     
     console.log(`
     ============ 存储账户状态 ============
-    累计收集: ${collected} MEMO
-    累计分配: ${distributed} MEMO
-    当前余额: ${balance.data.free} MEMO
+    累计收集: ${collected} DUST
+    累计分配: ${distributed} DUST
+    当前余额: ${balance.data.free} DUST
     
     分配率: ${(distributed / collected * 100).toFixed(2)}%
     剩余率: ${(balance.data.free / collected * 100).toFixed(2)}%

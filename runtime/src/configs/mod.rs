@@ -99,8 +99,8 @@ impl pallet_stardust_appeals::Config for Runtime {
 /// 
 /// ## 核心逻辑
 /// 1. 基础押金金额：$10 USD（固定）
-/// 2. 从 pallet-pricing 获取MEMO/USDT实时市场价格
-/// 3. 计算押金MEMO数量 = $10 / (DUST价格 in USDT)
+/// 2. 从 pallet-pricing 获取DUST/USDT实时市场价格
+/// 3. 计算押金DUST数量 = $10 / (DUST价格 in USDT)
 /// 4. 根据 domain/action 应用倍数（1x, 1.5x, 2x）
 /// 
 /// ## 价格安全机制
@@ -125,27 +125,27 @@ impl pallet_stardust_appeals::AppealDepositPolicy for ContentAppealDepositPolicy
         _target: u64,
         action: u8,
     ) -> Option<Self::Balance> {
-        // 1. 获取MEMO/USDT市场价格（精度 10^6，即 1,000,000 = 1 USDT）
-        let memo_price_usdt = pallet_pricing::Pallet::<Runtime>::get_memo_market_price_weighted();
+        // 1. 获取DUST/USDT市场价格（精度 10^6，即 1,000,000 = 1 USDT）
+        let dust_price_usdt = pallet_pricing::Pallet::<Runtime>::get_dust_market_price_weighted();
         
         // 2. 价格安全检查：如果价格为0或过低，使用默认最低价格
-        let safe_price = if memo_price_usdt == 0 || memo_price_usdt < 1 {
+        let safe_price = if dust_price_usdt == 0 || dust_price_usdt < 1 {
             1u64 // 0.000001 USDT/DUST（最低保护价格）
         } else {
-            memo_price_usdt
+            dust_price_usdt
         };
         
         // 3. 计算$10 USD等价的DUST数量
         // $10 USD = 10,000,000（精度 10^6）
         // MEMO数量 = $10 / (DUST价格 in USDT) = 10,000,000 / safe_price
-        // 结果需要转换为MEMO精度（10^12）
+        // 结果需要转换为DUST精度（10^12）
         const TEN_USD: u128 = 10_000_000u128; // $10 in USDT (precision 10^6)
-        const MEMO_PRECISION: u128 = 1_000_000_000_000u128; // 10^12
+        const DUST_PRECISION: u128 = 1_000_000_000_000u128; // 10^12
         
-        let base_deposit_memo = TEN_USD
-            .saturating_mul(MEMO_PRECISION)
+        let base_deposit_dust = TEN_USD
+            .saturating_mul(DUST_PRECISION)
             .checked_div(safe_price as u128)
-            .unwrap_or(1 * MEMO_PRECISION); // 默认1 MEMO
+            .unwrap_or(1 * DUST_PRECISION); // 默认1 DUST
         
         // 4. 根据 domain/action 确定倍数（以万分比表示）
         let mult_bp: u16 = match (domain, action) {
@@ -160,11 +160,11 @@ impl pallet_stardust_appeals::AppealDepositPolicy for ContentAppealDepositPolicy
         
         // 5. 应用倍数：final_deposit = base_deposit * (mult_bp / 10000)
         let mult = sp_runtime::Perbill::from_parts((mult_bp as u32) * 100); // 100bp = 1%
-        let final_deposit = mult.mul_floor(base_deposit_memo);
+        let final_deposit = mult.mul_floor(base_deposit_dust);
         
         // 6. 安全限制
-        const MAX_DEPOSIT: Balance = 100_000 * MEMO_PRECISION; // 最高 100,000 MEMO
-        const MIN_DEPOSIT: Balance = 1 * MEMO_PRECISION; // 最低 1 MEMO
+        const MAX_DEPOSIT: Balance = 100_000 * DUST_PRECISION; // 最高 100,000 DUST
+        const MIN_DEPOSIT: Balance = 1 * DUST_PRECISION; // 最低 1 DUST
         
         let safe_deposit = final_deposit.clamp(MIN_DEPOSIT, MAX_DEPOSIT);
         
@@ -428,7 +428,7 @@ impl pallet_balances::Config for Runtime {
 
 parameter_types! {
     /// 函数级中文注释：统一信用系统参数 - 最小持仓量（用于资产信任评估）
-    /// - 100 MEMO 作为基准，持仓>=100倍（10000 DUST）视为高信任
+    /// - 100 DUST 作为基准，持仓>=100倍（10000 DUST）视为高信任
     pub const CreditMinimumBalance: Balance = 100 * UNIT;
     
     // 买家信用配置
@@ -559,7 +559,7 @@ parameter_types! {
     pub const GraveMaxIdsPerName: u32 = 1024;
     pub const GraveMaxComplaints: u32 = 100;
     pub const GraveMaxAdmins: u32 = 16;
-    /// 函数级中文注释：人类可读 ID（Slug）长度（固定为 10 位数字），与 `pallet-memo-grave` 中的约束一致
+    /// 函数级中文注释：人类可读 ID（Slug）长度（固定为 10 位数字），与 `pallet-stardust-grave` 中的约束一致
     pub const GraveSlugLen: u32 = 10;
     pub const GraveFollowCooldownBlocks: u32 = 30;
     pub const GraveFollowDeposit: Balance = 0;
@@ -629,7 +629,7 @@ parameter_types! {
 /// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
 pub struct GraveProviderAdapter;
 impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
-    /// 检查墓位是否存在：读取 `pallet-memo-grave` 的存储 `Graves`
+    /// 检查墓位是否存在：读取 `pallet-stardust-grave` 的存储 `Graves`
     fn grave_exists(grave_id: u64) -> bool {
         pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
     }
@@ -761,7 +761,7 @@ impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     // 删除cached_deceased_tokens_len：无需冗余缓存检查，直接由BoundedVec管理容量
 }
 
-// 为 memo-pet 复用同一墓位适配逻辑
+// 为 stardust-pet 复用同一墓位适配逻辑
 impl pallet_stardust_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAdapter {
     fn grave_exists(grave_id: u64) -> bool {
         pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
@@ -1052,7 +1052,7 @@ impl pallet_ledger::Config for Runtime {
     type WeightInfo = pallet_ledger::weights::SubstrateWeight<Runtime>;
 }
 
-// 🆕 2025-10-28 已移除: pallet-memo-offerings 已整合到 pallet-memorial
+// 🆕 2025-10-28 已移除: pallet-memorial 已整合到 pallet-memorial
 // parameter_types! {
 //     pub const OfferMaxCidLen: u32 = 64;
 //     pub const OfferMaxNameLen: u32 = 64;
@@ -1092,7 +1092,7 @@ impl pallet_ledger::Config for Runtime {
 //     type DonationResolver = GraveDonationResolver;
 //     /// 目录只读接口由 memo-sacrifice 提供
 //     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
-//     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 memo-pet 接管。
+//     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 stardust-pet 接管。
 //     type Consumer = NoopConsumer;
 //     /// 函数级中文注释：会员信息提供者（用于供奉折扣验证）
 //     type MembershipProvider = OfferingsMembershipProviderAdapter;
@@ -1116,7 +1116,7 @@ impl pallet_ledger::Config for Runtime {
 //     type CommitteeAccount = CommitteeAccount;
 //     /// 函数级详细中文注释：供奉品提交押金（1,000,000 DUST）
 //     /// - 用户提交供奉品审核时需要冻结的押金
-//     /// - 1,000,000 MEMO = 1,000,000,000,000 单位（假设 1 DUST = 1,000,000 单位）
+//     /// - 1,000,000 DUST = 1,000,000,000,000 单位（假设 1 DUST = 1,000,000 单位）
 //     /// - 批准上架后全额退还；拒绝或撤回时罚没5%到委员会账户
 //     type SubmissionDeposit = ConstU128<1_000_000_000_000>; // 1,000,000 DUST
 //     /// 函数级详细中文注释：拒绝/撤回罚没比例（500 bps = 5%）
@@ -1245,7 +1245,7 @@ impl pallet_ledger::Config for Runtime {
 //     }
 // }
 
-// 🆕 2025-10-28 已移除: pallet-memo-sacrifice 已整合到 pallet-memorial
+// 🆕 2025-10-28 已移除: pallet-memorial 已整合到 pallet-memorial
 // // ===== memo-sacrifice（目录）配置 =====
 // parameter_types! {
 //     pub const SacStringLimit: u32 = 64;
@@ -1274,7 +1274,7 @@ impl pallet_ledger::Config for Runtime {
 // }
 
 // ===== 🆕 2025-10-28：Memorial Integration（统一纪念服务系统）=====
-// 整合 pallet-memo-offerings 和 pallet-memo-sacrifice
+// 整合 pallet-memorial 和 pallet-memorial
 parameter_types! {
     // Sacrifice（祭祀品目录）参数
     pub const MemorialStringLimit: u32 = 64;
@@ -1288,7 +1288,7 @@ parameter_types! {
     pub const MemorialMaxMediaPerOffering: u32 = 8;
     pub const MemorialOfferWindow: BlockNumber = 600;           // 限频窗口：600块（约1小时）
     pub const MemorialOfferMaxInWindow: u32 = 100;              // 窗口内最多供奉100次
-    pub const MemorialMinOfferAmount: Balance = 1_000_000_000;  // 最低供奉金额：0.001 MEMO
+    pub const MemorialMinOfferAmount: Balance = 1_000_000_000;  // 最低供奉金额：0.001 DUST
 }
 
 /// 函数级中文注释：Memorial TargetControl占位实现（允许所有目标）
@@ -1727,7 +1727,7 @@ impl pallet_evidence::pallet::EvidenceAuthorizer<AccountId> for AllowAllEvidence
 }
 
 /// 函数级中文注释：家庭关系验证适配器（占位实现）。
-/// - 当前始终返回 false；后续可根据 `pallet-memo-grave` 的成员/亲属关系完善。
+/// - 当前始终返回 false；后续可根据 `pallet-stardust-grave` 的成员/亲属关系完善。
 pub struct FamilyVerifierAdapter;
 impl pallet_evidence::pallet::FamilyRelationVerifier<AccountId> for FamilyVerifierAdapter {
     fn is_family_member(_user: &AccountId, _deceased_id: u64) -> bool { false }
@@ -1870,7 +1870,7 @@ impl sp_core::Get<Vec<AccountId>> for MarketMakerReviewerAccounts {
 // 函数级中文注释：KYC 适配器已移除
 // - pallet-otc-maker 已废弃
 // - pallet-memo-hall 未被 runtime 使用
-// - pallet-memo-grave 定义了 KycProvider 但未实际使用
+// - pallet-stardust-grave 定义了 KycProvider 但未实际使用
 // - 如果未来需要 KYC，可以在此重新实现
 
 // ===== identity 配置与参数 =====
@@ -1944,8 +1944,8 @@ impl pallet_stardust_pet::Config for Runtime {
 // 原因：OTC订单重构已完成，挂单机制已由直接选择做市商替代
 parameter_types! { 
     pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS;
-    pub const OtcOrderMinFirstPurchaseAmount: Balance = 10_000_000_000_000_000; // 10 MEMO
-    pub const OtcOrderMaxFirstPurchaseAmount: Balance = 1_000_000_000_000_000_000; // 1000 MEMO
+    pub const OtcOrderMinFirstPurchaseAmount: Balance = 10_000_000_000_000_000; // 10 DUST
+    pub const OtcOrderMaxFirstPurchaseAmount: Balance = 1_000_000_000_000_000_000; // 1000 DUST
 }
 
 // 函数级中文注释：法币网关授权账户（用于调用首购接口）
@@ -1984,7 +1984,7 @@ parameter_types! {
     pub const TradingPalletId: frame_support::PalletId = frame_support::PalletId(*b"trdg/plt");
     
     // 做市商配置
-    pub const MakerDepositAmount: Balance = 1_000_000_000_000_000_000; // 1000 MEMO
+    pub const MakerDepositAmount: Balance = 1_000_000_000_000_000_000; // 1000 DUST
     pub const MakerApplicationTimeout: BlockNumber = 3 * DAYS;
     pub const WithdrawalCooldown: BlockNumber = 7 * DAYS;
     
@@ -2001,7 +2001,7 @@ parameter_types! {
     
     // OCW配置
     pub const OcwSwapTimeoutBlocks: BlockNumber = 10; // ~2分钟
-    pub const OcwMinSwapAmount: Balance = 10_000_000_000_000_000; // 10 MEMO
+    pub const OcwMinSwapAmount: Balance = 10_000_000_000_000_000; // 10 DUST
     pub const UnsignedPriorityTrading: sp_runtime::transaction_validity::TransactionPriority = sp_runtime::transaction_validity::TransactionPriority::MAX / 2;
 }
 
@@ -2565,7 +2565,7 @@ impl pallet_stardust_ipfs::OwnerProvider<AccountId> for DeceasedOwnerAdapter {
     }
 }
 
-/// 函数级中文注释：SLA 数据提供者，从 `pallet-memo-ipfs` 读取运营者统计
+/// 函数级中文注释：SLA 数据提供者，从 `pallet-stardust-ipfs` 读取运营者统计
 pub struct SlaFromIpfs;
 // （已下线）SLA Provider 适配器不再实现 endowment 的 trait
 impl SlaFromIpfs {
@@ -2719,7 +2719,7 @@ parameter_types! {
     /// 
     /// 说明：
     /// - 每个 deceased 每月可使用的免费额度
-    /// - 100 MEMO ≈ 10,000 GiB/月（假设 0.01 DUST/GiB）
+    /// - 100 DUST ≈ 10,000 GiB/月（假设 0.01 DUST/GiB）
     /// - 可通过治理调整
     pub const MonthlyPublicFeeQuota: Balance = 100 * crate::UNIT;
     
@@ -2883,7 +2883,7 @@ impl pallet_stardust_referrals::MembershipProvider<AccountId> for ReferralsMembe
     }
 }
 
-// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-offerings 的 MembershipProvider trait
+// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memorial 的 MembershipProvider trait
 // - 用于供奉购买时检查会员状态并应用折扣
 // - 年费会员享受 3 折优惠（30%）
 // 🆕 2025-10-28 已移除
@@ -3108,9 +3108,9 @@ impl pallet_affiliate::Config for Runtime {
 parameter_types! {
     pub const MembershipPalletId: PalletId = PalletId(*b"membersp");
     pub const BlocksPerYear: BlockNumber = 5_256_000; // 6秒一个块：365 * 24 * 60 * 60 / 6
-    pub const Units: Balance = 1_000_000_000_000; // 1 MEMO = 10^12
-    pub const MinMembershipPrice: Balance = 100_000_000_000_000; // 100 MEMO
-    pub const MaxMembershipPrice: Balance = 10_000_000_000_000_000; // 10,000 MEMO
+    pub const Units: Balance = 1_000_000_000_000; // 1 DUST = 10^12
+    pub const MinMembershipPrice: Balance = 100_000_000_000_000; // 100 DUST
+    pub const MaxMembershipPrice: Balance = 10_000_000_000_000_000; // 10,000 DUST
 }
 
 impl pallet_membership::Config for Runtime {

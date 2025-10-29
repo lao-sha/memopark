@@ -51,13 +51,13 @@ pub trait WeightInfo {
     // OTC模块权重
     fn create_order() -> Weight;
     fn mark_paid() -> Weight;
-    fn release_memo() -> Weight;
+    fn release_dust() -> Weight;
     fn cancel_order() -> Weight;
     fn dispute_order() -> Weight;
     
     // Bridge模块权重
-    fn bridge_memo_to_tron() -> Weight;
-    fn bridge_usdt_to_memo() -> Weight;
+    fn bridge_dust_to_tron() -> Weight;
+    fn bridge_usdt_to_dust() -> Weight;
 }
 
 /// 函数级详细中文注释：基于Substrate benchmark生成的权重实现
@@ -191,7 +191,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// - 资金转账
     /// - 信用积分更新
     /// - 联盟奖励计算
-    fn release_memo() -> Weight {
+    fn release_dust() -> Weight {
         Weight::from_parts(80_000_000, 0)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(3))
@@ -218,7 +218,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().writes(2))
     }
 
-    /// 函数级详细中文注释：bridge_memo_to_tron权重
+    /// 函数级详细中文注释：bridge_dust_to_tron权重
     /// 
     /// 存储读取：
     /// - PricingData: 1次读取
@@ -232,13 +232,13 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// - 价格查询
     /// - DUST销毁/锁定
     /// - OCW触发
-    fn bridge_memo_to_tron() -> Weight {
+    fn bridge_dust_to_tron() -> Weight {
         Weight::from_parts(65_000_000, 0)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(2))
     }
 
-    /// 函数级详细中文注释：bridge_usdt_to_memo权重
+    /// 函数级详细中文注释：bridge_usdt_to_dust权重
     /// 
     /// 存储读取：
     /// - PricingData: 1次读取
@@ -255,7 +255,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// - 首购检查
     /// - DUST铸造/解锁
     /// - 联盟奖励
-    fn bridge_usdt_to_memo() -> Weight {
+    fn bridge_usdt_to_dust() -> Weight {
         Weight::from_parts(75_000_000, 0)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(3))
@@ -300,7 +300,7 @@ impl WeightInfo for () {
         Weight::from_parts(10_000, 0)
     }
     
-    fn release_memo() -> Weight {
+    fn release_dust() -> Weight {
         Weight::from_parts(10_000, 0)
     }
     
@@ -312,11 +312,11 @@ impl WeightInfo for () {
         Weight::from_parts(10_000, 0)
     }
     
-    fn bridge_memo_to_tron() -> Weight {
+    fn bridge_dust_to_tron() -> Weight {
         Weight::from_parts(10_000, 0)
     }
     
-    fn bridge_usdt_to_memo() -> Weight {
+    fn bridge_usdt_to_dust() -> Weight {
         Weight::from_parts(10_000, 0)
     }
 }

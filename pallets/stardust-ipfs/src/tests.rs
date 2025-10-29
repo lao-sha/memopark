@@ -41,7 +41,7 @@ parameter_types! {
     pub const DeceasedDomain: u8 = 1;
     pub IpfsPoolPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/ipfs+");
     pub OperatorEscrowPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/opesc");
-    pub const MonthlyPublicFeeQuota: Balance = 100_000_000_000_000; // 100 MEMO
+    pub const MonthlyPublicFeeQuota: Balance = 100_000_000_000_000; // 100 DUST
     pub const QuotaResetPeriod: BlockNumber = 100; // 简化为 100 块用于测试
 }
 
@@ -154,7 +154,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 10_000_000_000_000_000u128), // 10000 MEMO for testing
+            (1, 10_000_000_000_000_000u128), // 10000 DUST for testing
             (2, 1_000_000_000_000u128),
         ],
         dev_accounts: None,
@@ -456,7 +456,7 @@ fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
 //         let pool = IpfsPoolAccount::get();
 //         let _ = <Test as crate::Config>::Currency::deposit_creating(&pool, 1_000_000_000_000_000);
 
-//         // 设置配额已用95 MEMO（剩余5 DUST，不足50）
+//         // 设置配额已用95 DUST（剩余5 DUST，不足50）
 //         let reset_block = System::block_number() + QuotaResetPeriod::get();
 //         crate::PublicFeeQuotaUsage::<Test>::insert(deceased_id, (95_000_000_000_000u128, reset_block));
 
@@ -738,7 +738,7 @@ fn four_layer_charge_from_ipfs_pool() {
         
         let deceased_id: u64 = 1;
         let cid_hash = H256::repeat_byte(99);
-        let amount: Balance = 10_000_000_000_000; // 10 MEMO
+        let amount: Balance = 10_000_000_000_000; // 10 DUST
         
         // 场景1：IpfsPool充足
         let pool = IpfsPoolAccount::get();
@@ -788,7 +788,7 @@ fn four_layer_charge_fallback_to_subject_funding() {
         
         // IpfsPool余额不足
         let pool = IpfsPoolAccount::get();
-        let _ = <Test as crate::Config>::Currency::deposit_creating(&pool, 1_000_000_000); // 只有1 MEMO
+        let _ = <Test as crate::Config>::Currency::deposit_creating(&pool, 1_000_000_000); // 只有1 DUST
         
         // SubjectFunding充足
         let subject_account = crate::Pallet::<Test>::derive_subject_funding_account_v2(

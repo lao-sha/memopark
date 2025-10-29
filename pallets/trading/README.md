@@ -8,7 +8,7 @@ Trading Pallet 是 StarDust Phase 2 架构优化的核心成果，整合了三�
 
 1. **OTC Order** (场外交易订单) - 原 `pallet-otc-order`
 2. **Market Maker** (做市商管理) - 原 `pallet-market-maker`  
-3. **Simple Bridge** (MEMO ↔ USDT 桥接) - 原 `pallet-simple-bridge`
+3. **Simple Bridge** (DUST ↔ USDT 桥接) - 原 `pallet-simple-bridge`
 
 ### 整合优势
 
@@ -81,7 +81,7 @@ pub struct MakerApplication<T: Config> {
 
 - ✅ 订单创建与匹配
 - ✅ 买家付款标记
-- ✅ 做市商释放 MEMO
+- ✅ 做市商释放 DUST
 - ✅ 订单取消与争议
 - ✅ 首购订单支持
 - ✅ 限频保护
@@ -118,13 +118,13 @@ pub struct Order<T: Config> {
 
 - `create_order()`: 创建订单
 - `mark_paid()`: 买家标记已付款
-- `release_memo()`: 做市商释放 MEMO
+- `release_dust()`: 做市商释放 DUST
 - `cancel_order()`: 取消订单
 - `dispute_order()`: 发起争议
 
 #### 3. Bridge 模块 (`bridge.rs`)
 
-**MEMO ↔ USDT 桥接服务**
+**DUST ↔ USDT 桥接服务**
 
 - ✅ 官方桥接（Root 管理）
 - ✅ 做市商桥接（去中心化）
@@ -146,7 +146,7 @@ pub struct Order<T: Config> {
 // 官方桥接
 pub struct SwapRequest<T: Config> {
     pub user: T::AccountId,
-    pub memo_amount: Balance,
+    pub dust_amount: Balance,
     pub tron_address: TronAddress,
     pub completed: bool,
     // ...
@@ -156,7 +156,7 @@ pub struct SwapRequest<T: Config> {
 pub struct MakerSwapRecord<T: Config> {
     pub maker_id: u64,
     pub user: T::AccountId,
-    pub memo_amount: Balance,
+    pub dust_amount: Balance,
     pub usdt_amount: u64,
     pub status: SwapStatus,
     pub trc20_tx_hash: Option<Vec<u8>>,
@@ -250,7 +250,7 @@ impl pallet_trading::Config for Runtime {
 ```rust
 parameter_types! {
     // Maker
-    pub const MakerDepositAmount: Balance = 1_000 * MEMO;  // 1000 MEMO
+    pub const MakerDepositAmount: Balance = 1_000 * DUST;  // 1000 DUST
     pub const MakerApplicationTimeout: BlockNumber = 14_400;  // ~24h
     pub const WithdrawalCooldown: BlockNumber = 100_800;  // ~7 days
     
@@ -382,7 +382,7 @@ Trading::approve_maker(RootOrigin, maker_id)?;
 let order_id = Trading::create_order(
     origin,
     maker_id,
-    memo_amount,
+    dust_amount,
     payment_commit,
     contact_commit,
 )?;
@@ -390,8 +390,8 @@ let order_id = Trading::create_order(
 // 2. 买家标记已付款
 Trading::mark_paid(origin, order_id, Some(tron_tx_hash))?;
 
-// 3. 做市商释放 MEMO
-Trading::release_memo(origin, order_id)?;
+// 3. 做市商释放 DUST
+Trading::release_dust(origin, order_id)?;
 ```
 
 ### Bridge 兑换流程
@@ -401,7 +401,7 @@ Trading::release_memo(origin, order_id)?;
 let swap_id = Trading::maker_swap(
     origin,
     maker_id,
-    memo_amount,
+    dust_amount,
     usdt_address,
 )?;
 

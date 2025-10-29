@@ -12,10 +12,10 @@
 
 | 等级 | 价格 | 基础代数 | 有效期 | 升级费用 |
 |------|------|---------|--------|---------|
-| 年费会员 (Year1) | 400 MEMO | 6代 | 1年 | 可补升至10年 |
-| 3年会员 (Year3) | 800 MEMO | 9代 | 3年 | 可补升至10年 |
-| 5年会员 (Year5) | 1600 MEMO | 12代 | 5年 | 可补升至10年 |
-| 10年会员 (Year10) | 2000 MEMO | 15代 | 10年 | - |
+| 年费会员 (Year1) | 400 DUST | 6代 | 1年 | 可补升至10年 |
+| 3年会员 (Year3) | 800 DUST | 9代 | 3年 | 可补升至10年 |
+| 5年会员 (Year5) | 1600 DUST | 12代 | 5年 | 可补升至10年 |
+| 10年会员 (Year10) | 2000 DUST | 15代 | 10年 | - |
 
 ### 2. 动态代数增长机制
 
@@ -52,9 +52,9 @@
 
 - **升级方向**：仅支持升级到10年会员
 - **补差价格**：
-  - Year1 → Year10: 1800 MEMO
-  - Year3 → Year10: 1500 MEMO
-  - Year5 → Year10: 1000 MEMO
+  - Year1 → Year10: 1800 DUST
+  - Year3 → Year10: 1500 DUST
+  - Year5 → Year10: 1000 DUST
 - **权益提升**：
   - 基础代数立即提升至15代
   - 有效期从当前时间重新计算10年
@@ -165,11 +165,11 @@ pub fn set_membership_price(
 
 **参数说明：**
 - `level`: 要设置价格的会员等级
-- `price_units`: 价格（以 MEMO 为单位，非最小单位）
+- `price_units`: 价格（以 DUST 为单位，非最小单位）
 
 **价格范围限制：**
-- 最低价格：`MinMembershipPrice`（默认 100 MEMO）
-- 最高价格：`MaxMembershipPrice`（默认 10000 MEMO）
+- 最低价格：`MinMembershipPrice`（默认 100 DUST）
+- 最高价格：`MaxMembershipPrice`（默认 10000 DUST）
 
 **错误处理：**
 - `BadOrigin`: 非治理权限
@@ -177,7 +177,7 @@ pub fn set_membership_price(
 
 **示例：**
 ```rust
-// 设置 Year1 价格为 500 MEMO
+// 设置 Year1 价格为 500 DUST
 set_membership_price(origin, MembershipLevel::Year1, 500)?;
 ```
 
@@ -206,7 +206,7 @@ pub fn set_all_membership_prices(
 
 **示例：**
 ```rust
-// 批量设置：400, 800, 1600, 2000 MEMO
+// 批量设置：400, 800, 1600, 2000 DUST
 set_all_membership_prices(origin, 400, 800, 1600, 2000)?;
 ```
 
@@ -388,7 +388,7 @@ use frame_support::PalletId;
 parameter_types! {
     pub const MembershipPalletId: PalletId = PalletId(*b"py/membr");
     pub const BlocksPerYear: BlockNumber = 5_256_000; // 365天 * 24小时 * 60分 * 10块/分
-    pub const Units: Balance = 1_000_000_000_000;     // 1 MEMO = 10^12
+    pub const Units: Balance = 1_000_000_000_000;     // 1 DUST = 10^12
     pub const MaxCodeLength: u32 = 32;
 }
 
@@ -540,10 +540,10 @@ cargo test
 
 | 等级 | 价格 | 月均成本 | 基础代数 | 性价比 |
 |------|------|---------|---------|--------|
-| Year1 | 400 MEMO | 33.3 MEMO/月 | 6代 | 基准 |
-| Year3 | 800 MEMO | 22.2 MEMO/月 | 9代 | 节省33% |
-| Year5 | 1600 MEMO | 26.7 MEMO/月 | 12代 | 节省20% |
-| Year10 | 2000 MEMO | 16.7 MEMO/月 | 15代 | 节省50% |
+| Year1 | 400 DUST | 33.3 DUST/月 | 6代 | 基准 |
+| Year3 | 800 DUST | 22.2 DUST/月 | 9代 | 节省33% |
+| Year5 | 1600 DUST | 26.7 DUST/月 | 12代 | 节省20% |
+| Year10 | 2000 DUST | 16.7 DUST/月 | 15代 | 节省50% |
 
 **设计考量：**
 - 长期会员享受更低月均成本

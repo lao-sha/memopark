@@ -60,7 +60,7 @@ use sp_runtime::RuntimeDebug;
 pub enum HoldReason {
     /// 申诉押金
     /// 
-    /// 用于pallet-memo-appeals的申诉押金锁定
+    /// 用于pallet-stardust-appeals的申诉押金锁定
     /// - 提交申诉时锁定
     /// - 申诉通过后释放
     /// - 申诉驳回后罚没
@@ -68,7 +68,7 @@ pub enum HoldReason {
 
     /// 供奉品审核押金
     /// 
-    /// 用于pallet-memo-offerings的审核押金
+    /// 用于pallet-memorial的审核押金
     /// - 创建供奉品时锁定
     /// - 审核通过后释放
     /// - 审核失败后罚没

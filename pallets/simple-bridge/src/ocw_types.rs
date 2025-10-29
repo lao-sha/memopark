@@ -51,7 +51,7 @@ pub struct OcwMakerSwapRecord<AccountId, Balance, BlockNumber> {
     pub buyer_tron_address: BoundedVec<u8, frame_support::traits::ConstU32<64>>,
     
     /// MEMO 数量（已锁定）
-    pub memo_amount: Balance,
+    pub dust_amount: Balance,
     
     /// 应付 USDT 金额（精度 10^6）
     pub usdt_amount: u64,

@@ -1,5 +1,5 @@
 /**
- * pallet-memo-appeals 动态押金测试
+ * pallet-stardust-appeals 动态押金测试
  * 
  * 测试AppealDepositPolicy trait的使用和回退逻辑
  * 

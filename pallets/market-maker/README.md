@@ -72,7 +72,7 @@ pub fn lock_deposit(
 - 设置提交资料截止时间（默认7天）
 
 **验证规则**：
-- ✅ 押金 ≥ MinDeposit（默认10,000 MEMO）
+- ✅ 押金 ≥ MinDeposit（默认10,000 DUST）
 - ✅ 用户未有未完成申请
 - ✅ 余额充足
 
@@ -182,17 +182,17 @@ pub struct Application<AccountId, Balance> {
 
 **定价示例**：
 ```text
-基准价：0.01 USDT/MEMO
+基准价：0.01 USDT/DUST
 
 Buy方向（Bridge）：
 - buy_premium_bps = -200 (-2%)
-- 买价 = 0.01 × (1 - 0.02) = 0.0098 USDT/MEMO
-- 用户100 MEMO → 0.98 USDT
+- 买价 = 0.01 × (1 - 0.02) = 0.0098 USDT/DUST
+- 用户100 DUST → 0.98 USDT
 
 Sell方向（OTC）：
 - sell_premium_bps = +200 (+2%)
-- 卖价 = 0.01 × (1 + 0.02) = 0.0102 USDT/MEMO
-- 用户100 USDT → 98.04 MEMO
+- 卖价 = 0.01 × (1 + 0.02) = 0.0102 USDT/DUST
+- 用户100 USDT → 98.04 DUST
 ```
 
 ### 4. 统一TRON地址
@@ -261,7 +261,7 @@ pub fn execute_withdrawal(
 
 **功能**：
 - 冷却期结束后执行提取
-- 检查最小保留余额（默认1000 MEMO）
+- 检查最小保留余额（默认1000 DUST）
 - 转账到做市商账户
 
 **WithdrawalRequest结构**：
@@ -416,7 +416,7 @@ pub trait Config: frame_system::Config + pallet_timestamp::Config {
     /// 权重信息
     type WeightInfo: MarketMakerWeightInfo;
 
-    /// 最小押金（默认10,000 MEMO）
+    /// 最小押金（默认10,000 DUST）
     type MinDeposit: Get<BalanceOf<Self>>;
 
     /// 提交资料窗口（秒，默认7天）
@@ -446,7 +446,7 @@ pub trait Config: frame_system::Config + pallet_timestamp::Config {
     /// 资金池提取冷却期（秒，默认7天）
     type WithdrawalCooldown: Get<u32>;
 
-    /// 最小保留资金池余额（默认1000 MEMO）
+    /// 最小保留资金池余额（默认1000 DUST）
     type MinPoolBalance: Get<BalanceOf<Self>>;
 }
 ```
@@ -635,8 +635,8 @@ WithdrawalExecuted {
 ### 场景1：做市商完整申请流程
 
 ```rust
-// 1. 锁定押金（10,000 MEMO）
-let deposit = 10_000_000_000_000_000u128; // 10,000 MEMO
+// 1. 锁定押金（10,000 DUST）
+let deposit = 10_000_000_000_000_000u128; // 10,000 DUST
 pallet_market_maker::Pallet::<T>::lock_deposit(
     maker_origin.clone(),
     deposit,
@@ -650,7 +650,7 @@ pallet_market_maker::Pallet::<T>::submit_info(
     b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS".to_vec(),  // TRON地址
     -200,  // Buy溢价-2%
     +200,  // Sell溢价+2%
-    100_000_000_000_000u128,  // 最小金额100 MEMO
+    100_000_000_000_000u128,  // 最小金额100 DUST
     b"张三".to_vec(),
     b"110101199001011234".to_vec(),
     b"1990-01-01".to_vec(),
@@ -672,7 +672,7 @@ pallet_market_maker::Pallet::<T>::approve(
 ### 场景2：首购资金池管理
 
 ```rust
-// 1. 做市商存入资金池（5,000 MEMO）
+// 1. 做市商存入资金池（5,000 DUST）
 pallet_market_maker::Pallet::<T>::deposit_to_pool(
     maker_origin.clone(),
     maker_id,
@@ -683,7 +683,7 @@ pallet_market_maker::Pallet::<T>::deposit_to_pool(
 let pool_account = derive_pool_account(maker_account);
 let pool_balance = T::Currency::free_balance(&pool_account);
 
-// 3. 申请提取（2,000 MEMO）
+// 3. 申请提取（2,000 DUST）
 pallet_market_maker::Pallet::<T>::request_withdrawal(
     maker_origin.clone(),
     maker_id,
@@ -721,7 +721,7 @@ pallet_market_maker::Pallet::<T>::execute_withdrawal(
 ### 4. 资金池保护
 
 - 提取冷却期7天
-- 最小保留余额1000 MEMO
+- 最小保留余额1000 DUST
 - 防止恶意快速提取
 
 ### 5. 溢价限制

@@ -79,7 +79,7 @@ impl pallet_timestamp::Config for Test {
 
 parameter_types! {
     pub const TradingPalletId: PalletId = PalletId(*b"py/trade");
-    pub const MakerDepositAmount: u128 = 1_000_000_000_000; // 1000 MEMO
+    pub const MakerDepositAmount: u128 = 1_000_000_000_000; // 1000 DUST
     pub const MakerApplicationTimeout: u64 = 100;
     pub const WithdrawalCooldown: u64 = 100;
     pub const ConfirmTTL: u64 = 100;
@@ -89,8 +89,8 @@ parameter_types! {
     pub const OpenMaxInWindow: u32 = 10;
     pub const PaidWindow: u64 = 100;
     pub const PaidMaxInWindow: u32 = 10;
-    pub const MinFirstPurchaseAmount: u128 = 10_000_000_000; // 10 MEMO
-    pub const MaxFirstPurchaseAmount: u128 = 100_000_000_000; // 100 MEMO
+    pub const MinFirstPurchaseAmount: u128 = 10_000_000_000; // 10 DUST
+    pub const MaxFirstPurchaseAmount: u128 = 100_000_000_000; // 100 DUST
     pub const OrderArchiveThresholdDays: u32 = 150;
     pub const MaxOrderCleanupPerBlock: u32 = 50;
     pub const SwapTimeout: u64 = 300;
@@ -99,7 +99,7 @@ parameter_types! {
     pub const MaxVerificationFailures: u32 = 5;
     pub const MaxOrdersPerBlock: u32 = 10;
     pub const OcwSwapTimeoutBlocks: u64 = 300;
-    pub const OcwMinSwapAmount: u128 = 100_000_000_000; // 100 MEMO
+    pub const OcwMinSwapAmount: u128 = 100_000_000_000; // 100 DUST
     pub const UnsignedPriority: u64 = 100;
     pub const TronTxHashRetentionPeriod: u64 = 2_592_000; // ~180 days
     pub const FiatGatewayAccount: u64 = 999;

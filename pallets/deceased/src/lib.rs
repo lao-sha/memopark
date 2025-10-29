@@ -322,7 +322,7 @@ pub mod pallet {
         /// - 监控告警：超大墓位（>1000人）人工审核
 
         /// 函数级中文注释：`deceased_token` 的最大长度上限（字节）。
-        /// - 设计目标：与外部引用者（如 `pallet-memo-grave`）的 `MaxCidLen` 对齐，避免跨 pallet 不一致。
+        /// - 设计目标：与外部引用者（如 `pallet-stardust-grave`）的 `MaxCidLen` 对齐，避免跨 pallet 不一致。
         #[pallet::constant]
         type TokenLimit: Get<u32>;
 

@@ -33,7 +33,7 @@ fn open_order_works() {
         
         let taker = 1u64;
         let maker_id = 1u64;
-        let qty = 1000u64; // 1000 MEMO
+        let qty = 1000u64; // 1000 DUST
 
         // 创建订单
         assert_ok!(OtcOrder::open_order(

@@ -73,7 +73,7 @@
 ```rust
 pub fn swap(
     origin: OriginFor<T>,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_address: Vec<u8>,
 ) -> DispatchResult
 ```
@@ -86,11 +86,11 @@ pub fn swap(
 **价格计算**：
 ```rust
 // 1. 获取市场基准价
-let base_price = T::PricingProvider::get_market_price();  // 例如0.01 USDT/MEMO
+let base_price = T::PricingProvider::get_market_price();  // 例如0.01 USDT/DUST
 
 // 2. 计算USDT金额
-let usdt_amount = memo_amount * base_price / 10^12;
-// 例如：100 MEMO × 0.01 = 1.0 USDT
+let usdt_amount = dust_amount * base_price / 10^12;
+// 例如：100 DUST × 0.01 = 1.0 USDT
 ```
 
 #### complete_swap - 完成兑换
@@ -115,7 +115,7 @@ pub fn complete_swap(
 pub fn create_ocw_swap(
     origin: OriginFor<T>,
     maker_id: u64,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_address: Vec<u8>,
 ) -> DispatchResult
 ```
@@ -146,7 +146,7 @@ ensure!(
 // 3. 应用买入溢价
 let price_usdt = base_price * (10000 + maker.buy_premium_bps) / 10000;
 // 例如：base_price=0.01, buy_premium_bps=-200 (-2%)
-// price_usdt = 0.01 × 0.98 = 0.0098 USDT/MEMO
+// price_usdt = 0.01 × 0.98 = 0.0098 USDT/DUST
 ```
 
 #### submit_tron_tx_hash - 提交TRON交易hash
@@ -323,7 +323,7 @@ pub type Swaps<T: Config> = StorageMap<
 pub struct SwapRequest<T: Config> {
     pub id: u64,
     pub user: T::AccountId,
-    pub memo_amount: BalanceOf<T>,
+    pub dust_amount: BalanceOf<T>,
     pub tron_address: BoundedVec<u8, ConstU32<64>>,
     pub completed: bool,
     pub price_usdt: u64,
@@ -350,7 +350,7 @@ pub struct MakerSwapRecord<T: Config> {
     pub maker_id: u64,
     pub maker: T::AccountId,
     pub user: T::AccountId,
-    pub memo_amount: BalanceOf<T>,
+    pub dust_amount: BalanceOf<T>,
     pub usdt_amount: u64,
     pub usdt_address: BoundedVec<u8, ConstU32<64>>,
     pub created_at: BlockNumberFor<T>,
@@ -442,7 +442,7 @@ pub trait Config: frame_system::Config +
 #[pallet::call_index(0)]
 pub fn swap(
     origin: OriginFor<T>,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_address: Vec<u8>,
 ) -> DispatchResult
 ```
@@ -464,7 +464,7 @@ pub fn complete_swap(
 pub fn create_ocw_swap(
     origin: OriginFor<T>,
     maker_id: u64,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_address: Vec<u8>,
 ) -> DispatchResult
 ```
@@ -545,7 +545,7 @@ pub fn set_usdt_contract_address(
 SwapCreated {
     swap_id: u64,
     user: T::AccountId,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     usdt_amount: u64,
 }
 ```
@@ -556,7 +556,7 @@ OcwMakerSwapCreated {
     swap_id: u64,
     maker_id: u64,
     user: T::AccountId,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     usdt_amount: u64,
 }
 ```
@@ -566,7 +566,7 @@ OcwMakerSwapCreated {
 OcwMemoReleased {
     swap_id: u64,
     maker: T::AccountId,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_tx_hash: BoundedVec<u8, ConstU32<128>>,
 }
 ```
@@ -576,7 +576,7 @@ OcwMemoReleased {
 OcwSwapRefunded {
     swap_id: u64,
     user: T::AccountId,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
 }
 ```
 
@@ -607,13 +607,13 @@ OcwSwapRefunded {
 ### 场景1：官方托管式兑换
 
 ```rust
-// 1. 用户发起兑换（100 MEMO → USDT）
-let memo_amount = 100_000_000_000_000u128;  // 100 MEMO
+// 1. 用户发起兑换（100 DUST → USDT）
+let dust_amount = 100_000_000_000_000u128;  // 100 DUST
 let tron_address = b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS".to_vec();
 
 let swap_id = pallet_simple_bridge::Pallet::<T>::swap(
     user_origin.clone(),
-    memo_amount,
+    dust_amount,
     tron_address,
 )?;
 
@@ -634,7 +634,7 @@ pallet_simple_bridge::Pallet::<T>::complete_swap(
 let swap_id = pallet_simple_bridge::Pallet::<T>::create_ocw_swap(
     user_origin.clone(),
     maker_id,
-    100_000_000_000_000u128,  // 100 MEMO
+    100_000_000_000_000u128,  // 100 DUST
     b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS".to_vec(),
 )?;
 
@@ -681,7 +681,7 @@ pallet_simple_bridge::Pallet::<T>::arbitrate_ocw_swap(
     governance_origin,
     swap_id,
     false,  // 拒绝
-    Some(10_000_000_000_000_000u128),  // 罚没10,000 MEMO
+    Some(10_000_000_000_000_000u128),  // 罚没10,000 DUST
 )?;
 
 // MEMO退还给用户

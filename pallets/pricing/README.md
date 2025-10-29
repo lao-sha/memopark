@@ -1,4 +1,4 @@
-# Pallet Pricing - MEMO价格管理系统
+# Pallet Pricing - DUST价格管理系统
 
 ## 📋 模块概述
 
@@ -17,35 +17,35 @@
 ```text
 ┌─────────────────────────────────────┐
 │     OTC订单完成                      │
-│  - 价格: 0.0102 USDT/MEMO           │
-│  - 数量: 100 MEMO                   │
+│  - 价格: 0.0102 USDT/DUST           │
+│  - 数量: 100 DUST                   │
 └──────────────┬──────────────────────┘
                ↓ 添加到聚合
 ┌─────────────────────────────────────┐
 │     OTC价格聚合                      │
 │  - 累计MEMO: 850,000                │
 │  - 累计USDT: 8,670                  │
-│  - 均价: 0.0102 USDT/MEMO           │
+│  - 均价: 0.0102 USDT/DUST           │
 └──────────────┬──────────────────────┘
                ↓
 ┌─────────────────────────────────────┐
 │     Bridge兑换完成                   │
-│  - 价格: 0.0098 USDT/MEMO           │
-│  - 数量: 200 MEMO                   │
+│  - 价格: 0.0098 USDT/DUST           │
+│  - 数量: 200 DUST                   │
 └──────────────┬──────────────────────┘
                ↓ 添加到聚合
 ┌─────────────────────────────────────┐
 │     Bridge价格聚合                   │
 │  - 累计MEMO: 780,000                │
 │  - 累计USDT: 7,644                  │
-│  - 均价: 0.0098 USDT/MEMO           │
+│  - 均价: 0.0098 USDT/DUST           │
 └──────────────┬──────────────────────┘
                ↓ 加权平均
 ┌─────────────────────────────────────┐
 │     市场加权均价                     │
 │  weighted_price = (OTC_price × OTC_volume + Bridge_price × Bridge_volume) / (OTC_volume + Bridge_volume)
 │  = (0.0102 × 850,000 + 0.0098 × 780,000) / (850,000 + 780,000)
-│  = 0.0100 USDT/MEMO
+│  = 0.0100 USDT/DUST
 └─────────────────────────────────────┘
 ```
 
@@ -66,14 +66,14 @@ pub type OtcOrderRingBuffer<T> = StorageMap<
 pub struct OrderSnapshot {
     pub timestamp: u64,         // 时间戳
     pub price_usdt: u64,        // USDT单价（精度10^6）
-    pub memo_qty: u128,         // MEMO数量（精度10^12）
+    pub dust_qty: u128,         // DUST数量（精度10^12）
 }
 ```
 
 #### 滑动窗口聚合
 ```rust
 pub struct PriceAggregateData {
-    pub total_memo: u128,       // 累计MEMO数量
+    pub total_memo: u128,       // 累计DUST数量
     pub total_usdt: u128,       // 累计USDT金额
     pub order_count: u32,       // 订单数量
     pub oldest_index: u32,      // 最旧订单索引
@@ -86,7 +86,7 @@ pub struct PriceAggregateData {
 pub fn add_otc_order(
     origin: OriginFor<T>,
     price_usdt: u64,
-    memo_qty: u128,
+    dust_qty: u128,
     timestamp: u64,
 ) -> DispatchResult
 ```
@@ -110,7 +110,7 @@ impl<T: Config> PricingProvider for Pallet<T> {
             let threshold = Self::cold_start_threshold();
             
             if otc_volume + bridge_volume < threshold {
-                // 返回默认价格（0.000001 USDT/MEMO）
+                // 返回默认价格（0.000001 USDT/DUST）
                 return Self::default_price();
             } else {
                 // 达到阈值，退出冷启动
@@ -156,7 +156,7 @@ impl<T: Config> PricingProvider for Pallet<T> {
 ```rust
 pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery>;
 
-// 默认值：100,000,000 MEMO（1亿）
+// 默认值：100,000,000 DUST（1亿）
 fn DefaultColdStartThreshold() -> u128 {
     100_000_000u128 * 1_000_000_000_000u128
 }
@@ -166,7 +166,7 @@ fn DefaultColdStartThreshold() -> u128 {
 ```rust
 pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery>;
 
-// 默认值：1（0.000001 USDT/MEMO，精度10^6）
+// 默认值：1（0.000001 USDT/DUST，精度10^6）
 fn DefaultPriceValue() -> u64 {
     1u64
 }
@@ -241,7 +241,7 @@ pub trait Config: frame_system::Config {
 pub fn add_otc_order(
     origin: OriginFor<T>,
     price_usdt: u64,
-    memo_qty: u128,
+    dust_qty: u128,
     timestamp: u64,
 ) -> DispatchResult
 ```
@@ -252,7 +252,7 @@ pub fn add_otc_order(
 pub fn add_bridge_swap(
     origin: OriginFor<T>,
     price_usdt: u64,
-    memo_qty: u128,
+    dust_qty: u128,
     timestamp: u64,
 ) -> DispatchResult
 ```
@@ -283,7 +283,7 @@ pub fn set_default_price(
 ```rust
 OtcOrderAdded {
     price_usdt: u64,
-    memo_qty: u128,
+    dust_qty: u128,
     new_avg_price: u64,
 }
 ```
@@ -292,7 +292,7 @@ OtcOrderAdded {
 ```rust
 BridgeSwapAdded {
     price_usdt: u64,
-    memo_qty: u128,
+    dust_qty: u128,
     new_avg_price: u64,
 }
 ```
@@ -312,14 +312,14 @@ ColdStartExited {
 // pallet-otc-order调用
 pallet_pricing::Pallet::<T>::add_otc_order(
     system_origin,
-    10_200u64,  // 0.0102 USDT/MEMO（精度10^6）
-    100_000_000_000_000u128,  // 100 MEMO
+    10_200u64,  // 0.0102 USDT/DUST（精度10^6）
+    100_000_000_000_000u128,  // 100 DUST
     current_timestamp,
 )?;
 
 // 查询最新市场价格
 let market_price = <pallet_pricing::Pallet<T> as PricingProvider>::get_market_price();
-// market_price = 10_000 (0.01 USDT/MEMO)
+// market_price = 10_000 (0.01 USDT/DUST)
 ```
 
 ### 场景2：创建OTC订单时使用市场价格
@@ -327,12 +327,12 @@ let market_price = <pallet_pricing::Pallet<T> as PricingProvider>::get_market_pr
 ```rust
 // 1. 获取市场价格
 let base_price = <T::PricingProvider as PricingProvider>::get_market_price();
-// base_price = 10_000 (0.01 USDT/MEMO)
+// base_price = 10_000 (0.01 USDT/DUST)
 
 // 2. 应用做市商溢价
 let maker_premium_bps = 200; // +2%
 let final_price = base_price * (10000 + maker_premium_bps) / 10000;
-// final_price = 10_200 (0.0102 USDT/MEMO)
+// final_price = 10_200 (0.0102 USDT/DUST)
 
 // 3. 计算订单金额
 let usdt_amount = (qty * final_price) / 1_000_000_000_000;

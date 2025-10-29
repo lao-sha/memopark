@@ -5,8 +5,8 @@
 //! ## 概述
 //!
 //! 本模块提供通用的押金管理服务，支持多种业务场景：
-//! - 申诉押金（pallet-memo-appeals）
-//! - 审核押金（pallet-memo-offerings）
+//! - 申诉押金（pallet-stardust-appeals）
+//! - 审核押金（pallet-memorial）
 //! - 投诉押金（pallet-deceased-text, pallet-deceased-media）
 //! - 自定义用途押金
 //!
@@ -268,7 +268,7 @@ pub mod pallet {
 	/// 
 	/// **注意**：pallet-deposits作为底层服务模块，主要通过DepositManager trait被其他pallet调用。
 	/// 暂不直接暴露extrinsics，避免复杂类型的codec问题。
-	/// 用户通过使用pallet-deposits的上层pallet（如pallet-memo-appeals）间接使用押金功能。
+	/// 用户通过使用pallet-deposits的上层pallet（如pallet-stardust-appeals）间接使用押金功能。
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		/* Extrinsics暂时注释，使用DepositManager trait替代

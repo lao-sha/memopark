@@ -1,5 +1,5 @@
 /**
- * pallet-memo-appeals 应答否决测试
+ * pallet-stardust-appeals 应答否决测试
  * 
  * 测试LastActiveProvider trait和应答自动否决机制
  * 

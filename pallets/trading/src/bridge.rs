@@ -54,7 +54,7 @@ pub struct SwapRequest<T: Config> {
     /// 用户地址
     pub user: T::AccountId,
     /// MEMO 数量
-    pub memo_amount: BalanceOf<T>,
+    pub dust_amount: BalanceOf<T>,
     /// TRON 地址
     pub tron_address: TronAddress,
     /// 是否已完成
@@ -80,7 +80,7 @@ pub struct MakerSwapRecord<T: Config> {
     /// 用户账户
     pub user: T::AccountId,
     /// MEMO 数量
-    pub memo_amount: BalanceOf<T>,
+    pub dust_amount: BalanceOf<T>,
     /// USDT 金额（精度 10^6）
     pub usdt_amount: u64,
     /// USDT 接收地址
@@ -107,14 +107,14 @@ pub struct MakerSwapRecord<T: Config> {
 /// 
 /// # 参数
 /// - user: 用户账户
-/// - memo_amount: DUST数量
+/// - dust_amount: DUST数量
 /// - tron_address: TRON接收地址
 /// 
 /// # 返回
 /// - Result<u64, DispatchError>: 成功返回兑换ID
 pub fn do_swap<T: Config>(
     user: &T::AccountId,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     tron_address: Vec<u8>,
 ) -> Result<u64, DispatchError> {
     use crate::pallet::{NextSwapId, SwapRequests, BridgeAccount, MinSwapAmount, Pallet, Event, Error};
@@ -123,7 +123,7 @@ pub fn do_swap<T: Config>(
     // 检查最小金额
     let min_amount = MinSwapAmount::<T>::get();
     ensure!(
-        memo_amount >= min_amount,
+        dust_amount >= min_amount,
         Error::<T>::SwapAmountTooLow
     );
     
@@ -151,7 +151,7 @@ pub fn do_swap<T: Config>(
     let swap = SwapRequest::<T> {
         id: swap_id,
         user: user.clone(),
-        memo_amount,
+        dust_amount,
         tron_address: TronAddress::try_from(tron_address.clone())
             .map_err(|_| Error::<T>::EncodingError)?,
         completed: false,
@@ -175,7 +175,7 @@ pub fn do_swap<T: Config>(
     Pallet::<T>::deposit_event(Event::SwapCreated {
         swap_id,
         user: user.clone(),
-        memo_amount,
+        dust_amount,
         tron_address: TronAddress::try_from(tron_address)
             .map_err(|_| Error::<T>::EncodingError)?,
     });
@@ -226,7 +226,7 @@ pub fn do_complete_swap<T: Config>(swap_id: u64) -> DispatchResult {
 /// # 参数
 /// - user: 用户账户
 /// - maker_id: 做市商ID
-/// - memo_amount: DUST数量
+/// - dust_amount: DUST数量
 /// - usdt_address: USDT接收地址
 /// 
 /// # 返回
@@ -234,7 +234,7 @@ pub fn do_complete_swap<T: Config>(swap_id: u64) -> DispatchResult {
 pub fn do_maker_swap<T: Config>(
     user: &T::AccountId,
     maker_id: u64,
-    memo_amount: BalanceOf<T>,
+    dust_amount: BalanceOf<T>,
     usdt_address: Vec<u8>,
 ) -> Result<u64, DispatchError> {
     use crate::pallet::{NextSwapId, MakerSwaps, MakerApplications, Pallet, Event, Error};
@@ -272,7 +272,7 @@ pub fn do_maker_swap<T: Config>(
         maker_id,
         maker: maker_app.owner.clone(),
         user: user.clone(),
-        memo_amount,
+        dust_amount,
         usdt_amount: 0, // TODO: 计算
         usdt_address: TronAddress::try_from(usdt_address)
             .map_err(|_| Error::<T>::EncodingError)?,
@@ -309,7 +309,7 @@ pub fn do_maker_swap<T: Config>(
         swap_id,
         maker_id,
         user: user.clone(),
-        memo_amount,
+        dust_amount,
         usdt_amount: swap.usdt_amount,
     });
     

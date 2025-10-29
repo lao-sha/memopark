@@ -61,7 +61,7 @@ pub fn create_order(
 
 **参数说明**：
 - `maker_id`: 做市商ID
-- `qty`: MEMO数量
+- `qty`: DUST数量
 
 **工作流程**：
 1. 检查买家信用限额（单笔/日限额）
@@ -75,15 +75,15 @@ pub fn create_order(
 **价格计算**：
 ```rust
 // 1. 获取市场基准价
-let base_price = T::PricingProvider::get_market_price();  // 例如0.01 USDT/MEMO
+let base_price = T::PricingProvider::get_market_price();  // 例如0.01 USDT/DUST
 
 // 2. 应用做市商溢价
 let maker_premium = maker.sell_premium_bps;  // 例如+200 bps (+2%)
 let final_price = base_price * (10000 + maker_premium) / 10000;
-// final_price = 0.01 × 1.02 = 0.0102 USDT/MEMO
+// final_price = 0.01 × 1.02 = 0.0102 USDT/DUST
 
 // 3. 计算USDT金额
-let usdt_amount = qty * final_price;  // 例如100 MEMO × 0.0102 = 1.02 USDT
+let usdt_amount = qty * final_price;  // 例如100 DUST × 0.0102 = 1.02 USDT
 ```
 
 ### 2. 买家付款
@@ -154,17 +154,17 @@ pub fn release_order(
 
 **多路分账**：
 ```rust
-// 假设订单100 MEMO，价值1.02 USDT
+// 假设订单100 DUST，价值1.02 USDT
 
 // 1. 买家实际获得（88%）
-buyer_amount = 100 × 88% = 88 MEMO
+buyer_amount = 100 × 88% = 88 DUST
 
 // 2. 联盟计酬（10%）
-affiliate_amount = 100 × 10% = 10 MEMO
+affiliate_amount = 100 × 10% = 10 DUST
 // 分配给15层推荐链
 
 // 3. 平台费用（2%）
-platform_amount = 100 × 2% = 2 MEMO
+platform_amount = 100 × 2% = 2 DUST
 // 销毁/国库/存储
 ```
 
@@ -270,7 +270,7 @@ pub struct Order<AccountId, Balance, Moment> {
     pub maker: AccountId,                       // 做市商账户
     pub taker: AccountId,                       // 买家账户
     pub price: Balance,                         // 单价（USDT）
-    pub qty: Balance,                           // MEMO数量
+    pub qty: Balance,                           // DUST数量
     pub amount: Balance,                        // USDT总额
     pub created_at: Moment,                     // 创建时间
     pub expire_at: Moment,                      // 超时时间
@@ -534,11 +534,11 @@ OrderArchived {
 // 1. 买家查询做市商列表
 let makers = get_active_makers();
 
-// 2. 创建订单（100 MEMO）
+// 2. 创建订单（100 DUST）
 let order_id = pallet_otc_order::Pallet::<T>::create_order(
     buyer_origin.clone(),
     maker_id,
-    100_000_000_000_000u128,  // 100 MEMO
+    100_000_000_000_000u128,  // 100 DUST
 )?;
 
 // 3. 链下：买家向做市商TRON地址转账USDT
@@ -563,9 +563,9 @@ pallet_otc_order::Pallet::<T>::release_order(
 )?;
 
 // 7. 系统自动多路分账
-// - 买家获得88 MEMO
-// - 联盟计酬10 MEMO
-// - 平台费用2 MEMO
+// - 买家获得88 DUST
+// - 联盟计酬10 DUST
+// - 平台费用2 DUST
 
 // 8. 更新信用记录（自动）
 // - 买家信用+1

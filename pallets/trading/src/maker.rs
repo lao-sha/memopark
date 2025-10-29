@@ -316,7 +316,7 @@ pub fn do_submit_info<T: Config>(
         
         // TODO: 将完整资料（含 real_name, id_card_number, birthday, epay_key）上传到 IPFS
         // 并将返回的 CID 存储到 private_cid
-        // 这里暂时留空，需要集成 pallet-memo-ipfs
+        // 这里暂时留空，需要集成 pallet-stardust-ipfs
         
         Ok(())
     })?;

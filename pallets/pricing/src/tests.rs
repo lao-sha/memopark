@@ -22,14 +22,14 @@ fn add_otc_order_works() {
         
         let timestamp = 1000u64;
         let price = 50 * USDT; // 50 USDT/DUST
-        let qty = 100 * MEMO;  // 100 MEMO
+        let qty = 100 * MEMO;  // 100 DUST
 
         // 添加订单
         assert_ok!(Pricing::add_otc_order(timestamp, price, qty));
 
         // 验证聚合数据
         let agg = Pricing::otc_aggregate();
-        assert_eq!(agg.total_memo, qty);
+        assert_eq!(agg.total_dust, qty);
         assert_eq!(agg.order_count, 1);
 
         // 验证平均价格
@@ -41,7 +41,7 @@ fn add_otc_order_works() {
             Event::OtcOrderAdded {
                 timestamp,
                 price_usdt: price,
-                memo_qty: qty,
+                dust_qty: qty,
                 new_avg_price: price,
             }
             .into(),
@@ -63,7 +63,7 @@ fn otc_multiple_orders_average_price() {
         // 平均价格: 17000 / 300 = 56.67 USDT/DUST (约)
 
         let agg = Pricing::otc_aggregate();
-        assert_eq!(agg.total_memo, 300 * MEMO);
+        assert_eq!(agg.total_dust, 300 * MEMO);
         assert_eq!(agg.order_count, 2);
 
         let avg_price = Pricing::get_otc_average_price();
@@ -88,7 +88,7 @@ fn otc_orders_exceed_limit_removes_oldest() {
 
         // 验证最旧的订单被部分或全部删除
         let agg_after = Pricing::otc_aggregate();
-        assert!(agg_after.total_memo <= 1_000_000 * MEMO);
+        assert!(agg_after.total_dust <= 1_000_000 * MEMO);
         
         // 新订单应该存在
         let avg_price = Pricing::get_otc_average_price();
@@ -106,14 +106,14 @@ fn add_bridge_swap_works() {
         
         let timestamp = 1000u64;
         let price = 55 * USDT; // 55 USDT/DUST
-        let qty = 50 * MEMO;   // 50 MEMO
+        let qty = 50 * MEMO;   // 50 DUST
 
         // 添加兑换
         assert_ok!(Pricing::add_bridge_swap(timestamp, price, qty));
 
         // 验证聚合数据
         let agg = Pricing::bridge_aggregate();
-        assert_eq!(agg.total_memo, qty);
+        assert_eq!(agg.total_dust, qty);
         assert_eq!(agg.order_count, 1);
 
         // 验证平均价格
@@ -125,7 +125,7 @@ fn add_bridge_swap_works() {
             Event::BridgeSwapAdded {
                 timestamp,
                 price_usdt: price,
-                memo_qty: qty,
+                dust_qty: qty,
                 new_avg_price: price,
             }
             .into(),
@@ -144,7 +144,7 @@ fn bridge_multiple_swaps_average_price() {
         assert_ok!(Pricing::add_bridge_swap(2000, 58 * USDT, 150 * MEMO));
 
         let agg = Pricing::bridge_aggregate();
-        assert_eq!(agg.total_memo, 250 * MEMO);
+        assert_eq!(agg.total_dust, 250 * MEMO);
         assert_eq!(agg.order_count, 2);
 
         let avg_price = Pricing::get_bridge_average_price();
@@ -193,7 +193,7 @@ fn get_market_stats_works() {
 
 /// Test 7: 参考价格（加权市场价格）
 #[test]
-fn get_memo_market_price_weighted_works() {
+fn get_dust_market_price_weighted_works() {
     new_test_ext().execute_with(|| {
         // 跳过冷启动检查（测试环境）
         crate::ColdStartExited::<Test>::put(true);
@@ -205,7 +205,7 @@ fn get_memo_market_price_weighted_works() {
         assert_ok!(Pricing::add_bridge_swap(2000, 60 * USDT, 100 * MEMO));
 
         // 加权平均价格: (200*50 + 100*60) / 300 = 53.33 USDT
-        let weighted_price = Pricing::get_memo_market_price_weighted();
+        let weighted_price = Pricing::get_dust_market_price_weighted();
 
         assert!(weighted_price >= 53 * USDT);
         assert!(weighted_price <= 54 * USDT);

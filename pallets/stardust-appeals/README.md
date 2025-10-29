@@ -178,7 +178,7 @@ pub trait Config: frame_system::Config {
     /// 事件类型
     type RuntimeEvent: From<Event<Self>>;
     
-    /// 货币类型（MEMO）
+    /// 货币类型（DUST）
     type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
     
     /// 限频窗口（区块数）
