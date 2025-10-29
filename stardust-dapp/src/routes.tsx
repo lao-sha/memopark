@@ -54,7 +54,7 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/otc/pay-test', component: lazy(() => import('./features/otc/PayCreateTestPage')) },
   { match: h => h === '#/otc/claim', component: lazy(() => import('./features/otc/ClaimMemoForm')) },  // 首购领取（原OTC领取）
   { match: h => h === '#/otc/release', component: lazy(() => import('./features/otc/SellerReleasePage')) },
-  { match: h => h === '#/otc/order-free', component: lazy(() => import('./features/otc/CreateFreeOrderPage')) },  // 🆕 买家创建免费订单
+  // ❌ 已删除冗余路由: /otc/order-free (CreateFreeOrderPage) - 功能由 /first-purchase 替代
   { match: h => h === '#/market-maker/quota', component: lazy(() => import('./features/market-maker/FreeQuotaManagementPage')) },  // 🆕 做市商配额管理
   { match: h => h === '#/first-purchase/pool', component: lazy(() => import('./features/first-purchase/MarketMakerPoolPage')) },
   { match: h => h === '#/first-purchase', component: lazy(() => import('./features/first-purchase/FirstPurchasePage')) },
