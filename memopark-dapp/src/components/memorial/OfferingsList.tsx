@@ -270,7 +270,7 @@ export const OfferingsList: React.FC<OfferingsListProps> = ({
                 <GiftOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 <div>
                   <Text strong style={{ fontSize: 16 }}>
-                    {formatDust(offering.amount)}
+                    {formatDUST(offering.amount)}
                   </Text>
                   {offering.duration && (
                     <Tag color="blue" style={{ marginLeft: 8 }}>

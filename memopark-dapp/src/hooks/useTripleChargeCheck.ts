@@ -165,7 +165,7 @@ export function useTripleChargeCheck(
             source: 'pool',
             message: '✅ 本次 pin 将使用公共配额（免费）',
             color: 'green',
-            suggestion: `剩余配额：${formatDust(remainingQuota)}，本次消耗：${formatDust(amountBig)}`,
+            suggestion: `剩余配额：${formatDUST(remainingQuota)}，本次消耗：${formatDUST(amountBig)}`,
             showChargeButton: false,
             subjectFundingAddress: subjectAddress,
             balances: {
@@ -191,7 +191,7 @@ export function useTripleChargeCheck(
             message: '💰 本次 pin 将从逝者专属资金扣款',
             color: 'blue',
             suggestion: remainingQuota < amountBig
-              ? `配额不足（剩余：${formatDust(remainingQuota)}），将使用专属资金`
+              ? `配额不足（剩余：${formatDUST(remainingQuota)}），将使用专属资金`
               : `公共池余额不足，将使用专属资金`,
             showChargeButton: false,
             subjectFundingAddress: subjectAddress,
@@ -241,7 +241,7 @@ export function useTripleChargeCheck(
           source: 'insufficient',
           message: '❌ 余额不足，无法完成 pin 请求',
           color: 'red',
-          suggestion: `需要 ${formatDust(amountBig)}，但所有账户余额都不足`,
+          suggestion: `需要 ${formatDUST(amountBig)}，但所有账户余额都不足`,
           showChargeButton: true,
           subjectFundingAddress: subjectAddress,
           balances: {
@@ -284,7 +284,7 @@ export function useTripleChargeCheck(
  * 
  * 将最小单位转换为 DUST（除以 10^12）
  */
-function formatDust(amount: bigint): string {
+function formatDUST(amount: bigint): string {
   const UNIT = 1000000000000n // 10^12
   const whole = amount / UNIT
   const frac = amount % UNIT
