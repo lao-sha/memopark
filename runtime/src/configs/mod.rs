@@ -100,13 +100,13 @@ impl pallet_stardust_appeals::Config for Runtime {
 /// ## 核心逻辑
 /// 1. 基础押金金额：$10 USD（固定）
 /// 2. 从 pallet-pricing 获取MEMO/USDT实时市场价格
-/// 3. 计算押金MEMO数量 = $10 / (MEMO价格 in USDT)
+/// 3. 计算押金MEMO数量 = $10 / (DUST价格 in USDT)
 /// 4. 根据 domain/action 应用倍数（1x, 1.5x, 2x）
 /// 
 /// ## 价格安全机制
-/// - 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/MEMO）
-/// - 最高押金上限：单次押金不超过 100,000 MEMO（防止价格异常导致押金过高）
-/// - 最低押金下限：单次押金不少于 1 MEMO（保证押金有意义）
+/// - 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/DUST）
+/// - 最高押金上限：单次押金不超过 100,000 DUST（防止价格异常导致押金过高）
+/// - 最低押金下限：单次押金不少于 1 DUST（保证押金有意义）
 /// 
 /// ## 倍数规则（可后续治理升级）
 /// - 逝者媒体域(4)：替换 URI(31)/冻结视频集(32) → 2× 基准；隐藏媒体(30) → 1× 基准
@@ -130,14 +130,14 @@ impl pallet_stardust_appeals::AppealDepositPolicy for ContentAppealDepositPolicy
         
         // 2. 价格安全检查：如果价格为0或过低，使用默认最低价格
         let safe_price = if memo_price_usdt == 0 || memo_price_usdt < 1 {
-            1u64 // 0.000001 USDT/MEMO（最低保护价格）
+            1u64 // 0.000001 USDT/DUST（最低保护价格）
         } else {
             memo_price_usdt
         };
         
-        // 3. 计算$10 USD等价的MEMO数量
+        // 3. 计算$10 USD等价的DUST数量
         // $10 USD = 10,000,000（精度 10^6）
-        // MEMO数量 = $10 / (MEMO价格 in USDT) = 10,000,000 / safe_price
+        // MEMO数量 = $10 / (DUST价格 in USDT) = 10,000,000 / safe_price
         // 结果需要转换为MEMO精度（10^12）
         const TEN_USD: u128 = 10_000_000u128; // $10 in USDT (precision 10^6)
         const MEMO_PRECISION: u128 = 1_000_000_000_000u128; // 10^12
@@ -421,14 +421,14 @@ impl pallet_balances::Config for Runtime {
 // 函数级中文注释：2025-10-22 已删除 pallet-balance-tiers 配置
 // - 功能与固定免费次数重复，复杂度过高
 // - 新用户 Gas 已由固定免费次数覆盖（做市商代付）
-// - 活动空投、邀请奖励改用直接转账 MEMO
+// - 活动空投、邀请奖励改用直接转账 DUST
 
 // 函数级中文注释：2025-10-28 移除旧的 pallet-buyer-credit 和 pallet-maker-credit 配置
 // 已整合为统一的 pallet-credit
 
 parameter_types! {
     /// 函数级中文注释：统一信用系统参数 - 最小持仓量（用于资产信任评估）
-    /// - 100 MEMO 作为基准，持仓>=100倍（10000 MEMO）视为高信任
+    /// - 100 MEMO 作为基准，持仓>=100倍（10000 DUST）视为高信任
     pub const CreditMinimumBalance: Balance = 100 * UNIT;
     
     // 买家信用配置
@@ -622,7 +622,7 @@ parameter_types! {
     // ✅ 墓位容量无限制说明
     // - **已删除**：DeceasedMaxPerGrave（原6人硬上限）
     // - **改为**：Vec 无容量限制，支持家族墓、纪念墓
-    // - **保护**：经济成本（每人约10 MEMO）天然防止恶意填充
+    // - **保护**：经济成本（每人约10 DUST）天然防止恶意填充
     // - **性能**：前端分页加载，1000人墓位仅8KB Storage
 }
 
@@ -1106,7 +1106,7 @@ impl pallet_ledger::Config for Runtime {
 //     /// - 支付 IPFS 及未来其他去中心化存储方案的成本
 //     /// - 通过路由表配置分配比例
 //     type StorageAccount = DecentralizedStorageAccount;
-//     /// 函数级中文注释：黑洞账户（用于销毁 MEMO）
+//     /// 函数级中文注释：黑洞账户（用于销毁 DUST）
 //     type BurnAccount = BurnAccount;
 //     /// 函数级中文注释：国库账户（用于平台财政收入）
 //     type TreasuryAccount = TreasuryAccount;
@@ -1114,11 +1114,11 @@ impl pallet_ledger::Config for Runtime {
 //     /// - 当用户提交的供奉品被拒绝或撤回时，5%的押金将罚没至此账户
 //     /// - 委员会可通过治理提案使用这些资金，用于激励审核工作
 //     type CommitteeAccount = CommitteeAccount;
-//     /// 函数级详细中文注释：供奉品提交押金（1,000,000 MEMO）
+//     /// 函数级详细中文注释：供奉品提交押金（1,000,000 DUST）
 //     /// - 用户提交供奉品审核时需要冻结的押金
-//     /// - 1,000,000 MEMO = 1,000,000,000,000 单位（假设 1 MEMO = 1,000,000 单位）
+//     /// - 1,000,000 MEMO = 1,000,000,000,000 单位（假设 1 DUST = 1,000,000 单位）
 //     /// - 批准上架后全额退还；拒绝或撤回时罚没5%到委员会账户
-//     type SubmissionDeposit = ConstU128<1_000_000_000_000>; // 1,000,000 MEMO
+//     type SubmissionDeposit = ConstU128<1_000_000_000_000>; // 1,000,000 DUST
 //     /// 函数级详细中文注释：拒绝/撤回罚没比例（500 bps = 5%）
 //     /// - bps = basis points，10,000 bps = 100%
 //     /// - 罚没资金进入委员会账户，用于激励委员会成员的审核工作
@@ -1491,7 +1491,7 @@ impl pallet_pricing::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     /// 最大价格偏离：2000 bps = 20%
     /// 订单价格与基准价格的偏离不得超过 ±20%
-    /// 例如：基准价 1.0 USDT/MEMO，允许范围 0.8 ~ 1.2 USDT/MEMO
+    /// 例如：基准价 1.0 USDT/DUST，允许范围 0.8 ~ 1.2 USDT/DUST
     type MaxPriceDeviation = ConstU16<2000>;
 }
 
@@ -1825,7 +1825,7 @@ parameter_types! {
 
 // ===== market-maker 配置 =====
 parameter_types! {
-    /// 函数级中文注释：做市商最小押金（示例：1000 MEMO）
+    /// 函数级中文注释：做市商最小押金（示例：1000 DUST）
     pub const MarketMakerMinDeposit: Balance = 1_000_000_000_000_000; // 1000 UNIT
     /// 函数级中文注释：资料提交窗口（24 小时 = 86400 秒）
     pub const MarketMakerInfoWindow: u32 = 86_400;
@@ -1965,8 +1965,8 @@ impl Get<AccountId> for FiatGatewayAccount {
     }
 }
 
-// 函数级中文注释：法币网关托管账户（用于存放待分发的MEMO）
-// 这个账户持有所有待分发给首购用户的MEMO代币
+// 函数级中文注释：法币网关托管账户（用于存放待分发的DUST）
+// 这个账户持有所有待分发给首购用户的DUST代币
 pub struct FiatGatewayTreasuryAccount;
 impl Get<AccountId> for FiatGatewayTreasuryAccount {
     fn get() -> AccountId {
@@ -2472,7 +2472,7 @@ impl pallet_stardust_ipfs::Config for Runtime {
     /// - 待运营者完成任务后基于 SLA 分配
     type OperatorEscrowAccount = OperatorEscrowAccount;
     
-    /// 函数级中文注释：每月公共费用配额（100 MEMO）
+    /// 函数级中文注释：每月公共费用配额（100 DUST）
     type MonthlyPublicFeeQuota = MonthlyPublicFeeQuota;
     
     /// 函数级中文注释：配额重置周期（28 天）
@@ -2719,7 +2719,7 @@ parameter_types! {
     /// 
     /// 说明：
     /// - 每个 deceased 每月可使用的免费额度
-    /// - 100 MEMO ≈ 10,000 GiB/月（假设 0.01 MEMO/GiB）
+    /// - 100 MEMO ≈ 10,000 GiB/月（假设 0.01 DUST/GiB）
     /// - 可通过治理调整
     pub const MonthlyPublicFeeQuota: Balance = 100 * crate::UNIT;
     
@@ -2800,9 +2800,9 @@ impl pallet_storage_treasury::Config for Runtime {
 /// ============================================================================
 
 /// 函数级详细中文注释：SimpleBridge 配置实现
-/// - MVP 设计：只支持 MEMO → USDT (TRC20) 兑换
-/// - 固定汇率：0.5 USDT/MEMO（桥接服务端配置）
-/// - 托管模式：MEMO 锁定在桥接账户
+/// - MVP 设计：只支持 DUST → USDT (TRC20) 兑换
+/// - 固定汇率：0.5 USDT/DUST（桥接服务端配置）
+/// - 托管模式：DUST 锁定在桥接账户
 /// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
 // 🗑️ 2025-10-29：pallet-simple-bridge 已整合到 pallet-trading，配置已删除
 
@@ -3280,7 +3280,7 @@ impl pallet_deposits::Config for Runtime {
     /// 事件类型
     type RuntimeEvent = RuntimeEvent;
     
-    /// 函数级中文注释：货币类型（MEMO）
+    /// 函数级中文注释：货币类型（DUST）
     /// - 使用Balances模块管理押金
     type Currency = Balances;
     

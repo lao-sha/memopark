@@ -31,7 +31,7 @@ pub fn local_chain_spec() -> Result<ChainSpec, String> {
 }
 
 /// 函数级中文注释：返回链属性（tokenSymbol/tokenDecimals/ss58Format）。
-/// - tokenSymbol 设为 MEMO；
+/// - tokenSymbol 设为 DUST；
 /// - tokenDecimals 与 runtime 的 UNIT(=10^12) 对齐为 12；
 /// - ss58Format 先用 42（通用 Substrate），主网可自定义。
 fn default_properties() -> sc_service::Properties {

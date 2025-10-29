@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum MembershipLevel {
-	/// 年费会员：400 MEMO，基础6代，有效期1年
+	/// 年费会员：400 DUST，基础6代，有效期1年
 	Year1,
-	/// 3年会员：800 MEMO，基础9代，有效期3年
+	/// 3年会员：800 DUST，基础9代，有效期3年
 	Year3,
-	/// 5年会员：1600 MEMO，基础12代，有效期5年
+	/// 5年会员：1600 DUST，基础12代，有效期5年
 	Year5,
-	/// 10年会员：2000 MEMO，基础15代，有效期10年
+	/// 10年会员：2000 DUST，基础15代，有效期10年
 	Year10,
 }
 
@@ -33,7 +33,7 @@ impl MembershipLevel {
 		}
 	}
 
-	/// 获取会员价格（单位：MEMO，需乘以 UNITS）
+	/// 获取会员价格（单位：DUST，需乘以 UNITS）
 	pub fn price_in_units(&self) -> u128 {
 		match self {
 			Self::Year1 => 400,
@@ -63,7 +63,7 @@ impl MembershipLevel {
 		}
 	}
 
-	/// 补升级到10年会员所需费用（单位：MEMO，需乘以 UNITS）
+	/// 补升级到10年会员所需费用（单位：DUST，需乘以 UNITS）
 	/// 如果已经是10年会员，返回 None
 	pub fn upgrade_to_year10_price(&self) -> Option<u128> {
 		match self {

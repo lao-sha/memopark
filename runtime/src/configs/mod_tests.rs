@@ -36,7 +36,7 @@ mod tests {
         assert!(deposit.is_some());
         let amount = deposit.unwrap();
         
-        // 押金应该在合理范围内（1 MEMO - 100,000 MEMO）
+        // 押金应该在合理范围内（1 MEMO - 100,000 DUST）
         assert!(amount >= 1 * UNIT);
         assert!(amount <= 100_000 * UNIT);
     }
@@ -95,10 +95,10 @@ mod tests {
 
     #[test]
     fn test_deposit_minimum_limit() {
-        // 测试最低押金限制（1 MEMO）
+        // 测试最低押金限制（1 DUST）
         let who = AccountId::from([1u8; 32]);
         
-        // 任何有效domain的押金都应该 >= 1 MEMO
+        // 任何有效domain的押金都应该 >= 1 DUST
         let deposit = ContentAppealDepositPolicy::calc_deposit(&who, 3, 1, 22);
         if let Some(amount) = deposit {
             assert!(amount >= 1 * UNIT, "押金不应低于1 MEMO");
@@ -107,10 +107,10 @@ mod tests {
 
     #[test]
     fn test_deposit_maximum_limit() {
-        // 测试最高押金限制（100,000 MEMO）
+        // 测试最高押金限制（100,000 DUST）
         let who = AccountId::from([1u8; 32]);
         
-        // 即使是2x倍数，也不应超过100,000 MEMO
+        // 即使是2x倍数，也不应超过100,000 DUST
         let deposit = ContentAppealDepositPolicy::calc_deposit(&who, 4, 1, 32);
         if let Some(amount) = deposit {
             assert!(amount <= 100_000 * UNIT, "押金不应超过100,000 MEMO");

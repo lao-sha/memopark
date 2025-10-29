@@ -2,8 +2,8 @@
  * 跨链桥交易表单组件
  * 
  * 功能说明：
- * 1. DUST → TRON：将MEMO兑换为USDT并发送到TRON地址
- * 2. USDT → DUST：通过USDT购买MEMO（首购优惠）
+ * 1. DUST → TRON：将DUST兑换为USDT并发送到TRON地址
+ * 2. USDT → DUST：通过USDT购买DUST（首购优惠）
  * 3. 动态价格计算（含溢价）
  * 4. 首购资格验证和优惠提示
  * 5. TRON地址验证
@@ -61,7 +61,7 @@ const validateTronAddress = (address: string): boolean => {
 }
 
 /**
- * 函数级详细中文注释：格式化MEMO金额
+ * 函数级详细中文注释：格式化DUST金额
  */
 const formatDUST = (amount: number): string => {
   return amount.toLocaleString() + ' DUST'
@@ -133,7 +133,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
    * 函数级详细中文注释：计算 DUST → TRON 的实际价格
    */
   const calculateMemoToTronPrice = (): number => {
-    // 卖出MEMO：应用卖出溢价
+    // 卖出DUST：应用卖出溢价
     const premiumRate = sellPremiumBps / 10000
     return basePrice * (1 + premiumRate)
   }

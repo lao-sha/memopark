@@ -56,9 +56,9 @@ pub struct Order<T: Config> {
     pub maker: T::AccountId,
     /// 买家账户
     pub taker: T::AccountId,
-    /// 单价（USDT/MEMO，精度10^6）
+    /// 单价（USDT/DUST，精度10^6）
     pub price: BalanceOf<T>,
-    /// 数量（MEMO数量）
+    /// 数量（DUST数量）
     pub qty: BalanceOf<T>,
     /// 总金额（USDT金额）
     pub amount: BalanceOf<T>,
@@ -89,7 +89,7 @@ pub struct Order<T: Config> {
 /// # 参数
 /// - buyer: 买家账户
 /// - maker_id: 做市商ID
-/// - memo_amount: MEMO数量
+/// - memo_amount: DUST数量
 /// - payment_commit: 支付承诺哈希
 /// - contact_commit: 联系方式承诺哈希
 /// 
@@ -128,7 +128,7 @@ pub fn do_create_order<T: Config>(
     // TODO: 从 pallet-pricing 获取价格
     // TODO: 应用做市商溢价
     // TODO: 检查买家信用
-    // TODO: 锁定做市商的MEMO到托管
+    // TODO: 锁定做市商的DUST到托管
     // TODO: 检查限频
     
     let now = pallet_timestamp::Pallet::<T>::get();
@@ -243,7 +243,7 @@ pub fn do_mark_paid<T: Config>(
     Ok(())
 }
 
-/// 函数级详细中文注释：做市商释放MEMO（核心逻辑占位）
+/// 函数级详细中文注释：做市商释放DUST（核心逻辑占位）
 /// 
 /// # 参数
 /// - maker: 做市商账户
@@ -272,7 +272,7 @@ pub fn do_release_memo<T: Config>(
             Error::<T>::InvalidOrderStatus
         );
         
-        // TODO: 从托管释放MEMO给买家
+        // TODO: 从托管释放DUST给买家
         // TODO: 更新做市商信用（完成订单）
         // TODO: 触发联盟营销分配
         
@@ -324,7 +324,7 @@ pub fn do_cancel_order<T: Config>(
             Error::<T>::InvalidOrderStatus
         );
         
-        // TODO: 退款托管的MEMO给做市商
+        // TODO: 退款托管的DUST给做市商
         
         // 函数级详细中文注释：更新状态（用于事件优化）
         order.state = OrderState::Canceled;

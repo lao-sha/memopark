@@ -175,17 +175,17 @@ impl pallet_affiliate::Config for Test {
 /// 初始化测试环境，并为测试账户分配初始余额。
 ///
 /// **测试账户**：
-/// - Alice (1): 10,000 MEMO
-/// - Bob (2): 10,000 MEMO
-/// - Charlie (3): 10,000 MEMO
-/// - Dave (4): 10,000 MEMO
-/// - Eve (5): 10,000 MEMO
-/// - Frank (6): 10,000 MEMO
-/// - Grace (7): 10,000 MEMO
-/// - Heidi (8): 10,000 MEMO
-/// - Ivan (9): 10,000 MEMO
-/// - Judy (10): 10,000 MEMO
-/// - Treasury (999): 1,000 MEMO
+/// - Alice (1): 10,000 DUST
+/// - Bob (2): 10,000 DUST
+/// - Charlie (3): 10,000 DUST
+/// - Dave (4): 10,000 DUST
+/// - Eve (5): 10,000 DUST
+/// - Frank (6): 10,000 DUST
+/// - Grace (7): 10,000 DUST
+/// - Heidi (8): 10,000 DUST
+/// - Ivan (9): 10,000 DUST
+/// - Judy (10): 10,000 DUST
+/// - Treasury (999): 1,000 DUST
 pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()

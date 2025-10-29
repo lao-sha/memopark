@@ -35,15 +35,15 @@ pub mod pallet {
         pub timestamp: u64,
         /// USDT 单价（精度 10^6，即 1,000,000 = 1 USDT）
         pub price_usdt: u64,
-        /// MEMO 数量（精度 10^12，即 1,000,000,000,000 = 1 MEMO）
+        /// MEMO 数量（精度 10^12，即 1,000,000,000,000 = 1 DUST）
         pub memo_qty: u128,
     }
 
     /// 函数级中文注释：价格聚合数据
-    /// 维护最近累计 1,000,000 MEMO 的订单统计信息
+    /// 维护最近累计 1,000,000 DUST 的订单统计信息
     #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
     pub struct PriceAggregateData {
-        /// 累计 MEMO 数量（精度 10^12）
+        /// 累计 DUST 数量（精度 10^12）
         pub total_memo: u128,
         /// 累计 USDT 金额（精度 10^6）
         pub total_usdt: u128,
@@ -55,7 +55,7 @@ pub mod pallet {
         pub newest_index: u32,
     }
 
-    /// 函数级中文注释：MEMO 市场统计信息
+    /// 函数级中文注释：DUST 市场统计信息
     /// 综合 OTC 和 Bridge 两个市场的价格和交易数据
     #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
     pub struct MarketStats {
@@ -80,7 +80,7 @@ pub mod pallet {
     }
 
     /// 函数级中文注释：OTC 订单价格聚合数据
-    /// 维护最近累计 1,000,000 MEMO 的 OTC 订单统计
+    /// 维护最近累计 1,000,000 DUST 的 OTC 订单统计
     #[pallet::storage]
     #[pallet::getter(fn otc_aggregate)]
     pub type OtcPriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
@@ -96,7 +96,7 @@ pub mod pallet {
     >;
 
     /// 函数级中文注释：Bridge 兑换价格聚合数据
-    /// 维护最近累计 1,000,000 MEMO 的桥接兑换统计
+    /// 维护最近累计 1,000,000 DUST 的桥接兑换统计
     #[pallet::storage]
     #[pallet::getter(fn bridge_aggregate)]
     pub type BridgePriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
@@ -113,7 +113,7 @@ pub mod pallet {
 
     /// 函数级中文注释：冷启动阈值（可治理调整）
     /// 当 OTC 和 Bridge 的交易量都低于此阈值时，使用默认价格
-    /// 默认值：100,000,000 MEMO（1亿，精度 10^12）
+    /// 默认值：100,000,000 DUST（1亿，精度 10^12）
     #[pallet::storage]
     #[pallet::getter(fn cold_start_threshold)]
     pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery, DefaultColdStartThreshold>;
@@ -125,7 +125,7 @@ pub mod pallet {
 
     /// 函数级中文注释：默认价格（可治理调整）
     /// 用于冷启动阶段的价格锚点
-    /// 默认值：1（0.000001 USDT/MEMO，精度 10^6）
+    /// 默认值：1（0.000001 USDT/DUST，精度 10^6）
     /// 注：实际要求 0.0000007，但受精度限制，向上取整为 1
     #[pallet::storage]
     #[pallet::getter(fn default_price)]
@@ -133,7 +133,7 @@ pub mod pallet {
 
     #[pallet::type_value]
     pub fn DefaultPriceValue() -> u64 {
-        1u64 // 0.000001 USDT/MEMO
+        1u64 // 0.000001 USDT/DUST
         // 注：用户要求 0.0000007，但精度 10^6 下为 0.7，向上取整为 1（最小精度单位）
     }
 
@@ -202,11 +202,11 @@ pub mod pallet {
         /// # 参数
         /// - `timestamp`: 订单时间戳（Unix 毫秒）
         /// - `price_usdt`: USDT 单价（精度 10^6）
-        /// - `memo_qty`: MEMO 数量（精度 10^12）
+        /// - `memo_qty`: DUST 数量（精度 10^12）
         /// 
         /// # 逻辑
         /// 1. 读取当前聚合数据
-        /// 2. 如果累计超过 1,000,000 MEMO，删除最旧的订单直到满足限制
+        /// 2. 如果累计超过 1,000,000 DUST，删除最旧的订单直到满足限制
         /// 3. 添加新订单到循环缓冲区
         /// 4. 更新聚合统计数据
         /// 5. 发出事件
@@ -338,13 +338,13 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：获取 OTC 订单均价（USDT/MEMO，精度 10^6）
+        /// 函数级详细中文注释：获取 OTC 订单均价（USDT/DUST，精度 10^6）
         /// 
         /// # 返回
         /// - `u64`: 均价（精度 10^6），0 表示无数据
         /// 
         /// # 计算公式
-        /// 均价 = 总 USDT / 总 MEMO
+        /// 均价 = 总 USDT / 总 DUST
         ///      = total_usdt / (total_memo / 10^12)
         ///      = (total_usdt * 10^12) / total_memo
         pub fn get_otc_average_price() -> u64 {
@@ -360,7 +360,7 @@ pub mod pallet {
             avg as u64
         }
 
-        /// 函数级详细中文注释：获取 Bridge 兑换均价（USDT/MEMO，精度 10^6）
+        /// 函数级详细中文注释：获取 Bridge 兑换均价（USDT/DUST，精度 10^6）
         pub fn get_bridge_average_price() -> u64 {
             let agg = BridgePriceAggregate::<T>::get();
             if agg.total_memo == 0 {
@@ -374,7 +374,7 @@ pub mod pallet {
         }
 
         /// 函数级详细中文注释：获取 OTC 聚合统计信息
-        /// 返回：(累计MEMO, 累计USDT, 订单数, 均价)
+        /// 返回：(累计DUST, 累计USDT, 订单数, 均价)
         pub fn get_otc_stats() -> (u128, u128, u32, u64) {
             let agg = OtcPriceAggregate::<T>::get();
             let avg = Self::get_otc_average_price();
@@ -382,14 +382,14 @@ pub mod pallet {
         }
 
         /// 函数级详细中文注释：获取 Bridge 聚合统计信息
-        /// 返回：(累计MEMO, 累计USDT, 订单数, 均价)
+        /// 返回：(累计DUST, 累计USDT, 订单数, 均价)
         pub fn get_bridge_stats() -> (u128, u128, u32, u64) {
             let agg = BridgePriceAggregate::<T>::get();
             let avg = Self::get_bridge_average_price();
             (agg.total_memo, agg.total_usdt, agg.order_count, avg)
         }
 
-        /// 函数级详细中文注释：获取 MEMO 市场参考价格（简单平均 + 冷启动保护）
+        /// 函数级详细中文注释：获取 DUST 市场参考价格（简单平均 + 冷启动保护）
         /// 
         /// # 算法
         /// - 冷启动阶段：如果两个市场交易量都未达阈值，返回默认价格
@@ -399,7 +399,7 @@ pub mod pallet {
         ///   - 如果都无数据：返回默认价格（兜底）
         /// 
         /// # 返回
-        /// - `u64`: USDT/MEMO 价格（精度 10^6）
+        /// - `u64`: USDT/DUST 价格（精度 10^6）
         /// 
         /// # 用途
         /// - 前端显示参考价格
@@ -442,11 +442,11 @@ pub mod pallet {
             }
         }
 
-        /// 函数级详细中文注释：获取 MEMO 市场价格（加权平均 + 冷启动保护）
+        /// 函数级详细中文注释：获取 DUST 市场价格（加权平均 + 冷启动保护）
         /// 
         /// # 算法
         /// - 冷启动阶段：如果两个市场交易量都未达阈值，返回默认价格
-        /// - 正常阶段：加权平均 = (OTC总USDT + Bridge总USDT) / (OTC总MEMO + Bridge总MEMO)
+        /// - 正常阶段：加权平均 = (OTC总USDT + Bridge总USDT) / (OTC总MEMO + Bridge总DUST)
         /// 
         /// # 优点
         /// - 考虑交易量权重，更准确反映市场情况
@@ -455,7 +455,7 @@ pub mod pallet {
         /// - 冷启动保护避免初期价格为0或被操纵
         /// 
         /// # 返回
-        /// - `u64`: USDT/MEMO 价格（精度 10^6）
+        /// - `u64`: USDT/DUST 价格（精度 10^6）
         /// 
         /// # 用途
         /// - 资产估值（钱包总值计算）
@@ -501,7 +501,7 @@ pub mod pallet {
                 return DefaultPrice::<T>::get(); // 无数据时返回默认价格
             }
             
-            // 加权平均 = 总USDT / 总MEMO
+            // 加权平均 = 总USDT / 总DUST
             let total_usdt = otc_agg.total_usdt.saturating_add(bridge_agg.total_usdt);
             let avg = total_usdt
                 .saturating_mul(1_000_000_000_000u128)
@@ -511,7 +511,7 @@ pub mod pallet {
             avg as u64
         }
 
-        /// 函数级详细中文注释：获取完整的 MEMO 市场统计信息
+        /// 函数级详细中文注释：获取完整的 DUST 市场统计信息
         /// 
         /// # 返回
         /// `MarketStats` 结构，包含：
@@ -564,11 +564,11 @@ pub mod pallet {
         /// 4. 检查偏离率是否超过 MaxPriceDeviation 配置的限制
         /// 
         /// # 示例
-        /// - 基准价格：1.0 USDT/MEMO（1,000,000）
+        /// - 基准价格：1.0 USDT/DUST（1,000,000）
         /// - MaxPriceDeviation：2000 bps（20%）
-        /// - 允许范围：0.8 ~ 1.2 USDT/MEMO
-        /// - 订单价格 1.1 USDT/MEMO → 偏离 10% → 通过 ✅
-        /// - 订单价格 1.5 USDT/MEMO → 偏离 50% → 拒绝 ❌
+        /// - 允许范围：0.8 ~ 1.2 USDT/DUST
+        /// - 订单价格 1.1 USDT/DUST → 偏离 10% → 通过 ✅
+        /// - 订单价格 1.5 USDT/DUST → 偏离 50% → 拒绝 ❌
         /// 
         /// # 用途
         /// - OTC 订单创建时的价格合理性检查
@@ -615,7 +615,7 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 必须是 Root 权限
         /// - `threshold`: 可选，新的冷启动阈值（MEMO数量，精度10^12）
-        /// - `default_price`: 可选，新的默认价格（USDT/MEMO，精度10^6）
+        /// - `default_price`: 可选，新的默认价格（USDT/DUST，精度10^6）
         /// 
         /// # 限制
         /// - 只能在冷启动期间调整（ColdStartExited = false）

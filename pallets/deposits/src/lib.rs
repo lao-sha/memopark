@@ -148,7 +148,7 @@ pub mod pallet {
 		/// 事件类型
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-		/// 货币类型（MEMO）
+		/// 货币类型（DUST）
 		type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
 		/// 释放押金的权限

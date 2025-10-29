@@ -66,7 +66,7 @@ pub mod pallet {
         pub evidence_until: Moment,
         
         /// 🆕 2025-10-19：做市商TRON收款地址
-        /// 函数级详细中文注释：买家需要向此地址转账USDT购买MEMO
+        /// 函数级详细中文注释：买家需要向此地址转账USDT购买DUST
         /// - 从做市商Application.tron_address获取
         /// - 格式：34字符，'T'开头的Base58编码地址
         /// - 示例：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS
@@ -133,7 +133,7 @@ pub mod pallet {
         /// 函数级中文注释：法币网关服务账户（授权调用首购接口）
         type FiatGatewayAccount: Get<Self::AccountId>;
         
-        /// 函数级中文注释：法币网关托管账户（存放待分发的MEMO）
+        /// 函数级中文注释：法币网关托管账户（存放待分发的DUST）
         type FiatGatewayTreasuryAccount: Get<Self::AccountId>;
         
         /// 函数级中文注释：首购最低金额
@@ -465,7 +465,7 @@ pub mod pallet {
         /// 🆕 2025-10-22：做市商信用分过低，已暂停接单
         MakerSuspended,
         /// ✅ 2025-10-23：做市商流动性不足（P1优化）
-        /// 函数级详细中文注释：做市商可用余额不足，无法锁定足够的 MEMO
+        /// 函数级详细中文注释：做市商可用余额不足，无法锁定足够的 DUST
         /// - 前端提示："该做市商当前流动性不足，请选择其他做市商或减少购买数量"
         MakerInsufficientLiquidity,
         /// ✅ 2025-10-23：撤回窗口已过期（P1优化）
@@ -482,7 +482,7 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 买家账户
         /// - `maker_id`: 做市商ID
-        /// - `qty`: MEMO数量（精度10^12）
+        /// - `qty`: DUST数量（精度10^12）
         /// - `payment_commit`: 支付凭证承诺哈希
         /// - `contact_commit`: 联系方式承诺哈希
         /// 
@@ -608,11 +608,11 @@ pub mod pallet {
             ensure!(!maker_info.tron_address.is_empty(), Error::<T>::MakerTronAddressNotSet);
             let maker_tron_address = maker_info.tron_address.clone();
             
-            // ✅ 2025-10-23：步骤15 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // ✅ 2025-10-23：步骤15 - 锁定做市商的DUST到托管（统一托管流程+流动性检查）
             // 函数级详细中文注释：采用做市商托管模式，适用于法币交易
-            // - 做市商锁定 MEMO 到托管账户
+            // - 做市商锁定 DUST 到托管账户
             // - 买家链下支付法币
-            // - 做市商确认收款后释放 MEMO 给买家
+            // - 做市商确认收款后释放 DUST 给买家
             // - 如果做市商余额不足，返回友好的错误提示
             <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
                 .map_err(|_| Error::<T>::MakerInsufficientLiquidity)?;
@@ -755,7 +755,7 @@ pub mod pallet {
         /// - 做市商的中继服务收到EPAY支付通知后，验证签名后调用此接口标记订单已支付
         /// - 记录EPAY交易号，用于关联支付记录和链上订单
         /// - 将订单状态从Created更新为PaidOrCommitted
-        /// - 触发PaymentConfirmedByMaker事件，供做市商监听程序自动释放MEMO
+        /// - 触发PaymentConfirmedByMaker事件，供做市商监听程序自动释放DUST
         /// 
         /// # 参数
         /// - `origin`: 调用者（必须是订单对应的做市商）
@@ -885,7 +885,7 @@ pub mod pallet {
                 
                 // 统一托管流程：从托管账户转账
                 // 函数级详细中文注释：转账的是 qty（MEMO数量），而不是 amount（订单金额）
-                // - qty: 实际购买的MEMO数量（最小单位）
+                // - qty: 实际购买的DUST数量（最小单位）
                 // - amount: 订单金额（price * qty，用于记录和显示）
                 <T as Config>::Escrow::transfer_from_escrow(
                     ord.maker_id,
@@ -1147,7 +1147,7 @@ pub mod pallet {
             ensure!(!maker_info.tron_address.is_empty(), Error::<T>::MakerTronAddressNotSet);
             let maker_tron_address = maker_info.tron_address.clone();
             
-            // ✅ 2025-10-23：步骤15 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // ✅ 2025-10-23：步骤15 - 锁定做市商的DUST到托管（统一托管流程+流动性检查）
             // 函数级详细中文注释：采用做市商托管模式，与 open_order 保持一致
             // - 如果做市商余额不足，返回友好的错误提示
             <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
@@ -1305,7 +1305,7 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 买家签名
         /// - `maker_id`: 做市商 ID
-        /// - `qty`: 购买数量（MEMO，精度 10^18）
+        /// - `qty`: 购买数量（DUST，精度 10^18）
         /// - `payment_commit`: 支付凭证承诺（Hash）
         /// - `contact_commit`: 联系方式承诺（Hash）
         /// 
@@ -1429,7 +1429,7 @@ pub mod pallet {
             let evidence_ttl_ms: MomentOf<T> = (confirm_ttl_blocks.saturated_into::<u64>() * 2u64 * 6u64 * 1000u64).saturated_into();
             let evidence_timestamp = now_timestamp.saturating_add(evidence_ttl_ms);
             
-            // 步骤14 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // 步骤14 - 锁定做市商的DUST到托管（统一托管流程+流动性检查）
             // 函数级详细中文注释：如果做市商余额不足，返回友好的错误提示
             <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
                 .map_err(|_| Error::<T>::MakerInsufficientLiquidity)?;
@@ -1647,7 +1647,7 @@ pub mod pallet {
                     ) {
                         // ✅ 2025-10-23：超时自动退款（释放托管资金）
                         // 函数级详细中文注释：根据订单状态释放托管资金
-                        // - Created: 订单未付款，释放做市商的 MEMO
+                        // - Created: 订单未付款，释放做市商的 DUST
                         // - PaidOrCommitted/Disputed: 订单已付款或争议中，退款给做市商
                         
                         let _ = <T as Config>::Escrow::transfer_from_escrow(

@@ -41,7 +41,7 @@ pub struct OcwMakerSwapRecord<AccountId, Balance, BlockNumber> {
     /// 做市商的 TRON 地址（用于发送 USDT）
     pub maker_tron_address: BoundedVec<u8, frame_support::traits::ConstU32<64>>,
     
-    /// 做市商的链上收款账户（用于接收 MEMO）
+    /// 做市商的链上收款账户（用于接收 DUST）
     pub maker_memo_account: AccountId,
     
     /// 买家账户（MEMO 从这里锁定）

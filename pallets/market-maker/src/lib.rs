@@ -262,7 +262,7 @@ pub mod pallet {
         /// 🆕 函数级详细中文注释：最小保留资金池余额
         /// - 提取后资金池必须保留的最小余额
         /// - 确保有足够资金继续提供首购服务
-        /// - 推荐设置为 1000 MEMO
+        /// - 推荐设置为 1000 DUST
         #[pallet::constant]
         type MinPoolBalance: Get<BalanceOf<Self>>;
     }
@@ -278,14 +278,14 @@ pub mod pallet {
     }
 
     /// 🆕 函数级详细中文注释：做市商业务方向枚举
-    /// - Buy: 仅买入（仅Bridge）- 做市商购买MEMO，支付USDT
-    /// - Sell: 仅卖出（仅OTC）- 做市商出售MEMO，收取USDT  
+    /// - Buy: 仅买入（仅Bridge）- 做市商购买DUST，支付USDT
+    /// - Sell: 仅卖出（仅OTC）- 做市商出售DUST，收取USDT  
     /// - BuyAndSell: 双向（OTC + Bridge）- 既可以买入也可以卖出
     #[derive(Clone, Copy, Encode, Decode, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum Direction {
-        /// 仅买入（仅Bridge）- 做市商购买MEMO，支付USDT
+        /// 仅买入（仅Bridge）- 做市商购买DUST，支付USDT
         Buy = 0,
-        /// 仅卖出（仅OTC）- 做市商出售MEMO，收取USDT
+        /// 仅卖出（仅OTC）- 做市商出售DUST，收取USDT
         Sell = 1,
         /// 双向（OTC + Bridge）- 既可以买入也可以卖出
         BuyAndSell = 2,
@@ -326,7 +326,7 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(AccountId, Balance))]
     pub struct BridgeServiceConfig<AccountId, Balance> {
-        /// 🆕 函数级详细中文注释：做市商账户（接收 MEMO）
+        /// 🆕 函数级详细中文注释：做市商账户（接收 DUST）
         pub maker_account: AccountId,
         /// 🆕 函数级详细中文注释：做市商 TRON 地址（发送 USDT）
         pub tron_address: BoundedVec<u8, ConstU32<64>>,
@@ -338,13 +338,13 @@ pub mod pallet {
         pub enabled: bool,
         /// 累计兑换笔数
         pub total_swaps: u64,
-        /// 累计兑换量（MEMO，精度 10^12）
+        /// 累计兑换量（DUST，精度 10^12）
         pub total_volume: Balance,
         /// 成功兑换数
         pub success_count: u64,
         /// 平均完成时间（秒）
         pub avg_time_seconds: u64,
-        /// 押金额度（MEMO，精度 10^12）
+        /// 押金额度（DUST，精度 10^12）
         pub deposit: Balance,
     }
 
@@ -371,7 +371,7 @@ pub mod pallet {
         pub direction: Direction,
         /// 🆕 2025-10-19：统一TRON地址（OTC收款 + Bridge发款）
         /// 函数级详细中文注释：做市商的TRON地址，用于所有USDT业务
-        /// - OTC订单：买家向此地址转账USDT购买MEMO
+        /// - OTC订单：买家向此地址转账USDT购买DUST
         /// - Bridge订单：做市商从此地址向买家转账USDT
         /// - 格式：以'T'开头的34字符Base58编码地址
         /// - 示例：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS
@@ -380,11 +380,11 @@ pub mod pallet {
         pub public_cid: Cid,
         pub private_cid: Cid,
         /// 🆕 2025-10-19：Buy溢价（基点，-500 ~ 500 = -5% ~ +5%）
-        /// - Buy方向（Bridge）：做市商购买MEMO，溢价为负（低于基准价）
+        /// - Buy方向（Bridge）：做市商购买DUST，溢价为负（低于基准价）
         /// - 示例：-200 bps = -2%，基准价0.01 → 买价0.0098
         pub buy_premium_bps: i16,
         /// 🆕 2025-10-19：Sell溢价（基点，-500 ~ 500 = -5% ~ +5%）
-        /// - Sell方向（OTC）：做市商出售MEMO，溢价为正（高于基准价）
+        /// - Sell方向（OTC）：做市商出售DUST，溢价为正（高于基准价）
         /// - 示例：+200 bps = +2%，基准价0.01 → 卖价0.0102
         pub sell_premium_bps: i16,
         pub min_amount: Balance,
@@ -1226,8 +1226,8 @@ pub mod pallet {
 
         /// 🆕 函数级详细中文注释：启用桥接服务
         /// - 做市商可选择提供 Simple Bridge 兑换服务
-        /// - 需要额外押金，押金 = max_swap_amount × 100（MEMO）
-        /// - 例如：最大 1,000 USDT → 需押金 100,000 MEMO
+        /// - 需要额外押金，押金 = max_swap_amount × 100（DUST）
+        /// - 例如：最大 1,000 USDT → 需押金 100,000 DUST
         #[pallet::call_index(12)]
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn enable_bridge_service(
@@ -1263,9 +1263,9 @@ pub mod pallet {
                 Error::<T>::BridgeServiceAlreadyExists
             );
             
-            // 计算所需押金（押金 = max_swap_amount × 100 × MEMO_UNITS）
+            // 计算所需押金（押金 = max_swap_amount × 100 × DUST_UNITS）
             // 例如：max_swap_amount = 1000 USDT = 1,000,000,000（精度10^6）
-            // 押金 = 1,000,000,000 × 100 / 1,000,000 = 100,000 MEMO
+            // 押金 = 1,000,000,000 × 100 / 1,000,000 = 100,000 DUST
             let required_deposit = BalanceOf::<T>::from(max_swap_amount.into())
                 .saturating_mul(100u32.into())
                 .saturating_mul(1_000_000u32.into()); // MEMO精度10^12 / USDT精度10^6
@@ -1783,7 +1783,7 @@ pub mod pallet {
         /// 
         /// # 参数
         /// - `mm_id`: 做市商 ID
-        /// - `volume`: 本次兑换量（MEMO，精度 10^12）
+        /// - `volume`: 本次兑换量（DUST，精度 10^12）
         /// - `time_seconds`: 本次兑换耗时（秒）
         /// - `success`: 是否成功完成
         pub fn update_bridge_stats(

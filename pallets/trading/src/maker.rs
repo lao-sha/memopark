@@ -60,9 +60,9 @@ pub enum ApplicationStatus {
 /// 函数级详细中文注释：做市商业务方向
 #[derive(Clone, Copy, Encode, Decode, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum Direction {
-    /// 仅买入（仅Bridge）- 做市商购买MEMO，支付USDT
+    /// 仅买入（仅Bridge）- 做市商购买DUST，支付USDT
     Buy = 0,
-    /// 仅卖出（仅OTC）- 做市商出售MEMO，收取USDT
+    /// 仅卖出（仅OTC）- 做市商出售DUST，收取USDT
     Sell = 1,
     /// 双向（OTC + Bridge）- 既可以买入也可以卖出
     BuyAndSell = 2,

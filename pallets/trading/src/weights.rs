@@ -230,7 +230,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// 
     /// 计算：
     /// - 价格查询
-    /// - MEMO销毁/锁定
+    /// - DUST销毁/锁定
     /// - OCW触发
     fn bridge_memo_to_tron() -> Weight {
         Weight::from_parts(65_000_000, 0)
@@ -253,7 +253,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// 计算：
     /// - 价格查询
     /// - 首购检查
-    /// - MEMO铸造/解锁
+    /// - DUST铸造/解锁
     /// - 联盟奖励
     fn bridge_usdt_to_memo() -> Weight {
         Weight::from_parts(75_000_000, 0)

@@ -81,7 +81,7 @@ pub mod pallet {
         /// ✅ 2025-10-23：超时时间（区块号，P2优化）
         /// 函数级详细中文注释：兑换请求超时时间（创建时间 + SwapTimeout 配置的区块数）
         /// - 默认：300 区块（约30分钟，假设6秒/区块）
-        /// - 超时后自动退款给用户，防止 MEMO 永久锁定
+        /// - 超时后自动退款给用户，防止 DUST 永久锁定
         pub expire_at: BlockNumberFor<T>,
     }
 
@@ -206,12 +206,12 @@ pub mod pallet {
     #[pallet::getter(fn swaps)]
     pub type Swaps<T: Config> = StorageMap<_, Blake2_128Concat, u64, SwapRequest<T>>;
 
-    /// 函数级详细中文注释：桥接账户（用于托管 MEMO）
+    /// 函数级详细中文注释：桥接账户（用于托管 DUST）
     #[pallet::storage]
     #[pallet::getter(fn bridge_account)]
     pub type BridgeAccount<T: Config> = StorageValue<_, T::AccountId>;
 
-    /// 函数级详细中文注释：最小兑换金额（默认 100 MEMO）
+    /// 函数级详细中文注释：最小兑换金额（默认 100 DUST）
     #[pallet::storage]
     #[pallet::getter(fn min_amount)]
     pub type MinAmount<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
@@ -359,13 +359,13 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// 函数级详细中文注释：新兑换请求创建
-        /// 包含兑换ID、用户地址、MEMO数量、TRON地址和实际使用的汇率
+        /// 包含兑换ID、用户地址、DUST数量、TRON地址和实际使用的汇率
         SwapCreated {
             id: u64,
             user: T::AccountId,
             amount: BalanceOf<T>,
             tron_address: BoundedVec<u8, ConstU32<64>>,
-            /// 实际使用的汇率（USDT/MEMO，精度 10^6）
+            /// 实际使用的汇率（USDT/DUST，精度 10^6）
             price_usdt: u64,
         },
         /// 函数级详细中文注释：兑换完成
@@ -568,7 +568,7 @@ pub mod pallet {
         /// 函数级详细中文注释：检查价格偏离是否在允许范围内
         /// 
         /// # 参数
-        /// - `price`: 实际使用的价格（USDT/MEMO，精度 10^6）
+        /// - `price`: 实际使用的价格（USDT/DUST，精度 10^6）
         /// - `base_price`: 基准价格（市场均价，精度 10^6）
         /// - `max_deviation_bps`: 最大偏离（万分比，如 2000 = 20%）
         /// 
@@ -626,15 +626,15 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：创建 MEMO → USDT 兑换请求（动态均价版）
+        /// 函数级详细中文注释：创建 DUST → USDT 兑换请求（动态均价版）
         /// 
         /// # 参数
         /// - `origin`: 调用者（签名交易）
-        /// - `memo_amount`: MEMO 数量（12位小数，如 100 MEMO = 100_000_000_000_000）
+        /// - `memo_amount`: MEMO 数量（12位小数，如 100 DUST = 100_000_000_000_000）
         /// - `tron_address`: TRON 地址（Base58 格式，如 "TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"）
         /// 
         /// # 验证
-        /// - MEMO 数量 >= MinAmount
+        /// - DUST 数量 >= MinAmount
         /// - TRON 地址长度 > 0 且 <= 64 字节
         /// - 桥接账户已设置
         /// - 市场价格可用（pallet-pricing 返回有效价格）
@@ -648,7 +648,7 @@ pub mod pallet {
         /// # 流程
         /// 1. 验证参数
         /// 2. 获取市场均价作为兑换汇率
-        /// 3. 锁定用户的 MEMO 到桥接账户
+        /// 3. 锁定用户的 DUST 到桥接账户
         /// 4. 创建兑换请求记录
         /// 5. 触发 SwapCreated 事件（包含实际汇率）
         #[pallet::call_index(0)]
@@ -688,7 +688,7 @@ pub mod pallet {
             // let max_deviation = MaxPriceDeviation::<T>::get();
             // Self::check_price_deviation(price_usdt, market_price, max_deviation)?;
             
-            // 锁定 MEMO 到桥接账户
+            // 锁定 DUST 到桥接账户
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &who,
                 &bridge_acc,
@@ -708,7 +708,7 @@ pub mod pallet {
             // ✅ 2025-10-23：计算超时时间（P2优化）
             // 函数级详细中文注释：超时时间 = 创建时间 + SwapTimeout 配置的区块数
             // - 默认 300 区块（约30分钟）
-            // - 超时后自动退款，防止 MEMO 永久锁定
+            // - 超时后自动退款，防止 DUST 永久锁定
             let expire_at = created_at.saturating_add(T::SwapTimeout::get());
             
             let request = SwapRequest {
@@ -822,12 +822,12 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 🆕 函数级详细中文注释：通过做市商兑换 MEMO → USDT
+        /// 🆕 函数级详细中文注释：通过做市商兑换 DUST → USDT
         /// 
         /// # 参数
         /// - `origin`: 用户账户
         /// - `maker_id`: 做市商 ID
-        /// - `memo_amount`: MEMO 数量（精度 10^12）
+        /// - `memo_amount`: DUST 数量（精度 10^12）
         /// - `usdt_address`: USDT（TRC20）接收地址
         /// 
         /// # 流程
@@ -835,7 +835,7 @@ pub mod pallet {
         /// 2. 获取市场价格
         /// 3. 计算 USDT 金额（含做市商手续费）
         /// 4. 验证金额范围
-        /// 5. 质押 MEMO 到托管账户
+        /// 5. 质押 DUST 到托管账户
         /// 6. 创建兑换记录
         /// 7. 发出事件
         #[pallet::call_index(5)]
@@ -886,7 +886,7 @@ pub mod pallet {
                 Error::<T>::ExceedsMaxSwapAmount
             );
             
-            // 6. 质押 MEMO 到托管账户
+            // 6. 质押 DUST 到托管账户
             let custody_account = Self::custody_account_for_maker(maker_id);
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &who,
@@ -945,7 +945,7 @@ pub mod pallet {
         /// # 流程
         /// 1. 验证身份和状态
         /// 2. 记录 TRC20 交易哈希
-        /// 3. 转移 MEMO 给做市商
+        /// 3. 转移 DUST 给做市商
         /// 4. 更新统计数据
         /// 5. 上报价格数据
         #[pallet::call_index(6)]
@@ -980,7 +980,7 @@ pub mod pallet {
             record.status = SwapStatus::Completed;
             MakerSwaps::<T>::insert(swap_id, &record);
             
-            // 将 MEMO 从托管转给做市商
+            // 将 DUST 从托管转给做市商
             let custody_account = Self::custody_account_for_maker(record.maker_id);
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
@@ -1113,7 +1113,7 @@ pub mod pallet {
         /// - `approve`: true=做市商履约，false=做市商违约
         /// 
         /// # 流程
-        /// - Approve: 释放 MEMO 给做市商（认定做市商已转账，用户举报无效）
+        /// - Approve: 释放 DUST 给做市商（认定做市商已转账，用户举报无效）
         /// - Reject: 罚没押金给用户（含 20% 补偿）
         #[pallet::call_index(9)]
         #[pallet::weight(T::DbWeight::get().reads_writes(3, 2))]
@@ -1132,7 +1132,7 @@ pub mod pallet {
             ensure!(record.status == SwapStatus::UserReported, Error::<T>::SwapNotReported);
             
             if approve {
-                // 做市商履约：释放 MEMO 给做市商
+                // 做市商履约：释放 DUST 给做市商
                 let custody_account = Self::custody_account_for_maker(record.maker_id);
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
@@ -1163,7 +1163,7 @@ pub mod pallet {
                 // 做市商违约：退款给用户 + 20% 补偿（从做市商押金扣除）
                 let custody_account = Self::custody_account_for_maker(record.maker_id);
                 
-                // 退还原 MEMO
+                // 退还原 DUST
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.user,
@@ -1339,21 +1339,21 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 买家账户（签名交易）
         /// - `maker_id`: 做市商 ID
-        /// - `maker_account`: 做市商账户（接收 MEMO）
+        /// - `maker_account`: 做市商账户（接收 DUST）
         /// - `maker_tron_address`: 做市商 TRON 地址（发送 USDT）
-        /// - `memo_amount`: MEMO 数量（12位小数）
+        /// - `memo_amount`: DUST 数量（12位小数）
         /// - `buyer_tron_address`: 买家的 TRON 地址（接收 USDT）
         /// 
         /// # 验证
         /// - 做市商桥接服务必须存在且已启用
-        /// - MEMO 数量 >= OcwMinSwapAmount
+        /// - DUST 数量 >= OcwMinSwapAmount
         /// - TRON 地址格式有效
         /// - 买家余额充足
         /// 
         /// # 流程
         /// 1. 验证做市商桥接服务状态
         /// 2. 计算 USDT 金额（根据市场价格）
-        /// 3. 锁定买家的 MEMO 到托管账户
+        /// 3. 锁定买家的 DUST 到托管账户
         /// 4. 创建 OCW 订单记录
         /// 5. 触发 OcwMakerSwapCreated 事件
         #[pallet::call_index(12)]
@@ -1366,7 +1366,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let user = ensure_signed(origin)?;
             
-            // 验证 MEMO 数量
+            // 验证 DUST 数量
             ensure!(
                 memo_amount >= T::OcwMinSwapAmount::get(),
                 Error::<T>::AmountTooSmall
@@ -1416,7 +1416,7 @@ pub mod pallet {
             // 防止极端价格订单，保护买卖双方
             pallet_pricing::Pallet::<T>::check_price_deviation(final_price_u64)?;
             
-            // USDT 金额 = MEMO 数量 * 最终价格（精度转换）
+            // USDT 金额 = DUST 数量 * 最终价格（精度转换）
             // memo_amount: 12位小数，final_price_u64: 6位小数
             let memo_u128: u128 = memo_amount.saturated_into();
             let usdt_amount = (memo_u128 * final_price_u64 as u128) / 1_000_000_000_000u128;
@@ -1428,7 +1428,7 @@ pub mod pallet {
                 Error::<T>::ExceedsMaxSwapAmount
             );
             
-            // 锁定买家的 MEMO 到托管账户
+            // 锁定买家的 DUST 到托管账户
             let custody_account = Self::custody_account_for_maker(maker_id);
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &user,
@@ -1570,7 +1570,7 @@ pub mod pallet {
         /// # 流程
         /// 1. 验证订单状态和权限
         /// 2. 检查是否已超时
-        /// 3. 从托管账户退回 MEMO 给买家
+        /// 3. 从托管账户退回 DUST 给买家
         /// 4. 更新订单状态为 Timeout
         /// 5. 触发 OcwSwapRefunded 事件
         #[pallet::call_index(14)]
@@ -1599,7 +1599,7 @@ pub mod pallet {
             let current_block = <frame_system::Pallet<T>>::block_number();
             ensure!(current_block >= record.timeout_at, Error::<T>::OcwSwapNotTimeout);
             
-            // 从托管账户退回 MEMO
+            // 从托管账户退回 DUST
             let custody_account = Self::custody_account_for_maker(record.maker_id);
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
@@ -1691,8 +1691,8 @@ pub mod pallet {
         /// - 订单必须存在且状态为 UserReported
         /// 
         /// # 流程
-        /// - 如果 approved = true：释放 MEMO 给做市商
-        /// - 如果 approved = false：退回 MEMO 给买家，扣除做市商押金
+        /// - 如果 approved = true：释放 DUST 给做市商
+        /// - 如果 approved = false：退回 DUST 给买家，扣除做市商押金
         #[pallet::call_index(16)]
         #[pallet::weight(T::DbWeight::get().reads_writes(2, 2))]
         pub fn arbitrate_ocw_swap(
@@ -1715,7 +1715,7 @@ pub mod pallet {
             let custody_account = Self::custody_account_for_maker(record.maker_id);
             
             if approved {
-                // 做市商履约：释放 MEMO 给做市商
+                // 做市商履约：释放 DUST 给做市商
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.maker_memo_account,
@@ -1725,7 +1725,7 @@ pub mod pallet {
                 
                 record.status = crate::OcwMakerSwapStatus::ArbitrationApproved;
             } else {
-                // 做市商违约：退回 MEMO 给买家
+                // 做市商违约：退回 DUST 给买家
                 <T as pallet_market_maker::Config>::Currency::transfer(
                     &custody_account,
                     &record.buyer,
@@ -1799,7 +1799,7 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：释放 MEMO 给做市商（无签名交易，仅供 OCW 调用）
+        /// 函数级详细中文注释：释放 DUST 给做市商（无签名交易，仅供 OCW 调用）
         /// 
         /// # 参数
         /// - `origin`: 无签名来源
@@ -1812,7 +1812,7 @@ pub mod pallet {
         /// 
         /// # 流程
         /// 1. 验证订单状态
-        /// 2. 从托管账户释放 MEMO 给做市商
+        /// 2. 从托管账户释放 DUST 给做市商
         /// 3. 更新订单状态为 Completed
         /// 4. 从验证队列中移除
         #[pallet::call_index(19)]
@@ -1833,7 +1833,7 @@ pub mod pallet {
                 Error::<T>::OcwMakerSwapInvalidStatus
             );
             
-            // 从托管账户释放 MEMO 给做市商
+            // 从托管账户释放 DUST 给做市商
             let custody_account = Self::custody_account_for_maker(record.maker_id);
             <T as pallet_market_maker::Config>::Currency::transfer(
                 &custody_account,
@@ -1875,7 +1875,7 @@ pub mod pallet {
             
             // ✅ 2025-10-23：功能1 - 超时自动退款（P2优化，每区块执行）
             // 函数级详细中文注释：检查未完成的兑换请求，超时后自动退款
-            // - 防止 MEMO 永久锁定在桥接账户
+            // - 防止 DUST 永久锁定在桥接账户
             // - 限制每区块最多处理 10 个超时兑换（防止 Gas 爆炸）
             const MAX_REFUNDS_PER_BLOCK: usize = 10;
             let mut refunded_count = 0;
@@ -2048,7 +2048,7 @@ pub mod pallet {
         /// - 每个区块执行一次
         /// - 从 PendingOcwVerification 队列中获取待验证订单
         /// - 调用 TRON API 验证交易
-        /// - 提交无签名交易释放 MEMO
+        /// - 提交无签名交易释放 DUST
         fn offchain_worker(block_number: BlockNumberFor<T>) {
             log::info!("🔍 OCW 开始执行，区块: {:?}", block_number);
             
@@ -2079,7 +2079,7 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：验证 TRON 交易并释放 MEMO
+        /// 函数级详细中文注释：验证 TRON 交易并释放 DUST
         /// 
         /// # 参数
         /// - `swap_id`: 订单 ID
@@ -2088,7 +2088,7 @@ pub mod pallet {
         /// 1. 读取订单记录
         /// 2. 调用 TRON API 查询交易详情
         /// 3. 验证交易参数（接收地址、金额、确认数）
-        /// 4. 提交无签名交易释放 MEMO
+        /// 4. 提交无签名交易释放 DUST
         /// 5. 更新订单状态
         fn verify_and_release_memo(swap_id: u64) -> Result<(), &'static str> {
             // 读取订单记录
@@ -2111,7 +2111,7 @@ pub mod pallet {
             // 验证交易参数
             Self::validate_tron_transaction(&record, &tx_data)?;
             
-            // 提交无签名交易释放 MEMO
+            // 提交无签名交易释放 DUST
             Self::submit_release_memo(swap_id)?;
             
             Ok(())
@@ -2230,7 +2230,7 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：提交无签名交易释放 MEMO
+        /// 函数级详细中文注释：提交无签名交易释放 DUST
         /// 
         /// # 参数
         /// - `swap_id`: 订单 ID
@@ -2241,7 +2241,7 @@ pub mod pallet {
         #[allow(unused_variables)]
         fn submit_release_memo(swap_id: u64) -> Result<(), &'static str> {
             // TODO: Phase 2 实现无签名交易提交
-            // 当前阶段，OCW 只负责验证，释放 MEMO 需要治理手动调用
+            // 当前阶段，OCW 只负责验证，释放 DUST 需要治理手动调用
             
             log::info!("✅ OCW 验证成功，待治理调用 release_memo，swap_id={}", swap_id);
             

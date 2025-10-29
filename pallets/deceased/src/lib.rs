@@ -257,7 +257,7 @@ pub struct Deceased<T: Config> {
     pub death_ts: Option<BoundedVec<u8, T::StringLimit>>,
     /// 函数级中文注释：逝者主图 CID（IPFS/HTTPS 等）
     /// - 用途：前端头像/主图展示的链下资源指针；不在链上存原图
-    /// - 安全：仅存 CID 字节；不涉及任何 MEMO 代币逻辑；长度受 TokenLimit 约束
+    /// - 安全：仅存 CID 字节；不涉及任何 DUST 代币逻辑；长度受 TokenLimit 约束
     /// - 权限：owner 可直接设置/修改；非 owner 需通过 Root 治理设置
     pub main_image_cid: Option<BoundedVec<u8, T::TokenLimit>>,
     /// 逝者令牌（在 pallet 内构造）：gender(大写) + birth(8字节) + death(8字节) + 姓名哈希(blake2_256)
@@ -313,7 +313,7 @@ pub mod pallet {
         /// 
         /// ### 合理性
         /// - 真实需求：家族墓可能几十人，纪念墓可能数千人
-        /// - 经济保护：每人约10 MEMO成本，天然防止恶意填充
+        /// - 经济保护：每人约10 DUST成本，天然防止恶意填充
         /// - 性能可控：前端分页加载，1000人墓位仅8KB Storage
         /// 
         /// ### 风险控制
@@ -359,7 +359,7 @@ pub mod pallet {
         type Balance: Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
         /// 函数级中文注释：默认IPFS存储单价（每副本每月，单位为Balance最小单位）
-        /// - 建议值：1 MEMO = 1_000_000_000_000（12位小数）
+        /// - 建议值：1 DUST = 1_000_000_000_000（12位小数）
         /// - 用于自动pin时的费用估算
         #[pallet::constant]
         type DefaultStoragePrice: Get<Self::Balance>;
@@ -469,7 +469,7 @@ pub mod pallet {
     /// 
     /// ### 设计理念
     /// - **真实需求**：家族墓可能容纳几十人甚至上百人
-    /// - **经济保护**：每人约10 MEMO成本，天然防止恶意填充
+    /// - **经济保护**：每人约10 DUST成本，天然防止恶意填充
     /// - **性能可控**：前端分页加载，大墓位体验良好
     /// 
     /// ### 典型场景
@@ -619,7 +619,7 @@ pub mod pallet {
     /// - 不影响功能，仅影响元数据
     /// 
     /// ### 风险控制
-    /// - 经济成本：每人约10 MEMO，天然限制
+    /// - 经济成本：每人约10 DUST，天然限制
     /// - 监控告警：超大墓位（>1000人）人工审核
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]

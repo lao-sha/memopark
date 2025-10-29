@@ -54,7 +54,7 @@ interface CreateOTCOrderModalProps {
 }
 
 /**
- * 函数级详细中文注释：格式化MEMO金额
+ * 函数级详细中文注释：格式化DUST金额
  */
 const formatDUST = (amount: string | number): string => {
   const memo = typeof amount === 'string' 

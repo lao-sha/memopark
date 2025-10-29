@@ -919,7 +919,7 @@ pub mod pallet {
             crate::otc::do_mark_paid::<T>(&buyer, order_id, tron_tx_hash)
         }
         
-        /// 函数级详细中文注释：做市商释放MEMO
+        /// 函数级详细中文注释：做市商释放DUST
         #[pallet::call_index(12)]
         #[pallet::weight(<T as Config>::WeightInfo::release_memo())]
         pub fn release_memo(origin: OriginFor<T>, order_id: u64) -> DispatchResult {

@@ -29,7 +29,7 @@ use sp_genesis_builder::{self, PresetId};
 use sp_keyring::Sr25519Keyring;
 
 // Returns the genesis config presets populated with given parameters.
-/// 函数级中文注释：构建创世配置，设置 MEMO 总发行量 1000 亿（按 12 位精度）。
+/// 函数级中文注释：构建创世配置，设置 DUST 总发行量 1000 亿（按 12 位精度）。
 /// - 将全部初始发行分配给 sudo（root）账户；
 /// - 如需多账号分配，可在 balances 向量中拆分，保证总和一致。
 fn testnet_genesis(

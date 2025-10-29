@@ -109,7 +109,7 @@ pub mod pallet {
 		#[pallet::constant]
 		type BlocksPerYear: Get<BlockNumberFor<Self>>;
 
-		/// MEMO 代币单位（1 MEMO = 10^12）
+		/// MEMO 代币单位（1 DUST = 10^12）
 		#[pallet::constant]
 		type Units: Get<BalanceOf<Self>>;
 
@@ -169,7 +169,7 @@ pub mod pallet {
 	#[pallet::getter(fn member_discount)]
 	pub type MemberDiscount<T: Config> = StorageValue<_, DiscountPercent, ValueQuery>;
 
-	/// 会员等级价格存储（按 MEMO 代币单位数）
+	/// 会员等级价格存储（按 DUST 代币单位数）
 	/// 如果未设置，使用 MembershipLevel 的默认值
 	#[pallet::storage]
 	#[pallet::getter(fn membership_price)]
@@ -516,7 +516,7 @@ pub mod pallet {
 		/// # 参数
 		/// - `origin`: 治理起源（Root 或委员会 2/3 多数）
 		/// - `level`: 会员等级
-		/// - `price_units`: 价格（以 MEMO 单位数计算，非最小单位）
+		/// - `price_units`: 价格（以 DUST 单位数计算，非最小单位）
 		///
 		/// # 说明
 		/// - 只有治理可调用
@@ -531,7 +531,7 @@ pub mod pallet {
 		///
 		/// # 示例
 		/// ```ignore
-		/// // 设置 Year1 价格为 400 MEMO
+		/// // 设置 Year1 价格为 400 DUST
 		/// set_membership_price(origin, MembershipLevel::Year1, 400)?;
 		/// ```
 		#[pallet::call_index(3)]
@@ -595,7 +595,7 @@ pub mod pallet {
 		///
 		/// # 示例
 		/// ```ignore
-		/// // 批量设置：400, 800, 1600, 2000 MEMO
+		/// // 批量设置：400, 800, 1600, 2000 DUST
 		/// set_all_membership_prices(origin, 400, 800, 1600, 2000)?;
 		/// ```
 		#[pallet::call_index(4)]

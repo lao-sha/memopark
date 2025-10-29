@@ -249,7 +249,7 @@ fn is_member_valid_works() {
 #[test]
 fn set_membership_price_works() {
 	new_test_ext().execute_with(|| {
-		// 设置 Year1 价格为 500 MEMO (level_id=0)
+		// 设置 Year1 价格为 500 DUST (level_id=0)
 		assert_ok!(Membership::set_membership_price(
 			RuntimeOrigin::root(),
 			0, // Year1
@@ -301,7 +301,7 @@ fn set_all_membership_prices_works() {
 #[test]
 fn set_price_out_of_range_fails() {
 	new_test_ext().execute_with(|| {
-		// 价格过低（低于 MinMembershipPrice = 100 MEMO）
+		// 价格过低（低于 MinMembershipPrice = 100 DUST）
 		assert_noop!(
 			Membership::set_membership_price(
 				RuntimeOrigin::root(),
@@ -311,7 +311,7 @@ fn set_price_out_of_range_fails() {
 			Error::<Test>::PriceOutOfRange
 		);
 
-		// 价格过高（高于 MaxMembershipPrice = 10000 MEMO）
+		// 价格过高（高于 MaxMembershipPrice = 10000 DUST）
 		assert_noop!(
 			Membership::set_membership_price(
 				RuntimeOrigin::root(),
@@ -327,7 +327,7 @@ fn set_price_out_of_range_fails() {
 #[test]
 fn purchase_with_governance_price_works() {
 	new_test_ext().execute_with(|| {
-		// 先设置新价格 Year1 = 500 MEMO (level_id=0)
+		// 先设置新价格 Year1 = 500 DUST (level_id=0)
 		assert_ok!(Membership::set_membership_price(
 			RuntimeOrigin::root(),
 			0, // Year1
@@ -343,7 +343,7 @@ fn purchase_with_governance_price_works() {
 			None
 		));
 
-		// 验证扣费金额为新价格 500 MEMO
+		// 验证扣费金额为新价格 500 DUST
 		let final_balance = Balances::free_balance(1);
 		assert_eq!(initial_balance - final_balance, 500 * 1_000_000_000_000);
 	});
@@ -353,7 +353,7 @@ fn purchase_with_governance_price_works() {
 #[test]
 fn default_price_used_when_not_set() {
 	new_test_ext().execute_with(|| {
-		// Year1 默认价格是 400 MEMO（types.rs 中定义）
+		// Year1 默认价格是 400 DUST（types.rs 中定义）
 		let price = Membership::get_membership_price(MembershipLevel::Year1);
 		assert_eq!(price, 400 * 1_000_000_000_000);
 	});

@@ -35,11 +35,11 @@ interface OrderData {
 }
 
 /**
- * 函数级详细中文注释：卖家释放MEMO页面组件
+ * 函数级详细中文注释：卖家释放DUST页面组件
  * 
  * 功能说明：
  * 1. 显示所有需要处理的订单（当前用户是卖家且状态为 PaidOrCommitted）
- * 2. 提供"释放DUST"按钮，让卖家确认收到法币后释放MEMO给买家
+ * 2. 提供"释放DUST"按钮，让卖家确认收到法币后释放DUST给买家
  * 3. 显示订单详情，包括买家地址、购买数量、金额等
  * 4. 实时刷新订单状态
  * 
@@ -215,7 +215,7 @@ export const SellerReleasePage: React.FC = () => {
   }
 
   /**
-   * 函数级中文注释：释放MEMO给买家
+   * 函数级中文注释：释放DUST给买家
    * - 调用 otcOrder.release 方法
    * - 从挂单托管中转账给买家
    * - 更新订单状态为 Released

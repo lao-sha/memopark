@@ -305,7 +305,7 @@ fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
 //         let cid = H256::repeat_byte(99);
 //         let size: u64 = 1_073_741_824; // 1 GiB
 //         let replicas: u32 = 3;
-//         let price: Balance = 10_000_000_000_000; // 10 MEMO
+//         let price: Balance = 10_000_000_000_000; // 10 DUST
 
 //         // 给IpfsPool充值
 //         let pool = IpfsPoolAccount::get();
@@ -450,13 +450,13 @@ fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
 //         let caller: AccountId = 1;
 //         let deceased_id: u64 = 1;
 //         let cid = H256::repeat_byte(55);
-//         let amount: Balance = 50_000_000_000_000; // 50 MEMO
+//         let amount: Balance = 50_000_000_000_000; // 50 DUST
 
 //         // 给pool充值
 //         let pool = IpfsPoolAccount::get();
 //         let _ = <Test as crate::Config>::Currency::deposit_creating(&pool, 1_000_000_000_000_000);
 
-//         // 设置配额已用95 MEMO（剩余5 MEMO，不足50）
+//         // 设置配额已用95 MEMO（剩余5 DUST，不足50）
 //         let reset_block = System::block_number() + QuotaResetPeriod::get();
 //         crate::PublicFeeQuotaUsage::<Test>::insert(deceased_id, (95_000_000_000_000u128, reset_block));
 
@@ -573,7 +573,7 @@ fn charge_due_enters_grace_then_expire_on_insufficient_balance() {
 
 //         // 验证配额已重置
 //         let (used, reset_block) = crate::PublicFeeQuotaUsage::<Test>::get(deceased_id);
-//         assert_eq!(used, amount); // 重置后只用了50 MEMO
+//         assert_eq!(used, amount); // 重置后只用了50 DUST
 //         assert_eq!(reset_block, current_block + QuotaResetPeriod::get());
 //     });
 // }

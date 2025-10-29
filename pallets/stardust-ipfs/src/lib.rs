@@ -358,7 +358,7 @@ pub mod pallet {
     /// 
     /// 说明：
     /// - 每个 deceased 每月可使用的免费额度
-    /// - 默认：100 MEMO（可治理调整）
+    /// - 默认：100 DUST（可治理调整）
     #[pallet::constant]
     type MonthlyPublicFeeQuota: Get<BalanceOf<Self>>;
     

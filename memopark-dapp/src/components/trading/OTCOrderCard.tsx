@@ -6,7 +6,7 @@
  * 2. 显示订单状态和进度
  * 3. 根据用户角色显示不同操作
  * 4. 支持买家标记已付款
- * 5. 支持做市商释放MEMO
+ * 5. 支持做市商释放DUST
  * 6. 支持取消订单和发起争议
  * 
  * 创建日期：2025-10-28
@@ -99,7 +99,7 @@ const stateConfig = {
 }
 
 /**
- * 函数级详细中文注释：格式化MEMO金额
+ * 函数级详细中文注释：格式化DUST金额
  */
 const formatDUST = (amount: string): string => {
   const memo = BigInt(amount) / BigInt(1_000_000)
@@ -199,7 +199,7 @@ export const OTCOrderCard: React.FC<OTCOrderCardProps> = ({
   }
 
   /**
-   * 函数级详细中文注释：做市商释放MEMO
+   * 函数级详细中文注释：做市商释放DUST
    */
   const handleRelease = async () => {
     Modal.confirm({

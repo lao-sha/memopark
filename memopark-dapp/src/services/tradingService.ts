@@ -498,7 +498,7 @@ export class TradingService {
   }
 
   /**
-   * 函数级详细中文注释：构建释放MEMO交易
+   * 函数级详细中文注释：构建释放DUST交易
    * @param orderId 订单ID
    * @returns Polkadot.js 交易对象
    */

@@ -72,9 +72,9 @@ parameter_types! {
 	pub const BlocksPerYear: u64 = 5_256_000;
 	pub const Units: u128 = 1_000_000_000_000; // 10^12
 	pub const MaxCodeLength: u32 = 32;
-	// 最低会员价格：100 MEMO（防止设置为0）
+	// 最低会员价格：100 DUST（防止设置为0）
 	pub const MinMembershipPrice: u128 = 100_000_000_000_000;
-	// 最高会员价格：10000 MEMO（防止恶意设置过高）
+	// 最高会员价格：10000 DUST（防止恶意设置过高）
 	pub const MaxMembershipPrice: u128 = 10_000_000_000_000_000;
 }
 

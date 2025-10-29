@@ -107,7 +107,7 @@ pub struct MakerSwapRecord<T: Config> {
 /// 
 /// # 参数
 /// - user: 用户账户
-/// - memo_amount: MEMO数量
+/// - memo_amount: DUST数量
 /// - tron_address: TRON接收地址
 /// 
 /// # 返回
@@ -138,7 +138,7 @@ pub fn do_swap<T: Config>(
         .ok_or(Error::<T>::BridgeAccountNotSet)?;
     
     // TODO: 获取价格
-    // TODO: 锁定用户的MEMO到桥接账户
+    // TODO: 锁定用户的DUST到桥接账户
     
     // 获取兑换ID
     let swap_id = NextSwapId::<T>::get();
@@ -226,7 +226,7 @@ pub fn do_complete_swap<T: Config>(swap_id: u64) -> DispatchResult {
 /// # 参数
 /// - user: 用户账户
 /// - maker_id: 做市商ID
-/// - memo_amount: MEMO数量
+/// - memo_amount: DUST数量
 /// - usdt_address: USDT接收地址
 /// 
 /// # 返回
@@ -257,7 +257,7 @@ pub fn do_maker_swap<T: Config>(
     );
     
     // TODO: 获取价格并应用溢价
-    // TODO: 锁定用户的MEMO
+    // TODO: 锁定用户的DUST
     
     // 获取兑换ID
     let swap_id = NextSwapId::<T>::get();

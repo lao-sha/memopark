@@ -63,7 +63,7 @@ const categoryConfig = {
 }
 
 /**
- * 函数级详细中文注释：格式化MEMO金额
+ * 函数级详细中文注释：格式化DUST金额
  * @param amount DUST最小单位金额
  * @returns 格式化后的字符串
  */

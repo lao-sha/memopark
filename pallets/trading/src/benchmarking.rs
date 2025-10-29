@@ -268,10 +268,10 @@ mod benchmarks {
         // 验证：状态变为PaidOrCommitted
     }
 
-    /// 函数级详细中文注释：Benchmark - 做市商释放MEMO
+    /// 函数级详细中文注释：Benchmark - 做市商释放DUST
     /// 
     /// 测试场景：
-    /// - 做市商确认收款，释放MEMO给买家
+    /// - 做市商确认收款，释放DUST给买家
     /// - 存储写入：Orders（更新状态）
     /// - 资金转账：做市商 → 买家
     /// - 信用积分更新
@@ -349,12 +349,12 @@ mod benchmarks {
     // Bridge 模块 Benchmarks
     // ========================================
 
-    /// 函数级详细中文注释：Benchmark - MEMO桥接到TRON
+    /// 函数级详细中文注释：Benchmark - DUST桥接到TRON
     /// 
     /// 测试场景：
     /// - 用户兑换MEMO为USDT并发送到TRON地址
     /// - 存储写入：BridgeRecords（新增）
-    /// - MEMO销毁或锁定
+    /// - DUST销毁或锁定
     /// - OCW触发链下验证
     /// - 事件发射：MemoToTronBridged
     /// 
@@ -379,13 +379,13 @@ mod benchmarks {
         // 验证：Bridge记录已创建
     }
 
-    /// 函数级详细中文注释：Benchmark - USDT桥接到MEMO
+    /// 函数级详细中文注释：Benchmark - USDT桥接到DUST
     /// 
     /// 测试场景：
-    /// - 用户通过USDT购买MEMO
+    /// - 用户通过USDT购买DUST
     /// - 存储写入：BridgeRecords（新增）
     /// - 首购池检查和扣除
-    /// - MEMO铸造或解锁
+    /// - DUST铸造或解锁
     /// - 事件发射：UsdtToMemoBridged
     /// 
     /// 性能因素：

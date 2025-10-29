@@ -51,7 +51,7 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn total_memo_by_grave)]
-    /// 函数级中文注释：每墓位累计 MEMO 金额
+    /// 函数级中文注释：每墓位累计 DUST 金额
     pub type TotalMemoByGrave<T: Config> =
         StorageMap<_, Blake2_128Concat, T::GraveId, T::Balance, ValueQuery>;
 
@@ -63,7 +63,7 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn total_memo_by_deceased)]
-    /// 函数级中文注释：每逝者累计 MEMO 金额（不含押金，仅统计供奉实际转账金额）
+    /// 函数级中文注释：每逝者累计 DUST 金额（不含押金，仅统计供奉实际转账金额）
     /// - 键为 DeceasedId（使用 u64，以与 pallet-deceased 对齐）
     /// - 值为累计 Balance（与 Runtime::Balance 对齐）
     pub type TotalMemoByDeceased<T: Config> =
@@ -97,7 +97,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// 函数级中文注释：供 Hook 调用的内部记录方法（精简版）。
         /// - 仅维护累计计数与累计金额；不再存储明细、Top 排行与分类型统计；
-        /// - amount 为本次落账的 MEMO 金额（若无转账则为 None）。
+        /// - amount 为本次落账的 DUST 金额（若无转账则为 None）。
         /// - kind_code/memo 仅用于兼容旧 Hook 签名，不做链上存储。
         pub fn record_from_hook_with_amount(
             grave_id: T::GraveId,

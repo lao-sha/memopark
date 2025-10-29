@@ -57,7 +57,7 @@ interface OfferBySacrificeModalProps {
 }
 
 /**
- * 函数级详细中文注释：格式化MEMO金额
+ * 函数级详细中文注释：格式化DUST金额
  */
 const formatDUST = (amount: string): string => {
   const memo = BigInt(amount) / BigInt(1_000_000)

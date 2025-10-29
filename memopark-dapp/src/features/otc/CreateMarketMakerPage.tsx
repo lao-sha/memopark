@@ -1189,7 +1189,7 @@ if (opt.isSome) {
   }, [deadlineSec])
 
   /**
-   * 函数级详细中文注释：返回到购买MEMO页面
+   * 函数级详细中文注释：返回到购买DUST页面
    */
   const handleBackToOrder = () => {
     try {
