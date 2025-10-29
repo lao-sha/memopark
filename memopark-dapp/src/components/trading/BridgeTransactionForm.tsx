@@ -345,7 +345,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">兑换数量：</Text>
-                <Text strong>{formatMEMO(dustAmount)}</Text>
+                <Text strong>{formatDust(dustAmount)}</Text>
               </div>
               
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -539,7 +539,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
                   <Text strong style={{ fontSize: 16 }}>预计到账：</Text>
                 </Space>
                 <Text strong style={{ fontSize: 20, color: '#52c41a' }}>
-                  {formatMEMO(dustReceive)}
+                  {formatDust(dustReceive)}
                 </Text>
               </div>
             </Space>

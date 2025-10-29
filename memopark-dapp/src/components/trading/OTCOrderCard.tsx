@@ -452,7 +452,7 @@ export const OTCOrderCard: React.FC<OTCOrderCardProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">数量：</Text>
                 <Text strong style={{ fontSize: 16 }}>
-                  {formatMEMO(order.qty)}
+                  {formatDust(order.qty)}
                 </Text>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>

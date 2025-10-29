@@ -224,7 +224,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
                 color: priceInfo.isVip ? '#999' : '#000',
               }}
             >
-              {formatMEMO(priceInfo.originalPrice)}
+              {formatDust(priceInfo.originalPrice)}
             </Text>
           </div>
 
@@ -236,7 +236,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
                   <CrownOutlined /> VIP折扣（{priceInfo.discountPercent}%）：
                 </Text>
                 <Text type="success" strong>
-                  -{formatMEMO(
+                  -{formatDust(
                     (BigInt(priceInfo.originalPrice) - BigInt(priceInfo.finalPrice)).toString()
                   )}
                 </Text>
@@ -257,7 +257,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
                 color: '#1890ff',
               }}
             >
-              {formatMEMO(priceInfo.finalPrice)}
+              {formatDust(priceInfo.finalPrice)}
             </Text>
           </div>
         </Space>
@@ -328,7 +328,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
               { required: true, message: '请输入持续周数' },
               { type: 'number', min: 1, message: '周数不能小于1' },
             ]}
-            tooltip={`按周单价：${formatMEMO(sacrifice.unitPricePerWeek)}/周`}
+            tooltip={`按周单价：${formatDust(sacrifice.unitPricePerWeek)}/周`}
           >
             <InputNumber
               min={1}

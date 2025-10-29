@@ -97,13 +97,13 @@ export const SacrificeCard: React.FC<SacrificeCardProps> = ({
           <div>
             <Text type="secondary">固定价：</Text>
             <Text strong style={{ fontSize: 16, marginLeft: 8 }}>
-              {formatMEMO(sacrifice.fixedPrice)}
+              {formatDust(sacrifice.fixedPrice)}
             </Text>
           </div>
           <div>
             <Text type="secondary">按周：</Text>
             <Text strong style={{ fontSize: 16, marginLeft: 8 }}>
-              {formatMEMO(sacrifice.unitPricePerWeek)}/周
+              {formatDust(sacrifice.unitPricePerWeek)}/周
             </Text>
           </div>
         </Space>
@@ -114,7 +114,7 @@ export const SacrificeCard: React.FC<SacrificeCardProps> = ({
         <div>
           <Text type="secondary">价格：</Text>
           <Text strong style={{ fontSize: 18, marginLeft: 8, color: '#1890ff' }}>
-            {formatMEMO(sacrifice.fixedPrice)}
+            {formatDust(sacrifice.fixedPrice)}
           </Text>
         </div>
       )
@@ -124,7 +124,7 @@ export const SacrificeCard: React.FC<SacrificeCardProps> = ({
         <div>
           <Text type="secondary">价格：</Text>
           <Text strong style={{ fontSize: 18, marginLeft: 8, color: '#1890ff' }}>
-            {formatMEMO(sacrifice.unitPricePerWeek)}/周
+            {formatDust(sacrifice.unitPricePerWeek)}/周
           </Text>
         </div>
       )
@@ -149,7 +149,7 @@ export const SacrificeCard: React.FC<SacrificeCardProps> = ({
       return (
         <Tooltip title="VIP专属30%折扣">
           <Text type="success" style={{ fontSize: 14 }}>
-            <CrownOutlined /> VIP价: {formatMEMO(calculateDiscount(sacrifice.fixedPrice))}
+            <CrownOutlined /> VIP价: {formatDust(calculateDiscount(sacrifice.fixedPrice))}
           </Text>
         </Tooltip>
       )
@@ -157,7 +157,7 @@ export const SacrificeCard: React.FC<SacrificeCardProps> = ({
       return (
         <Tooltip title="VIP专属30%折扣">
           <Text type="success" style={{ fontSize: 14 }}>
-            <CrownOutlined /> VIP价: {formatMEMO(calculateDiscount(sacrifice.unitPricePerWeek))}/周
+            <CrownOutlined /> VIP价: {formatDust(calculateDiscount(sacrifice.unitPricePerWeek))}/周
           </Text>
         </Tooltip>
       )
