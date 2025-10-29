@@ -11,34 +11,18 @@ import { parseChainUsdt, formatPriceDisplay, usdtToCny, formatCny, calculateTota
 import CryptoJS from 'crypto-js'  // 🆕 用于EPAY支付签名
 import { MakerCreditBadge } from '../../components/MakerCreditBadge'  // 🆕 2025-10-22：做市商信用徽章
 import { getOrCreateChatSession } from '../../lib/chat'  // 🆕 2025-10-22：聊天功能集成
+import { useMarketMakers } from '../../hooks/market-maker'  // 🆕 2025-10-29 Phase 2：使用共享Hook
+import type { MarketMaker } from './types/order.types'  // 🆕 2025-10-29 Phase 2：使用统一类型定义
 
 const { Title, Text } = Typography
-
-/**
- * 函数级详细中文注释：做市商信息接口
- */
-interface MarketMaker {
-  mmId: number
-  owner: string
-  sellPremiumBps: number  // 🆕 2025-10-20：Sell溢价（OTC订单）
-  minAmount: string
-  publicCid: string
-  deposit: string
-
-  // 🆕 2025-10-20：EPAY支付配置（用于自动支付）
-  epayGateway: string    // EPAY网关地址
-  epayPort: number       // EPAY端口
-  epayPid: string        // EPAY商户ID
-  epayKey: string        // EPAY商户密钥
-
-  // 🆕 2025-10-20：TRON地址（用于手动支付显示）
-  tronAddress?: string   // TRON收款地址
-}
 
 /**
  * 函数级详细中文注释：OTC 挂单接口
  * - 做市商创建的买卖挂单
  * - 包含价格、数量、有效期等信息
+ * 
+ * ⚠️ 注意：此接口已废弃，仅保留用于向后兼容
+ * 🆕 2025-10-29 Phase 2：MarketMaker类型已移至types/order.types.ts
  */
 interface Listing {
   id: number
@@ -95,9 +79,10 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   const [order, setOrder] = React.useState<any | null>(null)
   const [status, setStatus] = React.useState<string>('pending')
   const [nowSec, setNowSec] = React.useState<number>(Math.floor(Date.now() / 1000))
-  const [marketMakers, setMarketMakers] = React.useState<MarketMaker[]>([])
-  const [loadingMM, setLoadingMM] = React.useState<boolean>(true)
-  const [mmError, setMmError] = React.useState<string>('')
+  
+  // 🆕 2025-10-29 Phase 2：使用共享Hook加载做市商列表
+  const { marketMakers, loading: loadingMM, error: mmError } = useMarketMakers()
+  
   const [selectedMaker, setSelectedMaker] = React.useState<MarketMaker | null>(null)
   // 🆕 2025-10-20：移除 listings 相关状态（不再使用挂单机制）
   // const [listings, setListings] = React.useState<Listing[]>([])
@@ -159,73 +144,16 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
   /**
    * 函数级中文注释：加载链上做市商列表
-   * - ✅ 修复：从 activeMarketMakers 查询已批准的做市商
-   * - 提取费率、最小金额等信息
-   * - 按费率降序排列（高费率在前，代表卖出价格更高）
+   * 
+   * ✅ 2025-10-29 Phase 2：已移除，改用useMarketMakers共享Hook
+   * - Hook位置: hooks/market-maker/useMarketMakers.ts
+   * - 自动加载所有活跃做市商
+   * - 自动解码EPAY字段
+   * - 自动按sell溢价排序
+   * 
+   * 旧代码已删除（63行），减少重复代码
    */
-  React.useEffect(() => {
-    const loadMarketMakers = async () => {
-      try {
-        setLoadingMM(true)
-        setMmError('')
-        
-        const api = await getApi()
-        
-        // 检查 pallet 是否存在
-        if (!(api.query as any).marketMaker) {
-          setMmError('做市商模块尚未在链上注册')
-          setLoadingMM(false)
-          return
-        }
-
-        // ✅ 修复：查询 activeMarketMakers 而不是 applications
-        const entries = await (api.query as any).marketMaker.activeMarketMakers.entries()
-        
-        // 解析所有活跃做市商
-        const makers: MarketMaker[] = []
-        for (const [key, value] of entries) {
-          if (value.isSome) {
-            const app = value.unwrap()
-            const appData = app.toJSON() as any
-            const mmId = key.args[0].toNumber()
-            
-            makers.push({
-              mmId,
-              owner: appData.owner || '',
-              sellPremiumBps: appData.sellPremiumBps !== undefined ? Number(appData.sellPremiumBps) : 0,  // 🆕 2025-10-20
-              minAmount: appData.minAmount || '0',
-              publicCid: appData.publicCid ?
-                (Array.isArray(appData.publicCid) ?
-                  new TextDecoder().decode(new Uint8Array(appData.publicCid)) :
-                  appData.publicCid) : '',
-              deposit: appData.deposit || '0',
-              // 🆕 2025-10-20：EPAY支付配置
-              epayGateway: decodeEpayField(appData.epayGateway),
-              epayPort: appData.epayPort || 0,
-              epayPid: decodeEpayField(appData.epayPid),
-              epayKey: decodeEpayField(appData.epayKey),
-              // 🆕 2025-10-20：TRON地址（用于手动支付显示）
-              tronAddress: decodeEpayField(appData.tronAddress)
-            })
-          }
-        }
-        
-        // 按Sell溢价升序排序（溢价低的做市商优先，用户支付更少）
-        makers.sort((a, b) => a.sellPremiumBps - b.sellPremiumBps)
-        
-        setMarketMakers(makers)
-        
-        console.log('✅ 加载到', makers.length, '个活跃做市商')
-      } catch (e: any) {
-        console.error('加载做市商列表失败:', e)
-        setMmError(e?.message || '加载做市商列表失败')
-      } finally {
-        setLoadingMM(false)
-      }
-    }
-    
-    loadMarketMakers()
-  }, [])
+  // React.useEffect(() => { ... }, [])  // ❌ 已删除，使用useMarketMakers Hook替代
 
   /**
    * 🆕 2025-10-20：移除加载 OTC 挂单列表的逻辑
@@ -1192,6 +1120,9 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
 /**
  * 解码EPAY字段（处理十六进制字符串）
+ * 
+ * ⚠️ 注意：此函数已废弃，请使用utils/paymentUtils.ts中的版本
+ * 🆕 2025-10-29 Phase 2：保留此定义以避免破坏现有代码，后续清理时可删除
  */
 const decodeEpayField = (field: any): string => {
   if (!field) return ''
