@@ -1,7 +1,7 @@
 #!/bin/bash
-# 停止所有 Memopark 服务
+# 停止所有 Stardust 服务
 
-echo "⏸️  停止 Memopark 所有服务..."
+echo "⏸️  停止 Stardust 所有服务..."
 
 # 1. 停止链节点
 echo "1️⃣ 停止链节点..."

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Memopark 完整服务启动脚本
+# Stardust 完整服务启动脚本
 
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT"
 
-echo "🚀 启动 Memopark 所有服务..."
+echo "🚀 启动 Stardust 所有服务..."
 echo "项目目录: $PROJECT_ROOT"
 echo ""
 
