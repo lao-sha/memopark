@@ -61,7 +61,7 @@ cd ..
 # 3. 启动前端（可选）
 echo ""
 echo "3️⃣ 启动前端开发服务器..."
-cd memopark-dapp
+cd stardust-dapp
 
 if [ ! -d "node_modules" ]; then
   echo "📦 安装依赖..."

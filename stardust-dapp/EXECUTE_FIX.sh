@@ -51,7 +51,7 @@ if [ $? -eq 0 ]; then
             echo "=========================================="
             echo ""
             echo "请在项目目录执行:"
-            echo "$ cd /home/xiaodong/文档/memopark/memopark-dapp"
+            echo "$ cd /home/xiaodong/文档/memopark/stardust-dapp"
             echo "$ npm run dev"
             echo ""
         else
