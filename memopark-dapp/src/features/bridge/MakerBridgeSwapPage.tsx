@@ -37,7 +37,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
   const [makerLoading, setMakerLoading] = useState(false);
   
   // 表单状态
-  const [memoAmount, setMemoAmount] = useState<number>(0);
+  const [dustAmount, setDustAmount] = useState<number>(0);
   const [tronAddress, setTronAddress] = useState<string>('');
   
   // 市场价格
@@ -160,11 +160,11 @@ export const MakerBridgeSwapPage: React.FC = () => {
    * 计算兑换金额
    */
   const calculateSwap = () => {
-    if (memoAmount <= 0 || marketPrice <= 0 || !serviceConfig) {
+    if (dustAmount <= 0 || marketPrice <= 0 || !serviceConfig) {
       return { baseUsdt: 0, fee: 0, actualUsdt: 0 };
     }
     
-    const baseUsdt = memoAmount * marketPrice;
+    const baseUsdt = dustAmount * marketPrice;
     const fee = baseUsdt * (serviceConfig.feeRate / 100);
     const actualUsdt = baseUsdt - fee;
     
@@ -190,7 +190,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
     setLoading(true);
     try {
       const mmId = parseInt(makerId);
-      const memoAmountRaw = BigInt(Math.floor(values.memoAmount * 1e12));
+      const memoAmountRaw = BigInt(Math.floor(values.dustAmount * 1e12));
       const tronAddr = values.tronAddress;
       
       // 调用链上方法（🆕 pallet-trading）
@@ -414,11 +414,11 @@ export const MakerBridgeSwapPage: React.FC = () => {
               form={form}
               layout="vertical"
               onFinish={handleSwap}
-              initialValues={{ memoAmount: 0 }}
+              initialValues={{ dustAmount: 0 }}
             >
               <Form.Item
                 label="兑换数量 (MEMO)"
-                name="memoAmount"
+                name="dustAmount"
                 rules={[
                   { required: true, message: '请输入兑换数量' },
                   { 
@@ -432,7 +432,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
                   style={{ width: '100%' }}
                   placeholder={`最小 ${MIN_AMOUNT} MEMO`}
                   min={MIN_AMOUNT}
-                  onChange={(value) => setMemoAmount(value || 0)}
+                  onChange={(value) => setDustAmount(value || 0)}
                   addonAfter="MEMO"
                 />
               </Form.Item>
@@ -455,7 +455,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
               </Form.Item>
               
               {/* 计算结果 */}
-              {memoAmount > 0 && marketPrice > 0 && (
+              {dustAmount > 0 && marketPrice > 0 && (
                 <Card style={{ marginBottom: 16, background: '#f0f5ff' }}>
                   <Row gutter={16}>
                     <Col span={8}>

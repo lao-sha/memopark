@@ -402,8 +402,8 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
       // ✅ 计算订单数量（MEMO）
       let qty: bigint
       
-      if (values.mode === 'memo' && values.memoAmount) {
-        qty = BigInt(Math.floor(Number(values.memoAmount) * 1e12))
+      if (values.mode === 'memo' && values.dustAmount) {
+        qty = BigInt(Math.floor(Number(values.dustAmount) * 1e12))
       } else if (values.mode === 'fiat' && values.fiatAmount) {
         // 如果用户输入法币金额，需要根据挂单价格计算 MEMO 数量
         // 这里简化处理，实际应该从链上预言机或挂单规则获取价格
@@ -984,7 +984,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
                     <InputNumber min={1} precision={2} style={{ width: '100%' }} placeholder="输入法币金额" />
                   </Form.Item>
                 ) : (
-                  <Form.Item name="memoAmount" label="MEMO 数量" rules={[{ required: true }]}> 
+                  <Form.Item name="dustAmount" label="MEMO 数量" rules={[{ required: true }]}> 
                     <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="输入 MEMO 数量" />
                   </Form.Item>
                 )}

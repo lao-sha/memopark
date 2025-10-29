@@ -21,7 +21,7 @@ export const SimpleBridgePage: React.FC = () => {
     const [form] = Form.useForm();
     
     // 表单状态
-    const [memoAmount, setMemoAmount] = useState<number>(0);
+    const [dustAmount, setDustAmount] = useState<number>(0);
     const [tronAddress, setTronAddress] = useState<string>('');
     
     // 流程状态
@@ -48,7 +48,7 @@ export const SimpleBridgePage: React.FC = () => {
     const isFallback = marketPrice === 0;
     
     // 计算预估金额
-    const estimatedUsdt = memoAmount * currentRate;
+    const estimatedUsdt = dustAmount * currentRate;
     const fee = estimatedUsdt * FEE_RATE;
     const netUsdt = estimatedUsdt - fee;
     
@@ -131,7 +131,7 @@ export const SimpleBridgePage: React.FC = () => {
         }
         
         // 验证表单
-        if (!memoAmount || memoAmount < MIN_AMOUNT) {
+        if (!dustAmount || dustAmount < MIN_AMOUNT) {
             message.error(`最小兑换金额为 ${MIN_AMOUNT} MEMO`);
             return;
         }
@@ -146,7 +146,7 @@ export const SimpleBridgePage: React.FC = () => {
         try {
             // 调用 trading.swap（🆕 pallet-trading）
             const tx = api.tx.trading.swap(
-                BigInt(memoAmount * 1e12), // MEMO 12位小数
+                BigInt(dustAmount * 1e12), // MEMO 12位小数
                 tronAddress
             );
             
@@ -199,7 +199,7 @@ export const SimpleBridgePage: React.FC = () => {
         setStep(0);
         setSwapId(undefined);
         setActualPrice(0);
-        setMemoAmount(0);
+        setDustAmount(0);
         setTronAddress('');
         form.resetFields();
         loadBalance();
@@ -207,7 +207,7 @@ export const SimpleBridgePage: React.FC = () => {
     };
     
     // 使用实际汇率重新计算（用于显示最终到账金额）
-    const finalUsdt = actualPrice > 0 ? memoAmount * actualPrice : netUsdt;
+    const finalUsdt = actualPrice > 0 ? dustAmount * actualPrice : netUsdt;
     const finalFee = actualPrice > 0 ? finalUsdt * FEE_RATE : fee;
     const finalNet = finalUsdt - finalFee;
     
@@ -313,8 +313,8 @@ export const SimpleBridgePage: React.FC = () => {
                                 help={`最小 ${MIN_AMOUNT} MEMO`}
                             >
                                 <InputNumber
-                                    value={memoAmount}
-                                    onChange={(value) => setMemoAmount(value || 0)}
+                                    value={dustAmount}
+                                    onChange={(value) => setDustAmount(value || 0)}
                                     min={MIN_AMOUNT}
                                     max={parseFloat(balance)}
                                     style={{ width: '100%' }}
@@ -401,7 +401,7 @@ export const SimpleBridgePage: React.FC = () => {
                             block
                             icon={<SwapOutlined />}
                             onClick={handleSwap}
-                            disabled={!currentAccount || !memoAmount || !tronAddress || priceLoading}
+                            disabled={!currentAccount || !dustAmount || !tronAddress || priceLoading}
                             loading={loading}
                         >
                             {!currentAccount ? '请先连接钱包' : '立即兑换'}
@@ -462,7 +462,7 @@ export const SimpleBridgePage: React.FC = () => {
                                 </div>
                                 <div>
                                     <Text type="secondary">MEMO 数量:</Text>{' '}
-                                    <Text strong>{memoAmount} MEMO</Text>
+                                    <Text strong>{dustAmount} MEMO</Text>
                                 </div>
                                 {actualPrice > 0 && (
                                     <div>

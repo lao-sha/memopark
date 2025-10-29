@@ -7,7 +7,7 @@ import { pickProvider } from './providers'
  */
 export interface CreateOrderRequest {
   fiatAmount?: string
-  memoAmount?: string
+  dustAmount?: string
   payType: string
   returnUrl?: string
   notifyUrl?: string

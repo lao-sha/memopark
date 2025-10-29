@@ -594,7 +594,7 @@ export default function CreateMarketMakerPage() {
    * - 使用 BigInt 避免 JavaScript number 精度问题
    * - 返回整数字符串，供 Polkadot.js 使用
    */
-  function formatMemoAmount(amount: number): string {
+  function formatDustAmount(amount: number): string {
     if (!amount || amount <= 0) return '0'
     try {
       // 🔧 修复大数精度丢失问题
@@ -607,7 +607,7 @@ export default function CreateMarketMakerPage() {
       const raw = BigInt(amountInt) * BigInt(10 ** decimals) + BigInt(amountDec)
       return raw.toString()
     } catch (e) {
-      console.error('formatMemoAmount error:', e)
+      console.error('formatDustAmount error:', e)
       return '0'
     }
   }
@@ -636,7 +636,7 @@ export default function CreateMarketMakerPage() {
       }
 
       // 格式化金额（MEMO 使用 12 位小数）
-      const depositAmount = formatMemoAmount(amount)
+      const depositAmount = formatDustAmount(amount)
       
       console.log('[质押] 原始金额:', amount)
       console.log('[质押] 格式化后:', depositAmount)
@@ -883,7 +883,7 @@ if (opt.isSome) {
       // ===== 2. 格式化参数 =====
       const publicCid = Array.from(new TextEncoder().encode(public_root_cid))
       const privateCid = Array.from(new TextEncoder().encode(private_root_cid))
-      const minAmountFormatted = formatMemoAmount(minAmt)
+      const minAmountFormatted = formatDustAmount(minAmt)
       const tronAddressBytes = Array.from(new TextEncoder().encode(tron_address.trim()))
       const fullNameBytes = Array.from(new TextEncoder().encode(full_name.trim()))
       const idCardBytes = Array.from(new TextEncoder().encode(id_card.trim()))
@@ -1096,7 +1096,7 @@ if (opt.isSome) {
         if (!(minAmt > 0)) {
           throw new Error('最小下单额必须大于 0')
         }
-        minAmountParam = formatMemoAmount(minAmt)
+        minAmountParam = formatDustAmount(minAmt)
       }
 
       // 🆕 epay 商户ID（如果提供）
@@ -1121,7 +1121,7 @@ if (opt.isSome) {
         if (!(pool > 0)) {
           throw new Error('首购资金池必须大于 0')
         }
-        firstPurchasePoolParam = formatMemoAmount(pool)
+        firstPurchasePoolParam = formatDustAmount(pool)
       }
 
       message.loading({ content: '正在签名并更新资料...', key: 'update', duration: 0 })

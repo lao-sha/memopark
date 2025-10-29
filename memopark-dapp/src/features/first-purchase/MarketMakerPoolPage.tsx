@@ -98,7 +98,7 @@ const formatBalance = (balance: string): number => {
 /**
  * 函数级详细中文注释：格式化 MEMO 金额（数字 -> BigInt 字符串）
  */
-const formatMemoAmount = (amount: number): string => {
+const formatDustAmount = (amount: number): string => {
   try {
     return (BigInt(Math.floor(amount * 1e12))).toString();
   } catch {
@@ -288,7 +288,7 @@ export const MarketMakerPoolPage: React.FC = () => {
     try {
       setLoading(true);
       
-      const amountFormatted = formatMemoAmount(withdrawAmount);
+      const amountFormatted = formatDustAmount(withdrawAmount);
       
       message.loading({ content: '正在提交提取申请...', key: 'withdraw', duration: 0 });
 

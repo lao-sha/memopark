@@ -142,7 +142,7 @@ export interface SwapRequest {
   /** 用户地址 */
   user: string;
   /** MEMO数量 */
-  memoAmount: string;
+  dustAmount: string;
   /** TRON地址 */
   tronAddress: string;
   /** 是否已完成 */
@@ -164,7 +164,7 @@ export interface MakerSwapRecord {
   /** 用户地址 */
   user: string;
   /** MEMO数量 */
-  memoAmount: string;
+  dustAmount: string;
   /** USDT数量（精度6） */
   usdtAmount: number;
   /** 状态 */
@@ -532,11 +532,11 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildSwapTx(params: {
-    memoAmount: string;
+    dustAmount: string;
     tronAddress: string;
   }) {
     return this.api.tx.trading.swap(
-      params.memoAmount,
+      params.dustAmount,
       params.tronAddress
     );
   }
@@ -557,12 +557,12 @@ export class TradingService {
    */
   buildMakerSwapTx(params: {
     makerId: number;
-    memoAmount: string;
+    dustAmount: string;
     tronAddress: string;
   }) {
     return this.api.tx.trading.makerSwap(
       params.makerId,
-      params.memoAmount,
+      params.dustAmount,
       params.tronAddress
     );
   }
@@ -647,7 +647,7 @@ export class TradingService {
     return {
       id,
       user: data.user.toString(),
-      memoAmount: data.memoAmount.toString(),
+      dustAmount: data.dustAmount.toString(),
       tronAddress: data.tronAddress.toHex(),
       completed: data.completed.isTrue,
       createdAt: data.createdAt.toNumber(),
@@ -663,7 +663,7 @@ export class TradingService {
       id,
       makerId: data.makerId.toNumber(),
       user: data.user.toString(),
-      memoAmount: data.memoAmount.toString(),
+      dustAmount: data.dustAmount.toString(),
       usdtAmount: data.usdtAmount.toNumber() / 1_000_000,
       status: this.parseSwapStatus(data.status),
       trc20TxHash: data.trc20TxHash.isSome ? data.trc20TxHash.unwrap().toHex() : null,

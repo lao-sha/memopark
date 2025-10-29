@@ -96,7 +96,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
   const [firstPurchasePrice, setFirstPurchasePrice] = useState<number>(0)
   
   // 用户输入
-  const [memoAmount, setMemoAmount] = useState<number>(0)
+  const [dustAmount, setDustAmount] = useState<number>(0)
   const [usdtAmount, setUsdtAmount] = useState<number>(0)
 
   /**
@@ -177,7 +177,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
       const service = createTradingService(api)
       
       // 转换数量（MEMO → 最小单位）
-      const qtyMinimalUnits = (BigInt(Math.floor(values.memoAmount * 1_000_000))).toString()
+      const qtyMinimalUnits = (BigInt(Math.floor(values.dustAmount * 1_000_000))).toString()
       
       const tx = service.buildBridgeMemoToTronTx({
         qty: qtyMinimalUnits,
@@ -197,7 +197,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             message.success('兑换成功！USDT将发送到您的TRON地址。')
             setLoading(false)
             form.resetFields()
-            setMemoAmount(0)
+            setDustAmount(0)
             onSuccess?.()
           }
         }
@@ -256,7 +256,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
    */
   const renderMemoToTronForm = () => {
     const price = calculateMemoToTronPrice()
-    const usdtReceive = calculateMemoToUsdt(memoAmount)
+    const usdtReceive = calculateMemoToUsdt(dustAmount)
     const premium = sellPremiumBps / 100
 
     return (
@@ -290,7 +290,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
         {/* MEMO数量 */}
         <Form.Item
           label="兑换数量（MEMO）"
-          name="memoAmount"
+          name="dustAmount"
           rules={[
             { required: true, message: '请输入兑换数量' },
             { type: 'number', min: 0.001, message: '数量不能小于0.001' },
@@ -304,7 +304,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             style={{ width: '100%' }}
             placeholder="输入MEMO数量"
             addonAfter="MEMO"
-            onChange={(value) => setMemoAmount(value || 0)}
+            onChange={(value) => setDustAmount(value || 0)}
           />
         </Form.Item>
 
@@ -333,7 +333,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
         </Form.Item>
 
         {/* 交易摘要 */}
-        {memoAmount > 0 && (
+        {dustAmount > 0 && (
           <div 
             style={{ 
               background: '#f5f5f5', 
@@ -345,7 +345,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">兑换数量：</Text>
-                <Text strong>{formatMEMO(memoAmount)}</Text>
+                <Text strong>{formatMEMO(dustAmount)}</Text>
               </div>
               
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -405,7 +405,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
    */
   const renderUsdtToMemoForm = () => {
     const price = calculateUsdtToMemoPrice()
-    const memoReceive = calculateUsdtToMemo(usdtAmount)
+    const dustReceive = calculateUsdtToMemo(usdtAmount)
     const isFirstPurchase = isFirstPurchaseEligible
     const savingsPercent = isFirstPurchase 
       ? ((1 - firstPurchasePrice / basePrice) * 100).toFixed(1)
@@ -539,7 +539,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
                   <Text strong style={{ fontSize: 16 }}>预计到账：</Text>
                 </Space>
                 <Text strong style={{ fontSize: 20, color: '#52c41a' }}>
-                  {formatMEMO(memoReceive)}
+                  {formatMEMO(dustReceive)}
                 </Text>
               </div>
             </Space>
@@ -598,7 +598,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
         onChange={(key) => {
           setActiveTab(key as 'memoToTron' | 'usdtToMemo')
           form.resetFields()
-          setMemoAmount(0)
+          setDustAmount(0)
           setUsdtAmount(0)
         }}
         items={[

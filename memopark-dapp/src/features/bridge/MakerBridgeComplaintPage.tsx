@@ -70,7 +70,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
         makerId: record.maker_id.toNumber(),
         maker: record.maker.toHuman(),
         user: record.user.toHuman(),
-        memoAmount: record.memo_amount.toNumber() / 1e12,
+        dustAmount: record.memo_amount.toNumber() / 1e12,
         usdtAmount: record.usdt_amount.toNumber() / 1_000_000,
         usdtAddress: record.usdt_address.toHuman(),
         createdAt: record.created_at.toNumber(),
@@ -245,7 +245,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
                   </Text>
                 </Descriptions.Item>
                 <Descriptions.Item label="MEMO 数量">
-                  {swapRecord.memoAmount.toFixed(2)} MEMO
+                  {swapRecord.dustAmount.toFixed(2)} MEMO
                 </Descriptions.Item>
                 <Descriptions.Item label="USDT 金额">
                   {swapRecord.usdtAmount.toFixed(2)} USDT
@@ -398,7 +398,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
                 </Paragraph>
                 <Alert
                   message="补偿金额"
-                  description={`原兑换金额 ${swapRecord.memoAmount.toFixed(2)} MEMO + 20% 补偿 = ${(swapRecord.memoAmount * 1.2).toFixed(2)} MEMO`}
+                  description={`原兑换金额 ${swapRecord.dustAmount.toFixed(2)} MEMO + 20% 补偿 = ${(swapRecord.dustAmount * 1.2).toFixed(2)} MEMO`}
                   type="success"
                   showIcon
                 />

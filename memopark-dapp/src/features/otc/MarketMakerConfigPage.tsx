@@ -36,14 +36,14 @@ interface MarketMakerInfo {
 /**
  * 函数级详细中文注释：格式化 MEMO 金额（12 位小数）
  */
-function formatMemoAmount(amount: number): string {
+function formatDustAmount(amount: number): string {
   if (!amount || amount <= 0) return '0'
   try {
     const decimals = 12
     const raw = BigInt(Math.floor(amount * Math.pow(10, decimals)))
     return raw.toString()
   } catch (e) {
-    console.error('formatMemoAmount error:', e)
+    console.error('formatDustAmount error:', e)
     return '0'
   }
 }
@@ -335,7 +335,7 @@ export default function MarketMakerConfigPage() {
     setLoading(true)
 
     try {
-      const amountFormatted = formatMemoAmount(amount)
+      const amountFormatted = formatDustAmount(amount)
       
       message.loading({ content: '正在签名并充值...', key: 'deposit', duration: 0 })
 

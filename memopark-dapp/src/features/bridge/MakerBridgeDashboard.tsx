@@ -138,7 +138,7 @@ export const MakerBridgeDashboard: React.FC = () => {
           pending.push({
             swapId: record.swap_id.toNumber(),
             user: record.user.toHuman(),
-            memoAmount: record.memo_amount.toNumber() / 1e12,
+            dustAmount: record.memo_amount.toNumber() / 1e12,
             usdtAmount: record.usdt_amount.toNumber() / 1_000_000,
             usdtAddress: record.usdt_address.toHuman(),
             createdAt: record.created_at.toNumber(),
@@ -279,8 +279,8 @@ export const MakerBridgeDashboard: React.FC = () => {
     },
     {
       title: 'MEMO 数量',
-      dataIndex: 'memoAmount',
-      key: 'memoAmount',
+      dataIndex: 'dustAmount',
+      key: 'dustAmount',
       width: 120,
       render: (amount: number) => `${amount.toFixed(2)} MEMO`,
     },

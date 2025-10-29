@@ -148,11 +148,11 @@ const BridgeLockPage: React.FC = () => {
       const net = raw - fee
       const q = quoteEthOut(net)
       const eth = showWei ? q : q / 10n ** 18n
-      return `预估：手续费 ${formatMemo(fee)} MEMO，净额 ${formatMemo(net)} MEMO；预计可得 ${showWei ? nf.format(Number(eth)) + ' wei' : nf.format(Number(eth)) + ' ETH'}`
+      return `预估：手续费 ${formatDust(fee)} MEMO，净额 ${formatDust(net)} MEMO；预计可得 ${showWei ? nf.format(Number(eth)) + ' wei' : nf.format(Number(eth)) + ' ETH'}`
     } catch { return null }
   }
 
-  function formatMemo(v: bigint): string {
+  function formatDust(v: bigint): string {
     const d = 10n ** BigInt(decimals)
     const whole = v / d
     const frac = v % d
