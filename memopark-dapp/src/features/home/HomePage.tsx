@@ -8,7 +8,6 @@ import CurrentAccountBar from '../../components/wallet/CurrentAccountBar'
 import RecentTxList from '../../components/wallet/RecentTxList'
 import type { SessionData } from '../../lib/sessionManager'
 import { useWallet } from '../../providers/WalletProvider'
-import FeeGuardCard from './FeeGuardCard'
 import HotGravesList from '../../components/discovery/HotGravesList'
 import RecentOfferingsTimeline from '../../components/discovery/RecentOfferingsTimeline'
 import QuickActions from '../../components/home/QuickActions'
@@ -164,7 +163,6 @@ const HomePage: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
             <RecentOfferingsTimeline />
             
             <AccountsOverview />
-            <FeeGuardCard />
             
             <RecentTxList />
 

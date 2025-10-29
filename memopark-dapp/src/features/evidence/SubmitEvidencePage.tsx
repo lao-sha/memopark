@@ -93,7 +93,7 @@ const SubmitEvidencePage: React.FC = () => {
       </div>
 
       <div style={{ padding: '8px 8px 0' }}>
-        <Alert type="info" showIcon message="建议使用平台代付：前端生成 MetaTx JSON，平台后端签名并上链" />
+        <Alert type="info" showIcon message="提交证据到链上，请连接钱包后直接发送交易" />
       </div>
 
       <div style={{ padding: 8 }}>
@@ -103,16 +103,7 @@ const SubmitEvidencePage: React.FC = () => {
               key: 'commit',
               label: 'commit',
               children: (
-                <Form form={form} layout="vertical" onFinish={onExport}>
-                  <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
-                    <Input placeholder="5F..." size="large" />
-                  </Form.Item>
-                  <Form.Item name="nonce" label="nonce(重放保护)" initialValue={0}>
-                    <InputNumber min={0} style={{ width: '100%' }} size="large" />
-                  </Form.Item>
-                  <Form.Item name="valid_till" label="validTill(过期高度)" initialValue={0}>
-                    <InputNumber min={0} style={{ width: '100%' }} size="large" />
-                  </Form.Item>
+                <Form form={form} layout="vertical" onFinish={onDirectSend}>
                   <Form.Item name="domain" label="domain(u8)" rules={[{ required: true }]}>
                     <InputNumber min={0} style={{ width: '100%' }} size="large" />
                   </Form.Item>
@@ -135,11 +126,7 @@ const SubmitEvidencePage: React.FC = () => {
                     <Input />
                   </Form.Item>
                   <Form.Item>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Button type="primary" htmlType="submit" block size="large">生成代付 JSON</Button>
-                      <Button onClick={onSubmitSponsor} block size="large">一键提交平台代付</Button>
-                      <Button onClick={() => form.validateFields().then(onDirectSend)} block size="large">直接上链(非代付)</Button>
-                    </Space>
+                    <Button type="primary" htmlType="submit" block size="large">提交证据上链</Button>
                   </Form.Item>
                 </Form>
               )
@@ -148,16 +135,10 @@ const SubmitEvidencePage: React.FC = () => {
               key: 'commit_hash',
               label: 'commit_hash',
               children: (
-                <Form layout="vertical" onFinish={onExport}>
-                  <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
-                    <Input placeholder="5F..." size="large" />
-                  </Form.Item>
-                  <Form.Item name="nonce" label="nonce(重放保护)" initialValue={0}>
-                    <InputNumber min={0} style={{ width: '100%' }} size="large" />
-                  </Form.Item>
-                  <Form.Item name="valid_till" label="validTill(过期高度)" initialValue={0}>
-                    <InputNumber min={0} style={{ width: '100%' }} size="large" />
-                  </Form.Item>
+                <Form layout="vertical" onFinish={(values) => {
+                  values.method = 'commitHash'
+                  onDirectSend(values)
+                }}>
                   <Form.Item name="ns" label="命名空间([u8;8])" rules={[{ required: true }]}>
                     <Input placeholder="evid___ " size="large" />
                   </Form.Item>
@@ -170,24 +151,14 @@ const SubmitEvidencePage: React.FC = () => {
                   <Form.Item name="memo" label="memo(Bytes，可选)">
                     <Input placeholder="备注" size="large" />
                   </Form.Item>
-                  <Form.Item name="method" initialValue="commitHash" hidden>
-                    <Input />
-                  </Form.Item>
                   <Form.Item>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Button type="primary" htmlType="submit" block size="large">生成代付 JSON</Button>
-                      <Button onClick={onSubmitSponsor} block size="large">一键提交平台代付</Button>
-                      <Button onClick={() => (document.querySelector('#commit-hash-form-submit') as HTMLButtonElement)?.click()} block size="large" disabled>直接上链(非代付)</Button>
-                    </Space>
+                    <Button type="primary" htmlType="submit" block size="large">提交证据上链</Button>
                   </Form.Item>
                 </Form>
               )
             }
           ]}
         />
-
-        {/* 输出区 */}
-        <Input.TextArea rows={10} value={output} readOnly style={{ fontFamily: 'monospace' }} />
       </div>
     </div>
   )

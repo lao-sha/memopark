@@ -109,19 +109,19 @@ memopark-dapp/src/features/otc/
 
 1. **update_bridge_service**
    - 功能：更新桥接服务配置
-   - 参数：`mm_id`, `tron_address?`, `max_swap_amount?`, `fee_rate_bps?`
+   - 参数：`maker_id`, `tron_address?`, `max_swap_amount?`, `fee_rate_bps?`
 
 2. **re_enable_bridge_service**
    - 功能：重新启用桥接服务
-   - 参数：`mm_id`
+   - 参数：`maker_id`
 
 3. **disable_bridge_service**
    - 功能：禁用桥接服务
-   - 参数：`mm_id`
+   - 参数：`maker_id`
 
 4. **update_maker_info**
    - 功能：更新做市商业务配置
-   - 参数：`mm_id`, `public_cid?`, `private_cid?`, `fee_bps?`, `min_amount?`
+   - 参数：`maker_id`, `public_cid?`, `private_cid?`, `fee_bps?`, `min_amount?`
 
 ---
 

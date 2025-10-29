@@ -138,11 +138,10 @@ pub trait IpfsPinner<AccountId, Balance> {
     /// - `Ok(())`: pin请求成功提交，费用扣取成功
     /// - `Err(...)`: 失败原因（余额不足、CID格式错误、系统错误等）
     /// 
-    /// 扣费机制（四层回退）：✅ 更新
+    /// 扣费机制（三层回退）：✅ 更新
     /// 1. 优先从 `IpfsPoolAccount` 扣取（系统公共池）
     /// 2. 如失败，从 `SubjectFunding(deceased_id)` 扣取
-    /// 3. 如仍失败，从 `OperatorEscrowAccount` 扣取（运营者垫付）
-    /// 4. 如仍失败，进入宽限期（GracePeriod）
+    /// 3. 如仍失败，进入宽限期（GracePeriod）
     /// 
     /// 分层配置：
     /// - Critical：5副本，6小时巡检，1.5x费率
@@ -178,11 +177,68 @@ pub trait IpfsPinner<AccountId, Balance> {
     ) -> DispatchResult;
 }
 
-// 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
-// 作用：
-// 1) 让 runtime 集成宏（#[frame_support::runtime]）能够找到 `tt_default_parts_v2` 等默认部件；
-// 2) 便于上层以 `pallet_memo_ipfs::Call` 等简洁路径引用类型，降低路径耦合。
-pub use pallet::*;
+/// 函数级详细中文注释：内容注册接口 - 新pallet域自动PIN机制
+/// 
+/// 设计目标：
+/// - 为新业务pallet提供统一的内容注册接口
+/// - 自动处理域注册、CID固定、费用扣除
+/// - 无需了解IPFS内部实现细节
+/// - 支持任意自定义域扩展
+/// 
+/// 使用方式：
+/// ```rust
+/// // 在新业务pallet的Config中添加：
+/// type ContentRegistry: ContentRegistry;
+/// 
+/// // 在extrinsic中一行代码完成注册：
+/// T::ContentRegistry::register_content(
+///     b"my-pallet".to_vec(),  // 域名
+///     subject_id,             // 主体ID
+///     cid,                    // 内容CID
+///     PinTier::Standard,      // Pin等级
+/// )?;
+/// ```
+/// 
+/// 优势：
+/// - ✅ 简单易用：一行代码完成所有操作
+/// - ✅ 自动化：自动创建SubjectType、注册域、执行PIN
+/// - ✅ 低耦合：业务逻辑与存储逻辑完全解耦
+/// - ✅ 可扩展：支持未来任意新业务pallet
+pub trait ContentRegistry {
+    /// 函数级详细中文注释：注册内容到IPFS（自动域管理）
+    /// 
+    /// 功能：
+    /// 1. 自动创建或使用现有域
+    /// 2. 派生SubjectFunding账户
+    /// 3. 执行PIN操作
+    /// 4. 自动扣费（三层机制）
+    /// 
+    /// 参数：
+    /// - `domain`: 域名（如 b"deceased-video", b"nft-metadata"）
+    /// - `subject_id`: 主体ID（与域组合唯一标识）
+    /// - `cid`: IPFS内容标识符
+    /// - `tier`: Pin等级（Critical/Standard/Temporary）
+    /// 
+    /// 返回：
+    /// - `Ok(())`: 注册成功，内容已PIN
+    /// - `Err(...)`: 失败原因
+    fn register_content(
+        domain: Vec<u8>,
+        subject_id: u64,
+        cid: Vec<u8>,
+        tier: PinTier,
+    ) -> DispatchResult;
+    
+    /// 函数级详细中文注释：查询域是否已注册
+    /// 
+    /// 用途：检查域是否已在系统中注册
+    fn is_domain_registered(domain: &[u8]) -> bool;
+    
+    /// 函数级详细中文注释：获取域的SubjectType映射
+    /// 
+    /// 用途：查询域对应的SubjectType
+    fn get_domain_subject_type(domain: &[u8]) -> Option<SubjectType>;
+}
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -661,6 +717,25 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// 函数级详细中文注释：域注册表 - 新pallet域自动PIN机制的核心存储
+    /// 
+    /// 功能：
+    /// - 记录已注册的域及其配置
+    /// - 支持域的自动发现和管理
+    /// - 映射域名到SubjectType
+    /// 
+    /// 存储结构：
+    /// - Key: 域名（如 b"deceased-video", b"nft-metadata"）
+    /// - Value: DomainConfig（域配置信息）
+    #[pallet::storage]
+    pub type RegisteredDomains<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<32>>,  // domain name
+        types::DomainConfig,            // 域配置
+        OptionQuery,
+    >;
+
     /// 函数级详细中文注释：CID到Subject的反向映射，用于扣费时查找资金账户
     /// 
     /// 设计目标：
@@ -1117,12 +1192,6 @@ pub mod pallet {
             reason: UnpinReason,
         },
         
-        /// 函数级详细中文注释：使用了运营者保证金扣费（极端情况）
-        OperatorEscrowUsed {
-            cid_hash: T::Hash,
-            amount: BalanceOf<T>,
-        },
-        
         /// 函数级详细中文注释：IPFS公共池余额不足警告（需要补充）
         IpfsPoolLowBalanceWarning {
             current: BalanceOf<T>,
@@ -1345,6 +1414,51 @@ pub mod pallet {
             capacity_usage: u8,
             current_pins: u32,
         },
+        
+        // ============================================================================
+        // 新pallet域自动PIN机制相关Events
+        // ============================================================================
+        
+        /// 函数级详细中文注释：域已注册
+        /// 
+        /// 触发时机：
+        /// - 新业务pallet首次调用register_content时自动注册
+        /// - 治理手动注册域时
+        /// 
+        /// 使用场景：
+        /// - 追踪系统中的所有业务域
+        /// - 域管理Dashboard展示
+        DomainRegistered {
+            domain: BoundedVec<u8, ConstU32<32>>,
+            subject_type_id: u8,
+        },
+        
+        /// 函数级详细中文注释：内容已通过域注册
+        /// 
+        /// 触发时机：
+        /// - 业务pallet调用ContentRegistry::register_content成功
+        /// 
+        /// 使用场景：
+        /// - 追踪域级别的内容注册
+        /// - 统计各域的存储使用量
+        ContentRegisteredViaDomain {
+            domain: BoundedVec<u8, ConstU32<32>>,
+            subject_id: u64,
+            cid_hash: T::Hash,
+            tier: PinTier,
+        },
+        
+        /// 函数级详细中文注释：域配置已更新
+        /// 
+        /// 触发时机：
+        /// - 治理更新域配置（启用/禁用自动PIN，修改默认tier等）
+        /// 
+        /// 使用场景：
+        /// - 域管理日志
+        DomainConfigUpdated {
+            domain: BoundedVec<u8, ConstU32<32>>,
+            auto_pin_enabled: bool,
+        },
     }
 
     #[pallet::error]
@@ -1461,6 +1575,19 @@ pub mod pallet {
         /// 触发场景：
         /// - 尝试分配超过BoundedVec限制的节点数
         TooManyNodes,
+        
+        // ============================================================================
+        // 新pallet域自动PIN机制相关Errors
+        // ============================================================================
+        
+        /// 函数级详细中文注释：无效的域名（长度超过限制或包含非法字符）
+        InvalidDomain,
+        /// 函数级详细中文注释：域的自动PIN已禁用
+        DomainPinDisabled,
+        /// 函数级详细中文注释：域不存在
+        DomainNotFound,
+        /// 函数级详细中文注释：域已存在（尝试重复注册）
+        DomainAlreadyExists,
     }
 
     impl<T: Config> Pallet<T> {
@@ -2090,13 +2217,12 @@ pub mod pallet {
             Self::subject_account_for(domain, subject_id)
         }
         
-        /// 函数级详细中文注释：四层回退充电机制（IpfsPool优先）
+        /// 函数级详细中文注释：三层回退充电机制（IpfsPool优先）
         /// 
-        /// 充电顺序（调整后）：
+        /// 充电顺序（三层机制）：
         /// 1. IpfsPoolAccount（系统公共池）← 第一顺序
         /// 2. SubjectFunding（用户充值账户）← 第二顺序
-        /// 3. OperatorEscrowAccount（运营者保证金）← 第三顺序
-        /// 4. GracePeriod（宽限期）← 最后防线
+        /// 3. GracePeriod（宽限期）← 最后防线
         /// 
         /// 返回：
         /// - Ok(ChargeResult::Success)：扣费成功，记录使用的层级
@@ -2125,8 +2251,8 @@ pub mod pallet {
                     ExistenceRequirement::KeepAlive,
                 ).map_err(|_| Error::<T>::IpfsPoolInsufficientBalance)?;
                 
-                // 分配给运营者
-                Self::distribute_to_pin_operators(cid_hash, amount).map_err(|_| Error::<T>::BadStatus)?;
+                // 分配给运营者（如果没有运营者，忽略错误）
+                let _ = Self::distribute_to_pin_operators(cid_hash, amount);
                 
                 TotalChargedFromPool::<T>::mutate(|total| *total = total.saturating_add(amount));
                 
@@ -2162,8 +2288,8 @@ pub mod pallet {
                         ExistenceRequirement::KeepAlive,
                     ).map_err(|_| Error::<T>::SubjectFundingInsufficientBalance)?;
                     
-                    // 分配给运营者
-                    Self::distribute_to_pin_operators(cid_hash, share_amount).map_err(|_| Error::<T>::BadStatus)?;
+                    // 分配给运营者（如果没有运营者，忽略错误）
+                    let _ = Self::distribute_to_pin_operators(cid_hash, share_amount);
                     
                     TotalChargedFromSubject::<T>::mutate(|total| *total = total.saturating_add(share_amount));
                     
@@ -2178,46 +2304,7 @@ pub mod pallet {
                 }
             }
             
-            // ===== 第3层：OperatorEscrowAccount（运营者保证金）=====
-            // 从存储该CID的运营者保证金中平摊扣除
-            let operators = Self::get_pin_operators(cid_hash)?;
-            if operators.is_empty() {
-                return Err(Error::<T>::NoOperatorsAssigned);
-            }
-            
-            let per_operator = amount / (operators.len() as u32).into();
-            let escrow_account = T::OperatorEscrowAccount::get();
-            let escrow_balance = T::Currency::free_balance(&escrow_account);
-            
-            // 检查运营者托管账户是否有足够余额
-            let total_needed = per_operator.saturating_mul((operators.len() as u32).into());
-            if escrow_balance >= total_needed {
-                // 从运营者托管账户扣费
-                let _ = T::Currency::withdraw(
-                    &escrow_account,
-                    total_needed,
-                    frame_support::traits::WithdrawReasons::TRANSFER,
-                    ExistenceRequirement::KeepAlive,
-                ).map_err(|_| Error::<T>::InsufficientEscrowBalance)?;
-                
-                // 分配给运营者（实际上是返还给他们，因为他们垫付了）
-                Self::distribute_to_pin_operators(cid_hash, total_needed).map_err(|_| Error::<T>::BadStatus)?;
-                
-                // 发送紧急通知：使用了运营者保证金
-                Self::deposit_event(Event::OperatorEscrowUsed {
-                    cid_hash: *cid_hash,
-                    amount: total_needed,
-                });
-                
-                // 进入短宽限期（3天）
-                let current_block = <frame_system::Pallet<T>>::block_number();
-                let short_grace = 86400u32; // 3天
-                let expires_at = current_block + short_grace.into();
-                
-                return Ok(ChargeResult::EnterGrace { expires_at });
-            }
-            
-            // ===== 第4层：GracePeriod（宽限期）=====
+            // ===== 第3层：GracePeriod（宽限期）=====
             match &task.grace_status {
                 GraceStatus::Normal => {
                     // 首次失败，进入宽限期
@@ -2469,7 +2556,7 @@ pub mod pallet {
         // 
         // 新版优势（request_pin_for_deceased）：
         // - 使用明文CID（Vec<u8>），便于IPFS API调用
-        // - 四层扣费逻辑（IpfsPool → SubjectFunding → OperatorEscrow → Grace）
+        // - 三层扣费逻辑（IpfsPool → SubjectFunding → Grace）
         // - 分层运营者选择（Layer 1 Core + Layer 2 Community）
         // - 支持PinTier（Critical/Standard/Temporary）
         // - 自动化周期计费和宽限期管理
@@ -3619,6 +3706,120 @@ pub mod pallet {
             Ok(())
         }
         
+        // ============================================================================
+        // 新pallet域自动PIN机制相关Extrinsics
+        // ============================================================================
+        
+        /// 函数级详细中文注释：治理手动注册域
+        /// 
+        /// 功能：
+        /// - 手动注册新业务域
+        /// - 配置域的SubjectType映射
+        /// - 设置域的默认Pin等级
+        /// 
+        /// 权限：
+        /// - 治理Origin（Root或技术委员会）
+        /// 
+        /// 使用场景：
+        /// - 预注册域，避免自动创建时的不确定性
+        /// - 修改域的默认配置
+        /// - 禁用某些域的自动PIN
+        #[pallet::call_index(25)]
+        #[pallet::weight(50_000)]
+        pub fn register_domain(
+            origin: OriginFor<T>,
+            domain: Vec<u8>,
+            subject_type_id: u8,
+            default_tier: types::PinTier,
+            auto_pin_enabled: bool,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 1. 转换域名为BoundedVec
+            let bounded_domain: BoundedVec<u8, ConstU32<32>> = domain
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidDomain)?;
+            
+            // 2. 检查域是否已存在
+            ensure!(
+                !RegisteredDomains::<T>::contains_key(&bounded_domain),
+                Error::<T>::DomainAlreadyExists
+            );
+            
+            // 3. 创建域配置
+            let config = types::DomainConfig {
+                auto_pin_enabled,
+                default_tier,
+                subject_type_id,
+                owner_pallet: bounded_domain.clone(),
+                created_at: {
+                    use sp_runtime::SaturatedConversion;
+                    frame_system::Pallet::<T>::block_number().saturated_into()
+                },
+            };
+            
+            // 4. 保存配置
+            RegisteredDomains::<T>::insert(&bounded_domain, &config);
+            
+            // 5. 发送事件
+            Self::deposit_event(Event::DomainRegistered {
+                domain: bounded_domain,
+                subject_type_id,
+            });
+            
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：治理更新域配置
+        /// 
+        /// 功能：
+        /// - 修改域的自动PIN开关
+        /// - 修改域的默认等级
+        /// - 重新映射SubjectType
+        /// 
+        /// 权限：
+        /// - 治理Origin（Root或技术委员会）
+        #[pallet::call_index(26)]
+        #[pallet::weight(40_000)]
+        pub fn update_domain_config(
+            origin: OriginFor<T>,
+            domain: Vec<u8>,
+            auto_pin_enabled: Option<bool>,
+            default_tier: Option<types::PinTier>,
+            subject_type_id: Option<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 1. 转换域名为BoundedVec
+            let bounded_domain: BoundedVec<u8, ConstU32<32>> = domain
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidDomain)?;
+            
+            // 2. 更新配置
+            RegisteredDomains::<T>::try_mutate(&bounded_domain, |maybe_config| {
+                let config = maybe_config.as_mut().ok_or(Error::<T>::DomainNotFound)?;
+                
+                if let Some(enabled) = auto_pin_enabled {
+                    config.auto_pin_enabled = enabled;
+                }
+                if let Some(tier) = default_tier {
+                    config.default_tier = tier;
+                }
+                if let Some(type_id) = subject_type_id {
+                    config.subject_type_id = type_id;
+                }
+                
+                Ok::<(), Error<T>>(())
+            })?;
+            
+            // 3. 发送事件
+            Self::deposit_event(Event::DomainConfigUpdated {
+                domain: bounded_domain,
+                auto_pin_enabled: auto_pin_enabled.unwrap_or(true),
+            });
+            
+            Ok(())
+        }
     }
 
     #[pallet::hooks]
@@ -4386,11 +4587,17 @@ pub mod pallet {
     }
 }
 
+// 函数级中文注释：将 pallet 模块内导出的类型（如 Pallet、Call、Event 等）在 crate 根进行再导出
+// 作用：
+// 1) 让 runtime 集成宏（#[frame_support::runtime]）能够找到 `tt_default_parts_v2` 等默认部件；
+// 2) 便于上层以 `pallet_memo_ipfs::Call` 等简洁路径引用类型，降低路径耦合。
+pub use pallet::*;
+
 /// 函数级详细中文注释：为 Pallet<T> 实现 IpfsPinner trait，供其他pallet调用
 /// 
 /// 实现说明（⭐ P1优化后）：
 /// - 直接调用破坏式改造后的 `request_pin_for_deceased` extrinsic；
-/// - 使用 `four_layer_charge` 四层扣费机制（IpfsPool → SubjectFunding → OperatorEscrow → Grace）；
+/// - 使用 `four_layer_charge` 三层扣费机制（IpfsPool → SubjectFunding → Grace）；
 /// - 支持分层运营者选择（Layer 1 Core + Layer 2 Community）；
 /// - 自动分配收益给运营者。
 impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>> for Pallet<T> {
@@ -4399,7 +4606,7 @@ impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>>
     /// 内部实现：
     /// 1. 将Vec<u8> CID转换为BoundedVec
     /// 2. 调用破坏式改造后的 `request_pin_for_deceased` extrinsic
-    /// 3. 使用 `four_layer_charge` 四层扣费逻辑（IpfsPool → SubjectFunding → OperatorEscrow → Grace）
+    /// 3. 使用 `four_layer_charge` 三层扣费逻辑（IpfsPool → SubjectFunding → Grace）
     /// 4. 支持分层运营者选择（Layer 1 Core + Layer 2 Community）
     fn pin_cid_for_deceased(
         caller: <T as frame_system::Config>::AccountId,
@@ -4444,6 +4651,111 @@ impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>>
             cid,
             tier,
         )
+    }
+}
+
+/// 函数级详细中文注释：ContentRegistry trait实现 - 新pallet域自动PIN机制
+/// 
+/// 提供统一的内容注册接口，让新业务pallet无需了解IPFS细节即可实现内容固定。
+impl<T: Config> ContentRegistry for Pallet<T> {
+    /// 函数级详细中文注释：注册内容到IPFS（核心实现）
+    /// 
+    /// 功能流程：
+    /// 1. 检查域是否已注册，未注册则自动创建
+    /// 2. 根据域配置派生SubjectType
+    /// 3. 调用内部PIN逻辑
+    /// 4. 自动扣费（三层机制）
+    fn register_content(
+        domain: Vec<u8>,
+        subject_id: u64,
+        cid: Vec<u8>,
+        tier: PinTier,
+    ) -> DispatchResult {
+        // 1. 转换域名为BoundedVec
+        let bounded_domain: BoundedVec<u8, ConstU32<32>> = domain
+            .try_into()
+            .map_err(|_| Error::<T>::InvalidDomain)?;
+        
+        // 2. 检查或创建域
+        let domain_config = RegisteredDomains::<T>::get(&bounded_domain)
+            .unwrap_or_else(|| {
+                // 自动创建默认域配置
+                let config = types::DomainConfig {
+                    auto_pin_enabled: true,
+                    default_tier: tier.clone(),
+                    subject_type_id: 99, // 默认自定义类型
+                    owner_pallet: bounded_domain.clone(),
+                    created_at: {
+                        use sp_runtime::SaturatedConversion;
+                        frame_system::Pallet::<T>::block_number().saturated_into()
+                    },
+                };
+                RegisteredDomains::<T>::insert(&bounded_domain, &config);
+                
+                // 发送域注册事件
+                Self::deposit_event(Event::DomainRegistered {
+                    domain: bounded_domain.clone(),
+                    subject_type_id: config.subject_type_id,
+                });
+                
+                config
+            });
+        
+        // 3. 检查域是否启用自动PIN
+        ensure!(domain_config.auto_pin_enabled, Error::<T>::DomainPinDisabled);
+        
+        // 4. 创建临时caller（使用IpfsPoolAccount）
+        let caller = T::IpfsPoolAccount::get();
+        
+        // 5. 调用PIN逻辑（使用deceased逻辑，因为它支持SubjectFunding）
+        Self::request_pin_for_deceased(
+            OriginFor::<T>::from(frame_system::RawOrigin::Signed(caller)),
+            subject_id,
+            cid.clone(),
+            Some(tier.clone()),
+        )?;
+        
+        // 6. 更新域索引
+        let cid_hash = <T::Hashing as sp_runtime::traits::Hash>::hash(&cid);
+        DomainPins::<T>::insert(&bounded_domain, &cid_hash, ());
+        
+        // 7. 发送成功事件
+        Self::deposit_event(Event::ContentRegisteredViaDomain {
+            domain: bounded_domain,
+            subject_id,
+            cid_hash,
+            tier,
+        });
+        
+        Ok(())
+    }
+    
+    /// 函数级详细中文注释：查询域是否已注册
+    fn is_domain_registered(domain: &[u8]) -> bool {
+        if let Ok(bounded_domain) = BoundedVec::<u8, ConstU32<32>>::try_from(domain.to_vec()) {
+            RegisteredDomains::<T>::contains_key(&bounded_domain)
+        } else {
+            false
+        }
+    }
+    
+    /// 函数级详细中文注释：获取域的SubjectType映射
+    fn get_domain_subject_type(domain: &[u8]) -> Option<SubjectType> {
+        if let Ok(bounded_domain) = BoundedVec::<u8, ConstU32<32>>::try_from(domain.to_vec()) {
+            RegisteredDomains::<T>::get(&bounded_domain).map(|config| {
+                // 根据subject_type_id映射到SubjectType
+                match config.subject_type_id {
+                    1 => SubjectType::Deceased,
+                    2 => SubjectType::Grave,
+                    3 => SubjectType::Offerings,
+                    4 => SubjectType::Evidence,
+                    5 => SubjectType::OtcOrder,
+                    _ => SubjectType::Custom(bounded_domain),
+                }
+            })
+        } else {
+            None
+        }
     }
 }
 

@@ -12,7 +12,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { PinRecord, PinStatus, PinStatusResponse } from '@/types';
+import type { PinRecord, PinStatusResponse } from '@/types';
+import { PinStatus } from '@/types';
 
 /**
  * usePinStatus Hook 参数

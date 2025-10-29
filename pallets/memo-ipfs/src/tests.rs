@@ -674,6 +674,7 @@ fn genesis_config_initializes_correctly() {
 #[test]
 fn request_pin_with_tier_works() {
     use crate::types::{TierConfig, PinTier};
+    use crate::{OperatorInfo, OperatorLayer};
     
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
@@ -684,6 +685,20 @@ fn request_pin_with_tier_works() {
         let caller: AccountId = 1;
         let deceased_id: u64 = 1;
         let cid = b"QmTest123456789".to_vec();
+        
+        // 注册一个Core运营者
+        let operator1: AccountId = 100;
+        let operator_info = OperatorInfo {
+            peer_id: frame_support::BoundedVec::try_from(b"QmOperator1".to_vec()).unwrap(),
+            capacity_gib: 1000,
+            endpoint_hash: H256::repeat_byte(1),
+            cert_fingerprint: Some(H256::repeat_byte(2)),
+            status: 0, // Active
+            registered_at: 1,
+            layer: OperatorLayer::Core,
+            priority: 100,
+        };
+        crate::Operators::<Test>::insert(&operator1, operator_info);
         
         // 给IpfsPool充足余额
         let pool = IpfsPoolAccount::get();
@@ -994,6 +1009,7 @@ fn emergency_pause_and_resume_billing() {
 #[test]
 fn pin_for_grave_reuses_deceased_logic() {
     use crate::types::{PinTier, TierConfig};
+    use crate::{OperatorInfo, OperatorLayer};
     use crate::IpfsPinner;
     
     new_test_ext().execute_with(|| {
@@ -1005,6 +1021,20 @@ fn pin_for_grave_reuses_deceased_logic() {
         let caller: AccountId = 1;
         let grave_id: u64 = 100;
         let cid = b"QmGrave123456789".to_vec();
+        
+        // 注册一个Core运营者
+        let operator1: AccountId = 100;
+        let operator_info = OperatorInfo {
+            peer_id: frame_support::BoundedVec::try_from(b"QmOperator1".to_vec()).unwrap(),
+            capacity_gib: 1000,
+            endpoint_hash: H256::repeat_byte(1),
+            cert_fingerprint: Some(H256::repeat_byte(2)),
+            status: 0, // Active
+            registered_at: 1,
+            layer: OperatorLayer::Core,
+            priority: 100,
+        };
+        crate::Operators::<Test>::insert(&operator1, operator_info);
         
         // 给IpfsPool充值
         let pool = IpfsPoolAccount::get();

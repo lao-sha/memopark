@@ -108,7 +108,7 @@ export const SellerReleasePage: React.FC = () => {
       const api = await getApi()
       
       // 查询所有订单
-      const ordersEntries = await api.query.otcOrder.orders.entries()
+      const ordersEntries = await api.query.trading.orders.entries()
       
       console.log(`📊 查询到订单条目数: ${ordersEntries.length}`)
       
@@ -274,8 +274,8 @@ export const SellerReleasePage: React.FC = () => {
           
           const api = await getApi()
           
-          // 调用 release 方法
-          const tx = api.tx.otcOrder.release(order.id)
+          // 调用 releaseMemo 方法（🆕 pallet-trading）
+          const tx = api.tx.trading.releaseMemo(order.id)
           
           console.log('🔐 使用本地密码签名并发送交易...')
           

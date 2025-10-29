@@ -1,0 +1,68 @@
+/**
+ * 文件上传组件样式 - 优化版
+ */
+
+.file-uploader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-uploader-buttons {
+  display: flex;
+  gap: 8px;
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.file-uploader-buttons .ant-btn {
+  border-radius: 16px;
+  border: 1.5px solid #e8e8e8;
+  padding: 4px 12px;
+  height: auto;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  background: #fff;
+}
+
+.file-uploader-buttons .ant-btn:hover:not(:disabled) {
+  border-color: #1890ff;
+  color: #1890ff;
+  background: #f0f9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+}
+
+.file-uploader-buttons .ant-btn:active {
+  transform: translateY(0);
+}
+
+.file-uploader-buttons .ant-btn .anticon {
+  font-size: 14px;
+}
+
+.file-uploader-progress {
+  padding: 4px 0;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+

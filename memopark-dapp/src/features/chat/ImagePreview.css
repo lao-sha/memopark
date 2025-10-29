@@ -1,0 +1,60 @@
+/**
+ * 图片预览组件样式 - 优化版
+ */
+
+.image-preview {
+  display: inline-block;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.image-preview:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: scale(1.02);
+}
+
+.image-preview-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 120px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+.image-preview img {
+  border-radius: 12px;
+  cursor: pointer;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.image-preview:hover img {
+  transform: scale(1.05);
+}
+
+/* 加载动画 */
+.image-preview-placeholder::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid #1890ff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

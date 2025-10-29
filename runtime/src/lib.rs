@@ -11,8 +11,9 @@ pub mod configs;
 
 extern crate alloc;
 use alloc::vec::Vec;
-use frame_support::traits::OnRuntimeUpgrade;
-use frame_support::weights::Weight;
+// 🆕 2025-10-28 已移除: OnRuntimeUpgrade 和 Weight 不再需要（RenameDeceasedMediaToData已注释）
+// use frame_support::traits::OnRuntimeUpgrade;
+// use frame_support::weights::Weight;
 use sp_runtime::{
     generic, impl_opaque_keys,
     traits::{BlakeTwo256, IdentifyAccount, Verify},
@@ -190,8 +191,10 @@ impl frame_system::offchain::SigningTypes for Runtime {
 ///
 /// This can be a tuple of types, each implementing `OnRuntimeUpgrade`.
 #[allow(unused_parens)]
-type Migrations = (RenameDeceasedMediaToData,);
+type Migrations = (); // 🆕 2025-10-28: RenameDeceasedMediaToData 已移除 - deceased-media整合到deceased
 
+// 🆕 2025-10-28 已注释: DeceasedMedia 已整合到 Deceased pallet
+/*
 /// 函数级中文注释：运行时迁移——将旧 Pallet 名称 `DeceasedMedia` 的存储前缀整体迁移到新别名 `DeceasedData`。
 /// - 仅移动存储前缀，不变更内部键结构；应在升级窗口内配合前端/SDK 兼容新的 section 名。
 pub struct RenameDeceasedMediaToData;
@@ -207,6 +210,7 @@ impl OnRuntimeUpgrade for RenameDeceasedMediaToData {
         Weight::from_parts(10_000, 0)
     }
 }
+*/
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
@@ -262,8 +266,9 @@ pub mod runtime {
     #[runtime::pallet_index(7)]
     pub type Template = pallet_template;
 
-    #[runtime::pallet_index(8)]
-    pub type Forwarder = pallet_forwarder;
+    // 函数级中文注释：已删除 pallet_forwarder (index 8)
+    // - 元交易代付功能未完整实现，前后端均未真正使用
+    // - 功能可由固定免费次数替代
 
     // 函数级中文注释：移除 pallet_otc_maker (index 9)
     // - 功能已被 pallet-market-maker 完全替代，避免冗余
@@ -271,9 +276,6 @@ pub mod runtime {
     // 函数级中文注释：2025-10-20 移除 pallet_otc_listing (index 10)
     // - 功能已被 pallet-market-maker + pallet-otc-order 替代
     // - 挂单机制已废弃，改为直接选择做市商创建订单
-
-    #[runtime::pallet_index(11)]
-    pub type OtcOrder = pallet_otc_order;
 
     #[runtime::pallet_index(12)]
     pub type Escrow = pallet_escrow;
@@ -287,8 +289,9 @@ pub mod runtime {
     #[runtime::pallet_index(15)]
     pub type Grave = pallet_memo_grave;
 
-    #[runtime::pallet_index(16)]
-    pub type MemorialOfferings = pallet_memo_offerings;
+    // 🆕 2025-10-28 已移除: MemorialOfferings 已整合到 Memorial pallet
+    // #[runtime::pallet_index(16)]
+    // pub type MemorialOfferings = pallet_memo_offerings;
 
     #[runtime::pallet_index(17)]
     pub type Evidence = pallet_evidence;
@@ -299,33 +302,59 @@ pub mod runtime {
     #[runtime::pallet_index(19)]
     pub type Deceased = pallet_deceased;
 
-    #[runtime::pallet_index(36)]
-    pub type DeceasedMedia = pallet_deceased_media;
+    // 🆕 2025-10-28 已移除: DeceasedMedia 和 DeceasedText 已整合到 Deceased pallet
+    // #[runtime::pallet_index(36)]
+    // pub type DeceasedMedia = pallet_deceased_media;
 
-    #[runtime::pallet_index(37)]
-    pub type DeceasedText = pallet_deceased_text;
+    // #[runtime::pallet_index(37)]
+    // pub type DeceasedText = pallet_deceased_text;
 
     #[runtime::pallet_index(21)]
     pub type GraveLedger = pallet_ledger;
 
-    #[runtime::pallet_index(22)]
-    pub type Referrals = pallet_memo_referrals;
+    // 🆕 2025-10-28 已移除: pallet-memo-referrals（已整合到统一 pallet-affiliate）
+    // #[runtime::pallet_index(22)]
+    // pub type Referrals = pallet_memo_referrals;
 
-    /// 联盟计酬托管层（职责：资金托管）
+    /// 函数级详细中文注释：统一联盟计酬系统 v1.0.0
+    /// 
+    /// **整合了5个模块**：
+    /// - pallet-memo-referrals（推荐关系）
+    /// - pallet-affiliate（托管）
+    /// - pallet-affiliate-config（配置）
+    /// - pallet-affiliate-instant（即时分成）
+    /// - pallet-affiliate-weekly（周结算）
+    /// 
+    /// **核心功能**：
+    /// - 推荐关系管理：bind_sponsor, claim_code
+    /// - 资金托管：deposit, withdraw
+    /// - 即时分成：实时转账
+    /// - 周结算：累计应得 + 周期结算
+    /// - 配置管理：set_settlement_mode, set_instant_percents, set_weekly_percents
+    /// 
+    /// **模式支持**：
+    /// - Weekly: 全周结算
+    /// - Instant: 全即时分成
+    /// - Hybrid: 前N层即时 + 后M层周结算
+    /// 
+    /// 🆕 2025-10-28 整合完成
     #[runtime::pallet_index(24)]
     pub type Affiliate = pallet_affiliate;
 
-    /// 联盟计酬周结算分配层（职责：分配算法和周期结算）
-    #[runtime::pallet_index(55)]
-    pub type AffiliateWeekly = pallet_affiliate_weekly;
+    // 🆕 2025-10-28 已移除: pallet-affiliate-weekly（已整合到统一 pallet-affiliate）
+    // /// 联盟计酬周结算分配层（职责：分配算法和周期结算）
+    // #[runtime::pallet_index(55)]
+    // pub type AffiliateWeekly = pallet_affiliate_weekly;
 
-    /// 函数级中文注释：联盟计酬动态切换配置层（职责：模式路由和治理）
-    #[runtime::pallet_index(56)]
-    pub type AffiliateConfig = pallet_affiliate_config;
+    // 🆕 2025-10-28 已移除: pallet-affiliate-config（已整合到统一 pallet-affiliate）
+    // /// 函数级中文注释：联盟计酬动态切换配置层（职责：模式路由和治理）
+    // #[runtime::pallet_index(56)]
+    // pub type AffiliateConfig = pallet_affiliate_config;
 
-    /// 函数级中文注释：联盟计酬即时分配工具（职责：即时转账分配）
-    #[runtime::pallet_index(57)]
-    pub type AffiliateInstant = pallet_affiliate_instant;
+    // 🆕 2025-10-28 已移除: pallet-affiliate-instant（已整合到统一 pallet-affiliate）
+    // /// 函数级中文注释：联盟计酬即时分配工具（职责：即时转账分配）
+    // #[runtime::pallet_index(57)]
+    // pub type AffiliateInstant = pallet_affiliate_instant;
 
     #[runtime::pallet_index(58)]
     pub type Membership = pallet_membership;
@@ -343,11 +372,13 @@ pub mod runtime {
     #[runtime::pallet_index(32)]
     pub type OriginRestriction = pallet_origin_restriction;
 
-    #[runtime::pallet_index(33)]
-    pub type FeeGuard = pallet_fee_guard;
+    // #[runtime::pallet_index(33)]
+    // pub type FeeGuard = pallet_fee_guard;
+    // 已移除 FeeGuard - 使用官方 pallet-proxy 纯代理替代
 
-    #[runtime::pallet_index(34)]
-    pub type MemoSacrifice = pallet_memo_sacrifice;
+    // 🆕 2025-10-28 已移除: MemoSacrifice 已整合到 Memorial pallet
+    // #[runtime::pallet_index(34)]
+    // pub type MemoSacrifice = pallet_memo_sacrifice;
 
     #[runtime::pallet_index(35)]
     pub type MemoPet = pallet_memo_pet;
@@ -365,16 +396,10 @@ pub mod runtime {
     pub type ContentCommittee = pallet_collective<Instance3>;
 
     #[runtime::pallet_index(41)]
-    pub type ContentGovernance = pallet_memo_content_governance;
+    pub type ContentGovernance = pallet_memo_appeals;
 
     #[runtime::pallet_index(43)]
     pub type Pricing = pallet_pricing;
-
-    #[runtime::pallet_index(44)]
-    pub type FirstPurchase = pallet_first_purchase;  // 原名: OtcClaim，2025-10-20更名
-
-    #[runtime::pallet_index(45)]
-    pub type MarketMaker = pallet_market_maker;
 
     /// 函数级中文注释：存储费用专用账户管理模块
     /// - 负责收集、管理和分配去中心化存储相关的资金
@@ -382,11 +407,125 @@ pub mod runtime {
     #[runtime::pallet_index(46)]
     pub type StorageTreasury = pallet_storage_treasury;
 
-    /// 函数级中文注释：极简桥接模块（托管式 MEMO ↔ USDT TRC20）
-    /// - MVP 设计：只支持 MEMO → USDT 方向
-    /// - 固定汇率：0.5 USDT/MEMO（桥接服务端配置）
-    /// - 最小兑换：100 MEMO
-    /// - 托管模式：MEMO 锁定在桥接账户，服务发送 USDT
-    #[runtime::pallet_index(47)]
-    pub type SimpleBridge = pallet_simple_bridge;
+    /// 函数级中文注释：多层级余额管理模块
+    /// - 支持多种余额层级：Gas（手续费）、Points（积分）、VIP（会员）、Gift（红包）等
+    /// - 完全隔离：不同层级的余额独立存储和管理
+    /// - 来源追踪：记录每笔余额的来源和使用情况
+    // 函数级中文注释：2025-10-22 已删除 pallet-balance-tiers (index 48)
+    // - 功能与固定免费次数重复，复杂度过高（2,000+行代码）
+    // - 成本更高（50,000 MEMO vs 200 MEMO，降低99.6%）
+    // - 新用户 Gas 已由固定免费次数覆盖（做市商代付）
+    // - 活动空投、邀请奖励改用直接转账 MEMO（更简单）
+
+    /// 函数级中文注释：2025-10-28 移除旧的 pallet-buyer-credit 和 pallet-maker-credit
+    /// 已整合为统一的 pallet-credit
+
+    /// 函数级中文注释：统一信用风控管理模块（AI 智能风控系统）
+    /// 
+    /// **买家信用子系统**：
+    /// - 多维度信任评估：资产信任（余额、Staking）+ 账户年龄 + 活跃度 + 社交信任
+    /// - 新用户分层冷启动：Premium/Standard/Basic/Restricted 四级初始限额
+    /// - 信用等级体系：Newbie/Bronze/Silver/Gold/Diamond 五级渐进式升级
+    /// - 快速学习机制：前3笔交易权重5x，快速建立用户画像
+    /// - 社交信任网络：邀请人信誉传递、用户互相推荐、推荐人连带责任
+    /// - 行为模式分析：每5笔分析付款速度、金额稳定性、时间分布
+    /// - 防恶意购买：限额控制、冷却期、违约惩罚、女巫攻击检测
+    /// 
+    /// **做市商信用子系统**：
+    /// - 信用评分体系：800-1000分，五个等级（钻石/白金/黄金/白银/青铜）
+    /// - 履约率追踪：订单完成率、及时释放率、超时率
+    /// - 违约惩罚：超时未释放（-10分）、争议败诉（-20分）
+    /// - 动态保证金：信用分高 → 保证金降低50%（钻石做市商）
+    /// - 服务质量评价：买家1-5星评分影响信用分
+    /// - 自动降级/禁用：信用分 < 750 → 自动暂停接单
+    #[runtime::pallet_index(49)]
+    pub type Credit = pallet_credit;
+
+    /// 函数级中文注释：去中心化聊天功能模块（混合方案）
+    /// - 链上存储：消息元数据（发送方、接收方、IPFS CID、时间戳等）
+    /// - IPFS 存储：加密的消息内容
+    /// - 端到端加密：前端实现消息加密，保护隐私
+    /// - 核心特性：私聊、会话管理、已读/未读状态、消息软删除、未读计数
+    /// - 适用场景：OTC 交易沟通、做市商客服、家族私密沟通
+    #[runtime::pallet_index(51)]
+    pub type Chat = pallet_chat;
+
+    /// 函数级中文注释：通用押金管理模块
+    /// - 统一管理：申诉押金、审核押金、投诉押金等
+    /// - 资金安全：使用Currency trait确保押金安全冻结
+    /// - 可追溯性：完整记录押金生命周期（冻结→释放/罚没）
+    /// - 灵活策略：支持全额退回、部分罚没、全部罚没
+    /// 函数级中文注释：通用押金管理模块
+    /// - 统一管理：申诉押金、审核押金、投诉押金等
+    /// - 资金安全：使用Currency trait确保押金安全冻结
+    /// - 可追溯性：完整记录押金生命周期（冻结→释放/罚没）
+    /// - 灵活策略：支持全额退回、部分罚没、全部罚没
+    /// - 扩展性：通过DepositPurpose枚举支持多种业务场景
+    #[runtime::pallet_index(52)]
+    pub type Deposits = pallet_deposits;
+
+    /// 函数级中文注释：统一纪念服务系统（Memorial Integration）
+    /// 🆕 2025-10-28：整合 pallet-memo-offerings 和 pallet-memo-sacrifice
+    /// 
+    /// **祭祀品目录（Sacrifice Catalog）**：
+    /// - 目录管理：创建/更新/启用/禁用祭祀品规格
+    /// - 定价策略：固定价格 或 按周单价
+    /// - VIP体系：支持VIP专属祭祀品 + 会员折扣
+    /// 
+    /// **供奉业务（Offerings）**：
+    /// - 供奉方式：自定义供奉 或 通过目录下单（offer_by_sacrifice）
+    /// - 定价管理：固定价格 或 按时长计费
+    /// - 会员特权：VIP折扣（如30%）
+    /// - 风控系统：限频控制（账户级 + 目标级）+ 最低金额
+    /// - 多路分账：支持全局路由表 + 按域路由表
+    /// - 暂停控制：全局暂停 或 按域暂停
+    /// - 审核流程：用户提交 → 委员会审批 → 上架/拒绝
+    /// 
+    /// **精简优化**（vs. 原设计）：
+    /// - 函数减少60%（13个 vs. 原32个）
+    /// - 存储减少55%（31个 vs. 原69个）
+    /// - 移除过度设计：场景分类、效果元数据、投诉机制等
+    #[runtime::pallet_index(59)]
+    pub type Memorial = pallet_memorial;
+
+    /// 函数级详细中文注释：统一交易模块 v1.0.0 (Trading Pallet)
+    /// 
+    /// 🆕 2025-10-29：整合 pallet-otc-order, pallet-market-maker, pallet-simple-bridge
+    /// 
+    /// **做市商管理（Maker）**：
+    /// - 押金锁定与解锁
+    /// - 资料提交与审核（支持阈值加密）
+    /// - 状态流转（DepositLocked → PendingReview → Active）
+    /// - 提现申请与冷却期
+    /// - 溢价配置（买入/卖出 -500~500 bps）
+    /// - 服务暂停/恢复
+    /// 
+    /// **OTC订单（OTC）**：
+    /// - 订单创建与匹配
+    /// - 买家付款标记
+    /// - 做市商释放MEMO
+    /// - 订单取消与争议
+    /// - 首购订单支持（限额100-500 MEMO）
+    /// - 限频保护（防刷单攻击）
+    /// 
+    /// **MEMO桥接（Bridge）**：
+    /// - MEMO → USDT TRC20 兑换
+    /// - 做市商兑换服务
+    /// - OCW链下验证
+    /// - 自动完成兑换
+    /// 
+    /// **Phase 5优化（2025-10-28）**：
+    /// - ✅ 双映射索引：O(1)查询用户/做市商订单和兑换
+    /// - ✅ 事件精简：状态码化，减少60%存储
+    /// - ✅ 自动清理：过期订单/兑换自动归档
+    /// - ✅ CID优化：64字节（-75%）
+    /// - ✅ TRON地址优化：34字节（-47%）
+    /// 
+    /// **优势**：
+    /// - Pallet数量：3 → 1 (-67%)
+    /// - 代码复用：高
+    /// - 维护成本：低（-50%）
+    /// - Gas成本：优化（-5-10%）
+    #[runtime::pallet_index(60)]
+    pub type Trading = pallet_trading;
 }

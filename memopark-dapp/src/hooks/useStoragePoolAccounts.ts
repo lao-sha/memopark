@@ -12,10 +12,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
+import type { 
   StoragePoolAccount, 
   OperatorEscrowAccount,
   StoragePoolAccountsResponse,
+} from '@/types';
+import {
   StoragePoolType,
   POOL_ADDRESSES,
   CHAIN_CONSTANTS

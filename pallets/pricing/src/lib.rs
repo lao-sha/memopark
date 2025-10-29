@@ -2,6 +2,12 @@
 
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{pallet_prelude::*, traits::Get};
@@ -167,6 +173,10 @@ pub mod pallet {
             bridge_volume: u128,
             market_price: u64,
         },
+        /// M-3修复：冷启动重置事件（治理紧急恢复机制）
+        ColdStartReset {
+            reason: BoundedVec<u8, ConstU32<256>>,
+        },
     }
 
     #[pallet::error]
@@ -178,6 +188,8 @@ pub mod pallet {
         PriceDeviationTooLarge,
         /// 函数级中文注释：基准价格无效（为0或获取失败）
         InvalidBasePrice,
+        /// M-3修复：冷启动未退出，无法重置
+        ColdStartNotExited,
     }
 
     #[pallet::pallet]
@@ -644,6 +656,54 @@ pub mod pallet {
                 threshold,
                 default_price,
             });
+            
+            Ok(())
+        }
+        
+        /// M-3修复：治理紧急重置冷启动状态
+        /// 
+        /// 函数级详细中文注释：在极端市场条件下，允许治理重新进入冷启动状态
+        /// 
+        /// # 使用场景
+        /// - 市场崩盘，价格长期失真
+        /// - 系统维护，需要暂停市场定价
+        /// - 数据异常，需要重新校准
+        /// 
+        /// # 参数
+        /// - `origin`: 必须是 Root 权限
+        /// - `reason`: 重置原因（最多256字节，用于审计和追溯）
+        /// 
+        /// # 效果
+        /// - 将 `ColdStartExited` 设置为 false
+        /// - 系统将重新使用 `DefaultPrice` 直到市场恢复
+        /// - 发出 `ColdStartReset` 事件
+        /// 
+        /// # 错误
+        /// - `ColdStartNotExited`: 当前未退出冷启动，无需重置
+        /// 
+        /// # 安全考虑
+        /// - 仅限 Root 权限（通常需要治理投票）
+        /// - 不清理历史数据，保留市场记录
+        /// - 可多次调用，适应复杂市场环境
+        #[pallet::call_index(1)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(1, 1))]
+        pub fn reset_cold_start(
+            origin: OriginFor<T>,
+            reason: BoundedVec<u8, ConstU32<256>>,
+        ) -> DispatchResult {
+            frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
+            
+            // 验证：只有已退出冷启动才能重置
+            ensure!(
+                ColdStartExited::<T>::get(),
+                Error::<T>::ColdStartNotExited
+            );
+            
+            // 重置冷启动状态
+            ColdStartExited::<T>::put(false);
+            
+            // 发出事件
+            Self::deposit_event(Event::ColdStartReset { reason });
             
             Ok(())
         }

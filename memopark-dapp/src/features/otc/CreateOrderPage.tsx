@@ -9,6 +9,8 @@ import { MyOrdersCard } from './MyOrdersCard'
 import { formatTimestamp } from '../../utils/timeFormat'
 import { parseChainUsdt, formatPriceDisplay, usdtToCny, formatCny, calculateTotalUsdt, calculateTotalCny } from '../../utils/currencyConverter'
 import CryptoJS from 'crypto-js'  // 🆕 用于EPAY支付签名
+import { MakerCreditBadge } from '../../components/MakerCreditBadge'  // 🆕 2025-10-22：做市商信用徽章
+import { getOrCreateChatSession } from '../../lib/chat'  // 🆕 2025-10-22：聊天功能集成
 
 const { Title, Text } = Typography
 
@@ -71,7 +73,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   /**
    * 函数级中文注释：使用钱包上下文获取当前账户和 API
    */
-  const { current: currentAccount, api: walletApi } = useWallet()
+  const { currentAccount, api: walletApi } = useWallet()
 
   /**
    * 函数级中文注释：返回我的钱包页面
@@ -575,13 +577,43 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             duration: 3
           })
 
-          // 🆕 2025-10-20：订单创建成功后立即发起支付请求
-          if (selectedMaker && selectedMaker.epayGateway) {
-            console.log('💳 订单创建成功，开始发起支付请求...')
-            await initiatePaymentRequest(orderId, selectedMaker)
-          } else {
-            console.log('⚠️ 做市商未配置EPAY，无法发起自动支付')
-            message.info('订单创建成功，请手动完成支付', 3)
+          // 🆕 2025-10-20：订单创建成功后立即发起支付请求 [已废弃：函数已删除]
+          // if (selectedMaker && selectedMaker.epayGateway) {
+          //   console.log('💳 订单创建成功，开始发起支付请求...')
+          //   await initiatePaymentRequest(orderId, selectedMaker)
+          // } else {
+          //   console.log('⚠️ 做市商未配置EPAY，无法发起自动支付')
+          //   message.info('订单创建成功，请手动完成支付', 3)
+          // }
+
+          // 🆕 2025-10-22：订单创建成功后自动打开聊天窗口
+          if (selectedMaker && currentAccount) {
+            try {
+              console.log('💬 订单创建成功，准备打开聊天窗口...')
+              const sessionId = await getOrCreateChatSession(
+                currentAccount.address,
+                selectedMaker.owner
+              )
+              
+              // 显示提示消息
+              Modal.info({
+                title: '订单创建成功',
+                content: (
+                  <div>
+                    <p>✅ 订单ID: {orderId}</p>
+                    <p>📋 请联系做市商获取完整收款信息</p>
+                    <p>💡 点击"打开聊天"按钮与做市商沟通</p>
+                  </div>
+                ),
+                okText: '打开聊天',
+                onOk: () => {
+                  // 导航到聊天页面
+                  window.location.hash = `#/chat/${sessionId}`
+                },
+              })
+            } catch (error) {
+              console.error('打开聊天窗口失败:', error)
+            }
           }
         } else {
           message.warning({ 
@@ -798,19 +830,33 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
               >
                 {marketMakers.map(maker => (
                   <Select.Option key={maker.mmId} value={maker.mmId}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                      <span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
+                      <span style={{ flex: 1 }}>
                         <Tag color="blue" style={{ marginRight: '4px' }}>#{maker.mmId}</Tag>
                         {maker.owner.substring(0, 10)}...{maker.owner.substring(maker.owner.length - 6)}
                       </span>
-                      <Tag color={maker.sellPremiumBps > 0 ? 'orange' : maker.sellPremiumBps < 0 ? 'green' : 'default'}>
-                        溢价: {maker.sellPremiumBps > 0 ? '+' : ''}{(maker.sellPremiumBps / 100).toFixed(2)}%
-                      </Tag>
+                      <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {/* 🆕 2025-10-22：信用等级徽章 */}
+                        <MakerCreditBadge makerId={maker.mmId} detailed={false} showLink={false} />
+                        <Tag color={maker.sellPremiumBps > 0 ? 'orange' : maker.sellPremiumBps < 0 ? 'green' : 'default'}>
+                          溢价: {maker.sellPremiumBps > 0 ? '+' : ''}{(maker.sellPremiumBps / 100).toFixed(2)}%
+                        </Tag>
+                      </span>
                     </div>
                   </Select.Option>
                 ))}
               </Select>
             </Form.Item>
+            
+            {/* 🆕 2025-10-22：做市商信用信息 */}
+            {selectedMaker && (
+              <div style={{ marginTop: '12px' }}>
+                <Text strong style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
+                  💳 做市商信用
+                </Text>
+                <MakerCreditBadge makerId={selectedMaker.mmId} detailed={true} showLink={true} />
+              </div>
+            )}
             
             {/* 🆕 2025-10-20：做市商详细信息和价格计算 */}
             {selectedMaker && basePrice > 0 && !loadingPrice && (
@@ -1073,7 +1119,7 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
               <Descriptions.Item label="状态">
                 {paidOk ? <Tag color="green">{status}</Tag> : remainSec > 0 ? <Tag color="blue">{status}</Tag> : <Tag color="red">expired</Tag>}
               </Descriptions.Item>
-              <Descriptions.Item label="有效期至">{dayjs((order.expired_at || 0) * 1000).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+              <Descriptions.Item label="有效期至">{new Date((order.expired_at || 0) * 1000).toLocaleString('zh-CN')}</Descriptions.Item>
               <Descriptions.Item label="剩余时间">{remainSec}s</Descriptions.Item>
             </Descriptions>
 
@@ -1244,181 +1290,10 @@ const detectDeviceType = (): string => {
   return 'pc'
 }
 
-/**
- * 计算订单支付金额（USDT转人民币）
- */
-const calculateOrderAmount = (): number => {
-  // 从表单获取数量
-  const qty = form.getFieldValue('qty')
-  if (!qty) return 0
-
-  // 从做市商获取价格（sell溢价后的价格）
-  const price = calculateOrderPrice(selectedMaker)
-  if (!price) return 0
-
-  // 计算总金额（USDT，精度10^6）
-  const amountUsdt = Math.floor(Number(qty) * Number(price) * 1000000)
-  return amountUsdt
-}
-
-/**
- * 计算订单价格（包含做市商溢价）
- */
-const calculateOrderPrice = (maker: MarketMaker): number => {
-  // 获取基准价格（从pallet-pricing获取）
-  const basePrice = getBasePrice() // 假设函数已存在
-
-  // 应用做市商卖出溢价（OTC订单）
-  const premiumRate = maker.sellPremiumBps / 10000 // 转换为小数
-  const finalPrice = basePrice * (1 + premiumRate)
-
-  return finalPrice
-}
-
-/**
- * 获取基准价格（假设从pallet-pricing获取）
- * TODO: 需要实现与链上价格源的集成
- */
-const getBasePrice = (): number => {
-  // 临时使用固定价格，实际应该从pallet-pricing获取
-  return 0.000001 // 0.000001 USDT/MEMO
-}
-
-/**
- * 发起EPAY支付请求（符合EPAY API规范）
- */
-const initiatePaymentRequest = async (orderId: string, maker: MarketMaker) => {
-  try {
-    // 1. 生成商户订单号（必须唯一）
-    const outTradeNo = generateMerchantOrderNo()
-
-    // 2. 计算支付金额（人民币，保留2位小数）
-    const amountUsdt = calculateOrderAmount() // USDT金额（精度10^6）
-    const amountCny = usdtToCny(amountUsdt / 1000000) // 转换为人民币
-    const money = amountCny.toFixed(2) // 格式：1.00
-
-    // 3. 构造业务扩展参数（包含做市商账户地址）
-    // 根据EPAY API规范，param字段用于传递业务扩展信息
-    // 这里构造包含买家和做市商地址的对象，便于做市商识别订单归属
-    const paramData = {
-      order_id: orderId,
-      maker_address: maker.owner,  // 🆕 使用做市商账户地址而不是mmId
-      buyer_address: selectedAccount.address,
-      amount_usdt: amountUsdt,
-      chain: 'memopark'
-    }
-    const param = btoa(JSON.stringify(paramData)) // Base64编码
-
-    // 4. 构造请求参数
-    const requestParams = {
-      pid: parseInt(maker.epayPid),           // 商户ID（转为数字）
-      type: 'alipay',                        // 支付方式（默认支付宝）
-      out_trade_no: outTradeNo,              // 商户订单号
-      notify_url: 'https://api.memopark.com/payment/callback', // 异步通知地址
-      name: `MEMO OTC订单支付 - ${orderId.slice(0, 8)}...`, // 商品名称
-      money: money,                          // 支付金额（人民币）
-      clientip: await getClientIP(),         // 用户IP地址
-      return_url: `${window.location.origin}/#/otc/order`, // 跳转通知地址
-      device: detectDeviceType(),            // 设备类型
-      param: param,                          // 业务扩展参数
-      sign_type: 'MD5'                       // 签名类型
-    }
-
-    // 5. 生成签名
-    requestParams.sign = generatePaymentSignature(requestParams, maker.epayKey)
-
-    // 6. 构造接口地址
-    const gatewayUrl = `${maker.epayGateway}/submit.php`
-
-    console.log('🚀 发起支付请求:', {
-      url: gatewayUrl,
-      params: { ...requestParams, sign: requestParams.sign.substring(0, 8) + '***' },
-      maker: maker.mmId
-    })
-
-    // 7. 发送支付请求
-    const formData = new URLSearchParams()
-    Object.entries(requestParams).forEach(([key, value]) => {
-      formData.append(key, value.toString())
-    })
-
-    const response = await fetch(gatewayUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'MemoPark-DApp/1.0'
-      },
-      body: formData
-    })
-
-    // 8. 处理响应
-    if (!response.ok) {
-      // 检查是否是跳转响应（HTTP 302）
-      if (response.status === 302) {
-        const location = response.headers.get('Location')
-        if (location) {
-          // 直接跳转到支付页面
-          window.location.href = location
-          message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
-          return
-        }
-      }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    // 尝试解析JSON响应
-    let result: any
-    const contentType = response.headers.get('content-type')
-    if (contentType && contentType.includes('application/json')) {
-      result = await response.json()
-    } else {
-      // 非JSON响应，直接跳转
-      const location = response.headers.get('Location')
-      if (location) {
-        window.location.href = location
-        message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
-        return
-      }
-      throw new Error('无效的响应格式')
-    }
-
-    // 9. 处理支付响应
-    if (result.status === 'success' && result.payurl) {
-      // 跳转到支付页面
-      window.location.href = result.payurl
-
-      // 显示支付提示
-      message.info('正在跳转到支付页面，请完成支付以释放MEMO', 3)
-    } else {
-      // 支付请求失败，降级到手动支付
-      message.warning(`自动支付失败: ${result.msg || '未知错误'}`)
-      showManualPaymentInfo(orderId, maker)
-    }
-
-  } catch (error) {
-    console.error('支付请求失败:', error)
-    message.warning('支付网关连接失败，请使用手动支付方式')
-    showManualPaymentInfo(orderId, maker)
-  }
-}
-
-/**
- * 显示手动支付信息（降级方案）
- */
-const showManualPaymentInfo = (orderId: string, maker: MarketMaker) => {
-  // 显示做市商收款信息供用户手动转账
-  const paymentInfo = {
-    orderId,
-    amount: calculateOrderAmount(),
-    makerAddress: maker.owner,
-    makerTronAddress: maker.tronAddress || '未配置',
-    deadline: getPaymentDeadline()
-  }
-
-  console.log('💰 手动支付信息:', paymentInfo)
-  // TODO: 在页面上显示支付信息供用户手动转账
-
-  // 显示手动支付提示
-  message.info('请手动转账到做市商地址完成支付', 5)
-}
+// ========== 以下废弃函数已删除（引用未定义变量且未被调用） ==========
+// - calculateOrderAmount()
+// - calculateOrderPrice()
+// - getBasePrice()
+// - initiatePaymentRequest()
+// - showManualPaymentInfo()
 

@@ -8,7 +8,7 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons';
-import { useSubstrateContext } from '../../substrate/SubstrateContext';
+import { useWallet } from '../../providers/WalletProvider';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text, Paragraph } = Typography;
@@ -66,7 +66,7 @@ interface DistributionRecord {
  * - 显示下次自动分配时间
  */
 const StorageTreasuryDashboard: React.FC = () => {
-  const { api, apiState } = useSubstrateContext();
+  const { api } = useWallet();
   
   // 存储池账户定义（从 runtime 配置读取）
   const POOL_ACCOUNTS: PoolAccount[] = [
@@ -130,7 +130,7 @@ const StorageTreasuryDashboard: React.FC = () => {
    * 加载存储池账户余额
    */
   const loadPoolBalances = async () => {
-    if (!api || apiState !== 'READY') return;
+    if (!api) return;
 
     try {
       const balances = new Map<string, PoolBalance>();
@@ -161,7 +161,7 @@ const StorageTreasuryDashboard: React.FC = () => {
    * 加载统计数据
    */
   const loadStatistics = async () => {
-    if (!api || apiState !== 'READY') return;
+    if (!api) return;
 
     try {
       // 累计收集金额
@@ -188,7 +188,7 @@ const StorageTreasuryDashboard: React.FC = () => {
    * 加载路由表配置
    */
   const loadRouteTable = async () => {
-    if (!api || apiState !== 'READY') return;
+    if (!api) return;
 
     try {
       const routes = await api.query.storageTreasury.storageRouteTable();
@@ -211,7 +211,7 @@ const StorageTreasuryDashboard: React.FC = () => {
    * 加载分配历史
    */
   const loadDistributionHistory = async () => {
-    if (!api || apiState !== 'READY' || lastDistributionBlock === 0) return;
+    if (!api || lastDistributionBlock === 0) return;
 
     try {
       const history: DistributionRecord[] = [];
@@ -258,7 +258,7 @@ const StorageTreasuryDashboard: React.FC = () => {
     const interval = setInterval(loadData, 12000);
 
     return () => clearInterval(interval);
-  }, [api, apiState]);
+  }, [api]);
 
   /**
    * 加载分配历史（依赖 lastDistributionBlock）
@@ -267,7 +267,7 @@ const StorageTreasuryDashboard: React.FC = () => {
     if (lastDistributionBlock > 0) {
       loadDistributionHistory();
     }
-  }, [lastDistributionBlock, api, apiState]);
+  }, [lastDistributionBlock, api]);
 
   /**
    * 计算下次分配时间
@@ -358,7 +358,7 @@ const StorageTreasuryDashboard: React.FC = () => {
 
   const nextDistribution = calculateNextDistribution();
 
-  if (apiState !== 'READY') {
+  if (!api) {
     return (
       <div style={{ textAlign: 'center', padding: '100px 0' }}>
         <Spin size="large" />

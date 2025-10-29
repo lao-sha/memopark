@@ -1,637 +1,709 @@
-# pallet-otc-order（OTC 订单管理）
+# Pallet OTC Order - OTC订单管理系统
 
-## 概述
+## 📋 模块概述
 
-`pallet-otc-order` 负责 OTC 交易订单的创建、状态流转、资金托管与释放等核心功能。
+`pallet-otc-order` 是Memopark生态的**核心OTC交易模块**，提供MEMO↔USDT场外交易的完整流程管理。集成做市商管理、买家信用、托管服务、仲裁系统和联盟计酬，实现安全高效的P2P加密货币交易。
 
-**版本 v2.0.0 (2025-10-19) - 动态定价升级**
+### 设计理念
 
-### 核心功能
+- **去中心化托管**：MEMO锁定在链上托管账户
+- **信用保护**：买家/做市商双向信用评估
+- **灵活定价**：基于pallet-pricing的市场价格+做市商溢价
+- **争议保护**：集成仲裁系统处理纠纷
+- **自动归档**：150天后自动清理终态订单
 
-1. **订单撮合**：基于 `pallet-otc-listing` 的挂单创建交易订单
-2. **状态管理**：Created → PaidOrCommitted → Released/Refunded/Disputed/Canceled
-3. **资金托管**：库存模式（库存已在挂单创建时锁定，订单完成时划转）
-4. **价格上报**：订单完成时向 `pallet-pricing` 报告成交数据，用于市场均价统计
-5. **超时保护**：自动处理到期订单，恢复库存
-6. **争议处理**：支持仲裁介入，部分放行/全额放行/全额退款
+## 🏗️ 架构设计
 
-### 定价机制（v2.0.0）
-
-#### 价格来源
-- **挂单价格**：直接使用 `pallet-otc-listing` 中挂单的 `price_usdt`
-- **无需二次查询**：不再从 `pallet-pricing` 读取实时价格，避免价格波动风险
-- **价格保护**：挂单价格已在创建时经过市场均价 ±20% 偏离检查（由 `pallet-otc-listing` 保证）
-
-#### 价格反馈循环（✨ v2.0.0 核心功能）
-```
-pallet-pricing (市场均价) 
-    ↓
-pallet-otc-listing (±20% 检查) 
-    ↓
-pallet-otc-order (订单成交) 
-    ↓
-pallet-pricing (上报成交数据，更新均价)
-```
-
-- **成交上报**：订单放行时，调用 `pallet_pricing::add_otc_order(timestamp, price_usdt, memo_qty)`
-- **统计更新**：成交数据进入 `pallet-pricing` 的 OTC 滑动窗口，影响后续市场均价
-- **闭环反馈**：市场均价随真实成交动态调整，形成自适应定价机制
-
-## 存储项
-
-### 订单数据
-- `Orders: u64 -> Order`：订单详情
-  - `listing_id`：关联的挂单 ID
-  - `maker`：卖家（做市商）
-  - `taker`：买家
-  - `price`：成交价格（USDT 单价，精度 10^6）
-  - `qty`：成交数量（MEMO 最小单位）
-  - `amount`：订单金额（price × qty）
-  - `created_at`：创建时间（Unix时间戳毫秒）
-  - `expire_at`：超时时间（Unix时间戳毫秒）
-  - `evidence_until`：证据窗口截止时间（Unix时间戳毫秒）
-  - `payment_commit`：支付凭证承诺哈希
-  - `contact_commit`：联系方式承诺哈希
-  - `state`：订单状态
-- `NextOrderId: u64`：下一个订单 ID
-- `ExpiringAt: BlockNumber -> Vec<u64>`：到期索引（按区块高度）
-
-### 风控参数（可治理）
-- `OpenWindowParam`：吃单限频窗口大小（块）
-- `OpenMaxInWindowParam`：窗口内最多吃单数
-- `PaidWindowParam`：标记支付限频窗口大小（块）
-- `PaidMaxInWindowParam`：窗口内最多标记支付数
-- `MinOrderAmount`：订单最小金额
-- `ConfirmTTLParam`：订单确认 TTL（块）
-
-### 限频追踪
-- `OpenRate: AccountId -> (BlockNumber, u32)`：吃单限频记录
-- `PaidRate: AccountId -> (BlockNumber, u32)`：标记支付限频记录
-
-### 首购记录
-- `FirstPurchaseRecords: AccountId -> FirstPurchaseInfo`：首购信息（限制每地址仅首购一次）
-
-## 订单状态流转
-
-```
-Created (创建)
-   ↓ mark_paid
-PaidOrCommitted (已支付)
-   ↓ release / arbitrate_release
-Released (已完成)
+```text
+┌──────────────────────────────────────┐
+│     买家下单（create_order）          │
+│  - 选择做市商                         │
+│  - MEMO锁定到托管                     │
+│  - 计算价格（市场价+溢价）            │
+└──────────────┬───────────────────────┘
+               ↓ 订单创建成功
+┌──────────────────────────────────────┐
+│     买家付款（mark_order_paid）       │
+│  - 提交TRON交易hash                   │
+│  - 提交联系方式承诺                   │
+│  - 5分钟内可撤回                      │
+└──────────────┬───────────────────────┘
+               ↓ 做市商验证
+┌──────────────────────────────────────┐
+│     做市商释放（release_order）       │
+│  - 验证收款                           │
+│  - 多路分账                           │
+│    ├─ 买家: 88%（实际MEMO）           │
+│    ├─ 联盟计酬: 10%                   │
+│    └─ 平台: 2%                        │
+└──────────────┬───────────────────────┘
+               ↓ 订单完成
+┌──────────────────────────────────────┐
+│     更新信用记录                      │
+│  - 买家信用+1                        │
+│  - 做市商信用+1                      │
+│  - 买家评分                          │
+└──────────────────────────────────────┘
 ```
 
-或
+## 🔑 核心功能
 
-```
-Created / PaidOrCommitted
-   ↓ mark_disputed
-Disputed (争议中)
-   ↓ arbitrate_release / arbitrate_refund / arbitrate_partial
-Released / Refunded (已完成/已退款)
-```
+### 1. 订单创建
 
-或
-
-```
-Created / PaidOrCommitted / Disputed
-   ↓ refund_on_timeout (超时)
-Refunded (已退款)
-```
-
-## 可调用接口
-
-### 1. open_order（创建订单 - 兼容旧接口）
-
+#### create_order - 创建订单
 ```rust
-pub fn open_order(
+pub fn create_order(
     origin: OriginFor<T>,
-    listing_id: u64,
-    price: BalanceOf<T>,        // 保留参数（不校验）
-    qty: BalanceOf<T>,
-    amount: BalanceOf<T>,       // 保留参数（不校验）
-    payment_commit: H256,
-    contact_commit: H256,
-) -> DispatchResult
-```
-
-#### 功能说明
-- 基于挂单创建订单，数量 `qty` 必须在挂单的 `[min_qty, max_qty]` 范围内
-- 直接使用挂单的 `price_usdt` 作为成交价格
-- `price` 和 `amount` 参数保留但不使用（向后兼容）
-
-### 2. open_order_with_protection（创建订单 - 推荐接口）✨
-
-```rust
-pub fn open_order_with_protection(
-    origin: OriginFor<T>,
-    listing_id: u64,
-    qty: BalanceOf<T>,
-    payment_commit: H256,
-    contact_commit: H256,
-    min_accept_price: Option<BalanceOf<T>>,  // 可选：买家最低接受价格（滑点保护）
-    max_accept_price: Option<BalanceOf<T>>,  // 可选：买家最高接受价格（滑点保护）
-) -> DispatchResult
-```
-
-#### 功能说明
-- 推荐使用此接口，支持买家自定义滑点保护
-- 自动从挂单读取价格并计算订单金额
-- 校验逻辑：
-  1. 读取挂单价格 `price_usdt`
-  2. 计算订单金额 `amount = qty × price_usdt / 1_000_000`
-  3. 校验做市商价带：`price_min ≤ amount ≤ price_max`（如设置）
-  4. 校验买家滑点：`min_accept_price ≤ amount ≤ max_accept_price`（如设置）
-  5. 校验数量范围和库存
-  6. 扣减挂单库存
-
-#### JavaScript 示例
-
-```javascript
-// 1. 查询挂单信息
-const listing = await api.query.otcListing.listings(listingId);
-const priceUsdt = listing.unwrap().price_usdt.toNumber();
-const qty = 1000 * 1e12; // 购买 1,000 MEMO
-
-// 2. 计算预期金额
-const expectedAmount = (qty * priceUsdt) / 1_000_000;
-
-// 3. 设置滑点保护（±1%）
-const minAcceptPrice = Math.floor(expectedAmount * 0.99);
-const maxAcceptPrice = Math.ceil(expectedAmount * 1.01);
-
-// 4. 创建订单
-const paymentCommit = '0x...'; // 支付凭证哈希
-const contactCommit = '0x...'; // 联系方式哈希
-
-const tx = api.tx.otcOrder.openOrderWithProtection(
-  listingId,
-  qty,
-  paymentCommit,
-  contactCommit,
-  minAcceptPrice,
-  maxAcceptPrice
-);
-
-const hash = await tx.signAndSend(keyring.getPair('//Bob'));
-```
-
-### 3. mark_paid（标记已支付 - 买家调用）
-
-```rust
-pub fn mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult
-```
-
-#### 功能说明
-- 买家标记已完成线下支付
-- 状态从 `Created` → `PaidOrCommitted`
-- 要求：调用者必须是 `taker`
-
-### 4. mark_order_paid_by_maker（标记已支付 - 做市商自动调用）🆕 2025-10-21
-
-```rust
-pub fn mark_order_paid_by_maker(
-    origin: OriginFor<T>,
-    order_id: u64,
-    epay_trade_no: Vec<u8>,
-) -> DispatchResult
-```
-
-#### 功能说明
-- **自动支付确认**：做市商的中继服务收到EPAY支付通知后，验证签名后自动调用此接口
-- **记录交易号**：在订单中记录EPAY交易号，用于关联支付记录
-- **状态更新**：状态从 `Created` → `PaidOrCommitted`
-- **触发事件**：触发 `PaymentConfirmedByMaker` 事件，供做市商监听程序自动释放MEMO
-- **权限验证**：只有订单对应的做市商可以调用
-- **防重复标记**：只能标记 `Created` 状态的订单
-
-#### 参数说明
-- `order_id`：订单ID
-- `epay_trade_no`：EPAY交易号（最多64字节，UTF-8字符串）
-
-#### 使用场景
-此接口专为**做市商自动支付系统**设计，配合中继服务实现：
-1. 买家创建订单后，前端自动跳转到做市商的EPAY支付页面
-2. 买家完成支付后，EPAY向做市商的中继服务发送异步通知
-3. 中继服务验证签名后，调用此接口标记订单已支付
-4. 做市商监听链上 `PaymentConfirmedByMaker` 事件，自动释放MEMO
-5. 整个流程无需买家手动标记支付，实现完全自动化
-
-#### 事件
-```rust
-PaymentConfirmedByMaker {
-    order_id: u64,
     maker_id: u64,
-    maker: T::AccountId,
-    taker: T::AccountId,
-    amount: BalanceOf<T>,
-    epay_trade_no: BoundedVec<u8, ConstU32<64>>,
-}
+    qty: BalanceOf<T>,
+) -> DispatchResult
 ```
 
-#### 中继服务调用示例（Node.js）
-```javascript
-const { ApiPromise, WsProvider } = require('@polkadot/api');
+**参数说明**：
+- `maker_id`: 做市商ID
+- `qty`: MEMO数量
 
-// 连接到链
-const api = await ApiPromise.create({ 
-  provider: new WsProvider('ws://127.0.0.1:9944') 
-});
+**工作流程**：
+1. 检查买家信用限额（单笔/日限额）
+2. 检查做市商服务状态（Active/Warning/Suspended）
+3. 获取市场价格+做市商溢价
+4. 计算USDT金额
+5. MEMO锁定到托管账户
+6. 创建订单记录
+7. 更新日交易额度
 
-// 做市商账户
-const makerAccount = keyring.addFromMnemonic(MAKER_MNEMONIC);
+**价格计算**：
+```rust
+// 1. 获取市场基准价
+let base_price = T::PricingProvider::get_market_price();  // 例如0.01 USDT/MEMO
 
-// 调用接口标记订单已支付
-const tx = api.tx.otcOrder.markOrderPaidByMaker(
-  orderId,        // 链上订单ID
-  epayTradeNo     // EPAY交易号，例如 "2025012100001"
+// 2. 应用做市商溢价
+let maker_premium = maker.sell_premium_bps;  // 例如+200 bps (+2%)
+let final_price = base_price * (10000 + maker_premium) / 10000;
+// final_price = 0.01 × 1.02 = 0.0102 USDT/MEMO
+
+// 3. 计算USDT金额
+let usdt_amount = qty * final_price;  // 例如100 MEMO × 0.0102 = 1.02 USDT
+```
+
+### 2. 买家付款
+
+#### mark_order_paid - 标记已付款
+```rust
+pub fn mark_order_paid(
+    origin: OriginFor<T>,
+    order_id: u64,
+    tron_tx_hash: Vec<u8>,
+    contact_commit: H256,
+) -> DispatchResult
+```
+
+**参数说明**：
+- `order_id`: 订单ID
+- `tron_tx_hash`: TRON转账交易hash
+- `contact_commit`: 联系方式承诺（H256哈希）
+
+**功能**：
+- 记录TRON交易hash（防重放）
+- 记录联系方式承诺
+- 状态变更：Created → PaidOrCommitted
+- 设置超时时间（24小时）
+
+**TRON交易hash验证**：
+```rust
+// 检查是否已被使用
+ensure!(
+    !TronTxHashUsed::<T>::contains_key(&tron_tx_hash),
+    Error::<T>::TronTxHashAlreadyUsed
 );
 
-await tx.signAndSend(makerAccount);
+// 标记已使用
+TronTxHashUsed::<T>::insert(&tron_tx_hash, block_number);
 ```
 
-#### 订单结构扩展
+#### cancel_order_by_buyer - 买家撤回
 ```rust
-pub struct Order<AccountId, Balance, Moment> {
-    // ... 原有字段
-    
-    /// 🆕 EPAY 交易号（可选）
-    pub epay_trade_no: Option<BoundedVec<u8, ConstU32<64>>>,
-}
-```
-
-### 5. mark_disputed（标记争议）
-
-```rust
-pub fn mark_disputed(origin: OriginFor<T>, id: u64) -> DispatchResult
-```
-
-#### 功能说明
-- 买家或卖家标记订单为争议状态
-- 状态 → `Disputed`
-- 允许条件：
-  1. 状态为 `PaidOrCommitted`（已支付未放行）
-  2. 或超过 `expire_at`（超时）
-  3. 且在 `evidence_until` 窗口内（证据追加期）
-
-### 6. release（卖家放行）✨ 价格上报
-
-```rust
-pub fn release(origin: OriginFor<T>, id: u64) -> DispatchResult
-```
-
-#### 功能说明
-- 卖家确认收款并放行 MEMO
-- 从挂单托管（`pallet-escrow`）划转 `qty` 给买家
-- **价格上报**：调用 `pallet_pricing::add_otc_order(timestamp, price_usdt, memo_qty)`
-- 状态 → `Released`
-- 要求：调用者必须是 `maker`，状态为 `PaidOrCommitted` 或 `Disputed`
-
-#### 价格上报逻辑（v2.0.0 核心）
-```rust
-// 提取订单信息
-let (price_usdt, memo_qty, timestamp) = {
-    let ord = Orders::<T>::get(id)?;
-    (
-        ord.price.saturated_into::<u64>(),      // USDT单价
-        ord.qty.saturated_into::<u128>(),       // MEMO数量
-        ord.created_at.saturated_into::<u64>()  // 创建时间戳
-    )
-};
-
-// 上报到 pallet-pricing
-pallet_pricing::Pallet::<T>::add_otc_order(timestamp, price_usdt, memo_qty);
-```
-
-### 7. refund_on_timeout（超时退款）
-
-```rust
-pub fn refund_on_timeout(origin: OriginFor<T>, id: u64) -> DispatchResult
-```
-
-#### 功能说明
-- 任何人可触发
-- 超过 `expire_at` 且状态为 `Created` / `PaidOrCommitted` / `Disputed` 时，恢复挂单库存
-- 状态 → `Refunded`
-
-### 7. reveal_payment / reveal_contact（揭示承诺）
-
-```rust
-pub fn reveal_payment(
+pub fn cancel_order_by_buyer(
     origin: OriginFor<T>,
-    id: u64,
-    payload: Vec<u8>,
-    salt: Vec<u8>,
-) -> DispatchResult
-
-pub fn reveal_contact(
-    origin: OriginFor<T>,
-    id: u64,
-    payload: Vec<u8>,
-    salt: Vec<u8>,
+    order_id: u64,
 ) -> DispatchResult
 ```
 
-#### 功能说明
-- 揭示支付凭证或联系方式的原文
-- 校验 `blake2_256(payload || salt) == commit`
-- 用于争议处理时提供证据
+**功能**：
+- 仅在标记已付款后5分钟内可撤回
+- 防止误操作
+- 退还MEMO给买家
 
-### 8. set_order_params（治理更新风控参数）
+### 3. 做市商释放
 
+#### release_order - 释放订单
 ```rust
-pub fn set_order_params(
+pub fn release_order(
     origin: OriginFor<T>,
-    open_window: Option<BlockNumberFor<T>>,
-    open_max_in_window: Option<u32>,
-    paid_window: Option<BlockNumberFor<T>>,
-    paid_max_in_window: Option<u32>,
-    min_order_amount: Option<BalanceOf<T>>,
-    confirm_ttl: Option<BlockNumberFor<T>>,
+    order_id: u64,
 ) -> DispatchResult
 ```
 
-#### 功能说明
-- 仅允许 Root 调用
-- 未提供的参数保持不变
+**权限**：做市商
 
-### 9. first_purchase_by_fiat（法币首购接口）
+**功能**：
+- 验证收款（链下确认）
+- 多路分账
+- 更新信用记录
+- 触发联盟计酬
 
+**多路分账**：
 ```rust
-pub fn first_purchase_by_fiat(
+// 假设订单100 MEMO，价值1.02 USDT
+
+// 1. 买家实际获得（88%）
+buyer_amount = 100 × 88% = 88 MEMO
+
+// 2. 联盟计酬（10%）
+affiliate_amount = 100 × 10% = 10 MEMO
+// 分配给15层推荐链
+
+// 3. 平台费用（2%）
+platform_amount = 100 × 2% = 2 MEMO
+// 销毁/国库/存储
+```
+
+### 4. 超时与争议
+
+#### handle_timeout - 处理超时
+```rust
+// OnInitialize自动触发
+pub fn handle_timeout(order_id: u64) -> DispatchResult
+```
+
+**功能**：
+- 24小时未释放自动超时
+- 退款给买家
+- 做市商信用-20分
+
+#### dispute_order - 发起争议
+```rust
+pub fn dispute_order(
+    origin: OriginFor<T>,
+    order_id: u64,
+    evidence_id: u64,
+) -> DispatchResult
+```
+
+**功能**：
+- 买家/做市商可发起争议
+- 关联证据ID
+- 转交仲裁系统
+- 状态变更：PaidOrCommitted → Disputed
+
+### 5. 首购功能
+
+#### first_purchase - 首购MEMO
+```rust
+pub fn first_purchase(
     origin: OriginFor<T>,
     buyer: T::AccountId,
+    tron_tx_hash: Vec<u8>,
     amount: BalanceOf<T>,
-    referrer: Option<T::AccountId>,
-    fiat_order_id: Vec<u8>,
 ) -> DispatchResult
 ```
 
-#### 功能说明
-- 仅授权的法币网关服务账户可调用
-- 验证买家未曾首购
-- 金额范围：50-100 MEMO（可治理）
-- 如有推荐人，绑定推荐关系并触发联盟计酬
-- 如无推荐人，不绑定推荐关系（资金由链下转入国库）
+**权限**：FiatGatewayAccount（法币网关）
 
-## 仲裁钩子（ArbitrationHook）
+**功能**：
+- 新用户首次购买MEMO
+- 无需做市商
+- 从法币网关托管账户转账
+- 自动分配联盟计酬（如有推荐人）
 
-为 `pallet-arbitration` 提供的内部接口：
-
-### can_dispute
-```rust
-fn can_dispute(who: &T::AccountId, id: u64) -> bool
+**使用场景**：
+```text
+用户注册 → 法币网关支付 → 网关调用first_purchase → 用户获得MEMO
 ```
-校验发起人是否可对该订单发起争议。
 
-### arbitrate_release ✨ 价格上报
+### 6. 订单归档
+
+#### auto_cleanup_archived_orders - 自动清理
 ```rust
-fn arbitrate_release(id: u64) -> DispatchResult
+// OnInitialize自动触发
+pub fn auto_cleanup_archived_orders() -> Weight
 ```
-仲裁放行，划转 `qty` 给买家，并**上报成交数据到 pallet-pricing**。
 
-### arbitrate_refund
+**功能**：
+- 清理150天前的终态订单（Released/Refunded/Closed）
+- 每块最多清理50个订单
+- 释放存储空间
+
+**终态条件**：
 ```rust
-fn arbitrate_refund(id: u64) -> DispatchResult
-```
-仲裁退款，恢复挂单库存。
-
-### arbitrate_partial
-```rust
-fn arbitrate_partial(id: u64, bps: u16) -> DispatchResult
-```
-仲裁部分放行（按 bps 比例分配 MEMO 给买家和卖家）。
-
-## 事件
-
-### OrderOpened
-```rust
-OrderOpened {
-    id: u64,
-    listing_id: u64,
-    maker: T::AccountId,
-    taker: T::AccountId,
-    price: BalanceOf<T>,        // 成交价格（USDT单价）
-    qty: BalanceOf<T>,          // 成交数量（MEMO）
-    amount: BalanceOf<T>,       // 订单金额
-    created_at: MomentOf<T>,    // 创建时间（Unix毫秒）
-    expire_at: MomentOf<T>,     // 超时时间（Unix毫秒）
+match order.state {
+    OrderState::Released | 
+    OrderState::Refunded | 
+    OrderState::Closed => {
+        let age_days = (current_time - order.created_at) / 86400;
+        if age_days > ArchiveThresholdDays {
+            // 清理订单
+            Orders::<T>::remove(order_id);
+        }
+    },
+    _ => {}  // 非终态订单保留
 }
 ```
 
-### OrderPaidCommitted
-买家已标记支付。
+## 📦 存储结构
 
-### OrderReleased
-订单已完成（卖家放行或仲裁放行）。
-
-### OrderRefunded
-订单已退款（超时或仲裁退款）。
-
-### OrderCanceled
-订单已取消（预留，当前未实现）。
-
-### OrderDisputed
-订单进入争议状态。
-
-### PaymentRevealed / ContactRevealed
-承诺已揭示并校验通过。
-
-### OrderParamsUpdated
-风控参数已更新（治理）。
-
-### FirstPurchaseCompleted
-首购完成事件。
-
-## 错误码
-
-- `NotFound`：订单不存在
-- `BadState`：状态错误、参数不合法、权限不足等
-- `BadCommit`：承诺哈希校验失败
-- `Unauthorized`：未授权的调用者（仅法币网关服务可调用）
-- `AlreadyPurchased`：已经完成过首购
-- `AmountOutOfRange`：金额超出首购限制
-- `InvalidReferrer`：推荐人无效（不是有效会员）
-
-## 风控机制
-
-### 限频保护
-- ✅ **吃单限频**：滑动窗口防刷单（`OpenWindow` / `OpenMaxInWindow`）
-- ✅ **标记支付限频**：防止恶意标记（`PaidWindow` / `PaidMaxInWindow`）
-
-### 金额保护
-- ✅ **最小订单金额**：`MinOrderAmount`（防止垃圾订单）
-- ✅ **数量范围**：挂单的 `[min_qty, max_qty]`
-- ✅ **库存检查**：确保挂单剩余库存充足
-
-### 时间保护
-- ✅ **确认超时**：`ConfirmTTL`（买家支付后卖家必须在此时间内放行）
-- ✅ **证据窗口**：`ConfirmTTL × 2`（争议期内可补充证据）
-- ✅ **自动退款**：`on_initialize` 自动处理到期订单
-
-### 价格安全（v2.0.0）
-- ✅ **价格锁定**：订单创建时锁定挂单价格，避免价格波动风险
-- ✅ **价格追溯**：订单事件中记录完整价格信息
-- ✅ **价格反馈**：成交数据自动上报 `pallet-pricing`，形成闭环
-
-## 监控建议
-
-### 关键指标
-- 订单创建频率（每小时/每日）
-- 订单完成率（Released / Total）
-- 订单超时率（Refunded / Total）
-- 订单争议率（Disputed / Total）
-- 平均确认时长（Created → Released）
-
-### 价格监控（v2.0.0 新增）
-- 成交价格分布（按时间段统计）
-- 成交数量分布（按价格区间统计）
-- OTC 成交对市场均价的影响（成交前后均价变化）
-
-### 资金流监控
-- 托管余额总量（各挂单托管余额之和）
-- 未完成订单总金额（Created + PaidOrCommitted 状态的订单）
-- 争议订单总金额（Disputed 状态的订单）
-
-## 使用流程
-
-### 1. 买家吃单创建订单
-
-```javascript
-// 查询挂单
-const listing = await api.query.otcListing.listings(1);
-const priceUsdt = listing.unwrap().price_usdt.toNumber();
-const qty = 1000 * 1e12; // 1,000 MEMO
-
-// 生成承诺哈希
-const paymentData = "alipay:13800138000:20250119001"; // 支付方式:账号:订单号
-const salt = crypto.randomBytes(32);
-const paymentCommit = blake2_256(Buffer.concat([Buffer.from(paymentData), salt]));
-
-const contactData = "telegram:@buyer123";
-const contactSalt = crypto.randomBytes(32);
-const contactCommit = blake2_256(Buffer.concat([Buffer.from(contactData), contactSalt]));
-
-// 创建订单（推荐使用 with_protection）
-const tx = api.tx.otcOrder.openOrderWithProtection(
-  1,                  // listing_id
-  qty,
-  paymentCommit,
-  contactCommit,
-  null,               // min_accept_price: 不设置
-  null                // max_accept_price: 不设置
-);
-
-await tx.signAndSend(buyerKey);
+### 订单记录
+```rust
+pub type Orders<T: Config> = StorageMap<
+    _,
+    Blake2_128Concat,
+    u64,  // order_id
+    Order<T::AccountId, BalanceOf<T>, MomentOf<T>>,
+    OptionQuery,
+>;
 ```
 
-### 2. 买家线下支付并标记
-
-```javascript
-// 买家转账后标记已支付
-await api.tx.otcOrder.markPaid(orderId).signAndSend(buyerKey);
+**Order结构**：
+```rust
+pub struct Order<AccountId, Balance, Moment> {
+    pub maker_id: u64,                          // 做市商ID
+    pub maker: AccountId,                       // 做市商账户
+    pub taker: AccountId,                       // 买家账户
+    pub price: Balance,                         // 单价（USDT）
+    pub qty: Balance,                           // MEMO数量
+    pub amount: Balance,                        // USDT总额
+    pub created_at: Moment,                     // 创建时间
+    pub expire_at: Moment,                      // 超时时间
+    pub maker_tron_address: BoundedVec<u8, ConstU32<64>>,  // TRON地址
+    pub payment_commit: H256,                   // TRON交易hash
+    pub contact_commit: H256,                   // 联系方式承诺
+    pub state: OrderState,                      // 订单状态
+    pub epay_trade_no: Option<BoundedVec<u8, ConstU32<64>>>,  // EPAY交易号
+}
 ```
 
-### 3. 卖家确认并放行 ✨
-
-```javascript
-// 卖家确认收款，放行MEMO（同时触发价格上报）
-await api.tx.otcOrder.release(orderId).signAndSend(makerKey);
-
-// 监听事件
-api.query.system.events((events) => {
-  events.forEach(({ event }) => {
-    if (event.section === 'otcOrder' && event.method === 'OrderReleased') {
-      console.log(`✅ 订单 ${event.data.id} 已完成`);
-      // 此时 pallet-pricing 已收到成交数据并更新市场均价
-    }
-  });
-});
+**OrderState枚举**：
+```rust
+pub enum OrderState {
+    Created,            // 已创建（待付款）
+    PaidOrCommitted,    // 已付款（待释放）
+    Released,           // 已释放（已完成）
+    Refunded,           // 已退款
+    Canceled,           // 已取消
+    Disputed,           // 争议中
+    Closed,             // 已关闭
+}
 ```
 
-### 4. 监听市场价格变化
-
-```javascript
-// 订单放行后，市场均价会更新
-const oldPrice = await api.query.pricing.getMemoMarketPriceWeighted();
-console.log(`放行前市场均价: ${oldPrice.toNumber() / 1_000_000} USDT`);
-
-// 等待订单放行...
-
-const newPrice = await api.query.pricing.getMemoMarketPriceWeighted();
-console.log(`放行后市场均价: ${newPrice.toNumber() / 1_000_000} USDT`);
-
-const change = ((newPrice - oldPrice) / oldPrice * 100).toFixed(4);
-console.log(`市场均价变化: ${change}%`);
+### TRON交易hash记录
+```rust
+pub type TronTxHashUsed<T: Config> = StorageMap<
+    _,
+    Blake2_128Concat,
+    Vec<u8>,            // tron_tx_hash
+    BlockNumberFor<T>,  // 使用时的区块号
+    OptionQuery,
+>;
 ```
 
-## 升级路径
+**用途**：防止重放攻击（同一交易hash不能多次使用）
 
-### v2.0.0 (2025-10-19) - 动态定价升级 ✅
-
-#### 核心改进
-1. ✅ 订单放行时自动上报成交数据到 `pallet-pricing`
-2. ✅ 仲裁放行时同样上报成交数据
-3. ✅ 形成完整的价格反馈闭环
-
-#### 价格反馈机制
-```
-市场成交 → pallet-pricing (滑动窗口统计) → 市场均价 
-    ↑                                           ↓
-    └─────────── pallet-otc-listing (±20% 检查) ←┘
+### 限频控制
+```rust
+pub type OpenRate<T: Config> = StorageMap<
+    _,
+    Blake2_128Concat,
+    T::AccountId,
+    (BlockNumberFor<T>, u32),  // (window_start, count)
+    ValueQuery,
+>;
 ```
 
-#### 向后兼容
-- ✅ 存储结构保持不变
-- ✅ 订单 ID 编号延续
-- ✅ 事件结构保持不变
-- ✅ 价格上报为非关键路径（失败不影响订单放行）
+## 🔧 配置参数
 
-## 安全考虑
+```rust
+pub trait Config: frame_system::Config + 
+                  pallet_escrow::pallet::Config + 
+                  pallet_timestamp::Config + 
+                  pallet_pricing::Config + 
+                  pallet_market_maker::Config + 
+                  pallet_buyer_credit::Config {
+    /// 货币接口
+    type Currency: Currency<Self::AccountId>;
 
-### 资金安全
-- ✅ **库存托管**：挂单创建时锁定，防止超卖
-- ✅ **原子操作**：状态变更和资金划转在同一事务中完成
-- ✅ **超时保护**：自动恢复库存
+    /// 确认超时时间（区块数，默认24小时）
+    type ConfirmTTL: Get<BlockNumberFor<Self>>;
 
-### 承诺-揭示机制
-- ✅ **隐私保护**：支付凭证和联系方式链上仅存储哈希
-- ✅ **按需揭示**：争议时才需要揭示原文
-- ✅ **哈希校验**：防止篡改
+    /// 托管接口
+    type Escrow: EscrowTrait<Self::AccountId, BalanceOf<Self>>;
 
-### 争议处理
-- ✅ **双向发起**：买家和卖家都可发起争议
-- ✅ **时间窗口**：证据追加期内可发起
-- ✅ **仲裁介入**：支持部分放行，灵活处理争议
+    /// 做市商信用接口
+    type MakerCredit: MakerCreditInterface;
 
-### 价格安全（v2.0.0）
-- ✅ **价格锁定**：订单创建时锁定价格，避免成交时价格变化
-- ✅ **追溯透明**：完整记录价格形成过程
-- ✅ **闭环反馈**：真实成交推动市场均价，防止价格操纵
+    /// 每块最多处理过期订单数
+    type MaxExpiringPerBlock: Get<u32>;
 
-## 相关文档
+    /// 下单限频窗口（区块数）
+    type OpenWindow: Get<BlockNumberFor<Self>>;
 
-- [pallet-otc-listing README](/home/xiaodong/文档/memopark/pallets/otc-listing/README.md)
-- [pallet-pricing README](/home/xiaodong/文档/memopark/pallets/pricing/README.md)
-- [定价基准价格±20%方案分析](/home/xiaodong/文档/memopark/docs/定价基准价格±20%方案分析.md)
+    /// 窗口内最多下单次数
+    type OpenMaxInWindow: Get<u32>;
 
-## 版本变更
+    /// 买家撤回窗口（毫秒，默认5分钟）
+    type CancelWindow: Get<MomentOf<Self>>;
 
-### v2.0.0 (2025-10-19) - 动态定价升级
+    /// 法币网关服务账户
+    type FiatGatewayAccount: Get<Self::AccountId>;
 
-**核心改进**
-- ✅ 订单放行时自动上报成交数据到 `pallet-pricing`
-- ✅ 仲裁放行时同样上报成交数据
-- ✅ 完整的价格反馈闭环（成交 → 统计 → 均价 → 检查 → 成交）
+    /// 法币网关托管账户
+    type FiatGatewayTreasuryAccount: Get<Self::AccountId>;
 
-**优化**
-- ♻️ 重构注释，提升代码可读性
-- 📝 更新 README.md，补充价格上报机制说明
+    /// 首购最低金额
+    type MinFirstPurchaseAmount: Get<BalanceOf<Self>>;
 
-**向后兼容**
-- ✅ 无破坏性变更
-- ✅ 价格上报为非关键路径（失败不影响订单放行）
+    /// 首购最高金额
+    type MaxFirstPurchaseAmount: Get<BalanceOf<Self>>;
+
+    /// 会员信息提供者
+    type MembershipProvider: MembershipProvider<Self::AccountId>;
+
+    /// 推荐关系提供者
+    type ReferralProvider: ReferralProvider<Self::AccountId>;
+
+    /// 联盟计酬分配器
+    type AffiliateDistributor: AffiliateDistributor<Self::AccountId, u128, BlockNumberFor<Self>>;
+
+    /// 订单归档阈值（天数，默认150天）
+    type ArchiveThresholdDays: Get<u32>;
+
+    /// 每次自动清理的最大订单数（默认50）
+    type MaxCleanupPerBlock: Get<u32>;
+
+    /// TRON交易hash保留期（区块数，默认180天）
+    type TronTxHashRetentionPeriod: Get<BlockNumberFor<Self>>;
+}
+```
+
+## 📡 可调用接口
+
+### 用户接口
+
+#### 1. create_order - 创建订单
+```rust
+#[pallet::call_index(0)]
+pub fn create_order(
+    origin: OriginFor<T>,
+    maker_id: u64,
+    qty: BalanceOf<T>,
+) -> DispatchResult
+```
+
+#### 2. mark_order_paid - 标记已付款
+```rust
+#[pallet::call_index(1)]
+pub fn mark_order_paid(
+    origin: OriginFor<T>,
+    order_id: u64,
+    tron_tx_hash: Vec<u8>,
+    contact_commit: H256,
+) -> DispatchResult
+```
+
+#### 3. cancel_order_by_buyer - 买家撤回
+```rust
+#[pallet::call_index(2)]
+pub fn cancel_order_by_buyer(
+    origin: OriginFor<T>,
+    order_id: u64,
+) -> DispatchResult
+```
+
+#### 4. dispute_order - 发起争议
+```rust
+#[pallet::call_index(3)]
+pub fn dispute_order(
+    origin: OriginFor<T>,
+    order_id: u64,
+    evidence_id: u64,
+) -> DispatchResult
+```
+
+### 做市商接口
+
+#### 5. release_order - 释放订单
+```rust
+#[pallet::call_index(4)]
+pub fn release_order(
+    origin: OriginFor<T>,
+    order_id: u64,
+) -> DispatchResult
+```
+
+### 法币网关接口
+
+#### 6. first_purchase - 首购MEMO
+```rust
+#[pallet::call_index(5)]
+pub fn first_purchase(
+    origin: OriginFor<T>,
+    buyer: T::AccountId,
+    tron_tx_hash: Vec<u8>,
+    amount: BalanceOf<T>,
+) -> DispatchResult
+```
+
+## 🎉 事件
+
+### OrderCreated - 订单创建事件
+```rust
+OrderCreated {
+    order_id: u64,
+    maker_id: u64,
+    taker: T::AccountId,
+    qty: BalanceOf<T>,
+    amount: BalanceOf<T>,
+}
+```
+
+### OrderPaid - 订单付款事件
+```rust
+OrderPaid {
+    order_id: u64,
+    taker: T::AccountId,
+    tron_tx_hash: Vec<u8>,
+}
+```
+
+### OrderReleased - 订单释放事件
+```rust
+OrderReleased {
+    order_id: u64,
+    maker: T::AccountId,
+    taker: T::AccountId,
+}
+```
+
+### OrderDisputed - 订单争议事件
+```rust
+OrderDisputed {
+    order_id: u64,
+    initiator: T::AccountId,
+    evidence_id: u64,
+}
+```
+
+### OrderArchived - 订单归档事件
+```rust
+OrderArchived {
+    order_id: u64,
+    archived_at: BlockNumberFor<T>,
+}
+```
+
+## ❌ 错误处理
+
+### MakerNotFound
+- **说明**：做市商不存在
+- **触发**：选择不存在的做市商
+
+### MakerServiceSuspended
+- **说明**：做市商服务已暂停
+- **触发**：做市商信用分<750
+
+### ExceedsCreditLimit
+- **说明**：超过信用限额
+- **触发**：超过买家单笔/日限额
+
+### TronTxHashAlreadyUsed
+- **说明**：TRON交易hash已使用
+- **触发**：重复使用同一交易hash
+
+### CancelWindowExpired
+- **说明**：撤回窗口已过
+- **触发**：标记已付款5分钟后尝试撤回
+
+### RateLimited
+- **说明**：限频限制
+- **触发**：短时间内多次下单
+
+## 🔌 使用示例
+
+### 场景1：完整OTC交易流程
+
+```rust
+// 1. 买家查询做市商列表
+let makers = get_active_makers();
+
+// 2. 创建订单（100 MEMO）
+let order_id = pallet_otc_order::Pallet::<T>::create_order(
+    buyer_origin.clone(),
+    maker_id,
+    100_000_000_000_000u128,  // 100 MEMO
+)?;
+
+// 3. 链下：买家向做市商TRON地址转账USDT
+let order = pallet_otc_order::Orders::<T>::get(order_id)?;
+// 前端显示：请向 {order.maker_tron_address} 转账 {order.amount} USDT
+
+// 4. 买家标记已付款
+pallet_otc_order::Pallet::<T>::mark_order_paid(
+    buyer_origin.clone(),
+    order_id,
+    tron_tx_hash,
+    contact_commit,
+)?;
+
+// 5. 做市商验证收款（链下）
+// 查询TRON链确认收款...
+
+// 6. 做市商释放MEMO
+pallet_otc_order::Pallet::<T>::release_order(
+    maker_origin,
+    order_id,
+)?;
+
+// 7. 系统自动多路分账
+// - 买家获得88 MEMO
+// - 联盟计酬10 MEMO
+// - 平台费用2 MEMO
+
+// 8. 更新信用记录（自动）
+// - 买家信用+1
+// - 做市商信用+1
+```
+
+### 场景2：买家撤回订单
+
+```rust
+// 买家误操作标记已付款
+pallet_otc_order::Pallet::<T>::mark_order_paid(
+    buyer_origin.clone(),
+    order_id,
+    wrong_tx_hash,
+    contact_commit,
+)?;
+
+// 5分钟内可撤回
+pallet_otc_order::Pallet::<T>::cancel_order_by_buyer(
+    buyer_origin,
+    order_id,
+)?;
+
+// MEMO退还给买家
+// 订单状态：PaidOrCommitted → Canceled
+```
+
+### 场景3：争议处理
+
+```rust
+// 做市商24小时未释放，买家发起争议
+
+// 1. 提交证据
+let evidence_id = pallet_evidence::Pallet::<T>::commit(
+    buyer_origin.clone(),
+    *b"otc_order",
+    order_id,
+    vec![tron_tx_screenshot],  // 转账截图
+    vec![],
+    vec![],
+    b"I already transferred but maker didn't release".to_vec(),
+)?;
+
+// 2. 发起争议
+pallet_otc_order::Pallet::<T>::dispute_order(
+    buyer_origin,
+    order_id,
+    evidence_id,
+)?;
+
+// 3. 转交仲裁系统
+pallet_arbitration::Pallet::<T>::dispute_with_evidence_id(
+    buyer_origin,
+    *b"memopark/otc_order",
+    order_id,
+    evidence_id,
+)?;
+
+// 4. 委员会裁决...
+```
+
+## 🛡️ 安全机制
+
+### 1. 信用保护
+
+- 买家信用限额
+- 做市商信用门槛
+- 双向信用评估
+
+### 2. 资金安全
+
+- MEMO链上托管
+- 多路分账原子性
+- 超时自动退款
+
+### 3. 防重放
+
+- TRON交易hash去重
+- 保留期180天
+- 定期清理
+
+### 4. 限频保护
+
+- 下单限频
+- 标记已付款限频
+- 防止恶意刷单
+
+### 5. 争议保护
+
+- 证据链上化
+- 仲裁系统介入
+- 信用分惩罚
+
+## 📝 最佳实践
+
+### 1. 做市商选择
+
+- 选择高信用分做市商（Gold+）
+- 查看历史成交记录
+- 注意溢价和限额
+
+### 2. 付款操作
+
+- 仔细核对TRON地址
+- 确认金额准确
+- 保存转账凭证
+
+### 3. 争议处理
+
+- 及时提交证据
+- 保持沟通记录
+- 配合仲裁调查
+
+### 4. 监控指标
+
+- 订单完成率
+- 平均完成时间
+- 争议率
+- 归档订单数
+
+## 🔗 相关模块
+
+- **pallet-market-maker**: 做市商管理（获取做市商信息）
+- **pallet-buyer-credit**: 买家信用（检查限额）
+- **pallet-maker-credit**: 做市商信用（更新记录）
+- **pallet-escrow**: 托管服务（锁定/释放MEMO）
+- **pallet-arbitration**: 仲裁系统（处理争议）
+- **pallet-pricing**: 价格管理（获取市场价格）
+- **pallet-affiliate-config**: 联盟计酬（分配奖励）
+
+## 📚 参考资源
+
+- [OTC交易流程详解](../../docs/otc-trading-process.md)
+- [多路分账机制](../../docs/multi-route-distribution.md)
+- [订单归档策略](../../docs/order-archival-strategy.md)
 
 ---
 
-**✅ pallet-otc-order v2.0.0 - 已完成动态定价升级**
+**版本**: 1.0.0  
+**最后更新**: 2025-10-27  
+**维护者**: Memopark 开发团队

@@ -67,3 +67,23 @@ memopark-gov/*.ntvs*
 memopark-gov/package-lock.json
 
 memopark-gov-scripts/
+first-purchase-scripts/
+first-purchase-scripts/node_modules
+first-purchase-scripts/dist
+first-purchase-scripts/dist-ssr
+first-purchase-scripts/*.local
+first-purchase-scripts/.vscode
+first-purchase-scripts/.idea
+first-purchase-scripts/.DS_Store
+first-purchase-scripts/*.suo
+first-purchase-scripts/*.ntvs*
+
+maker-relay-service/node_modules
+maker-relay-service/dist
+maker-relay-service/dist-ssr
+maker-relay-service/*.local
+maker-relay-service/.vscode
+maker-relay-service/.idea
+maker-relay-service/.DS_Store
+maker-relay-service/*.suo
+maker-relay-service/*.ntvs*

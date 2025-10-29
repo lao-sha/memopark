@@ -1,348 +1,373 @@
-# pallet-affiliate
+# Pallet Affiliate - 联盟计酬托管层
 
-## 📋 功能概述
+## 📋 模块概述
 
-联盟计酬托管层模块，专注于资金的安全托管与管理。职责单一：只负责资金的存入、提取和余额查询，不涉及分配逻辑。
+`pallet-affiliate` 是联盟计酬系统的**资金托管层**，专注于MEMO资金的安全托管与管理。本模块职责单一：只负责资金的存入、提取和余额查询，不涉及分配逻辑，确保资金安全隔离。
 
----
+### 设计理念
 
-## 🎯 核心特性
-
-### 1. 独立托管账户
-
-**托管账户：**
-- PalletId: `AffiliatePalletId (*b"affiliat")`
-- 与 OTC 托管账户（`EscrowPalletId (*b"otc/escw")`）完全隔离
-- 资金安全独立，审计清晰
-
-**架构优势：**
-- ✅ 职责单一：只管钱的存放
-- ✅ 资金隔离：不同业务资金互不干扰
-- ✅ 审计清晰：托管与分配逻辑分离
-
----
-
-### 2. 托管接口
-
-| 接口 | 功能 | 权限 |
-|------|------|------|
-| `escrow_account()` | 获取托管账户地址 | 公开 |
-| `escrow_balance()` | 查询托管账户余额 | 公开 |
-| `deposit(from, amount)` | 归集资金到托管账户 | 任何账户 |
-| `withdraw(to, amount)` | 从托管账户提取资金 | 授权 Origin |
-
----
-
-### 3. 权限控制
-
-**存款操作：**
-- ✅ 任何账户都可以向托管账户转账
-- ✅ 用于归集联盟计酬资金
-
-**提款操作：**
-- ⚠️ 只有授权的 Origin 可以提取资金
-- ⚠️ 通常配置为 Root 或特定委员会
-- ⚠️ 用于周结算模块（`pallet-memo-affiliate-weekly`）的资金提取
-
----
+- **单一职责**：只管理资金托管，分配逻辑由其他pallet实现
+- **资金隔离**：使用独立的托管账户(`*b"affiliat"`)，与OTC托管账户完全隔离
+- **接口清晰**：提供简洁的存取接口，供分配模块调用
 
 ## 🏗️ 架构设计
 
-### 模块关系图
-
-```
+```text
 ┌──────────────────────┐
-│ pallet-memo-affiliate│ ← 托管层（本模块）
-│ - 托管资金            │
-│ - 存取接口            │
-│ - 权限控制            │
+│ pallet-affiliate     │ ← 托管层（本模块）
+│ - 托管资金           │    提供托管账户
+│ - 存取接口           │    管理资金进出
 └──────────────────────┘
          ↑
-         │ 读取托管账户
-         │ 调用 withdraw
+         │ 调用托管账户
          │
 ┌────────┴──────────────────────┐
-│ pallet-memo-affiliate-weekly  │ ← 分配层
-│ - 分配逻辑                     │
-│ - 周期结算                     │
-│ - 活跃度管理                   │
+│ pallet-affiliate-weekly       │ ← 分配层
+│ - 分配逻辑                     │    周期结算
+│ - 周期结算                     │    从托管账户提取
 └───────────────────────────────┘
 ```
 
----
+### 与其他模块的关系
 
-### 与 pallet-affiliate-instant 的架构一致性
+| 模块 | 关系 | 说明 |
+|------|------|------|
+| `pallet-affiliate-instant` | 平行 | 即时分成工具，资金由调用方传入 |
+| `pallet-affiliate-weekly` | 调用者 | 周结算工具，资金从本托管层读取 |
+| `pallet-affiliate-config` | 协调者 | 配置管理，协调即时和周结算模式 |
+| `pallet-memo-offerings` | 资金来源 | 供奉收入通过多路分账流入托管 |
 
-| 模块 | 托管 | 分配 | 模式 |
-|------|------|------|------|
-| **pallet-memo-affiliate** | ✅ | ❌ | **托管层** |
-| **pallet-memo-affiliate-weekly** | ❌ | ✅ | **工具层** |
-| **pallet-affiliate-instant** | ❌ | ✅ | **工具层** |
+## 🔑 核心功能
 
-**设计理念：**
-- ✅ 托管层专注于资金安全
-- ✅ 工具层专注于分配算法
-- ✅ 职责清晰，解耦合
+### 1. 托管账户管理
 
----
+- **独立账户**：使用 `AffiliatePalletId (*b"affiliat")` 派生托管账户
+- **资金隔离**：与OTC托管账户完全隔离，资金安全独立
+- **账户查询**：提供 `escrow_account()` 方法获取托管账户地址
 
-## 💻 接口说明
+### 2. 资金存取接口
 
-### 1. 查询接口
-
-#### 获取托管账户地址
-
-```typescript
-const escrowAccount = api.consts.affiliate.escrowPalletId;
-// 或通过 RPC 查询
-const account = api.query.affiliate.escrowAccount();
+#### 存入接口
+```rust
+/// 归集资金到托管账户
+fn deposit(from: &AccountId, amount: Balance) -> Result<(), &'static str>
 ```
+- **权限**：任何账户都可以向托管账户转账
+- **用途**：供奉系统归集资金到托管池
 
-#### 查询托管账户余额
-
-```typescript
-const balance = await api.query.system.account(escrowAccount);
-console.log('托管余额:', balance.data.free.toString());
+#### 提取接口
+```rust
+/// 从托管账户提取资金（仅供授权模块调用）
+fn withdraw(to: &AccountId, amount: Balance) -> Result<(), &'static str>
 ```
+- **权限**：只有授权的分配模块可以提取资金
+- **用途**：分配系统从托管池提取资金进行分成
 
-#### 查询统计数据
-
-```typescript
-// 累计存入金额
-const totalDeposited = await api.query.affiliate.totalDeposited();
-
-// 累计提取金额
-const totalWithdrawn = await api.query.affiliate.totalWithdrawn();
-
-// 当前托管余额
-const currentBalance = totalDeposited - totalWithdrawn;
-```
-
----
-
-### 2. 存款接口
-
-任何账户都可以向托管账户转账：
-
-```typescript
-// 方式1: 通过 extrinsic
-await api.tx.affiliate.deposit(amount).signAndSend(sender);
-
-// 方式2: 直接转账到托管账户
-const escrowAccount = /* 托管账户地址 */;
-await api.tx.balances.transfer(escrowAccount, amount).signAndSend(sender);
-```
-
----
-
-### 3. 提款接口（授权）
-
-只有授权的 Origin 可以调用：
-
-```typescript
-// Root 提款
-await api.tx.sudo.sudo(
-  api.tx.affiliate.withdraw(recipient, amount)
-).signAndSend(sudoKey);
-
-// 委员会提款（如果配置了委员会）
-await api.tx.council.propose(
-  threshold,
-  api.tx.affiliate.withdraw(recipient, amount),
-  lengthBound
-).signAndSend(councilMember);
-```
-
----
-
-## 📊 存储结构
-
-| 存储项 | 类型 | 说明 |
-|--------|------|------|
-| `TotalDeposited` | `Balance` | 累计存入金额统计 |
-| `TotalWithdrawn` | `Balance` | 累计提取金额统计 |
-
----
-
-## 🔧 Runtime 配置
+### 3. 余额查询
 
 ```rust
-// runtime/src/configs/mod.rs
+/// 查询托管账户余额
+fn escrow_balance() -> Balance
+```
+- **实时查询**：返回当前托管账户的可用余额
+- **无权限限制**：任何人都可以查询
 
-parameter_types! {
-    /// 联盟计酬托管 PalletId
-    pub const AffiliatePalletId: PalletId = PalletId(*b"affiliat");
+## 📦 存储结构
+
+### 累计存入金额
+```rust
+pub type TotalDeposited<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+```
+- **用途**：统计累计存入金额（只增不减）
+- **类型**：Balance
+- **初始值**：0
+
+### 累计提取金额
+```rust
+pub type TotalWithdrawn<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+```
+- **用途**：统计累计提取金额（只增不减）
+- **类型**：Balance
+- **初始值**：0
+
+## 🔧 配置参数
+
+```rust
+pub trait Config: frame_system::Config {
+    /// 事件类型
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+    /// 货币系统
+    type Currency: Currency<Self::AccountId>;
+
+    /// 托管 PalletId（派生独立的托管账户）
+    type EscrowPalletId: Get<PalletId>;
+
+    /// 提款权限控制
+    /// 如果设置，则只有指定的 Origin 可以调用 withdraw
+    type WithdrawOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 }
+```
 
+### Runtime 配置示例
+
+```rust
 impl pallet_affiliate::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type EscrowPalletId = AffiliatePalletId;
-    /// 提款权限：仅 Root 或财务委员会
-    type WithdrawOrigin = EnsureRoot<AccountId>;
-    // 或使用委员会：
-    // type WithdrawOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, TechCommitteeInstance, 2, 3>;
-}
-```
-
----
-
-## 📈 事件
-
-### Deposited
-
-**触发条件：** 资金存入托管账户
-
-**参数：**
-- `from`: 存款人账户
-- `amount`: 存款金额
-
-**示例：**
-```typescript
-api.query.system.events((events) => {
-  events.forEach((record) => {
-    const { event } = record;
-    if (event.section === 'affiliate' && event.method === 'Deposited') {
-      const [from, amount] = event.data;
-      console.log('存入:', from.toString(), amount.toString());
-    }
-  });
-});
-```
-
----
-
-### Withdrawn
-
-**触发条件：** 资金从托管账户提取
-
-**参数：**
-- `to`: 提取到的账户
-- `amount`: 提取金额
-
-**示例：**
-```typescript
-api.query.system.events((events) => {
-  events.forEach((record) => {
-    const { event } = record;
-    if (event.section === 'affiliate' && event.method === 'Withdrawn') {
-      const [to, amount] = event.data;
-      console.log('提取:', to.toString(), amount.toString());
-    }
-  });
-});
-```
-
----
-
-## ⚠️ 错误码
-
-| 错误 | 说明 | 解决方案 |
-|------|------|---------|
-| `ZeroAmount` | 金额为零 | 确保转账金额 > 0 |
-| `InsufficientEscrowBalance` | 托管账户余额不足 | 等待更多资金存入或减少提取金额 |
-| `Unauthorized` | 未授权的提款操作 | 使用授权的 Origin（Root 或委员会） |
-
----
-
-## 🔒 安全性
-
-### 1. 权限控制
-
-- ✅ 提款操作需要授权 Origin
-- ✅ 防止未授权的资金提取
-- ✅ 建议配置为 Root 或财务委员会
-
-### 2. 余额检查
-
-- ✅ 提款前自动检查托管账户余额
-- ✅ 防止超额提取
-
-### 3. 账户隔离
-
-- ✅ 使用独立的 `AffiliatePalletId`
-- ✅ 与 OTC 托管账户完全隔离
-- ✅ 资金安全独立管理
-
----
-
-## 📦 与其他模块的集成
-
-### 1. pallet-memo-affiliate-weekly
-
-周结算模块从本托管层读取资金：
-
-```rust
-// weekly 模块配置
-impl pallet_affiliate_weekly::Config for Runtime {
-    // ...
-    type EscrowAccount = AffiliateEscrowAccount;
+    type WithdrawOrigin = EnsureRoot<AccountId>; // 或委员会多签
 }
 
 parameter_types! {
-    pub AffiliateEscrowAccount: AccountId = AffiliatePalletId::get().into_account_truncating();
+    pub const AffiliatePalletId: PalletId = PalletId(*b"affiliat");
 }
 ```
 
----
+## 📡 可调用接口
 
-### 2. pallet-memo-offerings
-
-供奉模块通过多路分账系统归集资金到托管账户：
+### 1. deposit - 存入资金
 
 ```rust
-// offerings 调用多路分账
-// 多路分账系统路由资金到托管账户
+#[pallet::call_index(0)]
+#[pallet::weight(Weight::from_parts(10_000_000, 0))]
+pub fn deposit(
+    origin: OriginFor<T>,
+    amount: BalanceOf<T>,
+) -> DispatchResult
 ```
 
+**参数说明**：
+- `origin`: 签名账户（存款人）
+- `amount`: 存款金额
+
+**功能**：
+- 从调用者账户转账到托管账户
+- 更新累计存入金额统计
+- 触发 `Deposited` 事件
+
+**权限**：任何签名账户
+
+**示例**：
+```rust
+// 用户向托管账户存入 1000 MEMO
+affiliate::deposit(origin, 1_000_000_000_000)?;
+```
+
+### 2. withdraw - 提取资金
+
+```rust
+#[pallet::call_index(1)]
+#[pallet::weight(Weight::from_parts(10_000_000, 0))]
+pub fn withdraw(
+    origin: OriginFor<T>,
+    to: T::AccountId,
+    amount: BalanceOf<T>,
+) -> DispatchResult
+```
+
+**参数说明**：
+- `origin`: 授权来源（Root或委员会）
+- `to`: 接收者账户
+- `amount`: 提取金额
+
+**功能**：
+- 从托管账户转账到指定账户
+- 更新累计提取金额统计
+- 触发 `Withdrawn` 事件
+
+**权限**：只有 `WithdrawOrigin` 授权的账户
+
+**校验**：
+- ✅ 验证调用者权限
+- ✅ 检查金额不为零
+- ✅ 确保托管账户余额充足
+
+**示例**：
+```rust
+// Root 从托管账户提取 500 MEMO 到用户账户
+affiliate::withdraw(RootOrigin, user_account, 500_000_000_000)?;
+```
+
+## 🎉 事件
+
+### Deposited - 资金存入事件
+```rust
+Deposited {
+    from: T::AccountId,
+    amount: BalanceOf<T>,
+}
+```
+
+**触发时机**：成功存入资金时
+
+**参数说明**：
+- `from`: 存款人账户
+- `amount`: 存款金额
+
+### Withdrawn - 资金提取事件
+```rust
+Withdrawn {
+    to: T::AccountId,
+    amount: BalanceOf<T>,
+}
+```
+
+**触发时机**：成功提取资金时
+
+**参数说明**：
+- `to`: 接收者账户
+- `amount`: 提取金额
+
+## ❌ 错误处理
+
+### ZeroAmount
+- **说明**：金额为零
+- **触发**：存入或提取金额为 0 时
+
+### InsufficientEscrowBalance
+- **说明**：托管账户余额不足
+- **触发**：提取金额超过托管账户余额时
+
+### Unauthorized
+- **说明**：未授权的提款操作
+- **触发**：非授权账户调用 withdraw 时
+
+## 🔌 Trait 接口
+
+### EscrowProvider Trait
+
+本模块实现 `EscrowProvider` trait，供其他模块调用：
+
+```rust
+pub trait EscrowProvider<AccountId, Balance> {
+    /// 获取托管账户地址
+    fn escrow_account() -> AccountId;
+    
+    /// 查询托管账户余额
+    fn escrow_balance() -> Balance;
+    
+    /// 归集资金到托管账户
+    fn deposit(from: &AccountId, amount: Balance) -> Result<(), &'static str>;
+    
+    /// 从托管账户提取资金
+    fn withdraw(to: &AccountId, amount: Balance) -> Result<(), &'static str>;
+}
+```
+
+**使用示例**：
+```rust
+// 其他模块调用托管服务
+let escrow_account = AffiliateEscrow::escrow_account();
+let balance = AffiliateEscrow::escrow_balance();
+AffiliateEscrow::deposit(&user, 1000)?;
+```
+
+## 📊 资金流向图
+
+```text
+用户供奉
+   ↓
+多路分账（pallet-memo-offerings）
+   ↓
+联盟计酬托管账户（本模块）
+   ↓
+   ├─→ [周结算模式] → pallet-affiliate-weekly → 周期批量分配
+   └─→ [即时分成模式] → pallet-affiliate-instant → 实时分配
+```
+
+## 🛡️ 安全机制
+
+1. **权限隔离**
+   - 存款：任何人可以存
+   - 提款：只有授权模块可以提
+
+2. **余额校验**
+   - 提款前必须检查余额充足
+   - 使用 `saturating_add/sub` 防止溢出
+
+3. **账户隔离**
+   - 独立的 PalletId 派生账户
+   - 与OTC托管账户完全隔离
+
+4. **审计追踪**
+   - 记录累计存入/提取金额
+   - 所有操作触发事件
+
+## 📈 统计查询
+
+### 查询托管账户地址
+```rust
+let escrow_account = Affiliate::escrow_account();
+```
+
+### 查询当前余额
+```rust
+let balance = Affiliate::escrow_balance();
+```
+
+### 查询累计存入
+```rust
+let total_deposited = Affiliate::total_deposited();
+```
+
+### 查询累计提取
+```rust
+let total_withdrawn = Affiliate::total_withdrawn();
+```
+
+## 🔄 工作流程
+
+### 存入流程
+1. 用户调用 `deposit(amount)`
+2. 验证金额不为零
+3. 从用户账户转账到托管账户
+4. 更新累计存入金额
+5. 触发 `Deposited` 事件
+
+### 提取流程
+1. 授权模块调用 `withdraw(to, amount)`
+2. 验证调用者权限
+3. 验证金额不为零
+4. 检查托管账户余额充足
+5. 从托管账户转账到目标账户
+6. 更新累计提取金额
+7. 触发 `Withdrawn` 事件
+
+## 📝 最佳实践
+
+1. **分离职责**
+   - 托管层只管资金存取
+   - 分配逻辑由其他模块实现
+
+2. **权限控制**
+   - 提款权限应配置为 Root 或多签委员会
+   - 避免单点故障
+
+3. **监控审计**
+   - 定期检查累计存入/提取金额是否一致
+   - 监控托管账户余额变化
+
+4. **测试覆盖**
+   - 测试存入/提取正常流程
+   - 测试权限校验
+   - 测试余额不足情况
+
+## 🔗 相关模块
+
+- **pallet-affiliate-config**: 联盟计酬配置管理
+- **pallet-affiliate-instant**: 即时分成系统
+- **pallet-affiliate-weekly**: 周结算分配层
+- **pallet-memo-offerings**: 供奉系统（资金来源）
+
+## 📚 参考资源
+
+- [Substrate Currency Trait](https://docs.rs/frame-support/latest/frame_support/traits/tokens/currency/trait.Currency.html)
+- [PalletId 账户派生](https://docs.rs/frame-support/latest/frame_support/traits/trait.AccountIdConversion.html)
+- [联盟计酬系统架构设计](../../docs/affiliate-architecture.md)
+
 ---
 
-## 🎓 设计理念
-
-### 职责分离（Separation of Concerns）
-
-- **托管层（本模块）**：只负责资金的安全存放
-- **分配层（weekly）**：只负责分配算法和结算逻辑
-
-**优势：**
-- ✅ 职责单一，易于理解
-- ✅ 独立测试，降低复杂度
-- ✅ 灵活扩展，可新增其他分配策略
-
----
-
-### 工具化设计（Tool-oriented Design）
-
-- **托管层**：提供资金托管服务
-- **分配层**：作为工具调用托管层
-
-**类比：**
-- 托管层 = 银行账户（存钱、取钱）
-- 分配层 = 自动支付工具（调用银行账户转账）
-
----
-
-## 📚 相关文档
-
-- **分配层模块**：`pallets/memo-affiliate-weekly/README.md`
-- **即时分成模块**：`pallets/affiliate-instant/README.md`
-- **拆分方案分析**：`docs/pallet-memo-affiliate拆分方案分析.md`
-
----
-
-## 🔄 版本历史
-
-### v0.2.0 - 拆分重构 + 命名优化
-- ✅ 从原 `pallet-memo-affiliate` 拆分出托管层
-- ✅ 职责单一：只负责资金托管
-- ✅ 移除分配逻辑（已迁移到 `pallet-affiliate-weekly`）
-- ✅ 命名优化：去掉 `memo-` 前缀，统一 affiliate 系列命名风格
-
-### v0.1.0 - 原始版本（已废弃）
-- 混合职责：托管 + 分配
-- 已备份到 `pallets/memo-affiliate-legacy`（已删除）
-
----
-
-**总结：** 本模块是联盟计酬系统的托管层，专注于资金安全，与分配层解耦，架构清晰！ ✅
-
+**版本**: 1.0.0  
+**最后更新**: 2025-10-27  
+**维护者**: Memopark 开发团队

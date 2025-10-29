@@ -6,6 +6,12 @@ extern crate alloc;
 
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -91,6 +97,18 @@ pub mod pallet {
     #[pallet::storage]
     pub type ExpiryOf<T: Config> =
         StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>, OptionQuery>;
+
+    /// 函数级中文注释：按区块号索引到期项（H-1修复：优化 on_initialize 性能）
+    /// 存储结构：block_number -> Vec<id>
+    /// 用途：on_initialize 可以直接获取当前块到期的项，避免迭代所有 ExpiryOf
+    #[pallet::storage]
+    pub type ExpiringAt<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BlockNumberFor<T>,
+        BoundedVec<u64, T::MaxExpiringPerBlock>,
+        ValueQuery,
+    >;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -444,6 +462,7 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：安排到期处理（仅 AuthorizedOrigin）。当处于 Disputed 时不生效。
+        /// H-1修复：同时更新 ExpiringAt 索引
         #[pallet::call_index(10)]
         #[pallet::weight(10_000)]
         pub fn schedule_expiry(
@@ -455,16 +474,45 @@ pub mod pallet {
             if LockStateOf::<T>::get(id) == 1u8 {
                 return Ok(());
             }
+            
+            // 如果已有到期时间，先从旧索引中移除
+            if let Some(old_at) = ExpiryOf::<T>::get(id) {
+                ExpiringAt::<T>::mutate(old_at, |ids| {
+                    if let Some(pos) = ids.iter().position(|&x| x == id) {
+                        ids.swap_remove(pos);
+                    }
+                });
+            }
+            
+            // 更新到期时间
             ExpiryOf::<T>::insert(id, at);
+            
+            // 添加到新的索引
+            ExpiringAt::<T>::try_mutate(at, |ids| -> DispatchResult {
+                ids.try_push(id).map_err(|_| Error::<T>::NoLock)?;
+                Ok(())
+            })?;
+            
             Self::deposit_event(Event::ExpiryScheduled { id, at });
             Ok(())
         }
 
         /// 函数级中文注释：取消到期处理（仅 AuthorizedOrigin）。
+        /// H-1修复：同时从 ExpiringAt 索引中移除
         #[pallet::call_index(11)]
         #[pallet::weight(10_000)]
         pub fn cancel_expiry(origin: OriginFor<T>, id: u64) -> DispatchResult {
             Self::ensure_auth(origin)?;
+            
+            // 从索引中移除
+            if let Some(at) = ExpiryOf::<T>::get(id) {
+                ExpiringAt::<T>::mutate(at, |ids| {
+                    if let Some(pos) = ids.iter().position(|&x| x == id) {
+                        ids.swap_remove(pos);
+                    }
+                });
+            }
+            
             ExpiryOf::<T>::remove(id);
             Ok(())
         }
@@ -473,37 +521,42 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         /// 函数级中文注释：每块处理最多 MaxExpiringPerBlock 个到期项。
+        /// H-1修复：使用 ExpiringAt 索引，避免迭代所有 ExpiryOf
+        /// 性能提升：O(N) -> O(1)，N = 总存储项数
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            let mut handled: u32 = 0;
-            for (id, at) in ExpiryOf::<T>::iter() {
-                if handled >= T::MaxExpiringPerBlock::get() {
-                    break;
-                }
-                if at != n {
-                    continue;
-                }
+            // 直接获取当前块到期的项，O(1) 复杂度
+            let expiring_ids = ExpiringAt::<T>::take(n);
+            let total = expiring_ids.len() as u32;
+            
+            for id in expiring_ids.iter() {
+                // 跳过争议状态的订单
                 if LockStateOf::<T>::get(id) == 1u8 {
                     continue;
                 }
-                match T::ExpiryPolicy::on_expire(id) {
+                
+                // 执行到期策略
+                match T::ExpiryPolicy::on_expire(*id) {
                     Ok(ExpiryAction::ReleaseAll(to)) => {
-                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::release_all(id, &to);
+                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::release_all(*id, &to);
                         LockStateOf::<T>::insert(id, 2u8);
-                        Self::deposit_event(Event::Expired { id, action: 0 });
+                        Self::deposit_event(Event::Expired { id: *id, action: 0 });
                     }
                     Ok(ExpiryAction::RefundAll(to)) => {
-                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(id, &to);
+                        let _ = <Self as Escrow<T::AccountId, BalanceOf<T>>>::refund_all(*id, &to);
                         LockStateOf::<T>::insert(id, 2u8);
-                        Self::deposit_event(Event::Expired { id, action: 1 });
+                        Self::deposit_event(Event::Expired { id: *id, action: 1 });
                     }
                     _ => {
-                        Self::deposit_event(Event::Expired { id, action: 2 });
+                        Self::deposit_event(Event::Expired { id: *id, action: 2 });
                     }
                 }
+                
+                // 清理到期记录
                 ExpiryOf::<T>::remove(id);
-                handled = handled.saturating_add(1);
             }
-            Weight::from_parts(10_000u64.saturating_mul(handled as u64), 0)
+            
+            // 返回权重（每个到期项约 20_000 单位）
+            Weight::from_parts(20_000u64.saturating_mul(total as u64), 0)
         }
     }
 }

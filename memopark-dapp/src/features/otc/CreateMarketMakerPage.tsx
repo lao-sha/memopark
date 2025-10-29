@@ -30,15 +30,12 @@ interface ApplicationDetails {
   createdAt: number
   infoDeadline: number
   reviewDeadline: number
-  // 🆕 扩展字段（用于自动填充）
+  // 🆕 2025-10-19: 扩展字段（用于自动填充）
   buyPremiumBps?: number
   sellPremiumBps?: number
   tronAddress?: string
-  epayGateway?: string
-  epayPort?: number
-  epayPid?: string
-  epayKey?: string  // 不自动填充，但记录在此
-  firstPurchasePool?: string
+  // 🆕 2025-10-21: 收款方式列表（替换epay配置）
+  paymentMethods?: string[]
 }
 
 /**
@@ -412,10 +409,16 @@ export default function CreateMarketMakerPage() {
         // 🆕 解析 TRON 地址
         const tronAddress = decodeBytes(appData.tronAddress, 'tronAddress')
         
-        // 🆕 解析 epay 配置
-        const epayGateway = decodeBytes(appData.epayGateway, 'epayGateway')
-        const epayPid = decodeBytes(appData.epayPid, 'epayPid')
-        const epayKey = decodeBytes(appData.epayKey, 'epayKey')
+        // 🆕 2025-10-21: 解析收款方式列表
+        const paymentMethods: string[] = []
+        if (appData.paymentMethods && Array.isArray(appData.paymentMethods)) {
+          for (const methodBytes of appData.paymentMethods) {
+            const methodStr = decodeBytes(methodBytes, 'paymentMethod')
+            if (methodStr) {
+              paymentMethods.push(methodStr)
+            }
+          }
+        }
         
         const details: ApplicationDetails = {
           mmId: id,
@@ -432,11 +435,8 @@ export default function CreateMarketMakerPage() {
           buyPremiumBps: appData.buyPremiumBps,
           sellPremiumBps: appData.sellPremiumBps,
           tronAddress: tronAddress || undefined,
-          epayGateway: epayGateway || undefined,
-          epayPort: appData.epayPort > 0 ? appData.epayPort : undefined,
-          epayPid: epayPid || undefined,
-          epayKey: epayKey || undefined,  // 不自动填充，但记录
-          firstPurchasePool: appData.firstPurchasePool || '0',
+          // 🆕 2025-10-21: 收款方式列表
+          paymentMethods: paymentMethods.length > 0 ? paymentMethods : undefined,
         }
         
         console.log('✅ 解析后的完整详情:', details)
@@ -530,20 +530,6 @@ export default function CreateMarketMakerPage() {
         fieldsToFill.tron_address = appDetails.tronAddress
         fieldCount++
         console.log('✅ 填充 tron_address:', appDetails.tronAddress)
-      }
-
-      // 🔹 Epay 网关地址
-      if (appDetails.epayGateway && appDetails.epayGateway.length > 0) {
-        fieldsToFill.epay_gateway = appDetails.epayGateway
-        fieldCount++
-        console.log('✅ 填充 epay_gateway:', appDetails.epayGateway)
-      }
-
-      // 🔹 Epay 端口
-      if (appDetails.epayPort && appDetails.epayPort > 0) {
-        fieldsToFill.epay_port = appDetails.epayPort
-        fieldCount++
-        console.log('✅ 填充 epay_port:', appDetails.epayPort)
       }
 
       // 🔹 Epay 商户ID
@@ -731,7 +717,7 @@ export default function CreateMarketMakerPage() {
             setCurrent(1)
           }
         } else {
-          throw new Error('mm_id 计算错误，请刷新页面后重试')
+          throw new Error('maker_id 计算错误，请刷新页面后重试')
         }
       } catch (queryError: any) {
         console.error('[质押] 查询 mmId 失败:', queryError)
@@ -816,9 +802,11 @@ if (opt.isSome) {
   }
 
   /**
-   * 函数级详细中文注释：提交资料（链上调用）
-   * - 签名调用 pallet-market-maker::submit_info(mm_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, epay_gateway, epay_port, epay_pid, epay_key, first_purchase_pool)
-   * - 本地校验：CID 合法、溢价/最小额有效、epay 配置完整
+   * 函数级详细中文注释：提交资料（链上调用）✅ Phase 4优化
+   * - 签名调用 pallet-market-maker::submit_info(maker_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, full_name, id_card, masked_payment_info_json?)
+   * - ✅ 已删除epay相关参数（首购功能已删除）
+   * - ✅ 新增必填：full_name（完整姓名）、id_card（完整身份证）
+   * - ✅ 新增可选：masked_payment_info_json（脱敏收款方式）
    */
   const onSubmitInfo = async (values: any) => {
     if (!api) {
@@ -842,88 +830,83 @@ if (opt.isSome) {
       const { 
         public_root_cid, 
         private_root_cid, 
-        buy_premium_bps,  // 🆕 2025-10-19：Buy溢价
-        sell_premium_bps, // 🆕 2025-10-19：Sell溢价
+        buy_premium_bps,  // Buy溢价
+        sell_premium_bps, // Sell溢价
         min_amount,
-        epay_gateway,
-        epay_port,
-        epay_pid,
-        epay_key,
-        first_purchase_pool
+        tron_address,     // TRON地址
+        full_name,        // ✅ 新增：完整姓名
+        id_card,          // ✅ 新增：完整身份证
+        masked_payment_info_json  // ✅ 新增：脱敏收款方式（可选）
       } = values
 
-      // 本地校验
+      // ===== 1. 本地校验 =====
       if (!isValidCid(public_root_cid)) throw new Error('公开资料 CID 非法或疑似加密（禁止 enc: 前缀）')
       if (!isValidCid(private_root_cid)) throw new Error('私密资料根 CID 非法或疑似加密（禁止 enc: 前缀）')
 
       const minAmt = Number(min_amount)
       if (!(minAmt > 0)) throw new Error('最小下单额必须大于 0')
 
-      // 🆕 验证 epay 配置
-      if (!epay_gateway || epay_gateway.trim() === '') throw new Error('epay 支付网关地址不能为空')
-      if (epay_gateway.trim().length > 128) throw new Error('epay 支付网关地址超过 128 字节限制')
-      if (!epay_port || Number(epay_port) <= 0) throw new Error('epay 端口必须大于 0')
-      if (Number(epay_port) > 65535) throw new Error('epay 端口必须小于等于 65535')
-      if (!epay_pid || epay_pid.trim() === '') throw new Error('epay 商户ID不能为空')
-      if (epay_pid.trim().length > 64) throw new Error('epay 商户ID超过 64 字节限制')
-      if (!epay_key || epay_key.trim() === '') throw new Error('epay 商户密钥不能为空')
-      if (epay_key.trim().length > 64) throw new Error('epay 商户密钥超过 64 字节限制')
-      
-      const pool = Number(first_purchase_pool)
-      if (!(pool >= 10000)) throw new Error('首购资金池必须大于等于 10,000 MEMO（可服务约100个新用户）')
-
-      // 🆕 2025-10-19：验证TRON地址
-      const tron_address = values.tron_address?.trim() || ''
-      if (!tron_address || tron_address.length !== 34 || !tron_address.startsWith('T')) {
+      // 验证TRON地址
+      if (!tron_address || tron_address.trim().length !== 34 || !tron_address.trim().startsWith('T')) {
         throw new Error('TRON地址格式无效（必须34字符，以T开头）')
       }
 
-      // 格式化参数
-      const publicCid = Array.from(new TextEncoder().encode(public_root_cid))
-      const privateCid = Array.from(new TextEncoder().encode(private_root_cid))
-      const minAmountFormatted = formatMemoAmount(minAmt)
-      const tronAddressBytes = Array.from(new TextEncoder().encode(tron_address))  // 🆕 2025-10-19
-      const epayGatewayBytes = Array.from(new TextEncoder().encode(epay_gateway.trim()))
-      const epayPidBytes = Array.from(new TextEncoder().encode(epay_pid.trim()))
-      const epayKeyBytes = Array.from(new TextEncoder().encode(epay_key.trim()))
-      const poolFormatted = formatMemoAmount(pool)
+      // ✅ 验证完整姓名（必填）
+      if (!full_name || full_name.trim() === '') {
+        throw new Error('请输入完整姓名')
+      }
+      if (full_name.trim().length > 64) {
+        throw new Error('姓名长度不能超过64字符')
+      }
 
-      // 🔍 余额检查：确保有足够余额 reserve 首购资金池
-      const currentAddress = localStorage.getItem('mp.current')
-      if (currentAddress && api) {
-        const accountInfo: any = await api.query.system.account(currentAddress)
-        const free = accountInfo?.data?.free?.toString?.() || '0'
-        const reserved = accountInfo?.data?.reserved?.toString?.() || '0'
-        const freeNum = Number(free) / 1e12
-        const reservedNum = Number(reserved) / 1e12
-        
-        console.group('💰 [余额检查]')
-        console.log('可用余额:', freeNum.toFixed(2), 'MEMO')
-        console.log('已锁定:', reservedNum.toFixed(2), 'MEMO')
-        console.log('需要锁定:', pool, 'MEMO（首购资金池）')
-        console.groupEnd()
-        
-        if (freeNum < pool) {
-          throw new Error(`余额不足：可用 ${freeNum.toFixed(2)} MEMO，但需要 ${pool} MEMO 作为首购资金池（已锁定保证金 ${reservedNum.toFixed(2)} MEMO）`)
+      // ✅ 验证完整身份证号（必填）
+      if (!id_card || id_card.trim() === '') {
+        throw new Error('请输入完整身份证号')
+      }
+      const idCardPattern = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/
+      if (!idCardPattern.test(id_card.trim())) {
+        throw new Error('身份证号格式无效（请输入18位有效身份证号）')
+      }
+
+      // ✅ 验证脱敏收款方式（可选）
+      if (masked_payment_info_json && masked_payment_info_json.trim() !== '') {
+        try {
+          JSON.parse(masked_payment_info_json)
+        } catch (e) {
+          throw new Error('脱敏收款方式必须是有效的JSON格式')
+        }
+        if (masked_payment_info_json.length > 512) {
+          throw new Error('脱敏收款方式JSON长度不能超过512字节')
         }
       }
 
+      // ===== 2. 格式化参数 =====
+      const publicCid = Array.from(new TextEncoder().encode(public_root_cid))
+      const privateCid = Array.from(new TextEncoder().encode(private_root_cid))
+      const minAmountFormatted = formatMemoAmount(minAmt)
+      const tronAddressBytes = Array.from(new TextEncoder().encode(tron_address.trim()))
+      const fullNameBytes = Array.from(new TextEncoder().encode(full_name.trim()))
+      const idCardBytes = Array.from(new TextEncoder().encode(id_card.trim()))
+      
+      // 处理可选参数：masked_payment_info_json
+      let maskedPaymentInfoParam = null
+      if (masked_payment_info_json && masked_payment_info_json.trim() !== '') {
+        maskedPaymentInfoParam = Array.from(new TextEncoder().encode(masked_payment_info_json.trim()))
+      }
+
       // 🔍 调试日志：打印所有参数
-      console.group('📤 [submitInfo] 提交参数详情')
+      console.group('📤 [submitInfo] ✅ Phase 4优化版提交参数')
       console.log('mmId:', mmId)
-      console.log('minAmt:', minAmt, 'MEMO → formatted:', minAmountFormatted)
-      console.log('pool:', pool, 'MEMO → formatted:', poolFormatted)
-      console.log('epay_gateway:', epay_gateway.trim(), '→ bytes:', epayGatewayBytes.length, '字节')
-      console.log('epay_port:', Number(epay_port), '(u16)')
-      console.log('epay_pid:', epay_pid.trim(), '→ bytes:', epayPidBytes.length, '字节')
-      console.log('epay_key:', epay_key.trim().slice(0, 10) + '***', '→ bytes:', epayKeyBytes.length, '字节')
       console.log('publicCid length:', publicCid.length, '字节')
       console.log('privateCid length:', privateCid.length, '字节')
+      console.log('minAmount:', minAmt, 'MEMO → formatted:', minAmountFormatted)
+      console.log('tron_address:', tron_address.trim(), '→ bytes:', tronAddressBytes.length)
+      console.log('full_name:', full_name.trim(), '→ bytes:', fullNameBytes.length, '（链端自动脱敏）')
+      console.log('id_card:', id_card.trim().substring(0, 6) + '****', '→ bytes:', idCardBytes.length, '（链端自动脱敏）')
+      console.log('masked_payment_info_json:', maskedPaymentInfoParam ? `${maskedPaymentInfoParam.length} 字节` : 'null（未提供）')
       console.groupEnd()
 
-      message.loading({ content: '正在签名并提交资料...', key: 'submit', duration: 0 })
-
-      // 🆕 2025-10-19：验证溢价范围
+      // ===== 3. 验证溢价范围 =====
       const buyPremium = Number(buy_premium_bps)
       const sellPremium = Number(sell_premium_bps)
       if (!(buyPremium >= -500 && buyPremium <= 500)) throw new Error('Buy溢价超出范围（-500 ~ 500 bps）')
@@ -932,26 +915,47 @@ if (opt.isSome) {
       console.log('[溢价配置] Buy溢价:', buyPremium, 'bps', `(${(buyPremium / 100).toFixed(2)}%)`)
       console.log('[溢价配置] Sell溢价:', sellPremium, 'bps', `(${(sellPremium / 100).toFixed(2)}%)`)
 
-      // 签名并发送交易
+      message.loading({ content: '正在签名并提交资料...', key: 'submit', duration: 0 })
+
+      // ===== 4. ✅ 签名并发送交易（Phase 4优化版）=====
       const hash = await signAndSendLocalFromKeystore('marketMaker', 'submitInfo', [
-        mmId,
-        publicCid,
-        privateCid,
-        buyPremium,       // 🆕 2025-10-19：Buy溢价
-        sellPremium,      // 🆕 2025-10-19：Sell溢价
-        minAmountFormatted,
-        tronAddressBytes, // 🆕 2025-10-19：TRON地址
-        epayGatewayBytes,
-        Number(epay_port),
-        epayPidBytes,
-        epayKeyBytes,
-        poolFormatted
+        mmId,                    // mm_id
+        publicCid,               // public_root_cid
+        privateCid,              // private_root_cid
+        buyPremium,              // buy_premium_bps
+        sellPremium,             // sell_premium_bps
+        minAmountFormatted,      // min_amount
+        tronAddressBytes,        // tron_address
+        fullNameBytes,           // ✅ full_name（链端自动脱敏）
+        idCardBytes,             // ✅ id_card（链端自动脱敏）
+        maskedPaymentInfoParam   // ✅ masked_payment_info_json（可选）
       ])
 
       message.success({
-        content: `资料提交成功！交易哈希: ${hash}`,
+        content: `✅ 资料提交成功！交易哈希: ${hash}`,
         key: 'submit',
         duration: 5
+      })
+
+      // ✅ Phase 4: 显示审核员通知信息
+      Modal.success({
+        title: '✅ 申请已提交，审核员已收到通知',
+        content: (
+          <div style={{ marginTop: 16 }}>
+            <p><strong>📬 您的申请已进入审核流程：</strong></p>
+            <p>• 审核员已收到您的申请通知（链上事件：InfoSubmitted）</p>
+            <p>• 审核员可查看您提交的私密资料（private_cid）</p>
+            <p>• 预计审核时间：1-3个工作日</p>
+            <p style={{ marginTop: 12, color: '#fa8c16' }}>
+              <strong>💡 温馨提示：</strong>审核员可能会通过聊天功能联系您，请注意查看消息通知
+            </p>
+            <p style={{ marginTop: 8, color: '#52c41a' }}>
+              <strong>🔒 隐私保护：</strong>您的姓名和身份证号已自动脱敏，链上仅存储脱敏后的信息
+            </p>
+          </div>
+        ),
+        okText: '知道了',
+        width: 520
       })
 
       // 等待区块确认后重新加载详情
@@ -1005,7 +1009,7 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：更新申请资料（链上调用）
-   * - 签名调用 pallet-market-maker::update_info(mm_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
+   * - 签名调用 pallet-market-maker::update_info(maker_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    * - 允许在 DepositLocked 或 PendingReview 状态下调用
    */
@@ -1046,8 +1050,6 @@ if (opt.isSome) {
       let buyPremiumBpsParam = null   // 🆕 2025-10-20：Buy溢价参数
       let sellPremiumBpsParam = null  // 🆕 2025-10-20：Sell溢价参数
       let minAmountParam = null
-      let epayGatewayParam = null
-      let epayPortParam = null
       let epayPidParam = null
       let epayKeyParam = null
       let firstPurchasePoolParam = null
@@ -1097,23 +1099,6 @@ if (opt.isSome) {
         minAmountParam = formatMemoAmount(minAmt)
       }
 
-      // 🆕 epay 网关地址（如果提供）
-      if (values.epay_gateway && values.epay_gateway.trim() !== '') {
-        if (values.epay_gateway.trim().length > 128) {
-          throw new Error('epay 支付网关地址超过 128 字节限制')
-        }
-        epayGatewayParam = Array.from(new TextEncoder().encode(values.epay_gateway.trim()))
-      }
-
-      // 🆕 epay 端口（如果提供）
-      if (values.epay_port !== undefined && values.epay_port !== null && values.epay_port !== '') {
-        const port = Number(values.epay_port)
-        if (!(port > 0 && port <= 65535)) {
-          throw new Error('epay 端口范围：1-65535')
-        }
-        epayPortParam = port
-      }
-
       // 🆕 epay 商户ID（如果提供）
       if (values.epay_pid && values.epay_pid.trim() !== '') {
         if (values.epay_pid.trim().length > 64) {
@@ -1149,8 +1134,6 @@ if (opt.isSome) {
         buyPremiumBpsParam,   // 🆕 2025-10-20：Buy溢价
         sellPremiumBpsParam,  // 🆕 2025-10-20：Sell溢价
         minAmountParam,
-        epayGatewayParam,
-        epayPortParam,
         epayPidParam,
         epayKeyParam,
         firstPurchasePoolParam
@@ -1805,15 +1788,13 @@ if (opt.isSome) {
                         {(appDetails.buyPremiumBps !== undefined && appDetails.buyPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Buy溢价（{(appDetails.buyPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Buy溢价（默认0%）</li>}
                         {(appDetails.sellPremiumBps !== undefined && appDetails.sellPremiumBps !== null) ? <li style={{ breakInside: 'avoid' }}>✅ Sell溢价（{(appDetails.sellPremiumBps / 100).toFixed(2)}%）</li> : <li style={{ breakInside: 'avoid', color: '#999' }}>⚪ Sell溢价（默认0%）</li>}
                         {appDetails.tronAddress && <li style={{ breakInside: 'avoid' }}>✅ TRON地址（{appDetails.tronAddress.substring(0, 10)}...）</li>}
-                        {appDetails.epayGateway && <li style={{ breakInside: 'avoid' }}>✅ Epay网关地址</li>}
-                        {appDetails.epayPort && appDetails.epayPort > 0 && <li style={{ breakInside: 'avoid' }}>✅ Epay端口（{appDetails.epayPort}）</li>}
                         {appDetails.epayPid && <li style={{ breakInside: 'avoid' }}>✅ Epay商户ID</li>}
                         {appDetails.epayKey && appDetails.epayKey.length > 0 && <li style={{ breakInside: 'avoid' }}>✅ Epay商户密钥</li>}
                         {appDetails.firstPurchasePool && BigInt(appDetails.firstPurchasePool) > 0n && <li style={{ breakInside: 'avoid' }}>✅ 首购资金池（{(BigInt(appDetails.firstPurchasePool) / BigInt(1e12)).toString()} MEMO）</li>}
                       </ul>
                       <p style={{ margin: '8px 0 0 0', color: '#1890ff', fontWeight: 'bold' }}>
-                        {!appDetails.tronAddress || !appDetails.epayGateway || !appDetails.epayPort || !appDetails.epayPid
-                          ? '⚠️ 请补充缺失的字段（特别是TRON地址、Epay配置、商户密钥），然后提交完整资料'
+                        {!appDetails.tronAddress || !appDetails.epayPid
+                          ? '⚠️ 请补充缺失的字段（特别是TRON地址、Epay商户ID、商户密钥），然后提交完整资料'
                           : '请检查所有信息是否正确，然后提交资料'}
                       </p>
                     </>
@@ -2013,72 +1994,6 @@ if (opt.isSome) {
                   />
                 </Form.Item>
 
-                <Divider>🆕 Epay 支付网关配置</Divider>
-
-                <Form.Item 
-                  label="Epay 支付网关地址" 
-                  name="epay_gateway" 
-                  rules={[
-                    { required: !appDetails, message: '请输入 epay 支付网关地址' },
-                    { type: 'string', message: '请输入有效的 URL 地址' }
-                  ]}
-                  extra="例如：http://111.170.145.41 或 https://epay.example.com"
-                >
-                  <Input 
-                    placeholder="例如：http://111.170.145.41"
-                    disabled={loading}
-                  />
-                </Form.Item>
-
-                <Form.Item 
-                  label="Epay 支付网关端口" 
-                  name="epay_port" 
-                  rules={[
-                    { required: !appDetails, message: '请输入 epay 端口' },
-                    { type: 'number', min: 1, max: 65535, message: '端口范围：1-65535' }
-                  ]}
-                  extra="常用端口：80 (HTTP), 443 (HTTPS), 8080 (自定义)"
-                >
-                  <InputNumber 
-                    min={1}
-                    max={65535}
-                    precision={0}
-                    style={{ width: '100%' }}
-                    placeholder="例如：80"
-                    disabled={loading}
-                  />
-                </Form.Item>
-
-                <Form.Item 
-                  label="Epay 商户ID (PID)" 
-                  name="epay_pid" 
-                  rules={[
-                    { required: !appDetails, message: '请输入 epay 商户ID' },
-                    { type: 'string', min: 1, message: '商户ID不能为空' }
-                  ]}
-                  extra="您的 epay 商户账号ID"
-                >
-                  <Input 
-                    placeholder="例如：123456"
-                    disabled={loading}
-                  />
-                </Form.Item>
-
-                <Form.Item 
-                  label="Epay 商户密钥" 
-                  name="epay_key" 
-                  rules={[
-                    { required: !appDetails, message: '请输入 epay 商户密钥' },
-                    { type: 'string', min: 1, message: '商户密钥不能为空' }
-                  ]}
-                  extra="您的 epay 商户密钥（明文显示）"
-                >
-                  <Input 
-                    placeholder="请输入商户密钥"
-                    disabled={loading}
-                  />
-                </Form.Item>
-
                 <Divider orientation="left">🔐 TRON地址配置</Divider>
 
                 <Alert 
@@ -2133,57 +2048,87 @@ if (opt.isSome) {
                   />
                 </Form.Item>
 
-                <Divider orientation="left">💰 首购资金池配置</Divider>
+                <Divider orientation="left">✅ 做市商信息（Phase 4新增）</Divider>
 
-                <Form.Item 
-                  label="首购资金池（MEMO）" 
-                  name="first_purchase_pool" 
-                  rules={[
-                    { required: !appDetails, message: '请输入首购资金池金额' },
-                    { type: 'number', min: 10000, message: '首购资金池最少 10,000 MEMO（一万）' }
-                  ]}
-                  extra="用于为新用户提供首购服务的资金池（最少 10,000 MEMO = 一万 MEMO）"
-                >
-                  <InputNumber 
-                    min={10000}
-                    precision={2}
-                    step={1000}
-                    style={{ width: '100%' }}
-                    placeholder="例如：10000.00（一万）"
-                    disabled={loading}
-                  />
-                </Form.Item>
-
-                <Alert 
-                  type="warning" 
-                  showIcon 
-                  style={{ marginBottom: 12 }} 
-                  message="⚠️ 重要：首购资金池将在提交时立即锁定（reserve）" 
-                  description={
-                    <>
-                      <p><strong>资金锁定机制：</strong></p>
-                      <p>• 提交资料时，系统会<strong>立即锁定（reserve）对应金额的 MEMO</strong>（最少 10,000 MEMO）</p>
-                      <p>• 锁定期间资金不可转出或使用（与保证金机制相同）</p>
-                      <p>• <strong>审核通过后</strong>：资金解锁并转入专用资金池账户</p>
-                      <p>• <strong>驳回或取消后</strong>：资金自动解锁退还（首购资金池全额退还）</p>
-                      <p>• 请确保账户有足够的可用余额：<strong>保证金 + 首购资金池</strong></p>
-                    </>
-                  }
-                />
-                
                 <Alert 
                   type="info" 
                   showIcon 
-                  style={{ marginBottom: 12 }} 
-                  message="Epay 配置说明" 
+                  style={{ marginBottom: 16 }} 
+                  message="📌 个人信息说明" 
                   description={
                     <>
-                      <p>• Epay 用于处理法币充值并自动转换为 MEMO</p>
-                      <p>• 首购资金池用于为新用户提供首次购买优惠</p>
-                      <p>• 配置提交后将由委员会审核验证</p>
+                      <p><strong>隐私保护机制：</strong></p>
+                      <p>• <strong>链上自动脱敏</strong>：提交后，姓名和身份证号将在链上自动脱敏存储</p>
+                      <p>• <strong>脱敏规则</strong>：姓名显示为"张×三"，身份证显示为"1101**1234"</p>
+                      <p>• <strong>完整信息存储</strong>：完整信息加密后存储在IPFS（private_cid），仅审核员可见</p>
+                      <p>• <strong>买家可见</strong>：OTC订单创建时，买家可看到脱敏后的姓名和身份证号</p>
+                      <p>• <strong>收款方式</strong>：可选填，如提供请以JSON格式输入脱敏后的收款账号</p>
                     </>
                   }
                 />
+
+                <Form.Item 
+                  label={<span><span style={{ color: 'red' }}>* </span>完整姓名</span>}
+                  name="full_name" 
+                  rules={[
+                    { required: true, message: '请输入完整姓名' },
+                    { type: 'string', max: 64, message: '姓名长度不能超过64字符' },
+                    { pattern: /^[\u4e00-\u9fa5a-zA-Z\s]+$/, message: '姓名只能包含中文、英文和空格' }
+                  ]}
+                  extra="链上将自动脱敏（如：'张三' → '张×三'），买家可见脱敏后的姓名"
+                >
+                  <Input 
+                    placeholder="例如：张三"
+                    disabled={loading}
+                    maxLength={64}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label={<span><span style={{ color: 'red' }}>* </span>完整身份证号</span>}
+                  name="id_card" 
+                  rules={[
+                    { required: true, message: '请输入完整身份证号' },
+                    { pattern: /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/, message: '请输入有效的18位身份证号' }
+                  ]}
+                  extra="链上将自动脱敏（如：'110101199001011234' → '1101**1234'），买家可见脱敏后的身份证号"
+                >
+                  <Input 
+                    placeholder="例如：110101199001011234"
+                    disabled={loading}
+                    maxLength={18}
+                    style={{ fontFamily: 'monospace' }}
+                  />
+                </Form.Item>
+
+                <Form.Item 
+                  label="脱敏收款方式（可选）"
+                  name="masked_payment_info_json" 
+                  rules={[
+                    { 
+                      validator: (_, value) => {
+                        if (!value || value.trim() === '') return Promise.resolve()
+                        try {
+                          JSON.parse(value)
+                          if (value.length > 512) {
+                            return Promise.reject(new Error('JSON长度不能超过512字节'))
+                          }
+                          return Promise.resolve()
+                        } catch (e) {
+                          return Promise.reject(new Error('请输入有效的JSON格式'))
+                        }
+                      } 
+                    }
+                  ]}
+                  extra='可选字段，JSON格式示例：[{"type":"BankCard","account":"6214****5678","name":"张×三","bank":"中国银行"}]'
+                >
+                  <Input.TextArea 
+                    placeholder='可选，示例：[{"type":"BankCard","account":"6214****5678","name":"张×三","bank":"中国银行"}]'
+                    disabled={loading}
+                    rows={3}
+                    maxLength={512}
+                  />
+                </Form.Item>
 
                 <Alert 
                   type="warning" 

@@ -76,6 +76,60 @@ pub struct SubjectInfo {
     pub funding_share: u8,
 }
 
+/// 函数级详细中文注释：域配置结构体 - 新pallet域自动PIN机制
+/// 
+/// 功能：
+/// - 记录域的基本信息和配置
+/// - 控制域的自动PIN行为
+/// - 映射域到SubjectType
+/// 
+/// 用途：
+/// - 新业务pallet注册自己的域
+/// - 治理管理域的配置
+/// - 自动化内容发现和PIN
+/// 
+/// 示例：
+/// ```
+/// DomainConfig {
+///     auto_pin_enabled: true,        // 启用自动PIN
+///     default_tier: PinTier::Standard, // 默认标准等级
+///     subject_type_id: 10,           // 自定义类型ID
+///     owner_pallet: b"pallet-deceased-video",  // 所属pallet
+///     created_at: 12345,             // 注册时间
+/// }
+/// ```
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct DomainConfig {
+    /// 域是否启用自动PIN
+    pub auto_pin_enabled: bool,
+    
+    /// 默认Pin等级
+    pub default_tier: PinTier,
+    
+    /// 域的SubjectType映射ID
+    /// - 内置类型: 1=Deceased, 2=Grave, 3=Offerings, 4=Evidence
+    /// - 自定义类型: 10-255（由治理分配）
+    pub subject_type_id: u8,
+    
+    /// 域的所属pallet（用于标识和管理）
+    pub owner_pallet: BoundedVec<u8, ConstU32<32>>,
+    
+    /// 域注册时的区块号
+    pub created_at: u32,
+}
+
+impl Default for DomainConfig {
+    fn default() -> Self {
+        Self {
+            auto_pin_enabled: true,
+            default_tier: PinTier::Standard,
+            subject_type_id: 99, // 默认自定义类型
+            owner_pallet: BoundedVec::try_from(b"unknown".to_vec()).unwrap_or_default(),
+            created_at: 0,
+        }
+    }
+}
+
 // ============================================================================
 // Pin 分层配置相关类型
 // ============================================================================
@@ -347,18 +401,16 @@ impl<BlockNumber> Default for GraceStatus<BlockNumber> {
     }
 }
 
-/// 函数级详细中文注释：充电层级枚举（四层回退机制）
+/// 函数级详细中文注释：充电层级枚举（三层回退机制）
 /// 
-/// 定义扣费的优先级顺序（调整后）：
+/// 定义扣费的优先级顺序（三层机制）：
 /// 1. IpfsPool：系统公共池（第一顺序）
 /// 2. SubjectFunding：用户充值账户（第二顺序）
-/// 3. OperatorEscrow：运营者保证金（第三顺序）
-/// 4. GracePeriod：宽限期（不扣费，等待充值）
+/// 3. GracePeriod：宽限期（不扣费，等待充值）
 /// 
 /// 设计理念：
 /// - 优先从公共池扣费，确保运营者及时获得收益
 /// - 用户账户作为第二层备份，补充公共池
-/// - 运营者保证金作为最后防线
 /// - 宽限期保护用户，避免因短期余额不足导致数据丢失
 #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum ChargeLayer {
@@ -366,9 +418,7 @@ pub enum ChargeLayer {
     IpfsPool,
     /// 第2层：SubjectFunding账户（用户充值）
     SubjectFunding,
-    /// 第3层：OperatorEscrowAccount运营者保证金（运营者垫付）
-    OperatorEscrow,
-    /// 第4层：宽限期（不扣费，等待充值）
+    /// 第3层：宽限期（不扣费，等待充值）
     GracePeriod,
 }
 
@@ -380,7 +430,7 @@ impl Default for ChargeLayer {
 
 /// 函数级详细中文注释：充电结果枚举
 /// 
-/// 定义四层回退充电的结果，用于：
+/// 定义三层回退充电的结果，用于：
 /// 1. 判断是否需要进入宽限期
 /// 2. 更新BillingTask状态
 /// 3. 发送事件通知

@@ -260,6 +260,70 @@ const MarketMakerCenterPage: React.FC = () => {
           </Row>
         </Card>
 
+        {/* 🆕 2025-10-22：信用管理面板 */}
+        <Card 
+          title="💳 信用管理" 
+          style={{ 
+            marginBottom: 16,
+            background: 'linear-gradient(135deg, #00d9ff 0%, #0099cc 100%)',
+            border: 'none'
+          }}
+          headStyle={{ 
+            color: '#fff',
+            borderBottom: '1px solid rgba(255,255,255,0.2)'
+          }}
+          bodyStyle={{ padding: '16px' }}
+        >
+          <Row gutter={[12, 12]}>
+            <Col xs={24} sm={12}>
+              <Button 
+                block 
+                size="large"
+                style={{ 
+                  height: '80px',
+                  background: '#fff',
+                  border: '2px solid #00d9ff',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  color: '#00d9ff'
+                }}
+                onClick={() => window.location.hash = '#/market-maker/credit'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>💎</div>
+                <div>信用仪表板</div>
+              </Button>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Button 
+                block 
+                size="large"
+                style={{ 
+                  height: '80px',
+                  background: '#fff',
+                  border: '2px solid #52c41a',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  color: '#52c41a'
+                }}
+                onClick={() => window.location.hash = '#/market-maker/quota'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>🎁</div>
+                <div>免费配额管理</div>
+              </Button>
+            </Col>
+          </Row>
+        </Card>
+
         {/* 快速入口 */}
         <Card title="⚡ 快速入口" size="small" style={{ marginBottom: 16 }}>
           <Row gutter={[8, 8]}>
@@ -323,6 +387,18 @@ const MarketMakerCenterPage: React.FC = () => {
               <Text strong>4. Bridge 面板：</Text>
               <Paragraph style={{ marginLeft: 16, marginBottom: 8 }}>
                 监控 Bridge 订单状态、查看统计数据、管理投诉
+              </Paragraph>
+            </div>
+            <div>
+              <Text strong>🆕 5. 信用仪表板：</Text>
+              <Paragraph style={{ marginLeft: 16, marginBottom: 8 }}>
+                查看信用评分、等级、违约历史、风险分衰减进度、服务状态
+              </Paragraph>
+            </div>
+            <div>
+              <Text strong>🆕 6. 免费配额管理：</Text>
+              <Paragraph style={{ marginLeft: 16, marginBottom: 8 }}>
+                设置新买家免费订单次数、授予特定买家额外配额、查看代付统计
               </Paragraph>
             </div>
           </Space>

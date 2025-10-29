@@ -24,6 +24,10 @@ import MarketMakerListing from './pages/MarketMakerListing'
 import TreasuryCommittee from './pages/TreasuryCommittee'
 import RecoverWallet from './pages/Wallet/Recover'
 import ManageWallet from './pages/Wallet/Manage'
+import MonitoringPage from './pages/Monitoring'
+import QueueManager from './components/Operations/QueueManager'
+import DataExporter from './components/Operations/DataExporter'
+import AppealStatistics from './components/Analytics/AppealStatistics'
 
 /**
  * 主应用组件
@@ -135,6 +139,22 @@ function App() {
 
         {/* 钱包管理（在主布局中） */}
         <Route path="wallet/manage" element={<ManageWallet />} />
+
+        {/* 监控Dashboard */}
+        <Route path="monitoring">
+          <Route index element={<MonitoringPage />} />
+        </Route>
+
+        {/* 运维工具 */}
+        <Route path="operations">
+          <Route path="queue-manager" element={<QueueManager />} />
+          <Route path="data-exporter" element={<DataExporter />} />
+        </Route>
+
+        {/* 数据分析 */}
+        <Route path="analytics-appeals">
+          <Route index element={<AppealStatistics />} />
+        </Route>
 
         {/* 设置 */}
         <Route path="settings">

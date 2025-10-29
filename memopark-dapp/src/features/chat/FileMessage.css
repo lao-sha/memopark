@@ -1,0 +1,76 @@
+/**
+ * 文件消息组件样式 - 优化版
+ */
+
+.file-message {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  border-radius: 12px;
+  border: 1.5px solid #e8e8e8;
+  min-width: 280px;
+  max-width: 400px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.file-message:hover {
+  border-color: #1890ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.file-message-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s ease;
+}
+
+.file-message:hover .file-message-icon {
+  transform: rotate(5deg) scale(1.05);
+}
+
+.file-message-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.file-message-name {
+  max-width: 100%;
+  font-weight: 500;
+  color: #262626;
+}
+
+.file-message-size {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.file-message .ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  transition: all 0.3s ease;
+}
+
+.file-message .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
+}
+
+.file-message .ant-btn:active {
+  transform: translateY(0);
+}
+

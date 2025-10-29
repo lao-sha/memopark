@@ -8,7 +8,7 @@ import type { ApiPromise } from '@polkadot/api'
  * 申请信息接口
  */
 export interface Application {
-  mm_id: number
+  maker_id: number
   owner: string
   deposit: string
   status: string
@@ -53,7 +53,7 @@ export async function getPendingApplications(api: ApiPromise): Promise<Applicati
 
         if (isPending) {
           pending.push({
-            mm_id: id,
+            maker_id: id,
             owner: appData.owner,
             deposit: appData.deposit,
             status: 'PendingReview',
@@ -109,7 +109,7 @@ export async function getApprovedApplications(api: ApiPromise): Promise<Applicat
 
         if (isActive) {
           approved.push({
-            mm_id: id,
+            maker_id: id,
             owner: appData.owner,
             deposit: appData.deposit,
             status: 'Active',
@@ -158,7 +158,7 @@ export async function getApplication(
     const appData = app.toJSON() as any
 
     return {
-      mm_id: mmId,
+      maker_id: mmId,
       owner: appData.owner,
       deposit: appData.deposit,
       status: appData.status,

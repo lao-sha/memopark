@@ -106,8 +106,8 @@ export default function Applications() {
   const columns: ColumnsType<Application> = [
     {
       title: 'ID',
-      dataIndex: 'mm_id',
-      key: 'mm_id',
+      dataIndex: 'maker_id',
+      key: 'maker_id',
       width: 80,
       render: (id) => <strong>#{id}</strong>
     },
@@ -179,14 +179,14 @@ export default function Applications() {
               <Button
                 type="primary"
                 size="small"
-                onClick={() => handleCreateProposal(record.mm_id, 'approve')}
+                onClick={() => handleCreateProposal(record.maker_id, 'approve')}
               >
                 创建批准提案
               </Button>
               <Button
                 danger
                 size="small"
-                onClick={() => handleCreateProposal(record.mm_id, 'reject')}
+                onClick={() => handleCreateProposal(record.maker_id, 'reject')}
               >
                 创建驳回提案
               </Button>
@@ -208,7 +208,7 @@ export default function Applications() {
         <Table
           columns={columns}
           dataSource={pendingList}
-          rowKey="mm_id"
+          rowKey="maker_id"
           loading={loading}
           pagination={{
             pageSize: 20,
@@ -226,7 +226,7 @@ export default function Applications() {
         <Table
           columns={columns}
           dataSource={approvedList}
-          rowKey="mm_id"
+          rowKey="maker_id"
           loading={loading}
           pagination={{
             pageSize: 20,
@@ -262,7 +262,7 @@ export default function Applications() {
 
       {/* 申请详情弹窗 */}
       <Modal
-        title={`申请详情 #${selectedApp?.mm_id}`}
+        title={`申请详情 #${selectedApp?.maker_id}`}
         open={!!selectedApp}
         onCancel={() => setSelectedApp(null)}
         footer={
@@ -272,7 +272,7 @@ export default function Applications() {
               <Button
                 type="primary"
                 onClick={() => {
-                  handleCreateProposal(selectedApp.mm_id, 'approve')
+                  handleCreateProposal(selectedApp.maker_id, 'approve')
                   setSelectedApp(null)
                 }}
               >
@@ -281,7 +281,7 @@ export default function Applications() {
               <Button
                 danger
                 onClick={() => {
-                  handleCreateProposal(selectedApp.mm_id, 'reject')
+                  handleCreateProposal(selectedApp.maker_id, 'reject')
                   setSelectedApp(null)
                 }}
               >
@@ -296,7 +296,7 @@ export default function Applications() {
       >
         {selectedApp && (
           <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="申请编号">{selectedApp.mm_id}</Descriptions.Item>
+            <Descriptions.Item label="申请编号">{selectedApp.maker_id}</Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color={selectedApp.status === 'Active' ? 'success' : 'warning'}>
                 {selectedApp.status === 'Active' ? '已批准' : '待审核'}

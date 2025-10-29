@@ -1,6 +1,8 @@
 import React from 'react'
-import { Alert, Card, Descriptions, Typography, Button, message } from 'antd'
+import { Alert, Card, Descriptions, Typography, Button, message, Space } from 'antd'
+import { FileTextOutlined } from '@ant-design/icons'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
+import { SubmitChatEvidence } from '../../components/Dispute/SubmitChatEvidence'
 
 /**
  * 函数级详细中文注释：订单详情（全局链上直连）
@@ -12,6 +14,7 @@ import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 const OrderDetailPage: React.FC = () => {
   const [orderId, setOrderId] = React.useState<string>('1')
   const [data, setData] = React.useState<any>(null)
+  const [showSubmitEvidence, setShowSubmitEvidence] = React.useState(false)
 
   /**
    * 函数级中文注释：全局链上直连模式，暂时禁用 Subsquid 查询
@@ -106,7 +109,7 @@ const OrderDetailPage: React.FC = () => {
               ))}
             </div>
           ) : null}
-          <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <div style={{ display:'flex', gap:8, marginTop:8, flexWrap: 'wrap' }}>
             <Button onClick={markPaid}>标记已付</Button>
             <Button onClick={dispute}>发起争议</Button>
             <Button type="primary" onClick={release}>放行(卖家)</Button>
@@ -114,8 +117,44 @@ const OrderDetailPage: React.FC = () => {
             <Button onClick={revealPayment}>揭示支付</Button>
             <Button onClick={revealContact}>揭示联系方式</Button>
           </div>
+          
+          {/* 聊天记录证据提交（争议状态下可见） */}
+          {data?.state === 'Disputed' && (
+            <div style={{ marginTop: 16, padding: 12, backgroundColor: '#fff7e6', borderRadius: 6 }}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Typography.Text strong style={{ color: '#fa8c16' }}>
+                  📝 订单争议中
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  您可以提交与做市商的聊天记录作为证据，帮助委员会公正裁决
+                </Typography.Text>
+                <Button
+                  type="primary"
+                  icon={<FileTextOutlined />}
+                  onClick={() => setShowSubmitEvidence(true)}
+                >
+                  提交聊天记录证据
+                </Button>
+              </Space>
+            </div>
+          )}
         </Card>
       </div>
+      
+      {/* 聊天记录证据提交模态框 */}
+      {data?.maker && (
+        <SubmitChatEvidence
+          orderId={Number(orderId)}
+          makerAccountId={data.maker}
+          visible={showSubmitEvidence}
+          onClose={() => setShowSubmitEvidence(false)}
+          onSuccess={() => {
+            message.success('聊天记录证据已成功提交！')
+            setShowSubmitEvidence(false)
+            load() // 重新加载订单数据
+          }}
+        />
+      )}
     </div>
   )
 }

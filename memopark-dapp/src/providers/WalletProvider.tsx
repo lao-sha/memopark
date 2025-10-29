@@ -21,6 +21,7 @@ interface WalletContextType {
   accounts: InjectedAccountWithMeta[];
   selectedAccount: InjectedAccountWithMeta | null;
   currentAccount: InjectedAccountWithMeta | null; // 兼容bridge组件: currentAccount别名
+  account: InjectedAccountWithMeta | null; // 兼容chat组件: account别名
   isConnected: boolean;
   isLoading: boolean;
   connectWallet: () => Promise<void>;
@@ -193,6 +194,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     accounts,
     selectedAccount,
     currentAccount: selectedAccount, // 兼容bridge组件: currentAccount别名
+    account: selectedAccount, // 兼容chat组件: account别名
     isConnected,
     isLoading,
     connectWallet,

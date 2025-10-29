@@ -307,10 +307,10 @@ export default function CreateProposal() {
             optionFilterProp="label"
           >
             {pendingApplications.map((app) => (
-              <Select.Option key={app.mm_id} value={app.mm_id} label={`#${app.mm_id}`}>
+              <Select.Option key={app.maker_id} value={app.maker_id} label={`#${app.maker_id}`}>
                 <div>
                   <div>
-                    <strong>#{app.mm_id}</strong>
+                    <strong>#{app.maker_id}</strong>
                   </div>
                   <div style={{ fontSize: 12, color: '#666' }}>
                     申请人: {formatAddress(app.owner)}

@@ -9,35 +9,45 @@ edition = "2021"
 members = [
     "node",
     "pallets/template",
-    "pallets/forwarder",
     "pallets/identity",
     # 函数级中文注释：OTC 模块（pallet-otc-maker、pallet-otc-listing 已删除，功能由 pallet-market-maker + pallet-otc-order 替代）
-    "pallets/otc-order",
+    # 🗑️ 2025-10-29: 已整合到 pallet-trading
+    # "pallets/otc-order",
     "pallets/escrow",
-    "pallets/first-purchase",  # 原名: pallets/otc-claim，2025-10-20更名
     "pallets/arbitration",
 
     "pallets/memo-park",
     "pallets/memo-grave",
-    "pallets/memo-hall",
+    # "pallets/memo-hall",  # 已移除 - 从未在 runtime 启用，功能已在 memo-grave 实现
     "pallets/ledger",
     "pallets/deceased",
     # 已迁移：删除旧 deceased-data
-    "pallets/memo-offerings",
+    # 🔴 2025-10-29：已整合到 pallet-memorial
+    # "pallets/memo-offerings",
     "pallets/memo-referrals",
     "pallets/affiliate",
-    "pallets/affiliate-weekly",
+    # 🔴 2025-10-29：已整合到 pallet-affiliate
+    # "pallets/affiliate-weekly",
     "pallets/membership",
-    "pallets/affiliate-instant",
-    "pallets/affiliate-config",
+    # 🔴 2025-10-29：已整合到 pallet-affiliate
+    # "pallets/affiliate-instant",
+    # "pallets/affiliate-config",
     "pallets/evidence",
     "pallets/memo-ipfs",
     "pallets/memo-pet",
-    "pallets/memo-sacrifice",
+    # 🔴 2025-10-29：已整合到 pallet-memorial
+    # "pallets/memo-sacrifice",
     "pallets/origin-restriction",
-    "pallets/fee-guard",
+    # "pallets/fee-guard",  # 已移除 - 使用官方 pallet-proxy 纯代理替代
     "pallets/pricing",
-    "pallets/market-maker",
+    # 🗑️ 2025-10-29: 已整合到 pallet-trading
+    # "pallets/market-maker",
+    # 🔴 2025-10-29：已整合到 pallet-credit
+    # "pallets/maker-credit",
+    # "pallets/buyer-credit",
+    "pallets/credit",
+    "pallets/deposits",
+    "pallets/trading",
     "runtime",
 ]
 exclude = []

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Card, Table, Button, Form, InputNumber, Statistic, Row, Col,
+  Card, Table, Button, Form, Input, InputNumber, Statistic, Row, Col,
   message, Typography, Tag, Space, Spin, Alert, Modal, Switch, Descriptions 
 } from 'antd';
 import { 
   DashboardOutlined, PlusOutlined, StopOutlined, PlayCircleOutlined,
   DollarOutlined, StarFilled, ThunderboltOutlined, WarningOutlined,
-  CheckCircleOutlined, CloseCircleOutlined 
+  CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined 
 } from '@ant-design/icons';
 import { usePolkadot } from '@/providers/WalletProvider';
 import { signAndSendTxWithPrompt } from '@/lib/polkadot-safe';
@@ -54,22 +54,26 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setDataLoading(true);
     try {
-      // 1. 查找当前账户是哪个做市商
-      const activeMakersEntries = await api.query.marketMaker.activeMarketMakers.entries();
+      // 🆕 查找当前账户的做市商（pallet-trading已合并做市商和桥接配置）
+      const makersEntries = await api.query.trading.makerApplications.entries();
       
       let foundMaker: any = null;
       let mmId: number = 0;
       
-      for (const [key, makerOpt] of activeMakersEntries) {
+      for (const [key, makerOpt] of makersEntries) {
+        if (makerOpt.isNone) continue;
+        
         const maker = makerOpt.unwrap();
-        if (maker.owner.toHuman() === currentAccount.address) {
+        const makerData = maker.toJSON() as any;
+        
+        if (makerData.owner === currentAccount.address) {
           mmId = (key.args[0] as any).toNumber();
           foundMaker = {
             mmId,
-            owner: maker.owner.toHuman(),
-            name: maker.public_cid.toHuman() || `做市商 #${mmId}`,
-            deposit: maker.deposit.toNumber() / 1e12,
-            status: maker.status.toHuman(),
+            owner: makerData.owner,
+            name: makerData.publicCid || `做市商 #${mmId}`,
+            deposit: Number(BigInt(makerData.deposit || '0') / BigInt(1e12)),
+            status: makerData.status,
           };
           break;
         }
@@ -82,22 +86,27 @@ export const MakerBridgeDashboard: React.FC = () => {
       
       setMakerInfo(foundMaker);
       
-      // 2. 查询桥接服务配置
-      const serviceOpt = await api.query.marketMaker.bridgeServices(mmId);
-      if (serviceOpt.isSome) {
-        const service = serviceOpt.unwrap();
+      // 🆕 从maker数据中提取桥接配置（已合并到makerApplications）
+      const makerDataForConfig = await api.query.trading.makerApplications(mmId);
+      if (makerDataForConfig.isSome) {
+        const makerJSON = makerDataForConfig.unwrap().toJSON() as any;
+        
+        // 检查是否支持桥接
+        const supportsBridge = makerJSON.direction === 'Buy' || makerJSON.direction === 'BuyAndSell';
+        const enabled = supportsBridge && makerJSON.status === 'Active';
+        
         setServiceConfig({
-          enabled: service.enabled.toHuman(),
-          maxSwapAmount: service.max_swap_amount.toNumber() / 1_000_000,
-          feeRate: service.fee_rate_bps.toNumber() / 100,
-          totalSwaps: service.total_swaps.toNumber(),
-          totalVolume: service.total_volume.toNumber() / 1e12,
-          successCount: service.success_count.toNumber(),
-          avgTime: service.avg_time_seconds.toNumber(),
-          deposit: service.deposit.toNumber() / 1e12,
+          enabled,
+          maxSwapAmount: 10000, // TODO: 根据deposit计算
+          feeRate: Math.abs(makerJSON.buyPremiumBps || 0) / 100,
+          totalSwaps: 0, // TODO: 需要从统计数据获取
+          totalVolume: 0,
+          successCount: 0,
+          avgTime: 600,
+          deposit: Number(BigInt(makerJSON.deposit || '0') / BigInt(1e12)),
         });
         
-        // 3. 加载待处理订单
+        // 加载待处理订单
         await loadPendingSwaps(mmId);
       }
       
@@ -116,8 +125,8 @@ export const MakerBridgeDashboard: React.FC = () => {
     if (!api) return;
     
     try {
-      // 查询所有兑换记录，筛选该做市商的待处理订单
-      const allSwapsEntries = await api.query.simpleBridge.makerSwaps.entries();
+      // 查询所有兑换记录，筛选该做市商的待处理订单（🆕 pallet-trading）
+      const allSwapsEntries = await api.query.trading.makerSwaps.entries();
       
       const pending: any[] = [];
       for (const [key, recordOpt] of allSwapsEntries) {
@@ -220,7 +229,7 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.simpleBridge.completeSwapByMaker(
+      const tx = api.tx.trading.markSwapComplete(  // 🆕 pallet-trading
         selectedSwap.swapId,
         trc20TxHash
       );

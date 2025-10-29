@@ -10,6 +10,8 @@ import { signAndSendLocalWithPassword as _s } from '../../lib/polkadot-safe'
 import OwnerChangeLogInline from './components/OwnerChangeLogInline'
 import { ApiPromise } from '@polkadot/api'
 import OfferingSubjectAccount from '../../components/OfferingSubjectAccount'
+import RelationshipList from '../../components/deceased/RelationshipList'
+import RelationshipGraph from '../../components/deceased/RelationshipGraph'
 
 /**
  * 函数级详细中文注释：墓地详情页（移动端）
@@ -558,6 +560,7 @@ const GraveDetailPage: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
             { key:'deceased', label:'逝者信息' },
+            { key:'relationships', label:'家族关系' },
             { key:'album', label:'相册' },
             { key:'video', label:'视频' },
             { key:'life', label:'生平' },
@@ -766,6 +769,70 @@ const GraveDetailPage: React.FC = () => {
               </List.Item>
             )}
           />
+        )}
+
+        {activeTab === 'relationships' && (
+          <Card size="small">
+            {selectedDid == null ? (
+              <Alert
+                type="info"
+                showIcon
+                message="请选择逝者"
+                description="请先在'逝者信息'标签页中选择一个逝者，然后查看TA的家族关系。"
+              />
+            ) : (
+              <Tabs defaultActiveKey="list" items={[
+                {
+                  key: 'list',
+                  label: '列表视图',
+                  children: (
+                    <RelationshipList
+                      deceasedId={selectedDid}
+                      onDeceasedClick={(id) => {
+                        try {
+                          // 如果是本墓位的逝者，直接选中
+                          const found = deceased.find(d => d.id === id)
+                          if (found) {
+                            setSelectedDid(id)
+                            setDetailItem(found as any)
+                            setDetailOpen(true)
+                          } else {
+                            // 否则跳转到逝者详情页（新页面）
+                            message.info(`逝者 #${id} 不在当前墓位，点击查看详情`)
+                          }
+                        } catch {}
+                      }}
+                      showDetails={true}
+                      groupByKind={true}
+                    />
+                  ),
+                },
+                {
+                  key: 'graph',
+                  label: '图谱视图',
+                  children: (
+                    <RelationshipGraph
+                      rootDeceasedId={selectedDid}
+                      maxDepth={3}
+                      onNodeClick={(id) => {
+                        try {
+                          const found = deceased.find(d => d.id === id)
+                          if (found) {
+                            setSelectedDid(id)
+                            setDetailItem(found as any)
+                            setDetailOpen(true)
+                          } else {
+                            message.info(`逝者 #${id} 不在当前墓位`)
+                          }
+                        } catch {}
+                      }}
+                      height={600}
+                    />
+                  ),
+                },
+              ]} />
+            )}
+          </Card>
         )}
       </div>
       {/* 封面设置/提议弹窗 */}

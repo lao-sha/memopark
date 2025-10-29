@@ -16,6 +16,12 @@ extern crate pallet_memo_ipfs;
 // 作用：便于 runtime 以 `pallet_memo_grave::Call` 等路径引用，同时满足集成宏的默认部件查找。
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -200,6 +206,80 @@ pub mod pallet {
         pub note_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
     }
 
+    /// 函数级详细中文注释：墓位准入策略枚举（Phase 1.5新增 - 解决P0问题2）
+    /// 
+    /// ### 功能
+    /// - 控制谁可以将逝者迁移到该墓位
+    /// - 解决P0问题：逝者可以强行挤入私人墓位
+    /// 
+    /// ### 策略说明
+    /// - **OwnerOnly（默认）**：仅墓主控制，其他人无法迁入
+    /// - **Public**：公开墓位，任何人都可以迁入
+    /// - **Whitelist**：白名单模式，仅允许特定账户迁入
+    /// 
+    /// ### 使用场景
+    /// - OwnerOnly: 私人墓、VIP墓（默认）
+    /// - Public: 公共墓位、社区墓
+    /// - Whitelist: 家族墓、定向服务墓
+    /// 
+    /// ### 设计理念
+    /// - 平衡需求3（逝者自由迁移）与墓主控制权
+    /// - 墓主可以设置准入策略保护墓位
+    /// - 逝者owner在策略允许范围内自由迁移
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Debug))]
+    pub enum GraveAdmissionPolicy {
+        /// 仅墓主控制（默认策略）
+        /// - 只有墓主自己创建的逝者可以进入
+        /// - 其他人无法迁入
+        OwnerOnly,
+        
+        /// 公开墓位
+        /// - 任何人都可以将逝者迁入
+        /// - 适合公共墓地、社区墓
+        Public,
+        
+        /// 白名单模式
+        /// - 仅白名单中的账户可以迁入
+        /// - 适合家族墓、定向服务
+        Whitelist,
+    }
+    
+    impl Default for GraveAdmissionPolicy {
+        fn default() -> Self {
+            // 默认为OwnerOnly，保护墓主权利
+            GraveAdmissionPolicy::OwnerOnly
+        }
+    }
+    
+    impl GraveAdmissionPolicy {
+        /// 函数级中文注释：转换为u8代码（用于Event）
+        /// - 0: OwnerOnly
+        /// - 1: Public
+        /// - 2: Whitelist
+        pub fn to_code(&self) -> u8 {
+            match self {
+                GraveAdmissionPolicy::OwnerOnly => 0,
+                GraveAdmissionPolicy::Public => 1,
+                GraveAdmissionPolicy::Whitelist => 2,
+            }
+        }
+        
+        /// 函数级中文注释：从u8代码构建（用于前端解析）
+        /// - 0: OwnerOnly
+        /// - 1: Public
+        /// - 2: Whitelist
+        /// - 其他：默认OwnerOnly
+        pub fn from_code(code: u8) -> Self {
+            match code {
+                0 => GraveAdmissionPolicy::OwnerOnly,
+                1 => GraveAdmissionPolicy::Public,
+                2 => GraveAdmissionPolicy::Whitelist,
+                _ => GraveAdmissionPolicy::OwnerOnly,
+            }
+        }
+    }
+
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(10);
 
@@ -233,6 +313,62 @@ pub mod pallet {
     /// - 若墓位无安葬记录，则清除该索引。
     #[pallet::storage]
     pub type PrimaryDeceasedOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, OptionQuery>;
+
+    /// 函数级详细中文注释：墓位准入策略存储（Phase 1.5新增 - 解决P0问题2）
+    /// 
+    /// ### 功能
+    /// - 存储每个墓位的准入策略
+    /// - 控制谁可以将逝者迁入该墓位
+    /// 
+    /// ### 默认值
+    /// - ValueQuery：返回默认值OwnerOnly（保护墓主权利）
+    /// - 未设置策略的墓位默认为OwnerOnly
+    /// 
+    /// ### 使用场景
+    /// - 墓主调用set_admission_policy设置策略
+    /// - deceased::transfer_deceased检查策略
+    /// 
+    /// ### 注意事项
+    /// - 墓主可随时修改策略
+    /// - 策略变更立即生效
+    #[pallet::storage]
+    pub type AdmissionPolicyOf<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // grave_id
+        GraveAdmissionPolicy,
+        ValueQuery, // 默认返回OwnerOnly
+    >;
+
+    /// 函数级详细中文注释：墓位准入白名单存储（Phase 1.5新增）
+    /// 
+    /// ### 功能
+    /// - 存储白名单模式下允许迁入的账户
+    /// - 仅在AdmissionPolicy为Whitelist时生效
+    /// 
+    /// ### 键结构
+    /// - 第一层key: grave_id（墓位ID）
+    /// - 第二层key: AccountId（允许的账户）
+    /// - value: ()（仅作标记，存在即允许）
+    /// 
+    /// ### 使用场景
+    /// - 墓主调用add_to_admission_whitelist添加账户
+    /// - 墓主调用remove_from_admission_whitelist移除账户
+    /// - deceased::transfer_deceased检查是否在白名单中
+    /// 
+    /// ### 注意事项
+    /// - 仅墓主可以管理白名单
+    /// - 白名单不限制墓主自己
+    #[pallet::storage]
+    pub type AdmissionWhitelist<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u64, // grave_id
+        Blake2_128Concat,
+        T::AccountId, // 允许的账户
+        (),
+        ValueQuery,
+    >;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Default)]
     pub struct GraveMeta {
@@ -454,9 +590,10 @@ pub mod pallet {
     pub type KinshipPolicyOf<T: Config> = StorageMap<_, Blake2_128Concat, u64, u8, ValueQuery>;
 
     // ===== Hall（纪念馆）增强：附加信息与风控 =====
-    // Hall 相关已拆分至独立 pallet-memo-hall（此处删除存储）。
+    // Hall 相关：原计划拆分至 pallet-memo-hall，但该 pallet 从未启用，已归档。
+    // 函数级中文注释：纪念馆功能实际由本 pallet 的墓位功能提供（create_grave/inter/update_grave）。
 
-    // Hall 限频与 KYC 参数已移至新 pallet。
+    // Hall 限频与 KYC 参数：未实际使用，已归档。
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -634,6 +771,22 @@ pub mod pallet {
         CarouselSet {
             len: u32,
         },
+        /// 函数级中文注释：墓位准入策略已设置（Phase 1.5新增）
+        /// - policy_code: 0=OwnerOnly, 1=Public, 2=Whitelist
+        AdmissionPolicySet {
+            grave_id: u64,
+            policy_code: u8,
+        },
+        /// 函数级中文注释：账户已添加到准入白名单（Phase 1.5新增）
+        AddedToAdmissionWhitelist {
+            grave_id: u64,
+            who: T::AccountId,
+        },
+        /// 函数级中文注释：账户已从准入白名单移除（Phase 1.5新增）
+        RemovedFromAdmissionWhitelist {
+            grave_id: u64,
+            who: T::AccountId,
+        },
     }
 
     #[pallet::error]
@@ -641,6 +794,26 @@ pub mod pallet {
         NotFound,
         NotOwner,
         NotAdmin,
+        /// 函数级中文注释：墓位非空（需求1）
+        /// - 场景：转让墓位前必须清空所有逝者
+        /// - 解决：逝者owner需先调用deceased.transfer_deceased迁移逝者
+        GraveNotEmpty,
+        /// 函数级详细中文注释：准入被拒绝（Phase 1.5新增 - 解决P0问题2）
+        /// 
+        /// ### 触发场景
+        /// - 逝者owner试图迁移逝者到目标墓位
+        /// - 但不符合目标墓位的准入策略
+        /// 
+        /// ### 策略说明
+        /// - OwnerOnly: 调用者不是墓主 → AdmissionDenied
+        /// - Public: 总是允许 → 不会触发
+        /// - Whitelist: 调用者不在白名单 → AdmissionDenied
+        /// 
+        /// ### 解决方法
+        /// - 联系墓主请求准入
+        /// - 墓主可以修改策略为Public
+        /// - 墓主可以将你添加到白名单
+        AdmissionDenied,
         ParkNotFound,
         CapacityExceeded,
         AlreadyOccupied,
@@ -746,9 +919,8 @@ pub mod pallet {
             Ok(())
         }
 
-        // 已移至 pallet-memo-hall：create_hall
-
-        // 已移至 pallet-memo-hall：attach_deceased
+        // 历史注释：原计划的 pallet-memo-hall 从未启用，已归档。
+        // 纪念馆功能实际由本 pallet 的 create_grave() / inter() 等接口提供。
 
         /// 函数级中文注释：设置墓位所属园区（仅墓主或园区管理员）。
         #[pallet::call_index(1)]
@@ -956,14 +1128,12 @@ pub mod pallet {
             // - 使用grave的主逝者ID（如有），否则使用grave_id作为deceased_id
             // - 失败不阻塞音频设置（容错处理）
             let deceased_id_u64 = PrimaryDeceasedOf::<T>::get(id).unwrap_or(id);
-            let price = T::DefaultStoragePrice::get();
             
             if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
                 who.clone(),
                 deceased_id_u64,
                 cid_for_pin,
-                price,
-                3, // 默认3副本
+                None, // 使用默认Standard层级（3副本）
             ) {
                 log::warn!(
                     target: "memo_grave",
@@ -1255,6 +1425,161 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 函数级详细中文注释：设置墓位准入策略（Phase 1.5新增 - 解决P0问题2）
+        /// 
+        /// ### 功能
+        /// - 墓主设置墓位的准入策略
+        /// - 控制谁可以将逝者迁入该墓位
+        /// 
+        /// ### 权限
+        /// - 仅墓主可调用
+        /// 
+        /// ### 参数
+        /// - `grave_id`: 墓位ID
+        /// - `policy_code`: 准入策略代码（0=OwnerOnly, 1=Public, 2=Whitelist）
+        /// 
+        /// ### 策略说明
+        /// - **0=OwnerOnly（默认）**：仅墓主自己创建的逝者可进入
+        /// - **1=Public**：任何人都可以迁入逝者
+        /// - **2=Whitelist**：仅白名单中的账户可迁入
+        /// 
+        /// ### 使用场景
+        /// - 私人墓：保持OwnerOnly（默认）
+        /// - 公共墓：设置为Public
+        /// - 家族墓：设置为Whitelist，然后添加家族成员
+        /// 
+        /// ### 事件
+        /// - AdmissionPolicySet { grave_id, policy_code }
+        /// 
+        /// ### 注意事项
+        /// - 策略变更立即生效
+        /// - 不影响已存在的逝者
+        /// - 仅影响新的迁入请求
+        #[pallet::call_index(64)]
+        #[pallet::weight(T::WeightInfo::update_grave())]
+        pub fn set_admission_policy(
+            origin: OriginFor<T>,
+            grave_id: u64,
+            policy_code: u8,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 检查墓位存在
+            let grave = Graves::<T>::get(grave_id).ok_or(Error::<T>::NotFound)?;
+            
+            // 检查权限：仅墓主
+            ensure!(who == grave.owner, Error::<T>::NotOwner);
+            
+            // 转换为enum
+            let policy = GraveAdmissionPolicy::from_code(policy_code);
+            
+            // 设置策略
+            AdmissionPolicyOf::<T>::insert(grave_id, policy);
+            
+            // 发送事件
+            Self::deposit_event(Event::AdmissionPolicySet { 
+                grave_id, 
+                policy_code 
+            });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：添加到准入白名单（Phase 1.5新增）
+        /// 
+        /// ### 功能
+        /// - 墓主将账户添加到准入白名单
+        /// - 白名单账户可以迁入逝者（当策略为Whitelist时）
+        /// 
+        /// ### 权限
+        /// - 仅墓主可调用
+        /// 
+        /// ### 参数
+        /// - `grave_id`: 墓位ID
+        /// - `who`: 要添加的账户
+        /// 
+        /// ### 使用场景
+        /// - 家族墓：添加家族成员
+        /// - 定向服务：添加合作伙伴
+        /// - VIP墓位：添加授权用户
+        /// 
+        /// ### 事件
+        /// - AddedToAdmissionWhitelist { grave_id, who }
+        /// 
+        /// ### 注意事项
+        /// - 仅在策略为Whitelist时生效
+        /// - 墓主自己无需添加（始终有权限）
+        /// - 重复添加不报错（幂等操作）
+        #[pallet::call_index(65)]
+        #[pallet::weight(T::WeightInfo::add_admin())]
+        pub fn add_to_admission_whitelist(
+            origin: OriginFor<T>,
+            grave_id: u64,
+            who: T::AccountId,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+            
+            // 检查墓位存在
+            let grave = Graves::<T>::get(grave_id).ok_or(Error::<T>::NotFound)?;
+            
+            // 检查权限：仅墓主
+            ensure!(caller == grave.owner, Error::<T>::NotOwner);
+            
+            // 添加到白名单（幂等操作）
+            AdmissionWhitelist::<T>::insert(grave_id, who.clone(), ());
+            
+            // 发送事件
+            Self::deposit_event(Event::AddedToAdmissionWhitelist { grave_id, who });
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：从准入白名单移除（Phase 1.5新增）
+        /// 
+        /// ### 功能
+        /// - 墓主将账户从准入白名单移除
+        /// - 移除后该账户无法再迁入逝者
+        /// 
+        /// ### 权限
+        /// - 仅墓主可调用
+        /// 
+        /// ### 参数
+        /// - `grave_id`: 墓位ID
+        /// - `who`: 要移除的账户
+        /// 
+        /// ### 使用场景
+        /// - 撤销家族成员权限
+        /// - 取消合作伙伴授权
+        /// - 移除不再信任的用户
+        /// 
+        /// ### 事件
+        /// - RemovedFromAdmissionWhitelist { grave_id, who }
+        /// 
+        /// ### 注意事项
+        /// - 移除后立即生效
+        /// - 不影响已存在的逝者
+        /// - 账户不存在时不报错（幂等操作）
+        #[pallet::call_index(66)]
+        #[pallet::weight(T::WeightInfo::remove_admin())]
+        pub fn remove_from_admission_whitelist(
+            origin: OriginFor<T>,
+            grave_id: u64,
+            who: T::AccountId,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+            
+            // 检查墓位存在
+            let grave = Graves::<T>::get(grave_id).ok_or(Error::<T>::NotFound)?;
+            
+            // 检查权限：仅墓主
+            ensure!(caller == grave.owner, Error::<T>::NotOwner);
+            
+            // 从白名单移除（幂等操作）
+            AdmissionWhitelist::<T>::remove(grave_id, who.clone());
+            
+            // 发送事件
+            Self::deposit_event(Event::RemovedFromAdmissionWhitelist { grave_id, who });
+            Ok(())
+        }
+
         /// 函数级中文注释：【治理】强制转让墓地所有权（用于丢钥匙救济/纠纷裁决）。
         /// - 起源：`T::GovernanceOrigin`（Root | 内容委员会阈值(2/3)）。
         /// - 行为：不检查当前 owner，直接将 `id` 的所有权指向 `new_owner`；记录证据 CID。
@@ -1354,7 +1679,7 @@ pub mod pallet {
             Ok(())
         }
 
-        // 已移至 pallet-memo-hall：set_hall_params
+        // 历史注释：原计划的 set_hall_params 在 pallet-memo-hall 中，但该 pallet 从未启用，已归档。
 
         /// 函数级中文注释：更新墓地名称/元数据/状态，允许所有者或陵园管理员。
         #[pallet::call_index(2)]
@@ -1392,7 +1717,32 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：转让墓地所有权，仅所有者可调用。
+        /// 函数级详细中文注释：转让墓地所有权（需求1：转让前必须清空）
+        /// 
+        /// ### 权限
+        /// - 仅墓位所有者可调用
+        /// 
+        /// ### 前置条件（需求1核心）
+        /// - **墓位必须为空**：不能有任何逝者记录
+        /// - 逝者owner必须先迁移所有逝者到其他墓位
+        /// 
+        /// ### 功能说明
+        /// - 将墓位所有权转让给新的owner
+        /// - 强制墓主与逝者owner协商
+        /// - 保护逝者owner权利
+        /// 
+        /// ### 使用场景
+        /// - 墓位出售/赠送
+        /// - 墓位继承
+        /// - 家族墓转交
+        /// 
+        /// ### 流程
+        /// 1. 墓主联系所有逝者owner
+        /// 2. 逝者owner迁移逝者到其他墓位（使用deceased.transfer_deceased）
+        /// 3. 墓位为空后，墓主可以转让
+        /// 
+        /// ### 注意事项
+        /// ⚠️ **重要**：需求1核心设计 - 防止墓主转让导致逝者owner失控
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer_grave())]
@@ -1402,6 +1752,14 @@ pub mod pallet {
             new_owner: T::AccountId,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // ⭐ 需求1核心：检查墓位是否为空（通过Interments安葬记录）
+            let interments = Interments::<T>::get(id);
+            ensure!(
+                interments.is_empty(),
+                Error::<T>::GraveNotEmpty
+            );
+            
             Graves::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(who == g.owner, Error::<T>::NotOwner);
@@ -1452,17 +1810,16 @@ pub mod pallet {
                 if !PrimaryDeceasedOf::<T>::contains_key(id) {
                     PrimaryDeceasedOf::<T>::insert(id, deceased_id);
                 }
-                // 同步令牌列表：拉取 token 并加入 deceased_tokens（最多保留 6 条，先进先出）
-                if let Some(mut g) = Graves::<T>::get(id) {
-                    if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
-                        let mut lst = g.deceased_tokens.clone();
-                        if lst.len() as u32 >= 6 {
-                            let _ = lst.remove(0);
-                        }
-                        let _ = lst.try_push(tok);
-                        g.deceased_tokens = lst;
-                        Graves::<T>::insert(id, g);
+                // 函数级详细中文注释：在同一事务内更新 deceased_tokens，确保数据一致性
+                // - 直接修改 g.deceased_tokens，避免事务外重复读取和写入
+                // - 最多保留 6 条，先进先出（FIFO）
+                if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
+                    let mut lst = g.deceased_tokens.clone();
+                    if lst.len() as u32 >= 6 {
+                        let _ = lst.remove(0);
                     }
+                    let _ = lst.try_push(tok);
+                    g.deceased_tokens = lst;
                 }
                 Ok(())
             })?;
@@ -1508,24 +1865,17 @@ pub mod pallet {
                             PrimaryDeceasedOf::<T>::insert(id, best);
                         }
                     }
+                    // 函数级详细中文注释：在同一事务内更新 deceased_tokens，确保数据一致性
+                    // - 直接修改 g.deceased_tokens，避免事务外重复读取和写入
+                    // - 若无法获取 token，保持 deceased_tokens 不变（保证数据一致性，避免错误删除）
+                    if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
+                        g.deceased_tokens.retain(|t| t != &tok);
+                    }
                     Ok(())
                 } else {
                     Err(Error::<T>::NotFound.into())
                 }
             })?;
-            // 同步令牌列表：从 deceased_tokens 中移除对应 token（模糊移除，若存在）
-            if let Some(mut g) = Graves::<T>::get(id) {
-                // 获取 token 以比对；若无法获取则尝试删除最早一条作为近似（避免持久脏数据）
-                let maybe_tok = <T as Config>::DeceasedTokenProvider::token_of(deceased_id);
-                if let Some(tok) = maybe_tok {
-                    g.deceased_tokens.retain(|t| t != &tok);
-                } else {
-                    if !g.deceased_tokens.is_empty() {
-                        let _ = g.deceased_tokens.remove(0);
-                    }
-                }
-                Graves::<T>::insert(id, g);
-            }
             Self::deposit_event(Event::Exhumed { id, deceased_id });
             Ok(())
         }
@@ -1864,10 +2214,9 @@ pub mod pallet {
             );
             PendingApplications::<T>::remove(id, &who);
             Members::<T>::insert(id, &who, ());
-            Self::deposit_event(Event::MemberApproved {
-                id,
-                who: who.clone(),
-            });
+            // 函数级中文注释：仅发送 MemberJoined 事件，避免与 MemberApproved 重复
+            // - MemberJoined 已隐含"申请被批准"的语义
+            // - 前端监听此事件即可获知成员加入状态
             Self::deposit_event(Event::MemberJoined { id, who });
             Ok(())
         }
@@ -1992,12 +2341,19 @@ pub mod pallet {
             note: Option<Vec<u8>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(Members::<T>::contains_key(id, &who), Error::<T>::NotMember);
+            // 函数级详细中文注释：调整检查顺序，避免信息泄露
+            // 1. 先检查墓地是否存在
+            // 2. 再检查逝者是否在墓地中
+            // 3. 最后检查成员身份
+            // 这样可以防止攻击者通过错误类型判断某个逝者是否在某个墓地
+            ensure!(Graves::<T>::contains_key(id), Error::<T>::NotFound);
             // 校验逝者属于该墓位（读取 Interments 记录）
             let in_this_grave = Interments::<T>::get(id)
                 .iter()
                 .any(|r| r.deceased_id == deceased_id);
             ensure!(in_this_grave, Error::<T>::NotFound);
+            // 检查成员身份（放在最后，避免泄露墓地/逝者信息）
+            ensure!(Members::<T>::contains_key(id, &who), Error::<T>::NotMember);
             ensure!(
                 !KinshipOf::<T>::contains_key(id, (deceased_id, who.clone())),
                 Error::<T>::KinshipExists
@@ -2198,6 +2554,154 @@ pub mod pallet {
                 deceased_id,
                 who,
             });
+            Ok(())
+        }
+    }
+
+    // =================== Phase 1.5: 内部同步函数（供deceased pallet调用）===================
+    
+    impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：内部安葬记录函数（Phase 1.5新增）
+        /// 
+        /// ### 功能
+        /// - 将逝者记录到Interments存储
+        /// - 同步deceased pallet的create/transfer操作
+        /// - 不检查权限（权限已在deceased pallet检查）
+        /// - 不触发OnInterment钩子（避免重复触发）
+        /// 
+        /// ### 调用者
+        /// - runtime::GraveProviderAdapter::record_interment
+        /// - 由deceased::create_deceased间接调用
+        /// - 由deceased::transfer_deceased间接调用
+        /// 
+        /// ### 参数
+        /// - `grave_id`: 墓位ID
+        /// - `deceased_id`: 逝者ID
+        /// - `slot`: 槽位（可选，None时自动分配）
+        /// - `note_cid`: 备注CID（可选）
+        /// 
+        /// ### 容量检查
+        /// - 容量已在deceased pallet检查（通过BoundedVec）
+        /// - 本函数不重复检查，直接记录
+        /// 
+        /// ### 错误处理
+        /// - NotFound: 墓位不存在
+        /// - CapacityExceeded: 容量已满（理论上不会发生）
+        /// 
+        /// ### 注意事项
+        /// ⚠️ **重要**：本函数为内部函数，仅供GraveInspector trait调用
+        /// ⚠️ 不要从外部直接调用，权限检查会被绕过
+        pub fn do_inter_internal(
+            grave_id: u64,
+            deceased_id: u64,
+            slot: Option<u16>,
+            note_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let now = <frame_system::Pallet<T>>::block_number();
+            
+            Graves::<T>::try_mutate(grave_id, |maybe| -> DispatchResult {
+                let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                
+                let mut records = Interments::<T>::get(grave_id);
+                let use_slot = slot.unwrap_or(records.len() as u16);
+                
+                // 记录安葬
+                records
+                    .try_push(IntermentRecord::<T> {
+                        deceased_id,
+                        slot: use_slot,
+                        time: now,
+                        note_cid,
+                    })
+                    .map_err(|_| Error::<T>::CapacityExceeded)?;
+                
+                Interments::<T>::insert(grave_id, records);
+                
+                // 维护主逝者：若尚未设置，则将本次安葬设为主逝者
+                if !PrimaryDeceasedOf::<T>::contains_key(grave_id) {
+                    PrimaryDeceasedOf::<T>::insert(grave_id, deceased_id);
+                }
+                
+                // 更新 deceased_tokens（与原inter逻辑一致）
+                if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
+                    let mut lst = g.deceased_tokens.clone();
+                    if lst.len() as u32 >= 6 {
+                        let _ = lst.remove(0);
+                    }
+                    let _ = lst.try_push(tok);
+                    g.deceased_tokens = lst;
+                }
+                
+                Ok(())
+            })?;
+            
+            // ⚠️ 注意：不触发OnInterment钩子，避免重复触发
+            // 原因：deceased pallet已经处理了业务逻辑
+            
+            // 发送事件（用于审计）
+            Self::deposit_event(Event::Interred { id: grave_id, deceased_id });
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：内部起掘记录函数（Phase 1.5新增）
+        /// 
+        /// ### 功能
+        /// - 从Interments存储中移除逝者记录
+        /// - 同步deceased pallet的transfer操作
+        /// - 不检查权限（权限已在deceased pallet检查）
+        /// 
+        /// ### 调用者
+        /// - runtime::GraveProviderAdapter::record_exhumation
+        /// - 由deceased::transfer_deceased间接调用
+        /// 
+        /// ### 参数
+        /// - `grave_id`: 墓位ID
+        /// - `deceased_id`: 逝者ID
+        /// 
+        /// ### 幂等性
+        /// - 如果记录不存在，不报错（幂等操作）
+        /// - 确保即使多次调用也不会出错
+        /// 
+        /// ### 主逝者处理
+        /// - 如果移除的是主逝者，清空PrimaryDeceasedOf
+        /// 
+        /// ### 注意事项
+        /// ⚠️ **重要**：本函数为内部函数，仅供GraveInspector trait调用
+        /// ⚠️ 不要从外部直接调用，权限检查会被绕过
+        pub fn do_exhume_internal(
+            grave_id: u64,
+            deceased_id: u64,
+        ) -> DispatchResult {
+            Graves::<T>::try_mutate_exists(grave_id, |maybe| -> DispatchResult {
+                let g = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                
+                // 从Interments移除记录
+                let mut records = Interments::<T>::get(grave_id);
+                if let Some(pos) = records.iter().position(|r| r.deceased_id == deceased_id) {
+                    records.swap_remove(pos);
+                    Interments::<T>::insert(grave_id, records);
+                }
+                // ⚠️ 如果记录不存在，不报错（幂等）
+                
+                // 更新 deceased_tokens（移除对应token）
+                if let Some(tok) = <T as Config>::DeceasedTokenProvider::token_of(deceased_id) {
+                    let mut lst = g.deceased_tokens.clone();
+                    if let Some(p) = lst.iter().position(|t| t == &tok) {
+                        lst.remove(p);
+                    }
+                    g.deceased_tokens = lst;
+                }
+                
+                // 如果移除的是主逝者，清空主逝者标记
+                if PrimaryDeceasedOf::<T>::get(grave_id) == Some(deceased_id) {
+                    PrimaryDeceasedOf::<T>::remove(grave_id);
+                }
+                
+                Ok(())
+            })?;
+            
+            // 发送事件（用于审计）
+            Self::deposit_event(Event::Exhumed { id: grave_id, deceased_id });
             Ok(())
         }
     }
@@ -2433,6 +2937,71 @@ pub mod pallet {
             T::GovernanceOrigin::ensure_origin(origin)
                 .map(|_| ())
                 .map_err(|_| Error::<T>::NotAdmin)
+        }
+
+        /// 函数级详细中文注释：检查准入策略（Phase 1.5新增 - 解决P0问题2）
+        /// 
+        /// ### 功能
+        /// - 检查调用者是否有权限将逝者迁入目标墓位
+        /// - 根据墓位的准入策略进行判断
+        /// 
+        /// ### 参数
+        /// - `who`: 调用者账户（逝者owner）
+        /// - `grave_id`: 目标墓位ID
+        /// 
+        /// ### 策略逻辑
+        /// - **OwnerOnly（默认）**：仅墓主可以迁入 → 检查who == grave.owner
+        /// - **Public**：任何人都可以迁入 → 总是返回Ok
+        /// - **Whitelist**：仅白名单可以迁入 → 检查墓主或白名单
+        /// 
+        /// ### 返回值
+        /// - `Ok(())`: 允许迁入
+        /// - `Err(Error::<T>::AdmissionDenied)`: 拒绝迁入
+        /// - `Err(Error::<T>::NotFound)`: 墓位不存在
+        /// 
+        /// ### 调用者
+        /// - runtime::GraveProviderAdapter::check_admission_policy
+        /// - deceased::transfer_deceased调用trait方法
+        /// 
+        /// ### 注意事项
+        /// - 墓主始终可以迁入（不受策略限制）
+        /// - 策略仅影响新的迁入请求
+        /// - 不检查墓位容量（容量在deceased pallet检查）
+        pub fn check_admission_policy(
+            who: &T::AccountId,
+            grave_id: u64,
+        ) -> Result<(), Error<T>> {
+            // 检查墓位存在
+            let grave = Graves::<T>::get(grave_id).ok_or(Error::<T>::NotFound)?;
+            
+            // 墓主始终可以迁入（绕过策略）
+            if *who == grave.owner {
+                return Ok(());
+            }
+            
+            // 获取准入策略（默认OwnerOnly）
+            let policy = AdmissionPolicyOf::<T>::get(grave_id);
+            
+            match policy {
+                GraveAdmissionPolicy::OwnerOnly => {
+                    // 仅墓主可以迁入
+                    // 已经在上面检查过，走到这里说明不是墓主
+                    Err(Error::<T>::AdmissionDenied)
+                },
+                GraveAdmissionPolicy::Public => {
+                    // 公开墓位，任何人都可以迁入
+                    Ok(())
+                },
+                GraveAdmissionPolicy::Whitelist => {
+                    // 白名单模式
+                    // 检查是否在白名单中
+                    if AdmissionWhitelist::<T>::contains_key(grave_id, who) {
+                        Ok(())
+                    } else {
+                        Err(Error::<T>::AdmissionDenied)
+                    }
+                },
+            }
         }
     }
 }

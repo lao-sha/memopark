@@ -1,261 +1,395 @@
-# Listing（挂单）与时间线
-type Listing @entity {
-  id: ID!
-  maker: String!
-  
-  side: Int!
-  base: Int!
-  quote: Int!
-  price: BigInt!
-  minQty: BigInt!
-  maxQty: BigInt!
-  total: BigInt!
-  remaining: BigInt!
-  partial: Boolean!
-  expireAt: Int!
-  active: Boolean!
-  createdAt: Int!
-  actions: [ListingAction!]! @derivedFrom(field: "listing")
-}
+# Phase 1优化：Subsquid GraphQL Schema
+#
+# 函数级详细中文注释：定义所有链上数据的查询结构
+# - 提供高性能的GraphQL查询接口
+# - 支持复杂的过滤、排序、分页
+# - 历史数据完整保存
 
-type ListingAction @entity {
-  id: ID!
-  listing: Listing!
-  kind: String!
-  block: Int!
-  extrinsicHash: String
-  meta: String
-}
+# ===================================================================
+# OTC订单相关
+# ===================================================================
 
-# Order（订单）与时间线
+"""
+OTC订单实体
+存储所有OTC交易订单的完整信息
+"""
 type Order @entity {
+  "唯一标识: block-event"
   id: ID!
-  listingId: BigInt!
-  maker: String!
-  taker: String!
+  
+  "链上订单ID"
+  orderId: BigInt! @index
+  
+  "买家账户地址"
+  buyer: String! @index
+  
+  "卖家账户地址（做市商）"
+  seller: String! @index
+  
+  "MEMO数量（精度10^12）"
+  amount: BigInt!
+  
+  "USDT金额（精度10^6）"
+  usdtAmount: BigInt!
+  
+  "订单状态"
+  state: OrderState! @index
+  
+  "USDT单价（精度10^6）"
   price: BigInt!
-  qty: BigInt!
-  amount: BigInt!
-  state: String!
-  createdAt: Int!
-  expireAt: Int!
-  actions: [OrderAction!]! @derivedFrom(field: "order")
+  
+  "创建时间"
+  createdAt: DateTime! @index
+  
+  "支付时间"
+  paidAt: DateTime
+  
+  "释放时间"
+  releasedAt: DateTime
+  
+  "完成时间"
+  completedAt: DateTime @index
+  
+  "做市商ID"
+  makerId: BigInt @index
+  
+  "联系方式"
+  contactInfo: String
 }
 
-type OrderAction @entity {
+"""订单状态枚举"""
+enum OrderState {
+  "已创建，等待支付"
+  Created
+  
+  "已支付，等待释放"
+  Paid
+  
+  "已释放（完成）"
+  Released
+  
+  "已退款"
+  Refunded
+  
+  "争议中"
+  Disputed
+  
+  "已取消"
+  Cancelled
+  
+  "已过期"
+  Expired
+}
+
+# ===================================================================
+# 申诉相关
+# ===================================================================
+
+"""
+申诉实体
+存储所有申诉记录
+"""
+type Appeal @entity {
+  "唯一标识"
   id: ID!
-  order: Order!
-  kind: String!
-  block: Int!
-  extrinsicHash: String
-  meta: String
+  
+  "链上申诉ID"
+  appealId: BigInt! @index
+  
+  "提交人"
+  submitter: String! @index
+  
+  "申诉域"
+  domain: Int! @index
+  
+  "目标对象ID"
+  target: BigInt! @index
+  
+  "操作类型"
+  action: Int!
+  
+  "状态"
+  status: AppealStatus! @index
+  
+  "提交时间"
+  submittedAt: DateTime! @index
+  
+  "批准时间"
+  approvedAt: DateTime
+  
+  "执行时间"
+  executedAt: DateTime
+  
+  "撤回时间"
+  withdrawnAt: DateTime
+  
+  "驳回时间"
+  rejectedAt: DateTime
+  
+  "押金金额"
+  depositAmount: BigInt
 }
 
-
-# Arbitration（仲裁案件与时间线）
-type ArbitrationCase @entity {
-  id: ID!              # 组合键："<domainHex>-<id>"
-  domain: String!
-  objectId: BigInt!
-  state: String!       # Disputed | Closed
-  openedAt: Int!
-  closedAt: Int
-  decision: String     # Release | Refund | Partial
-  bps: Int
-  evidenceCount: Int!
-  actions: [ArbitrationAction!]! @derivedFrom(field: "case")
+"""申诉状态枚举"""
+enum AppealStatus {
+  "待审核"
+  Pending
+  
+  "已批准"
+  Approved
+  
+  "已驳回"
+  Rejected
+  
+  "已撤回"
+  Withdrawn
+  
+  "已执行"
+  Executed
+  
+  "重试耗尽"
+  RetryExhausted
+  
+  "自动驳回"
+  AutoDismissed
 }
 
-type ArbitrationAction @entity {
+# ===================================================================
+# 证据相关
+# ===================================================================
+
+"""
+证据实体
+存储所有证据记录
+"""
+type Evidence @entity {
+  "唯一标识"
   id: ID!
-  case: ArbitrationCase!
-  kind: String!        # Disputed | Arbitrated | AppendEvidence
-  block: Int!
-  extrinsicHash: String
-  meta: String
-}
-
-# Notification（事件中心，统一时间线）
-type Notification @entity {
-  id: ID!
-  module: String! @index
-  kind: String! @index
-  refId: String
-  actor: String
-  block: Int!
-  extrinsicHash: String
-  meta: String
-}
-
-# Pin 生命周期与计费（从 memo_ipfs）
-type PinBillingEvent @entity {
-  id: ID!           # "<cid>-<block>-<idx>"
-  cid: String! @index
-  kind: String!     # PinCharged | PinGrace | PinExpired
-  amount: BigInt
-  periodBlocks: Int
-  nextChargeAt: Int
-  block: Int!
-}
-
-# 仲裁日指标（仪表盘）
-type ArbDailyStat @entity {
-  id: ID!        # day key (blockHeight / blocksPerDay)
-  day: Int!
-  disputes: Int!
-  arbitrated: Int!
-  release: Int!
-  refund: Int!
-  partial: Int!
-}
-
-# Grave（墓地/纪念馆）与时间线、供奉/留言/媒体（只读层）
-type Grave @entity {
-  id: ID!                # grave_id
-  owner: String!
-  parkId: BigInt!
-  kind: String!
-  primaryDeceasedId: BigInt
-  slug: String
-  createdAt: Int!
-  active: Boolean!
-  offeringsCount: Int!
-  offeringsAmount: BigInt!
-  actions: [GraveAction!]! @derivedFrom(field: "grave")
-}
-
-type GraveAction @entity {
-  id: ID!
-  grave: Grave!
-  kind: String!          # GraveCreated | GraveLinkedDeceased | GraveSetPark | VisibilityUpdated
-  block: Int!
-  extrinsicHash: String
-  meta: String
-}
-
-type Offering @entity {
-  id: ID!
-  hallId: BigInt! @index
-  who: String!
-  amount: BigInt!
-  block: Int!
-}
-
-# 新增：目录下单事件（携带 sacrifice_id 与 duration）
-type OfferingBySacrifice @entity {
-  id: ID!
-  targetDomain: Int!
-  targetId: BigInt!
-  sacrificeId: BigInt!
-  who: String!
-  amount: BigInt!
-  durationWeeks: Int
-  block: Int!
-}
-
-# 供奉分账结算（由 OfferingRouted 事件产生，按 id 与 Offering 合并视图）
-type OfferingSettlement @entity {
-  id: ID!              # offering id
-  targetDomain: Int! @index
+  
+  "链上证据ID"
+  evidenceId: BigInt! @index
+  
+  "所有者"
+  owner: String! @index
+  
+  "证据域"
+  domain: Int! @index
+  
+  "目标对象ID"
   targetId: BigInt! @index
-  gross: BigInt!
-  remainder: BigInt!
-  shares: String       # JSON 字符串：[{account, amount}]
-  block: Int!
+  
+  "内容CID（IPFS）"
+  contentCid: String!
+  
+  "内容类型"
+  contentType: ContentType! @index
+  
+  "创建时间"
+  createdAt: DateTime! @index
+  
+  "是否加密"
+  isEncrypted: Boolean!
+  
+  "命名空间"
+  namespace: String
 }
 
-# Pin 合并视图（按 cid 聚合生命周期与费用曲线）
-type PinOverview @entity {
-  id: ID!            # cid(hex)
-  firstSeen: Int!
-  owner: String @index
-  replicas: Int
-  sizeBytes: BigInt
-  totalCharged: BigInt!
-  lastNextChargeAt: Int
-  lastState: String
+"""内容类型枚举"""
+enum ContentType {
+  "图片"
+  Image
+  
+  "视频"
+  Video
+  
+  "文档"
+  Document
+  
+  "混合（多种类型）"
+  Mixed
 }
 
-type GuestbookMessage @entity {
+# ===================================================================
+# 逝者纪念相关
+# ===================================================================
+
+"""
+逝者记录
+"""
+type Deceased @entity {
+  "唯一标识"
   id: ID!
-  hallId: BigInt!
-  who: String!
-  text: String!
-  block: Int!
+  
+  "链上逝者ID"
+  deceasedId: BigInt! @index
+  
+  "所有者"
+  owner: String! @index
+  
+  "姓名"
+  name: String!
+  
+  "创建时间"
+  createdAt: DateTime! @index
+  
+  "最后更新时间"
+  updatedAt: DateTime
+  
+  "隐私模式"
+  privacyMode: PrivacyMode! @index
 }
 
-type MediaItem @entity {
-  id: ID!
-  hallId: BigInt!
-  kind: String!
-  uri: String!
-  block: Int!
-}
-
-# 推荐关系
-type ReferralLink @entity {
-  id: ID!
-  who: String! @index
-  sponsor: String! @index
-  block: Int!
-}
-
-# 推荐码事件（默认码领取）
-type ReferralCode @entity {
-  id: ID!         # code
-  owner: String!
-  block: Int!
-}
-
-# Offering 价格快照（治理变更时间轴）
-type OfferingPriceSnapshot @entity {
-  id: ID!                 # 组合键："<kindCode>-<block>"
-  kindCode: Int!
-  fixedPrice: BigInt
-  unitPricePerWeek: BigInt
-  block: Int!
-}
-
-# 暂停事件快照（便于审计）
-type OfferingPauseEvent @entity {
-  id: ID!
-  scope: String!   # Global | Domain
-  domain: Int
-  paused: Boolean!
-  block: Int!
+"""隐私模式枚举"""
+enum PrivacyMode {
+  "公开"
+  Public
+  
+  "仅家人"
+  Family
+  
+  "私密"
+  Private
 }
 
 """
-供奉风控参数快照：在 OfferParamsUpdated 事件发生时记录
-- offerWindow: 滑动窗口大小（块），为空表示“保持不变/未显式设置”
-- offerMaxInWindow: 窗口内最大次数，空=保持
-- minOfferAmount: 最小供奉金额（Planck），空=保持
+供奉记录
 """
-type OfferingParamsSnapshot @entity {
-  id: ID!          # 组合键："<block>-<idx>"
-  block: Int!
-  offerWindow: Int
-  offerMaxInWindow: Int
-  minOfferAmount: BigInt
-}
-
-# ===== Governance（治理工单与时间线） =====
-type GovCase @entity {
-  id: ID!                # 组合键："deceased-<id>"
-  pallet: String!        # deceased
-  objectId: BigInt!      # deceased_id
-  openedAt: Int!         # 首次记录证据事件区块
-  lastActionAt: Int!
-  evidenceCid: String!   # 最近一次证据 CID（明文）
-  actions: [GovAction!]! @derivedFrom(field: "case")
-}
-
-type GovAction @entity {
+type Offering @entity {
+  "唯一标识"
   id: ID!
-  case: GovCase!
-  kind: String!          # GovEvidenceNoted | DeceasedUpdated | DeceasedTransferred | VisibilityChanged
-  block: Int!
-  extrinsicHash: String
-  meta: String
+  
+  "链上供奉ID"
+  offeringId: BigInt! @index
+  
+  "供奉人"
+  offerer: String! @index
+  
+  "逝者ID"
+  deceasedId: BigInt! @index
+  
+  "祭品类型"
+  itemKind: Int! @index
+  
+  "供奉时间"
+  offeredAt: DateTime! @index
+  
+  "持续周数"
+  durationWeeks: Int
+  
+  "金额"
+  amount: BigInt
+  
+  "到期时间"
+  expiresAt: DateTime
+}
+
+# ===================================================================
+# 做市商相关
+# ===================================================================
+
+"""
+做市商记录
+"""
+type MarketMaker @entity {
+  "唯一标识"
+  id: ID!
+  
+  "链上做市商ID"
+  makerId: BigInt! @index
+  
+  "所有者"
+  owner: String! @index
+  
+  "TRON地址"
+  tronAddress: String! @index
+  
+  "溢价率（基点）"
+  premiumBps: Int!
+  
+  "状态"
+  status: MakerStatus! @index
+  
+  "注册时间"
+  registeredAt: DateTime! @index
+  
+  "总交易量"
+  totalVolume: BigInt!
+  
+  "总订单数"
+  totalOrders: Int!
+}
+
+"""做市商状态枚举"""
+enum MakerStatus {
+  "申请中"
+  Applied
+  
+  "已批准"
+  Approved
+  
+  "已拒绝"
+  Rejected
+  
+  "已暂停"
+  Suspended
+}
+
+# ===================================================================
+# 统计相关
+# ===================================================================
+
+"""
+每日统计
+"""
+type DailyStats @entity {
+  "唯一标识: date"
+  id: ID!
+  
+  "日期"
+  date: DateTime! @index
+  
+  "新增订单数"
+  newOrders: Int!
+  
+  "完成订单数"
+  completedOrders: Int!
+  
+  "总交易量（MEMO）"
+  totalVolume: BigInt!
+  
+  "总交易额（USDT）"
+  totalValue: BigInt!
+  
+  "平均价格"
+  avgPrice: BigInt!
+  
+  "新增用户数"
+  newUsers: Int!
+}
+
+"""
+用户统计
+"""
+type UserStats @entity {
+  "用户地址"
+  id: ID!
+  
+  "总订单数"
+  totalOrders: Int!
+  
+  "完成订单数"
+  completedOrders: Int!
+  
+  "总交易量"
+  totalVolume: BigInt!
+  
+  "首次交易时间"
+  firstTradeAt: DateTime!
+  
+  "最后交易时间"
+  lastTradeAt: DateTime!
+  
+  "信用分"
+  creditScore: Int
 }
 

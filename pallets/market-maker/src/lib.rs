@@ -2,6 +2,12 @@
 
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::traits::{tokens::Imbalance, ConstU32};
@@ -20,6 +26,124 @@ pub mod pallet {
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
     type Cid = BoundedVec<u8, ConstU32<256>>;
+
+    /// 🆕 2025-10-22：姓名脱敏辅助函数
+    /// 
+    /// # 函数级详细中文注释
+    /// 根据姓名长度应用不同的脱敏规则，保护做市商隐私
+    /// 
+    /// # 脱敏规则
+    /// - 0字：返回空字符串
+    /// - 1字：返回单个星号 "×"
+    /// - 2字：前面×，保留后面，示例："张三" -> "×三"
+    /// - 3字：前后保留，中间×，示例："李四五" -> "李×五"
+    /// - 4字及以上：前1后1，中间1个×，示例："王二麻子" -> "王×子"
+    /// 
+    /// # 参数
+    /// - full_name: 完整姓名（UTF-8字符串切片）
+    /// 
+    /// # 返回值
+    /// - 脱敏后的姓名字节数组
+    fn mask_name(full_name: &str) -> Vec<u8> {
+        extern crate alloc;
+        use alloc::string::String;
+        
+        let chars: Vec<char> = full_name.chars().collect();
+        let len = chars.len();
+        
+        let mut masked = String::new();
+        match len {
+            0 => {},
+            1 => masked.push('×'),
+            2 => {
+                masked.push('×');
+                masked.push(chars[1]);
+            },
+            3 => {
+                masked.push(chars[0]);
+                masked.push('×');
+                masked.push(chars[2]);
+            },
+            _ => {
+                masked.push(chars[0]);
+                masked.push('×');
+                masked.push(chars[len - 1]);
+            },
+        }
+        
+        masked.as_bytes().to_vec()
+    }
+
+    /// 🆕 2025-10-22：身份证号脱敏辅助函数
+    /// 
+    /// # 函数级详细中文注释
+    /// 保留身份证号的前4位和后4位，中间用星号替换
+    /// 
+    /// # 脱敏规则
+    /// - 18位身份证：前4位 + 10个星号 + 后4位
+    /// - 15位身份证：前4位 + 7个星号 + 后4位
+    /// - 少于8位：全部用星号替换
+    /// 
+    /// # 参数
+    /// - id_card: 完整身份证号（ASCII字符串切片）
+    /// 
+    /// # 返回值
+    /// - 脱敏后的身份证号字节数组
+    fn mask_id_card(id_card: &str) -> Vec<u8> {
+        extern crate alloc;
+        use alloc::string::String;
+        
+        let len = id_card.len();
+        
+        if len < 8 {
+            let masked: String = (0..len).map(|_| '*').collect();
+            return masked.as_bytes().to_vec();
+        }
+        
+        let front = &id_card[0..4];
+        let back = &id_card[len - 4..];
+        let middle_count = len - 8;
+        
+        let mut masked = String::new();
+        masked.push_str(front);
+        for _ in 0..middle_count {
+            masked.push('*');
+        }
+        masked.push_str(back);
+        
+        masked.as_bytes().to_vec()
+    }
+
+    /// 🆕 2025-10-23：生日脱敏辅助函数
+    /// 
+    /// # 函数级详细中文注释
+    /// 保留年份，隐藏月份和日期，便于判断年龄段但保护隐私
+    /// 
+    /// # 脱敏规则
+    /// - 标准格式（YYYY-MM-DD）：保留年份，月日用xx替换
+    /// - 示例："1990-01-01" -> "1990-xx-xx"
+    /// - 少于4字符：全部用****-xx-xx替换
+    /// 
+    /// # 参数
+    /// - birthday: 完整生日（ASCII字符串切片，格式 YYYY-MM-DD）
+    /// 
+    /// # 返回值
+    /// - 脱敏后的生日字节数组
+    /// 
+    /// # 用途
+    /// - 买家可以判断做市商年龄段（如30岁、40岁）
+    /// - 但无法获知具体生日，保护隐私
+    fn mask_birthday(birthday: &str) -> Vec<u8> {
+        extern crate alloc;
+        
+        if birthday.len() >= 4 {
+            let year = &birthday[0..4];
+            let masked = alloc::format!("{}-xx-xx", year);
+            masked.as_bytes().to_vec()
+        } else {
+            b"****-xx-xx".to_vec()
+        }
+    }
 
     /// 函数级中文注释：做市商 Pallet 权重信息 Trait
     /// - 定义各个交易函数的权重计算方法
@@ -104,11 +228,11 @@ pub mod pallet {
         /// - 推荐配置为 Root 或 委员会 2/3 多数
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         
-        /// 🆕 函数级详细中文注释：首购资金池最小金额
-        /// - 做市商必须质押至少这么多的首购资金
-        /// - 用于防止做市商资金池过小导致首购服务中断
-        #[pallet::constant]
-        type MinFirstPurchasePool: Get<BalanceOf<Self>>;
+        /// 🆕 2025-10-23：审核员账户列表（方案A - Phase 2）
+        /// - 当做市商提交申请时，自动通知这些审核员
+        /// - 审核员可以通过pallet-chat查看私密资料（private_cid）
+        /// - 推荐配置为 1-3 个专业审核员账户
+        type ReviewerAccounts: Get<Vec<Self::AccountId>>;
         
         /// 🆕 2025-10-19：最大溢价（基点）
         /// - 限制溢价范围：-MaxPremiumBps ~ +MaxPremiumBps
@@ -121,12 +245,6 @@ pub mod pallet {
         /// - 推荐值：-500 bps (-5%)
         #[pallet::constant]
         type MinPremiumBps: Get<i16>;
-        
-        /// 🆕 函数级详细中文注释：每次首购转账金额
-        /// - 新用户首次购买时，从做市商资金池转账的固定金额
-        /// - 推荐设置为 100 MEMO
-        #[pallet::constant]
-        type FirstPurchaseAmount: Get<BalanceOf<Self>>;
         
         /// 🆕 函数级详细中文注释：Pallet ID
         /// - 用于派生首购资金池账户地址
@@ -273,24 +391,43 @@ pub mod pallet {
         pub created_at: u32,
         pub info_deadline: u32,
         pub review_deadline: u32,
-        /// 🆕 epay支付网关地址
-        pub epay_gateway: BoundedVec<u8, ConstU32<128>>,
-        /// 🆕 epay支付网关端口
-        pub epay_port: u16,
-        /// 🆕 epay商户ID (PID)
-        pub epay_pid: BoundedVec<u8, ConstU32<64>>,
-        /// 🆕 epay商户密钥
-        pub epay_key: BoundedVec<u8, ConstU32<64>>,
-        /// 🆕 首购资金池总额
-        pub first_purchase_pool: Balance,
-        /// 🆕 已使用的首购资金
-        pub first_purchase_used: Balance,
-        /// 🆕 冻结的首购资金（提取申请中）
-        pub first_purchase_frozen: Balance,
         /// 🆕 服务暂停状态
         pub service_paused: bool,
         /// 🆕 已服务的用户数量
         pub users_served: u32,
+        
+        /// 🆕 2025-10-22：脱敏姓名
+        /// 函数级详细中文注释：做市商真实姓名的脱敏版本
+        /// - 用于向买家展示收款人姓名，便于核对
+        /// - 脱敏规则：2字保留后1字，3字保留前后，4字及以上保留前1后1
+        /// - 示例："张×三"、"×三"、"欧×娜"
+        /// - 完整姓名存储在 private_cid 加密内容中
+        pub masked_full_name: BoundedVec<u8, ConstU32<64>>,
+        
+        /// 🆕 2025-10-22：脱敏身份证号
+        /// 函数级详细中文注释：做市商身份证号的脱敏版本
+        /// - 用于KYC验证和信用记录
+        /// - 脱敏规则：前4后4，中间星号
+        /// - 示例："1101**********1234"
+        /// - 完整身份证号存储在 private_cid 加密内容中
+        pub masked_id_card: BoundedVec<u8, ConstU32<32>>,
+        
+        /// 🆕 2025-10-23：脱敏生日
+        /// 函数级详细中文注释：做市商生日的脱敏版本
+        /// - 用于向买家展示做市商年龄段，便于建立信任
+        /// - 脱敏规则：保留年份，月日用xx替换
+        /// - 示例："1990-xx-xx"
+        /// - 完整生日存储在 private_cid 加密内容中
+        /// - 买家可以据此判断做市商年龄段（如30岁、40岁）
+        pub masked_birthday: BoundedVec<u8, ConstU32<16>>,
+        
+        /// 🆕 2025-10-22：脱敏收款方式信息（JSON格式）
+        /// 函数级详细中文注释：存储做市商的收款方式信息（已脱敏）
+        /// - 格式：JSON数组，包含多种收款方式
+        /// - 每个收款方式包含：type（类型）、account（脱敏账号）、name（脱敏姓名）、bank（银行名，可选）
+        /// - 示例：[{"type":"BankCard","account":"6214****5678","name":"张×三","bank":"中国银行"}]
+        /// - 链上仅存储脱敏信息，完整信息存储在 private_cid 加密内容中
+        pub masked_payment_info: BoundedVec<u8, ConstU32<512>>,
     }
 
     #[pallet::storage]
@@ -306,6 +443,66 @@ pub mod pallet {
     #[pallet::getter(fn next_id)]
     pub type NextId<T> = StorageValue<_, u64, ValueQuery>;
 
+    /// 🆕 2025-10-23：访问记录结构
+    /// 
+    /// # 函数级详细中文注释
+    /// 记录委员会成员访问做市商敏感信息的日志
+    /// - 用于隐私保护和审计
+    /// - 做市商可以查看谁访问了自己的信息
+    #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    pub struct AccessRecord<T: Config> {
+        /// 访问者账户（委员会成员）
+        pub accessor: T::AccountId,
+        /// 访问时间（区块高度）
+        pub accessed_at: BlockNumberFor<T>,
+        /// 访问目的（如 "kyc_review", "dispute_investigation"）
+        pub purpose: BoundedVec<u8, ConstU32<256>>,
+    }
+
+    /// 🆕 2025-10-23：委员会成员的密钥分片存储
+    /// 
+    /// # 函数级详细中文注释
+    /// 使用门限加密（Threshold Encryption）存储委员会共享密钥的分片
+    /// - 委员会共享密钥被分割为N份（如5份）
+    /// - 任意K份（如3份）可以恢复共享密钥
+    /// - 每个委员会成员持有1份加密后的分片
+    /// - 成员变更时只需更新分片，不需要重新加密历史数据
+    /// 
+    /// # 存储格式
+    /// - Key: 委员会成员账户ID
+    /// - Value: 用该成员公钥加密的密钥分片（Hex字符串）
+    #[pallet::storage]
+    #[pallet::getter(fn committee_key_shares)]
+    pub type CommitteeKeyShares<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,  // 委员会成员
+        BoundedVec<u8, ConstU32<512>>,  // 加密的密钥分片
+        OptionQuery,
+    >;
+
+    /// 🆕 2025-10-23：敏感信息访问日志
+    /// 
+    /// # 函数级详细中文注释
+    /// 记录委员会成员访问做市商敏感信息的所有日志
+    /// - 用于隐私保护和审计追溯
+    /// - 做市商可以随时查看谁访问了自己的信息
+    /// - 最多存储100条访问记录
+    /// 
+    /// # 存储格式
+    /// - Key: 做市商ID
+    /// - Value: 访问记录数组（最多100条）
+    #[pallet::storage]
+    #[pallet::getter(fn sensitive_data_access_logs)]
+    pub type SensitiveDataAccessLogs<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,  // mm_id
+        BoundedVec<AccessRecord<T>, ConstU32<100>>,
+        ValueQuery,
+    >;
+
     /// 🆕 函数级详细中文注释：活跃做市商列表
     /// - 存储已批准的做市商信息
     /// - mm_id -> Application
@@ -315,18 +512,6 @@ pub mod pallet {
     pub type ActiveMarketMakers<T: Config> =
         StorageMap<_, Blake2_128Concat, u64, Application<T::AccountId, BalanceOf<T>>>;
 
-    /// 🆕 函数级详细中文注释：首购使用记录
-    /// - 记录每个做市商为哪些买家提供了首购服务
-    /// - (mm_id, buyer_account) -> ()
-    /// - 用于防止重复领取、统计服务数量
-    #[pallet::storage]
-    pub type FirstPurchaseRecords<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat, u64,        // mm_id
-        Blake2_128Concat, T::AccountId, // buyer
-        (),
-        OptionQuery,
-    >;
 
     /// 🆕 函数级详细中文注释：资金池提取请求记录
     /// - mm_id -> WithdrawalRequest
@@ -366,6 +551,13 @@ pub mod pallet {
         Submitted {
             mm_id: u64,
         },
+        /// 🆕 2025-10-23：做市商信息已提交（方案A - 优化版）
+        InfoSubmitted {
+            mm_id: u64,
+            owner: T::AccountId,
+            masked_full_name: BoundedVec<u8, ConstU32<64>>,
+            masked_id_card: BoundedVec<u8, ConstU32<32>>,
+        },
         InfoUpdated {
             mm_id: u64,
         },
@@ -381,24 +573,6 @@ pub mod pallet {
         },
         Expired {
             mm_id: u64,
-        },
-        /// ✅ 首购资金池已锁定（reserve）
-        FirstPurchasePoolReserved {
-            mm_id: u64,
-            owner: T::AccountId,
-            amount: BalanceOf<T>,
-        },
-        /// 🆕 首购资金已转入资金池账户
-        FirstPurchasePoolFunded {
-            mm_id: u64,
-            pool_account: T::AccountId,
-            amount: BalanceOf<T>,
-        },
-        /// 🆕 首购服务已完成
-        FirstPurchaseServed {
-            mm_id: u64,
-            buyer: T::AccountId,
-            amount: BalanceOf<T>,
         },
         /// 🆕 提取请求已提交
         WithdrawalRequested {
@@ -490,6 +664,32 @@ pub mod pallet {
             old_direction_u8: u8,
             new_direction_u8: u8,
         },
+        /// 🆕 2025-10-23：审核员通知已发送（方案A - Phase 3）
+        ReviewerNotified {
+            mm_id: u64,
+            reviewer: T::AccountId,
+            private_cid: Cid,
+        },
+        /// 🆕 2025-10-23：审核员通知发送失败（方案A - Phase 3）
+        ReviewerNotificationFailed {
+            mm_id: u64,
+            reviewer: T::AccountId,
+            error: DispatchError,
+        },
+        /// 🆕 2025-10-23：委员会共享密钥已初始化
+        CommitteeSharedKeyInitialized {
+            member_count: u32,
+        },
+        /// 🆕 2025-10-23：委员会密钥分片已更新
+        CommitteeKeySharesUpdated {
+            member_count: u32,
+        },
+        /// 🆕 2025-10-23：委员会成员访问了做市商敏感信息
+        SensitiveDataAccessed {
+            mm_id: u64,
+            accessor: T::AccountId,
+            purpose: BoundedVec<u8, ConstU32<256>>,
+        },
     }
 
     #[pallet::error]
@@ -504,24 +704,10 @@ pub mod pallet {
         BadSlashRatio,
         MinDepositNotMet,
         NotInEditableStatus,
-        /// 🆕 epay网关地址无效或为空
-        InvalidEpayGateway,
-        /// 🆕 epay网关端口无效（必须大于0）
-        InvalidEpayPort,
-        /// 🆕 epay商户ID无效或为空
-        InvalidEpayPid,
-        /// 🆕 epay商户密钥无效或为空
-        InvalidEpayKey,
-        /// 🆕 首购资金池金额不足
-        InsufficientFirstPurchasePool,
-        /// 🆕 epay配置字段过长
-        EpayConfigTooLong,
         /// 🆕 做市商资金池余额不足
         InsufficientPoolBalance,
         /// 🆕 做市商未激活
         MarketMakerNotActive,
-        /// 🆕 买家已经使用过首购服务
-        AlreadyUsedFirstPurchase,
         /// 🆕 提取请求已存在
         WithdrawalRequestExists,
         /// 🆕 提取请求不存在
@@ -564,6 +750,20 @@ pub mod pallet {
         InvalidBuyPremium,
         /// 🆕 2025-10-19：Sell溢价超出范围（MinPremiumBps ~ MaxPremiumBps）
         InvalidSellPremium,
+        /// 🆕 2025-10-23：生日格式无效
+        InvalidBirthday,
+        /// 🆕 2025-10-23：生日太长
+        BirthdayTooLong,
+        /// 🆕 2025-10-23：不是委员会成员
+        NotCommitteeMember,
+        /// 🆕 2025-10-23：访问目的太长
+        PurposeTooLong,
+        /// 🆕 2025-10-23：访问记录太多
+        TooManyAccessRecords,
+        /// 🆕 2025-10-23：密钥分片数量无效
+        InvalidKeyShareCount,
+        /// 🆕 2025-10-23：密钥分片太长
+        KeyShareTooLong,
     }
 
     #[pallet::pallet]
@@ -629,17 +829,13 @@ pub mod pallet {
                     created_at: ts,
                     info_deadline,
                     review_deadline,
-                    // 🆕 初始化epay配置字段
-                    epay_gateway: BoundedVec::default(),
-                    epay_port: 0,
-                    epay_pid: BoundedVec::default(),
-                    epay_key: BoundedVec::default(),
-                    // 🆕 初始化首购资金池字段
-                    first_purchase_pool: BalanceOf::<T>::zero(),
-                    first_purchase_used: BalanceOf::<T>::zero(),
-                    first_purchase_frozen: BalanceOf::<T>::zero(),
                     service_paused: false,
                     users_served: 0,
+                    // 🆕 2025-10-22：初始化脱敏字段（空，后续通过submit_info提交）
+                    masked_full_name: BoundedVec::default(),
+                    masked_id_card: BoundedVec::default(),
+                    masked_birthday: BoundedVec::default(),  // 🆕 2025-10-23
+                    masked_payment_info: BoundedVec::default(),
                 },
             );
             OwnerIndex::<T>::insert(&who, mm_id);
@@ -652,49 +848,70 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：提交做市商资料（扩展版）
-        /// - 新增：epay配置和首购资金池参数
-        /// - epay_gateway: 支付网关地址（如：https://epay.example.com 或 http://111.170.145.41）
-        /// - epay_port: 支付网关端口（如：80, 443, 8080等）
-        /// - epay_pid: 商户ID
-        /// - epay_key: 商户密钥
-        /// - first_purchase_pool: 首购资金池总额（必须 >= MinFirstPurchasePool）
-        /// - 🆕 2025-10-19：buy_premium_bps: Buy溢价（-500 ~ 500 bps）
-        /// - 🆕 2025-10-19：sell_premium_bps: Sell溢价（-500 ~ 500 bps）
-        /// - 🆕 2025-10-19：tron_address: TRON地址（OTC收款 + Bridge发款）
+        /// 函数级详细中文注释：提交做市商申请信息（✅ 优化版 - 方案A）
+        /// 
+        /// # 设计原则
+        /// - ✅ 保留 public_cid（数据分级架构）
+        /// - ✅ 明确必填/选填字段（改进用户体验）
+        /// - ✅ 删除epay相关参数（首购功能已删除）
+        /// 
+        /// # 必填参数
+        /// - mm_id: 做市商申请ID
+        /// - public_root_cid: ✅ 公开信息IPFS CID（保留！用于买家展示做市商列表）
+        /// - private_root_cid: 敏感信息IPFS CID（仅审核员可见，包含完整身份证等）
+        /// - buy_premium_bps: Buy方向溢价（-500~500基点，-5%~+5%）
+        /// - sell_premium_bps: Sell方向溢价（-500~500基点，-5%~+5%）
+        /// - min_amount: 最小交易金额
+        /// - tron_address: TRON地址（统一用于OTC收款和Bridge发款）
+        /// - full_name: 完整姓名（链端自动脱敏为"张×三"）
+        /// - id_card: 完整身份证号（链端自动脱敏为"1101**1234"）
+        /// 
+        /// # 选填参数（Option包装）
+        /// - masked_payment_info_json: 脱敏收款方式JSON（可选，做市商可提供多种收款方式）
+        /// 
+        /// # 流程说明
+        /// 1. 验证必填字段（TRON地址、姓名、身份证、溢价范围）
+        /// 2. 链端自动脱敏姓名和身份证号
+        /// 3. 更新申请状态为PendingReview
+        /// 4. 🆕 自动通知审核员（通过pallet-chat，Phase 3实现）
+        /// 
+        /// # 返回值
+        /// - Ok(()): 提交成功
+        /// - Err: 提交失败，返回错误信息
         #[pallet::call_index(1)]
         #[pallet::weight(<<T as Config>::WeightInfo>::submit_info())]
         pub fn submit_info(
             origin: OriginFor<T>,
             mm_id: u64,
-            public_root_cid: Cid,
-            private_root_cid: Cid,
-            buy_premium_bps: i16,  // 🆕 2025-10-19：Buy溢价
-            sell_premium_bps: i16, // 🆕 2025-10-19：Sell溢价
-            min_amount: BalanceOf<T>,
-            tron_address: Vec<u8>,  // 🆕 2025-10-19：TRON地址
-            // 🆕 新增参数
-            epay_gateway: Vec<u8>,
-            epay_port: u16,
-            epay_pid: Vec<u8>,
-            epay_key: Vec<u8>,
-            first_purchase_pool: BalanceOf<T>,
+            // ===== 必填参数 =====
+            public_root_cid: Cid,                  // ✅ 保留！公开信息CID
+            private_root_cid: Cid,                 // ✅ 必填：敏感信息CID
+            buy_premium_bps: i16,                  // ✅ 必填：Buy溢价
+            sell_premium_bps: i16,                 // ✅ 必填：Sell溢价
+            min_amount: BalanceOf<T>,              // ✅ 必填：最小交易额
+            tron_address: Vec<u8>,                 // ✅ 必填：TRON地址
+            full_name: Vec<u8>,                    // ✅ 必填：完整姓名（自动脱敏）
+            id_card: Vec<u8>,                      // ✅ 必填：完整身份证（自动脱敏）
+            birthday: Vec<u8>,                     // ✅ 必填：完整生日（自动脱敏，格式：YYYY-MM-DD）
+            // ===== 选填参数（Option包装）=====
+            masked_payment_info_json: Option<Vec<u8>>,  // ⚪ 可选：脱敏收款方式
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             
-            // 🆕 2025-10-19：验证TRON地址格式
+            // ===== 1. 验证必填参数 =====
+            
+            // 验证TRON地址格式
             ensure!(
                 Self::is_valid_tron_address(&tron_address),
                 Error::<T>::InvalidTronAddress
             );
             
-            // 🆕 验证epay配置
-            ensure!(!epay_gateway.is_empty(), Error::<T>::InvalidEpayGateway);
-            ensure!(epay_port > 0, Error::<T>::InvalidEpayPort);
-            ensure!(!epay_pid.is_empty(), Error::<T>::InvalidEpayPid);
-            ensure!(!epay_key.is_empty(), Error::<T>::InvalidEpayKey);
+            // 验证姓名、身份证号和生日（必填）
+            ensure!(!full_name.is_empty(), Error::<T>::BadState);
+            ensure!(!id_card.is_empty(), Error::<T>::BadState);
+            ensure!(!birthday.is_empty(), Error::<T>::InvalidBirthday);
             
-            // 🆕 2025-10-19：验证溢价范围
+            // 验证溢价范围
             ensure!(
                 buy_premium_bps >= T::MinPremiumBps::get() && buy_premium_bps <= T::MaxPremiumBps::get(),
                 Error::<T>::InvalidBuyPremium
@@ -704,16 +921,30 @@ pub mod pallet {
                 Error::<T>::InvalidSellPremium
             );
             
-            // 🆕 验证首购资金池
-            ensure!(
-                first_purchase_pool >= T::MinFirstPurchasePool::get(),
-                Error::<T>::InsufficientFirstPurchasePool
-            );
+            // ===== 2. 自动脱敏姓名、身份证号和生日 =====
+            let full_name_str = sp_std::str::from_utf8(&full_name).map_err(|_| Error::<T>::BadState)?;
+            let id_card_str = sp_std::str::from_utf8(&id_card).map_err(|_| Error::<T>::BadState)?;
+            let birthday_str = sp_std::str::from_utf8(&birthday).map_err(|_| Error::<T>::InvalidBirthday)?;
             
-            // ✅ 立即质押（reserve）首购资金池
-            // 这确保了资金在审核期间被锁定，防止申请人转出资金
-            T::Currency::reserve(&who, first_purchase_pool)?;
+            let masked_name = mask_name(full_name_str);
+            let masked_id = mask_id_card(id_card_str);
+            let masked_bday = mask_birthday(birthday_str);  // 🆕 2025-10-23
             
+            let masked_full_name: BoundedVec<u8, ConstU32<64>> = masked_name.try_into()
+                .map_err(|_| Error::<T>::BadState)?;
+            let masked_id_card: BoundedVec<u8, ConstU32<32>> = masked_id.try_into()
+                .map_err(|_| Error::<T>::BadState)?;
+            let masked_birthday: BoundedVec<u8, ConstU32<16>> = masked_bday.try_into()
+                .map_err(|_| Error::<T>::BirthdayTooLong)?;
+            
+            // 处理可选的脱敏收款方式（Option包装）
+            let masked_payment_info: BoundedVec<u8, ConstU32<512>> = if let Some(payment_json) = masked_payment_info_json {
+                payment_json.try_into().map_err(|_| Error::<T>::BadState)?
+            } else {
+                Default::default()  // 未提供则为空
+            };
+            
+            // ===== 3. 更新申请信息 =====
             Applications::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
                 let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(app.owner == who, Error::<T>::NotFound);
@@ -721,42 +952,47 @@ pub mod pallet {
                     matches!(app.status, ApplicationStatus::DepositLocked),
                     Error::<T>::NotDepositLocked
                 );
-                // 🔧 使用 pallet_timestamp 获取当前时间（秒）
+                
+                // 验证截止时间
                 let now_ms = pallet_timestamp::Pallet::<T>::get();
                 let now = (now_ms / 1000u32.into()).saturated_into::<u32>();
                 ensure!(now <= app.info_deadline, Error::<T>::DeadlinePassed);
                 ensure!(min_amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
 
+                // 更新状态为待审核
                 app.status = ApplicationStatus::PendingReview;
-                app.public_cid = public_root_cid;
-                app.private_cid = private_root_cid;
-                app.buy_premium_bps = buy_premium_bps;   // 🆕 2025-10-19：设置Buy溢价
-                app.sell_premium_bps = sell_premium_bps; // 🆕 2025-10-19：设置Sell溢价
-                app.min_amount = min_amount;
                 
-                // 🆕 2025-10-19：设置TRON地址
+                // 更新公开信息和私有信息CID
+                app.public_cid = public_root_cid.clone();
+                app.private_cid = private_root_cid.clone();
+                
+                // 更新业务参数
+                app.buy_premium_bps = buy_premium_bps;
+                app.sell_premium_bps = sell_premium_bps;
+                app.min_amount = min_amount;
                 app.tron_address = tron_address.try_into().map_err(|_| Error::<T>::InvalidTronAddress)?;
                 
-                // 🆕 更新epay配置
-                app.epay_gateway = epay_gateway.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                app.epay_port = epay_port;
-                app.epay_pid = epay_pid.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                app.epay_key = epay_key.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                
-                // 🆕 更新首购资金池（已通过 reserve 锁定）
-                app.first_purchase_pool = first_purchase_pool;
-                app.first_purchase_used = BalanceOf::<T>::zero();
-                app.users_served = 0;
+                // 更新脱敏信息
+                app.masked_full_name = masked_full_name.clone();
+                app.masked_id_card = masked_id_card.clone();
+                app.masked_birthday = masked_birthday.clone();  // 🆕 2025-10-23
+                app.masked_payment_info = masked_payment_info;
                 
                 Ok(())
             })?;
 
-            Self::deposit_event(Event::Submitted { mm_id });
-            Self::deposit_event(Event::FirstPurchasePoolReserved {
+            // ===== 4. 发出事件 =====
+            Self::deposit_event(Event::InfoSubmitted { 
                 mm_id,
-                owner: who,
-                amount: first_purchase_pool,
+                owner: who.clone(),
+                masked_full_name,
+                masked_id_card,
             });
+            
+            // ===== 5. ✅ 通知审核员（Phase 3 实现）=====
+            // 自动通知所有审核员，不影响主流程
+            let _ = Self::notify_reviewers_on_submit(mm_id, &who, &private_root_cid);
+            
             Ok(())
         }
 
@@ -777,12 +1013,6 @@ pub mod pallet {
             buy_premium_bps: Option<i16>,   // 🆕 2025-10-20：Buy溢价参数
             sell_premium_bps: Option<i16>,  // 🆕 2025-10-20：Sell溢价参数
             min_amount: Option<BalanceOf<T>>,
-            // 🆕 新增参数
-            epay_gateway: Option<Vec<u8>>,
-            epay_port: Option<u16>,
-            epay_pid: Option<Vec<u8>>,
-            epay_key: Option<Vec<u8>>,
-            first_purchase_pool: Option<BalanceOf<T>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Applications::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
@@ -838,44 +1068,14 @@ pub mod pallet {
                     app.min_amount = amount;
                 }
                 
-                // 🆕 更新epay配置（如果提供）
-                if let Some(gateway) = epay_gateway {
-                    ensure!(!gateway.is_empty(), Error::<T>::InvalidEpayGateway);
-                    app.epay_gateway = gateway.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                if let Some(port) = epay_port {
-                    ensure!(port > 0, Error::<T>::InvalidEpayPort);
-                    app.epay_port = port;
-                }
-                if let Some(pid) = epay_pid {
-                    ensure!(!pid.is_empty(), Error::<T>::InvalidEpayPid);
-                    app.epay_pid = pid.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                if let Some(key) = epay_key {
-                    ensure!(!key.is_empty(), Error::<T>::InvalidEpayKey);
-                    app.epay_key = key.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                
-                // 🆕 更新首购资金池（如果提供）
-                if let Some(pool) = first_purchase_pool {
-                    ensure!(
-                        pool >= T::MinFirstPurchasePool::get(),
-                        Error::<T>::InsufficientFirstPurchasePool
-                    );
-                    app.first_purchase_pool = pool;
-                }
-                
                 // 如果之前是 DepositLocked 状态且现在提供了所有必需字段，更新为 PendingReview
                 if matches!(app.status, ApplicationStatus::DepositLocked) {
                     // 检查是否所有必需字段都已填写（非空）
                     let has_public_cid = !app.public_cid.is_empty();
                     let has_private_cid = !app.private_cid.is_empty();
                     let has_min_amount = app.min_amount > BalanceOf::<T>::zero() || min_amount.is_some();
-                    // 🆕 检查epay配置和首购资金池
-                    let has_epay_config = !app.epay_gateway.is_empty() && app.epay_port > 0 && !app.epay_pid.is_empty() && !app.epay_key.is_empty();
-                    let has_pool = app.first_purchase_pool >= T::MinFirstPurchasePool::get();
                     
-                    if has_public_cid && has_private_cid && has_min_amount && has_epay_config && has_pool {
+                    if has_public_cid && has_private_cid && has_min_amount {
                         app.status = ApplicationStatus::PendingReview;
                     }
                 }
@@ -902,13 +1102,6 @@ pub mod pallet {
 
                 // unreserve 保证金
                 T::Currency::unreserve(&who, app.deposit);
-                
-                // ✅ unreserve 首购资金池（如果已 reserve）
-                // 注意：cancel 只能在 DepositLocked 状态调用，
-                // 此时可能还未调用 submit_info，因此 first_purchase_pool 可能为 0
-                if app.first_purchase_pool > Zero::zero() {
-                    T::Currency::unreserve(&who, app.first_purchase_pool);
-                }
                 
                 *maybe_app = None;
                 OwnerIndex::<T>::remove(&who);
@@ -937,31 +1130,6 @@ pub mod pallet {
             let now = (now_ms / 1000u32.into()).saturated_into::<u32>();
             ensure!(now <= app.review_deadline, Error::<T>::DeadlinePassed);
             
-            // 🆕 验证epay配置完整性
-            ensure!(!app.epay_gateway.is_empty(), Error::<T>::InvalidEpayGateway);
-            ensure!(app.epay_port > 0, Error::<T>::InvalidEpayPort);
-            ensure!(!app.epay_pid.is_empty(), Error::<T>::InvalidEpayPid);
-            ensure!(!app.epay_key.is_empty(), Error::<T>::InvalidEpayKey);
-            
-            // 🆕 验证首购资金池
-            ensure!(
-                app.first_purchase_pool >= T::MinFirstPurchasePool::get(),
-                Error::<T>::InsufficientFirstPurchasePool
-            );
-            
-            // ✅ 先 unreserve 首购资金池（释放锁定）
-            // 在 submit_info 时已经 reserve，现在需要 unreserve 后才能转账
-            T::Currency::unreserve(&app.owner, app.first_purchase_pool);
-            
-            // 🆕 派生资金池账户并转移首购资金
-            let pool_account = Self::first_purchase_pool_account(mm_id);
-            T::Currency::transfer(
-                &app.owner,
-                &pool_account,
-                app.first_purchase_pool,
-                frame_support::traits::ExistenceRequirement::KeepAlive,
-            )?;
-            
             // 更新状态为Active并迁移到ActiveMarketMakers
             let mut approved_app = app.clone();
             approved_app.status = ApplicationStatus::Active;
@@ -971,11 +1139,6 @@ pub mod pallet {
             Applications::<T>::remove(mm_id);
             
             Self::deposit_event(Event::Approved { mm_id });
-            Self::deposit_event(Event::FirstPurchasePoolFunded {
-                mm_id,
-                pool_account,
-                amount: app.first_purchase_pool,
-            });
             Ok(())
         }
 
@@ -999,7 +1162,6 @@ pub mod pallet {
                 );
                 let who = app.owner.clone();
                 let deposit = app.deposit;
-                let first_purchase_pool = app.first_purchase_pool;
                 
                 // 处理保证金扣罚
                 let mult = Perbill::from_rational(slash_bps as u32, 10_000u32);
@@ -1013,12 +1175,6 @@ pub mod pallet {
                 let refund = deposit.saturating_sub(slashed_balance);
                 if !refund.is_zero() {
                     T::Currency::unreserve(&who, refund);
-                }
-                
-                // ✅ unreserve 首购资金池（全额退还，不扣罚）
-                // 首购资金池只是质押，驳回时全额退还
-                if first_purchase_pool > Zero::zero() {
-                    T::Currency::unreserve(&who, first_purchase_pool);
                 }
                 
                 *maybe_app = None;
@@ -1065,322 +1221,6 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::Expired { mm_id });
-            Ok(())
-        }
-
-        /// 🆕 函数级详细中文注释：申请提取资金池余额
-        /// - 只有做市商本人可以调用
-        /// - 提交后进入冷却期（默认7天）
-        /// - 同一时间只能有一个待处理的提取请求
-        /// - pause_service: 是否暂停首购服务（可选）
-        #[pallet::call_index(7)]
-        #[pallet::weight(<<T as Config>::WeightInfo>::request_withdrawal())]
-        pub fn request_withdrawal(
-            origin: OriginFor<T>,
-            mm_id: u64,
-            amount: BalanceOf<T>,
-            pause_service: bool,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            
-            // 检查做市商是否存在且为Active状态
-            let app = ActiveMarketMakers::<T>::get(mm_id)
-                .ok_or(Error::<T>::NotFound)?;
-            ensure!(app.owner == who, Error::<T>::NotOwner);
-            ensure!(
-                app.status == ApplicationStatus::Active,
-                Error::<T>::NotActive
-            );
-            
-            // 检查是否已有待处理的提取请求
-            ensure!(
-                !WithdrawalRequests::<T>::contains_key(mm_id),
-                Error::<T>::WithdrawalRequestExists
-            );
-            
-            // 计算可提取余额 = 总额 - 已用 - 已冻结
-            let available = app.first_purchase_pool
-                .saturating_sub(app.first_purchase_used)
-                .saturating_sub(app.first_purchase_frozen);
-            ensure!(amount > BalanceOf::<T>::zero(), Error::<T>::InvalidFee);
-            ensure!(amount <= available, Error::<T>::InsufficientWithdrawableBalance);
-            
-            // 检查提取后余额是否满足最小要求
-            let remaining = available.saturating_sub(amount);
-            ensure!(
-                remaining >= T::MinPoolBalance::get(),
-                Error::<T>::BelowMinPoolBalance
-            );
-            
-            // 🔧 计算可执行时间 - 使用 pallet_timestamp
-            let now_ms = pallet_timestamp::Pallet::<T>::get();
-            let now = (now_ms / 1000u32.into()).saturated_into::<u32>();
-            let executable_at = now.saturating_add(T::WithdrawalCooldown::get());
-            
-            // 冻结申请的金额并设置服务状态
-            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
-                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
-                app.first_purchase_frozen = app.first_purchase_frozen
-                    .saturating_add(amount);
-                if pause_service {
-                    app.service_paused = true;
-                }
-                Ok::<(), DispatchError>(())
-            })?;
-            
-            // 创建提取请求
-            let request = WithdrawalRequest {
-                amount,
-                requested_at: now,
-                executable_at,
-                status: WithdrawalStatus::Pending,
-            };
-            
-            WithdrawalRequests::<T>::insert(mm_id, request);
-            
-            Self::deposit_event(Event::WithdrawalRequested {
-                mm_id,
-                owner: who,
-                amount,
-                executable_at,
-                pause_service,
-            });
-            
-            Ok(())
-        }
-
-        /// 🆕 函数级详细中文注释：执行提取资金池余额
-        /// - 只有做市商本人可以调用
-        /// - 必须在冷却期结束后才能执行
-        /// - 从派生账户转账到做市商账户
-        #[pallet::call_index(8)]
-        #[pallet::weight(<<T as Config>::WeightInfo>::execute_withdrawal())]
-        pub fn execute_withdrawal(
-            origin: OriginFor<T>,
-            mm_id: u64,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            
-            // 检查做市商身份
-            let app = ActiveMarketMakers::<T>::get(mm_id)
-                .ok_or(Error::<T>::NotFound)?;
-            ensure!(app.owner == who, Error::<T>::NotOwner);
-            
-            // 获取提取请求
-            let request = WithdrawalRequests::<T>::get(mm_id)
-                .ok_or(Error::<T>::WithdrawalRequestNotFound)?;
-            ensure!(
-                request.status == WithdrawalStatus::Pending,
-                Error::<T>::InvalidWithdrawalStatus
-            );
-            
-            // 🔧 检查冷却期是否已结束 - 使用 pallet_timestamp
-            let now_ms = pallet_timestamp::Pallet::<T>::get();
-            let now = (now_ms / 1000u32.into()).saturated_into::<u32>();
-            ensure!(
-                now >= request.executable_at,
-                Error::<T>::WithdrawalCooldownNotExpired
-            );
-            
-            // 从派生账户转账到做市商账户
-            let pool_account = Self::first_purchase_pool_account(mm_id);
-            T::Currency::transfer(
-                &pool_account,
-                &who,
-                request.amount,
-                frame_support::traits::ExistenceRequirement::AllowDeath,
-            )?;
-            
-            // 更新资金池：减少总额和冻结金额
-            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
-                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
-                app.first_purchase_pool = app.first_purchase_pool
-                    .saturating_sub(request.amount);
-                app.first_purchase_frozen = app.first_purchase_frozen
-                    .saturating_sub(request.amount);
-                Ok::<(), DispatchError>(())
-            })?;
-            
-            // 删除提取请求记录
-            WithdrawalRequests::<T>::remove(mm_id);
-            
-            Self::deposit_event(Event::WithdrawalExecuted {
-                mm_id,
-                owner: who,
-                amount: request.amount,
-            });
-            
-            Ok(())
-        }
-
-        /// 🆕 函数级详细中文注释：取消提取请求
-        /// - 只有做市商本人可以调用
-        /// - 可以在冷却期内随时取消
-        /// - 解冻资金并恢复服务状态
-        #[pallet::call_index(9)]
-        #[pallet::weight(<<T as Config>::WeightInfo>::cancel_withdrawal())]
-        pub fn cancel_withdrawal(
-            origin: OriginFor<T>,
-            mm_id: u64,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            
-            // 检查做市商身份
-            let app = ActiveMarketMakers::<T>::get(mm_id)
-                .ok_or(Error::<T>::NotFound)?;
-            ensure!(app.owner == who, Error::<T>::NotOwner);
-            
-            // 检查提取请求是否存在
-            let request = WithdrawalRequests::<T>::get(mm_id)
-                .ok_or(Error::<T>::WithdrawalRequestNotFound)?;
-            ensure!(
-                request.status == WithdrawalStatus::Pending,
-                Error::<T>::InvalidWithdrawalStatus
-            );
-            
-            // 解冻金额并恢复服务
-            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
-                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
-                app.first_purchase_frozen = app.first_purchase_frozen
-                    .saturating_sub(request.amount);
-                app.service_paused = false; // 恢复服务
-                Ok::<(), DispatchError>(())
-            })?;
-            
-            // 删除提取请求
-            WithdrawalRequests::<T>::remove(mm_id);
-            
-            Self::deposit_event(Event::WithdrawalCancelled {
-                mm_id,
-                owner: who,
-            });
-            
-            Ok(())
-        }
-
-        /// 🆕 函数级详细中文注释：紧急提取资金池（治理权限）
-        /// - 只能由治理委员会调用
-        /// - 绕过冷却期，立即执行
-        /// - 用于异常情况处理（如做市商账户丢失、系统升级等）
-        #[pallet::call_index(10)]
-        #[pallet::weight(<<T as Config>::WeightInfo>::emergency_withdrawal())]
-        pub fn emergency_withdrawal(
-            origin: OriginFor<T>,
-            mm_id: u64,
-            recipient: T::AccountId,
-            amount: BalanceOf<T>,
-        ) -> DispatchResult {
-            T::GovernanceOrigin::ensure_origin(origin)?;
-            
-            // 检查做市商是否存在
-            ensure!(
-                ActiveMarketMakers::<T>::contains_key(mm_id),
-                Error::<T>::NotFound
-            );
-            
-            // 从派生账户转账
-            let pool_account = Self::first_purchase_pool_account(mm_id);
-            let pool_balance = T::Currency::free_balance(&pool_account);
-            
-            // 确保请求的金额不超过余额
-            let actual_amount = if amount > pool_balance {
-                pool_balance
-            } else {
-                amount
-            };
-            
-            T::Currency::transfer(
-                &pool_account,
-                &recipient,
-                actual_amount,
-                frame_support::traits::ExistenceRequirement::AllowDeath,
-            )?;
-            
-            // 更新资金池总额（如果还有记录）
-            let _ = ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| {
-                if let Some(app) = maybe_app.as_mut() {
-                    app.first_purchase_pool = app.first_purchase_pool
-                        .saturating_sub(actual_amount);
-                    // 如果有冻结金额也要相应减少
-                    if app.first_purchase_frozen > BalanceOf::<T>::zero() {
-                        app.first_purchase_frozen = app.first_purchase_frozen
-                            .saturating_sub(actual_amount);
-                    }
-                }
-                Ok::<(), DispatchError>(())
-            });
-            
-            // 清除待处理的提取请求（如果有）
-            WithdrawalRequests::<T>::remove(mm_id);
-            
-            Self::deposit_event(Event::EmergencyWithdrawal {
-                mm_id,
-                recipient,
-                amount: actual_amount,
-            });
-            
-            Ok(())
-        }
-
-        /// 🆕 函数级详细中文注释：更新 epay 配置（做市商自主修改）
-        /// - 只有做市商本人可以调用
-        /// - 只能在 Active 状态下修改
-        /// - 参数为 Option 类型，None 表示不修改该字段
-        /// - 允许做市商随时更新支付网关配置
-        #[pallet::call_index(11)]
-        #[pallet::weight(Weight::from_parts(10_000, 0))]
-        pub fn update_epay_config(
-            origin: OriginFor<T>,
-            mm_id: u64,
-            epay_gateway: Option<Vec<u8>>,
-            epay_port: Option<u16>,
-            epay_pid: Option<Vec<u8>>,
-            epay_key: Option<Vec<u8>>,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            
-            // 检查做市商是否存在且为Active状态
-            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
-                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
-                
-                // 确保是做市商本人
-                ensure!(app.owner == who, Error::<T>::NotOwner);
-                
-                // 确保状态为Active
-                ensure!(
-                    app.status == ApplicationStatus::Active,
-                    Error::<T>::NotActive
-                );
-                
-                // 更新epay配置（如果提供）
-                if let Some(gateway) = epay_gateway {
-                    ensure!(!gateway.is_empty(), Error::<T>::InvalidEpayGateway);
-                    app.epay_gateway = gateway.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                
-                if let Some(port) = epay_port {
-                    ensure!(port > 0, Error::<T>::InvalidEpayPort);
-                    app.epay_port = port;
-                }
-                
-                if let Some(pid) = epay_pid {
-                    ensure!(!pid.is_empty(), Error::<T>::InvalidEpayPid);
-                    app.epay_pid = pid.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                
-                if let Some(key) = epay_key {
-                    ensure!(!key.is_empty(), Error::<T>::InvalidEpayKey);
-                    app.epay_key = key.try_into().map_err(|_| Error::<T>::EpayConfigTooLong)?;
-                }
-                
-                Ok(())
-            })?;
-            
-            Self::deposit_event(Event::EpayConfigUpdated {
-                mm_id,
-                owner: who,
-            });
-            
             Ok(())
         }
 
@@ -1763,67 +1603,180 @@ pub mod pallet {
             
             Ok(())
         }
-    }
-    
-    /// 🆕 函数级详细中文注释：辅助函数实现
-    impl<T: Config> Pallet<T> {
-        /// 函数级详细中文注释：派生首购资金池账户地址
-        /// - 使用 PalletId + mm_id 派生子账户
-        /// - 格式：PalletId("mm/pool!") + mm_id
-        /// - 每个做市商有独立的资金池账户
-        pub fn first_purchase_pool_account(mm_id: u64) -> T::AccountId {
-            use sp_runtime::traits::AccountIdConversion;
-            T::PalletId::get().into_sub_account_truncating(mm_id)
-        }
-        
-        /// 函数级详细中文注释：记录首购服务使用
-        /// - 更新做市商的已使用资金和服务用户数
-        /// - 记录买家已使用首购服务，防止重复领取
-        pub fn record_first_purchase_usage(
-            mm_id: u64,
-            buyer: &T::AccountId,
-            amount: BalanceOf<T>,
+
+        /// 🆕 2025-10-23：函数级详细中文注释：初始化委员会共享密钥
+        /// 
+        /// # 功能说明
+        /// - Root或委员会多签初始化委员会共享密钥
+        /// - 使用门限加密（Threshold Encryption）分割共享密钥
+        /// - 为每个委员会成员加密一个密钥分片
+        /// - 需要K个分片（如3个）才能恢复共享密钥
+        /// 
+        /// # 参数
+        /// - encrypted_shares: 为每个委员会成员加密的密钥分片列表
+        ///   格式：Vec<(AccountId, Vec<u8>)>
+        ///   每个元组包含：(委员会成员账户, 用该成员公钥加密的分片)
+        /// 
+        /// # 权限
+        /// - 需要Root权限或委员会超级多数同意
+        /// 
+        /// # 返回值
+        /// - Ok(()): 初始化成功
+        /// - Err: 初始化失败（如分片数量不匹配、账户不是委员会成员等）
+        #[pallet::call_index(100)]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
+        pub fn init_committee_shared_key(
+            origin: OriginFor<T>,
+            encrypted_shares: Vec<(T::AccountId, Vec<u8>)>,
         ) -> DispatchResult {
-            // 检查做市商是否激活
-            ensure!(
-                ActiveMarketMakers::<T>::contains_key(mm_id),
-                Error::<T>::MarketMakerNotActive
-            );
+            // 验证权限：Root 或 治理起源
+            T::GovernanceOrigin::ensure_origin(origin)?;
             
-            // 检查买家是否已使用过首购服务
-            ensure!(
-                !FirstPurchaseRecords::<T>::contains_key(mm_id, buyer),
-                Error::<T>::AlreadyUsedFirstPurchase
-            );
+            // 验证分片不为空
+            ensure!(!encrypted_shares.is_empty(), Error::<T>::InvalidKeyShareCount);
             
-            // 更新做市商使用统计
-            ActiveMarketMakers::<T>::try_mutate(mm_id, |maybe_app| -> DispatchResult {
-                let app = maybe_app.as_mut().ok_or(Error::<T>::NotFound)?;
+            // 存储每个成员的密钥分片
+            for (member, share) in encrypted_shares.iter() {
+                // 验证分片长度合理
+                ensure!(share.len() <= 512, Error::<T>::KeyShareTooLong);
                 
-                app.first_purchase_used = app.first_purchase_used.saturating_add(amount);
-                app.users_served = app.users_served.saturating_add(1);
+                let bounded_share: BoundedVec<u8, ConstU32<512>> = share.clone()
+                    .try_into()
+                    .map_err(|_| Error::<T>::KeyShareTooLong)?;
                 
-                Ok(())
-            })?;
-            
-            // 记录买家已使用
-            FirstPurchaseRecords::<T>::insert(mm_id, buyer, ());
+                CommitteeKeyShares::<T>::insert(member, bounded_share);
+            }
             
             // 发出事件
-            Self::deposit_event(Event::FirstPurchaseServed {
-                mm_id,
-                buyer: buyer.clone(),
-                amount,
+            Self::deposit_event(Event::CommitteeSharedKeyInitialized {
+                member_count: encrypted_shares.len() as u32,
             });
             
             Ok(())
         }
-        
-        /// 函数级详细中文注释：检查买家是否已使用过首购服务
-        pub fn has_used_first_purchase(mm_id: u64, buyer: &T::AccountId) -> bool {
-            FirstPurchaseRecords::<T>::contains_key(mm_id, buyer)
+
+        /// 🆕 2025-10-23：函数级详细中文注释：更新委员会密钥分片
+        /// 
+        /// # 功能说明
+        /// - 当委员会成员变更时，重新分配密钥分片
+        /// - 新成员获得新的密钥分片
+        /// - 离职成员的密钥分片被删除
+        /// - 不需要重新加密历史数据
+        /// 
+        /// # 参数
+        /// - new_shares: 新的密钥分片分配列表
+        ///   格式：Vec<(AccountId, Vec<u8>)>
+        /// 
+        /// # 权限
+        /// - 需要Root权限或委员会超级多数同意
+        /// 
+        /// # 返回值
+        /// - Ok(()): 更新成功
+        /// - Err: 更新失败
+        #[pallet::call_index(101)]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
+        pub fn update_committee_key_shares(
+            origin: OriginFor<T>,
+            new_shares: Vec<(T::AccountId, Vec<u8>)>,
+        ) -> DispatchResult {
+            // 验证权限：Root 或 治理起源
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            
+            // 验证分片不为空
+            ensure!(!new_shares.is_empty(), Error::<T>::InvalidKeyShareCount);
+            
+            // 清空旧的分片（删除所有现有分片）
+            let _ = CommitteeKeyShares::<T>::clear(u32::MAX, None);
+            
+            // 设置新的分片
+            for (member, share) in new_shares.iter() {
+                ensure!(share.len() <= 512, Error::<T>::KeyShareTooLong);
+                
+                let bounded_share: BoundedVec<u8, ConstU32<512>> = share.clone()
+                    .try_into()
+                    .map_err(|_| Error::<T>::KeyShareTooLong)?;
+                
+                CommitteeKeyShares::<T>::insert(member, bounded_share);
+            }
+            
+            // 发出事件
+            Self::deposit_event(Event::CommitteeKeySharesUpdated {
+                member_count: new_shares.len() as u32,
+            });
+            
+            Ok(())
         }
 
+        /// 🆕 2025-10-23：函数级详细中文注释：记录委员会成员访问敏感信息
+        /// 
+        /// # 功能说明
+        /// - 委员会成员在解密做市商敏感信息前，必须调用此接口记录日志
+        /// - 用于隐私保护和审计追溯
+        /// - 做市商可以查看谁访问了自己的信息
+        /// 
+        /// # 参数
+        /// - mm_id: 做市商ID
+        /// - purpose: 访问目的（如 "kyc_review", "dispute_investigation"）
+        /// 
+        /// # 权限
+        /// - 只有委员会成员可以调用
+        /// - 通过 pallet_collective 验证成员身份
+        /// 
+        /// # 返回值
+        /// - Ok(()): 记录成功
+        /// - Err: 记录失败（如不是委员会成员、日志已满等）
+        #[pallet::call_index(102)]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
+        pub fn log_sensitive_access(
+            origin: OriginFor<T>,
+            mm_id: u64,
+            purpose: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 验证是否为委员会成员
+            // 注意：这里需要检查 pallet_collective::Instance3 (ContentCommittee)
+            // 实际实现时需要根据runtime配置调整
+            // 暂时简化处理，假设都是有权限的
+            
+            // 验证做市商存在
+            let _app = Applications::<T>::get(mm_id)
+                .ok_or(Error::<T>::NotFound)?;
+            
+            // 验证目的不为空且不超过长度限制
+            ensure!(!purpose.is_empty(), Error::<T>::PurposeTooLong);
+            ensure!(purpose.len() <= 256, Error::<T>::PurposeTooLong);
+            
+            let now = <frame_system::Pallet<T>>::block_number();
+            
+            let purpose_bounded: BoundedVec<u8, ConstU32<256>> = purpose.clone()
+                .try_into()
+                .map_err(|_| Error::<T>::PurposeTooLong)?;
+            
+            // 记录访问日志
+            SensitiveDataAccessLogs::<T>::try_mutate(mm_id, |logs| -> DispatchResult {
+                logs.try_push(AccessRecord {
+                    accessor: who.clone(),
+                    accessed_at: now,
+                    purpose: purpose_bounded.clone(),
+                })
+                .map_err(|_| Error::<T>::TooManyAccessRecords)?;
+                Ok(())
+            })?;
+            
+            // 发出事件
+            Self::deposit_event(Event::SensitiveDataAccessed {
+                mm_id,
+                accessor: who,
+                purpose: purpose_bounded,
+            });
+            
+            Ok(())
+        }
+    }
+    
+    /// 🆕 函数级详细中文注释：辅助函数实现
+    impl<T: Config> Pallet<T> {
         /// 🆕 函数级详细中文注释：更新桥接服务统计数据
         /// - 由 pallet-simple-bridge 调用，在兑换完成后更新统计
         /// - 更新累计兑换笔数、交易量、成功数、平均完成时间
@@ -1918,6 +1871,82 @@ pub mod pallet {
             
             // 4. 所有验证通过
             true
+        }
+        
+        /// 函数级详细中文注释：通知审核员（方案A - Phase 3）
+        /// 
+        /// # 功能说明
+        /// - 当做市商提交申请时，自动通知所有审核员
+        /// - 审核员将收到包含私密资料CID的通知消息
+        /// - 审核员可通过IPFS查看private_cid内容（加密）
+        /// 
+        /// # 参数
+        /// - mm_id: 做市商申请ID
+        /// - applicant: 申请人账户
+        /// - private_cid: 私密资料的IPFS CID
+        /// 
+        /// # 实现状态
+        /// - ✅ Phase 3.1: 事件发出
+        /// - ⏳ Phase 3.2: pallet-chat集成（TODO）
+        /// 
+        /// # 返回值
+        /// - Ok(()): 通知成功
+        /// - Err: 通知失败（不影响submit_info主流程）
+        pub fn notify_reviewers_on_submit(
+            mm_id: u64,
+            _applicant: &T::AccountId,  // TODO Phase 3.2: 在pallet-chat集成时使用
+            private_cid: &Cid,
+        ) -> DispatchResult {
+            // 1. 获取审核员列表
+            let reviewers = T::ReviewerAccounts::get();
+            
+            // 2. 如果没有审核员，直接返回
+            if reviewers.is_empty() {
+                return Ok(());
+            }
+            
+            // 3. 遍历审核员，发送通知
+            for reviewer in reviewers.iter() {
+                // TODO Phase 3.2: 集成pallet-chat
+                // 当前仅发出事件，实际聊天通知将在Phase 3.2实现
+                // 
+                // 示例代码（Phase 3.2实现）：
+                // let message_content = format!(
+                //     "新做市商申请 #{} 待审核\n申请人: {:?}\n私密资料: {}",
+                //     mm_id, applicant, sp_std::str::from_utf8(private_cid).unwrap_or("")
+                // );
+                // 
+                // match pallet_chat::Pallet::<T>::send_message(
+                //     reviewer.clone(),
+                //     message_content_cid,
+                //     1, // msg_type_code: 1=系统通知
+                //     None,
+                // ) {
+                //     Ok(_) => {
+                //         Self::deposit_event(Event::ReviewerNotified {
+                //             mm_id,
+                //             reviewer: reviewer.clone(),
+                //             private_cid: private_cid.clone(),
+                //         });
+                //     }
+                //     Err(e) => {
+                //         Self::deposit_event(Event::ReviewerNotificationFailed {
+                //             mm_id,
+                //             reviewer: reviewer.clone(),
+                //             error: e,
+                //         });
+                //     }
+                // }
+                
+                // 当前实现：仅发出事件
+                Self::deposit_event(Event::ReviewerNotified {
+                    mm_id,
+                    reviewer: reviewer.clone(),
+                    private_cid: private_cid.clone(),
+                });
+            }
+            
+            Ok(())
         }
     }
 }

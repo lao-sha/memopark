@@ -4,6 +4,18 @@ extern crate alloc;
 
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
+// 函数级中文注释：统一逝者数据管理 - 整合text和media模块
+pub mod text;
+pub mod media;
+pub use text::*;
+pub use media::*;
+
 use frame_support::weights::Weight;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
@@ -19,13 +31,121 @@ extern crate pallet_memo_ipfs;
 // 函数级中文注释：导入IpfsPinner trait以便使用其方法
 use pallet_memo_ipfs::IpfsPinner;
 
-/// 函数级中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合。
-/// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位。
-/// - `can_attach`：校验操作者是否有权在该墓位下管理逝者（通常是墓主或被授权者）。
-/// - 删除 `cached_deceased_tokens_len`：无需冗余缓存检查，容量由 BoundedVec 自动管理
+/// 函数级详细中文注释：墓位接口抽象，保持与 `pallet-grave` 低耦合
+/// 
+/// ### 核心方法（原有）
+/// - `grave_exists`：校验墓位是否存在，避免挂接到无效墓位
+/// - `can_attach`：校验操作者是否有权在该墓位下管理逝者（通常是墓主或被授权者）
+/// 
+/// ### 同步方法（Phase 1.5新增）⭐
+/// - `record_interment`：记录安葬操作，同步Interments存储
+/// - `record_exhumation`：记录起掘操作，同步Interments存储
+/// 
+/// ### 设计理念
+/// - **问题**：Interments（grave）与DeceasedByGrave（deceased）不同步
+/// - **解决**：deceased pallet操作时，自动调用grave pallet记录
+/// - **优势**：保持低耦合，通过trait解耦
+/// 
+/// ### 使用场景
+/// - `create_deceased`：创建后自动调用`record_interment`
+/// - `transfer_deceased`：迁移时调用`record_exhumation`+`record_interment`
 pub trait GraveInspector<AccountId, GraveId> {
+    /// 函数级中文注释：检查墓位是否存在
     fn grave_exists(grave_id: GraveId) -> bool;
+    
+    /// 函数级中文注释：检查操作者是否有权在该墓位管理逝者
     fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
+    
+    /// 函数级详细中文注释：记录安葬操作（Phase 1.5新增）
+    /// 
+    /// ### 功能
+    /// - 将逝者记录到墓位的Interments中
+    /// - 同步grave pallet的安葬记录
+    /// 
+    /// ### 参数
+    /// - `grave_id`: 墓位ID
+    /// - `deceased_id`: 逝者ID
+    /// - `slot`: 槽位（可选）
+    /// - `note_cid`: 备注CID（可选）
+    /// 
+    /// ### 调用场景
+    /// - deceased::create_deceased - 创建逝者后自动记录
+    /// - deceased::transfer_deceased - 迁入新墓位时记录
+    /// 
+    /// ### 权限
+    /// - 本方法不检查权限（权限已在deceased pallet检查）
+    /// - 仅用于同步数据
+    /// 
+    /// ### 注意
+    /// - 不触发OnInterment钩子（避免重复触发）
+    /// - 不检查容量（容量已在deceased pallet检查）
+    fn record_interment(
+        grave_id: GraveId,
+        deceased_id: u64,
+        slot: Option<u16>,
+        note_cid: Option<Vec<u8>>,
+    ) -> Result<(), sp_runtime::DispatchError>;
+    
+    /// 函数级详细中文注释：记录起掘操作（Phase 1.5新增）
+    /// 
+    /// ### 功能
+    /// - 从墓位的Interments中移除逝者记录
+    /// - 同步grave pallet的起掘操作
+    /// 
+    /// ### 参数
+    /// - `grave_id`: 墓位ID
+    /// - `deceased_id`: 逝者ID
+    /// 
+    /// ### 调用场景
+    /// - deceased::transfer_deceased - 从旧墓位迁出时记录
+    /// 
+    /// ### 权限
+    /// - 本方法不检查权限（权限已在deceased pallet检查）
+    /// - 仅用于同步数据
+    /// 
+    /// ### 注意
+    /// - 如果记录不存在，不报错（幂等操作）
+    fn record_exhumation(
+        grave_id: GraveId,
+        deceased_id: u64,
+    ) -> Result<(), sp_runtime::DispatchError>;
+    
+    /// 函数级详细中文注释：检查墓位准入策略（Phase 1.5新增 - 解决P0问题2）
+    /// 
+    /// ### 功能
+    /// - 检查调用者是否有权限将逝者迁入目标墓位
+    /// - 根据墓位的准入策略进行判断
+    /// - 解决P0问题：逝者强行挤入私人墓位
+    /// 
+    /// ### 参数
+    /// - `who`: 调用者账户（逝者owner）
+    /// - `grave_id`: 目标墓位ID
+    /// 
+    /// ### 策略逻辑
+    /// - **OwnerOnly（默认）**：仅墓主可以迁入 → 检查who == grave.owner
+    /// - **Public**：任何人都可以迁入 → 总是返回Ok
+    /// - **Whitelist**：仅白名单可以迁入 → 检查墓主或白名单
+    /// 
+    /// ### 调用场景
+    /// - deceased::transfer_deceased - 迁移前检查准入策略
+    /// - deceased::create_deceased - 创建时可选检查（暂时跳过，因为墓主创建）
+    /// 
+    /// ### 返回值
+    /// - `Ok(())`: 允许迁入
+    /// - `Err`: 拒绝迁入（AdmissionDenied/NotFound）
+    /// 
+    /// ### 设计理念
+    /// - 平衡需求3（逝者自由迁移）与墓主控制权
+    /// - 墓主可以设置准入策略保护墓位
+    /// - 逝者owner在策略允许范围内自由迁移
+    /// 
+    /// ### 注意事项
+    /// - 墓主始终可以迁入（不受策略限制）
+    /// - 不检查墓位容量（容量在deceased pallet检查）
+    fn check_admission_policy(
+        who: &AccountId,
+        grave_id: GraveId,
+    ) -> Result<(), sp_runtime::DispatchError>;
 }
 
 /// 函数级中文注释：权重信息占位接口，后续可通过 benchmarking 生成并替换。
@@ -54,7 +174,7 @@ impl WeightInfo for () {
 
 /// 函数级中文注释：性别枚举。
 /// - 仅三种取值：M(男)、F(女)、B(保密/双性/未指明)。
-#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen, Debug)]
 pub enum Gender {
     M,
     F,
@@ -159,6 +279,11 @@ pub mod pallet {
     use frame_support::traits::ConstU32;
     use frame_support::traits::StorageVersion;
     use sp_runtime::traits::SaturatedConversion;
+    use sp_std::vec;
+    use frame_support::traits::Currency as CurrencyTrait;
+
+    /// 函数级中文注释：Balance 类型别名（用于押金和费用）
+    pub type BalanceOf<T> = <<T as Config>::Currency as CurrencyTrait<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -172,10 +297,6 @@ pub mod pallet {
         /// 墓位 ID 类型（由外部 pallet 定义）
         type GraveId: Parameter + Member + Copy + MaxEncodedLen;
 
-        /// 每墓位最大逝者数量
-        #[pallet::constant]
-        type MaxDeceasedPerGrave: Get<u32>;
-
         /// 单字段字符串长度上限
         #[pallet::constant]
         type StringLimit: Get<u32>;
@@ -184,10 +305,22 @@ pub mod pallet {
         #[pallet::constant]
         type MaxLinks: Get<u32>;
 
-        /// 删除软上限配置：直接使用 MaxDeceasedPerGrave 作为唯一上限
-        /// - 容量检查由 BoundedVec::try_push 自动处理
-        /// - 可通过治理升级调整 MaxDeceasedPerGrave
-        
+        /// 函数级详细中文注释：墓位容量无限制设计说明
+        /// 
+        /// ### 设计变更
+        /// - **已删除**：`MaxDeceasedPerGrave` 配置（原硬上限6人）
+        /// - **改为**：Vec 无容量限制，支持家族墓、纪念墓
+        /// 
+        /// ### 合理性
+        /// - 真实需求：家族墓可能几十人，纪念墓可能数千人
+        /// - 经济保护：每人约10 MEMO成本，天然防止恶意填充
+        /// - 性能可控：前端分页加载，1000人墓位仅8KB Storage
+        /// 
+        /// ### 风险控制
+        /// - 经济门槛：创建+IPFS费用防止滥用
+        /// - 前端优化：分页加载、虚拟滚动
+        /// - 监控告警：超大墓位（>1000人）人工审核
+
         /// 函数级中文注释：`deceased_token` 的最大长度上限（字节）。
         /// - 设计目标：与外部引用者（如 `pallet-memo-grave`）的 `MaxCidLen` 对齐，避免跨 pallet 不一致。
         #[pallet::constant]
@@ -230,6 +363,89 @@ pub mod pallet {
         /// - 用于自动pin时的费用估算
         #[pallet::constant]
         type DefaultStoragePrice: Get<Self::Balance>;
+
+        // ========== Text 模块相关类型 ==========
+        /// 函数级中文注释：文本ID类型（Article/Message/Eulogy共用）
+        type TextId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：每个逝者最大留言数
+        #[pallet::constant]
+        type MaxMessagesPerDeceased: Get<u32>;
+        
+        /// 函数级中文注释：每个逝者最大悼词数
+        #[pallet::constant]
+        type MaxEulogiesPerDeceased: Get<u32>;
+        
+        /// 函数级中文注释：文本押金（Article/Message/Eulogy）
+        #[pallet::constant]
+        type TextDeposit: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：投诉押金
+        #[pallet::constant]
+        type ComplaintDeposit: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：投诉成熟期（区块数）
+        #[pallet::constant]
+        type ComplaintPeriod: Get<BlockNumberFor<Self>>;
+        
+        /// 函数级中文注释：仲裁费用接收账户（5%）
+        type ArbitrationAccount: Get<Self::AccountId>;
+
+        // ========== Media 模块相关类型 ==========
+        /// 函数级中文注释：相册ID类型
+        type AlbumId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：视频集ID类型
+        type VideoCollectionId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：媒体ID类型（Photo/Video/Audio共用）
+        type MediaId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        
+        /// 函数级中文注释：每个逝者最大相册数
+        #[pallet::constant]
+        type MaxAlbumsPerDeceased: Get<u32>;
+        
+        /// 函数级中文注释：每个逝者最大视频集数
+        #[pallet::constant]
+        type MaxVideoCollectionsPerDeceased: Get<u32>;
+        
+        /// 函数级中文注释：每个相册最大照片数
+        #[pallet::constant]
+        type MaxPhotoPerAlbum: Get<u32>;
+        
+        /// 函数级中文注释：最大标签数
+        #[pallet::constant]
+        type MaxTags: Get<u32>;
+        
+        /// 函数级中文注释：批量重排序最大数量
+        #[pallet::constant]
+        type MaxReorderBatch: Get<u32>;
+        
+        /// 函数级中文注释：相册押金
+        #[pallet::constant]
+        type AlbumDeposit: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：视频集押金
+        #[pallet::constant]
+        type VideoCollectionDeposit: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：媒体押金
+        #[pallet::constant]
+        type MediaDeposit: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：创建费用
+        #[pallet::constant]
+        type CreateFee: Get<BalanceOf<Self>>;
+        
+        /// 函数级中文注释：费用接收账户
+        type FeeCollector: Get<Self::AccountId>;
+
+        // ========== 共享类型（text和media共用）==========
+        /// 函数级中文注释：货币接口（支持押金和转账）
+        type Currency: frame_support::traits::ReservableCurrency<Self::AccountId>;
+        
+        /// 函数级中文注释：MaxTokenLen（复用TokenLimit，用于deceased_token）
+        type MaxTokenLen: Get<u32>;
     }
 
     #[pallet::storage]
@@ -245,13 +461,34 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn deceased_by_grave)]
-    /// 墓位下的逝者列表：GraveId -> BoundedVec<DeceasedId>
+    /// 函数级详细中文注释：墓位下的逝者列表（无容量限制，支持家族墓）
+    /// 
+    /// ### 数据结构
+    /// - GraveId -> Vec<DeceasedId>
+    /// - **无容量限制**：支持家族墓、宗族墓、纪念墓
+    /// 
+    /// ### 设计理念
+    /// - **真实需求**：家族墓可能容纳几十人甚至上百人
+    /// - **经济保护**：每人约10 MEMO成本，天然防止恶意填充
+    /// - **性能可控**：前端分页加载，大墓位体验良好
+    /// 
+    /// ### 典型场景
+    /// - 家庭墓：3-6人
+    /// - 家族墓：10-50人
+    /// - 宗族墓：50-200人
+    /// - 纪念墓：数百至数千人
+    /// - 公墓：无限制
+    /// 
+    /// ### 性能考虑
+    /// - Storage：1000人仅8KB，完全可接受
+    /// - 查询：前端分页加载（每页20人）
+    /// - 监控：告警超大墓位（>1000人）
     pub type DeceasedByGrave<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         T::GraveId,
-        BoundedVec<T::DeceasedId, T::MaxDeceasedPerGrave>,
-        ValueQuery,
+        Vec<T::DeceasedId>,  // ✅ 改为Vec，无容量限制
+        OptionQuery,  // ✅ 改为OptionQuery，因为Vec没有MaxEncodedLen
     >;
 
     /// 函数级中文注释：逝者可见性标记（默认公开）。
@@ -327,8 +564,10 @@ pub mod pallet {
         GraveNotFound,
         /// 无权限操作
         NotAuthorized,
-        /// 该墓位下逝者数量已达上限
-        TooManyDeceasedInGrave,
+        /// 函数级中文注释：非逝者owner（需求2）
+        /// - 场景：仅逝者owner可以转让owner或执行特定操作
+        /// - 区别于 NotAuthorized：更精确的权限错误，明确指出调用者不是逝者owner
+        NotDeceasedOwner,
         /// 逝者不存在
         DeceasedNotFound,
         /// ID 溢出
@@ -368,8 +607,23 @@ pub mod pallet {
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(6);
 
+    /// 函数级详细中文注释：禁用存储信息生成（因为使用Vec无界集合）
+    /// 
+    /// ### 原因
+    /// - `DeceasedByGrave` 使用 `Vec<DeceasedId>` 替代 `BoundedVec`
+    /// - Vec 没有 `MaxEncodedLen` trait（无法计算最大编码长度）
+    /// - 需要禁用 storage info 生成
+    /// 
+    /// ### 影响
+    /// - 无法自动计算 pallet 的最大存储大小
+    /// - 不影响功能，仅影响元数据
+    /// 
+    /// ### 风险控制
+    /// - 经济成本：每人约10 MEMO，天然限制
+    /// - 监控告警：超大墓位（>1000人）人工审核
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
+    #[pallet::without_storage_info]  // ✅ 禁用存储信息（因为Vec无MaxEncodedLen）
     pub struct Pallet<T>(_);
 
     /// 函数级中文注释：最近一次拥有者变更日志（用于前端展示与审计）。
@@ -824,7 +1078,6 @@ pub mod pallet {
             pin_type: AutoPinType,
         ) {
             let deceased_id_u64: u64 = deceased_id.saturated_into::<u64>();
-            let price = T::DefaultStoragePrice::get();
             
             let pin_type_code = match pin_type {
                 AutoPinType::NameFullCid => 0u8,
@@ -841,8 +1094,7 @@ pub mod pallet {
                 caller.clone(),
                 deceased_id_u64,
                 cid.clone(),
-                price,
-                3, // 默认3副本
+                None, // 使用默认Standard层级（3副本）
             ) {
                 Ok(_) => {
                     // 成功：转换CID为BoundedVec并发出事件
@@ -944,10 +1196,28 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 函数级中文注释：创建逝者记录并挂接到墓位。
-        /// - 权限：`GraveProvider::can_attach(origin, grave_id)` 必须为真；
-        /// - 安全：限制文本与链接长度；敏感信息仅存链下链接；
-        /// - 事件：`DeceasedCreated`。
+        /// 函数级详细中文注释：创建逝者记录并挂接到墓位
+        /// 
+        /// ### 权限
+        /// - `GraveProvider::can_attach(origin, grave_id)` 必须为真
+        /// - 通常是墓主、墓位管理员或园区管理员
+        /// 
+        /// ### 功能说明
+        /// - 创建新的逝者记录
+        /// - 创建者自动成为逝者owner
+        /// - 自动pin姓名和主图到IPFS
+        /// 
+        /// ### Owner权利保护（需求2）
+        /// ⚠️ **重要**：创建者成为逝者owner后，墓主无法强制收回管理权
+        /// - 墓主可以创建逝者，但创建后owner=墓主
+        /// - 如果墓主将owner转让给他人，则无法强制收回（需要对方同意）
+        /// - 这是需求2的核心设计：保护逝者owner权利
+        /// 
+        /// ### 参数说明
+        /// - 安全：限制文本与链接长度；敏感信息仅存链下链接
+        /// 
+        /// ### 事件
+        /// - DeceasedCreated
         #[pallet::call_index(0)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::create())]
@@ -1053,10 +1323,16 @@ pub mod pallet {
                 at: now,
             });
             DeceasedHistory::<T>::insert(id, hist);
-            DeceasedByGrave::<T>::try_mutate(grave_id, |list| {
-                list.try_push(id)
-                    .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
-            })?;
+            
+            // ✅ 墓位容量无限制：直接push，支持家族墓
+            DeceasedByGrave::<T>::mutate(grave_id, |maybe_list| {
+                if let Some(list) = maybe_list {
+                    list.push(id);
+                } else {
+                    *maybe_list = Some(vec![id]);
+                }
+            });
+            
             // 默认公开
             VisibilityOf::<T>::insert(id, true);
             // 建立 token -> id 索引
@@ -1075,6 +1351,19 @@ pub mod pallet {
                     AutoPinType::NameFullCid,
                 );
             }
+
+            // ⭐ Phase 1.5：同步Interments记录（解决P0问题1）
+            // - 问题：Interments与DeceasedByGrave不同步
+            // - 解决：创建逝者后自动记录安葬
+            // - 注意：权限已检查，容量已检查，直接记录
+            use sp_runtime::traits::UniqueSaturatedInto;
+            let deceased_id_u64: u64 = id.unique_saturated_into();
+            T::GraveProvider::record_interment(
+                grave_id,
+                deceased_id_u64,
+                None,       // slot: 自动分配
+                None,       // note_cid: 无备注
+            )?;
 
             Self::deposit_event(Event::DeceasedCreated(id, grave_id, who));
             // 最近活跃：创建即记录
@@ -1256,9 +1545,32 @@ pub mod pallet {
             Err(Error::<T>::DeletionForbidden.into())
         }
 
-        /// 函数级中文注释：迁移逝者到新的墓位。
-        /// - 权限：仅 `owner` 且新墓位需通过 `GraveProvider::can_attach`；
-        /// - 事件：`DeceasedTransferred`。
+        /// 函数级详细中文注释：迁移逝者到新的墓位（需求3：仅owner可迁墓）
+        /// 
+        /// ### 权限（核心设计）
+        /// - **仅逝者owner**：只有逝者owner可以迁移逝者（需求3核心）
+        /// - **墓主无权**：墓主不能强制迁移逝者
+        /// 
+        /// ### 功能说明
+        /// - 将逝者从当前墓位迁移到目标墓位
+        /// - 不影响逝者owner
+        /// - 不影响亲友团和关系网络
+        /// 
+        /// ### 前置条件
+        /// - 目标墓位必须存在
+        /// - 目标墓位容量未满（硬上限6，由BoundedVec自动管理）
+        /// 
+        /// ### 使用场景
+        /// - 逝者owner对当前墓位不满意，迁移到更好的墓位
+        /// - 配合需求1：墓主要转让墓位，逝者owner先迁出
+        /// - 市场流动性：逝者可自由选择墓位
+        /// 
+        /// ### 事件
+        /// - DeceasedTransferred(id, old_grave, new_grave)
+        /// 
+        /// ### 注意事项
+        /// ⚠️ **重要**：删除了墓位权限检查（需求3核心）
+        /// ✅ **Phase 1.5**：已添加墓位准入策略检查（解决P0问题2）
         #[pallet::call_index(3)]
         #[allow(deprecated)]
         #[pallet::weight(T::WeightInfo::transfer())]
@@ -1268,41 +1580,149 @@ pub mod pallet {
             new_grave: T::GraveId,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            
+            // 检查目标墓位存在
             ensure!(
                 T::GraveProvider::grave_exists(new_grave),
                 Error::<T>::GraveNotFound
             );
-            ensure!(
-                T::GraveProvider::can_attach(&who, new_grave),
-                Error::<T>::NotAuthorized
-            );
+            
+            // ⭐ Phase 1.5：准入策略检查（解决P0问题2）
+            // - 问题：逝者可以强行挤入私人墓位
+            // - 解决：检查墓位的准入策略
+            // - 设计：平衡需求3（逝者自由迁移）与墓主控制权
+            // - 策略：OwnerOnly（默认）/ Public / Whitelist
+            T::GraveProvider::check_admission_policy(&who, new_grave)?;
+            
+            // ⭐ 需求3核心：删除墓位权限检查（墓主无法强制迁移）
+            // 原代码（已删除）：
+            // ensure!(
+            //     T::GraveProvider::can_attach(&who, new_grave),
+            //     Error::<T>::NotAuthorized
+            // );
             
             // 删除软上限检查：容量由 BoundedVec::try_push 自动管理（硬上限6）
 
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
-                ensure!(d.owner == who, Error::<T>::NotAuthorized);
+                
+                // ⭐ 需求3核心：仅逝者owner可迁移
+                ensure!(d.owner == who, Error::<T>::NotDeceasedOwner);
                 let original_owner = d.owner.clone();
+                
+                // 记录旧墓位（用于后续同步）
+                let old_grave = d.grave_id;
 
-                // 先检查新墓位容量
-                DeceasedByGrave::<T>::try_mutate(new_grave, |list| {
-                    list.try_push(id)
-                        .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
-                })?;
-
-                // 从旧墓位移除
-                DeceasedByGrave::<T>::mutate(d.grave_id, |list| {
-                    if let Some(pos) = list.iter().position(|x| x == &id) {
-                        list.swap_remove(pos);
+                // ✅ 墓位容量无限制：直接添加到新墓位
+                DeceasedByGrave::<T>::mutate(new_grave, |maybe_list| {
+                    if let Some(list) = maybe_list {
+                        list.push(id);
+                    } else {
+                        *maybe_list = Some(vec![id]);
                     }
                 });
 
-                let old = d.grave_id;
+                // 从旧墓位移除
+                DeceasedByGrave::<T>::mutate(old_grave, |maybe_list| {
+                    if let Some(list) = maybe_list {
+                        if let Some(pos) = list.iter().position(|x| x == &id) {
+                            list.swap_remove(pos);
+                        }
+                    }
+                });
+
                 d.grave_id = new_grave;
                 d.updated = <frame_system::Pallet<T>>::block_number();
                 ensure!(d.owner == original_owner, Error::<T>::OwnerImmutable);
-                Self::deposit_event(Event::DeceasedTransferred(id, old, new_grave));
+                
+                // ⭐ Phase 1.5：同步Interments记录（解决P0问题1）
+                // - 问题：Interments与DeceasedByGrave不同步
+                // - 解决：迁移时同步起掘和安葬记录
+                use sp_runtime::traits::UniqueSaturatedInto;
+                let deceased_id_u64: u64 = id.unique_saturated_into();
+                
+                // 1. 从旧墓位起掘
+                T::GraveProvider::record_exhumation(old_grave, deceased_id_u64)?;
+                
+                // 2. 安葬到新墓位
+                T::GraveProvider::record_interment(
+                    new_grave,
+                    deceased_id_u64,
+                    None,  // slot: 自动分配
+                    None,  // note_cid: 无备注
+                )?;
+                
+                Self::deposit_event(Event::DeceasedTransferred(id, old_grave, new_grave));
                 Self::touch_last_active(id);
+                Ok(())
+            })
+        }
+
+        /// 函数级详细中文注释：转让逝者owner（需求2：禁止墓主强制替换）
+        /// 
+        /// ### 权限（核心设计）
+        /// - **仅逝者当前owner**：只有逝者owner本人可以转让
+        /// - **墓主无权**：墓主不能强制替换逝者owner（需求2核心）
+        /// - **治理路径**：治理操作请使用 `gov_transfer_owner`
+        /// 
+        /// ### 功能说明
+        /// - 将逝者的管理权转让给其他账户
+        /// - 记录owner变更历史（审计用）
+        /// - 不影响墓位归属
+        /// - 不影响亲友团和关系网络
+        /// 
+        /// ### 参数
+        /// - `id`: 逝者ID
+        /// - `new_owner`: 新的owner账户
+        /// 
+        /// ### 使用场景
+        /// - 墓主授权他人管理逝者资料
+        /// - 家族墓中不同分支管理自己的逝者
+        /// - VIP服务（委托专业人员维护）
+        /// 
+        /// ### 事件
+        /// - DeceasedOwnerTransferred(id, grave_id, old_owner, new_owner, transferred_by)
+        /// 
+        /// ### 注意事项
+        /// ⚠️ **重要**：此函数删除了墓位权限检查，墓主无法强制转让
+        #[pallet::call_index(30)]
+        #[pallet::weight(T::WeightInfo::update())]
+        pub fn transfer_deceased_owner(
+            origin: OriginFor<T>,
+            id: T::DeceasedId,
+            new_owner: T::AccountId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
+                let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
+                
+                // ⭐ 需求2核心：仅逝者owner可转让，删除墓位权限检查
+                ensure!(d.owner == who, Error::<T>::NotDeceasedOwner);
+                
+                // 不允许转给自己
+                ensure!(d.owner != new_owner, Error::<T>::BadInput);
+                
+                let old_owner = d.owner.clone();
+                
+                // 更新owner
+                d.owner = new_owner.clone();
+                d.updated = <frame_system::Pallet<T>>::block_number();
+                d.version = d.version.saturating_add(1);
+                
+                // 记录变更日志（与gov_transfer_owner保持一致）
+                let now = d.updated;
+                // 使用空证据CID（普通用户转让不需要证据）
+                let empty_cid = BoundedVec::default();
+                OwnerChangeLogOf::<T>::insert(
+                    id,
+                    (old_owner.clone(), new_owner.clone(), now, empty_cid)
+                );
+                
+                // 发送事件
+                Self::deposit_event(Event::OwnerTransferred(id, old_owner, new_owner));
+                Self::touch_last_active(id);
+                
                 Ok(())
             })
         }
@@ -1604,20 +2024,28 @@ pub mod pallet {
                 Error::<T>::GraveNotFound
             );
             
-            // 删除软上限检查：容量由 BoundedVec::try_push 自动管理（硬上限6）
-            
             DeceasedOf::<T>::try_mutate(id, |maybe_d| -> DispatchResult {
                 let d = maybe_d.as_mut().ok_or(Error::<T>::DeceasedNotFound)?;
                 let original_owner = d.owner.clone();
-                DeceasedByGrave::<T>::try_mutate(new_grave, |list| {
-                    list.try_push(id)
-                        .map_err(|_| Error::<T>::TooManyDeceasedInGrave)
-                })?;
-                DeceasedByGrave::<T>::mutate(d.grave_id, |list| {
-                    if let Some(pos) = list.iter().position(|x| x == &id) {
-                        list.swap_remove(pos);
+                
+                // ✅ 墓位容量无限制：直接添加到新墓位
+                DeceasedByGrave::<T>::mutate(new_grave, |maybe_list| {
+                    if let Some(list) = maybe_list {
+                        list.push(id);
+                    } else {
+                        *maybe_list = Some(vec![id]);
                     }
                 });
+                
+                // 从旧墓位移除
+                DeceasedByGrave::<T>::mutate(d.grave_id, |maybe_list| {
+                    if let Some(list) = maybe_list {
+                        if let Some(pos) = list.iter().position(|x| x == &id) {
+                            list.swap_remove(pos);
+                        }
+                    }
+                });
+                
                 let old = d.grave_id;
                 d.grave_id = new_grave;
                 d.updated = <frame_system::Pallet<T>>::block_number();

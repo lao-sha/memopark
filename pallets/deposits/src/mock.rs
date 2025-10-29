@@ -1,6 +1,6 @@
 use crate as pallet_deposits;
 use frame_support::{
-	construct_runtime, parameter_types,
+	construct_runtime,
 	traits::{ConstU128, ConstU32, ConstU64},
 };
 use sp_core::H256;
@@ -45,6 +45,13 @@ impl frame_system::Config for Test {
 	type SS58Prefix = ();
 	type OnSetCode = ();
 	type MaxConsumers = ConstU32<16>;
+	type RuntimeTask = ();
+	type ExtensionsWeightInfo = ();
+	type SingleBlockMigrations = ();
+	type MultiBlockMigrator = ();
+	type PreInherents = ();
+	type PostInherents = ();
+	type PostTransactions = ();
 }
 
 impl pallet_balances::Config for Test {
@@ -60,7 +67,8 @@ impl pallet_balances::Config for Test {
 	type FreezeIdentifier = ();
 	type MaxFreezes = ();
 	type RuntimeHoldReason = ();
-	type MaxHolds = ();
+	type RuntimeFreezeReason = ();
+	type DoneSlashHandler = ();
 }
 
 impl pallet_deposits::Config for Test {
@@ -80,8 +88,13 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 			(1, 10000),  // alice
 			(2, 10000),  // bob
 			(3, 10000),  // charlie
-			(100, 0),    // treasury
+			(4, 10000),  // dave (for double_release/slash)
+			(5, 10000),  // eve (for tests)
+			(7, 10000),  // frank (for deposit_id_increments)
+			(8, 10000),  // grace (for multiple_purposes_work)
+			(100, 10000), // treasury (必须 >= ExistentialDeposit)
 		],
+		dev_accounts: None,
 	}
 	.assimilate_storage(&mut t)
 	.unwrap();

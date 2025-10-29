@@ -35,8 +35,6 @@ import AdminOtcSettingsPage from './features/otc/AdminOtcSettingsPage';
 import DeceasedPinWizard from './features/ipfs/DeceasedPinWizard';
 import AdminOfferRoutePage from './features/offerings/AdminOfferRoutePage';
 import ReferralBindPage from './features/referrals/ReferralBindPage';
-import FeeGuardAdminPage from './features/fee-guard/FeeGuardAdminPage';
-import ForwarderSessionPage from './features/forwarder/ForwarderSessionPage';
 import BillingAdminPage from './features/ipfs/BillingAdminPage';
 import UsagePage from './features/ipfs/UsagePage';
 import './App.css';

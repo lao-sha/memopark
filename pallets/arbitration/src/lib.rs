@@ -154,6 +154,13 @@ pub mod pallet {
                 _ => Decision::Refund,
             };
             T::Router::apply_decision(domain, id, decision.clone())?;
+            
+            // 🆕 2025-10-22：TODO - 根据裁决结果更新做市商信用分
+            // 函数级详细中文注释：如果裁决为Release（做市商胜诉），无变化
+            // 如果裁决为Refund/Partial（做市商败诉），应扣除信用分
+            // 需要通过 Router 获取 maker_id，然后调用：
+            // pallet_credit::Pallet::<T>::record_maker_dispute_result(maker_id, id, maker_win)?;
+            
             let out = match decision {
                 Decision::Release => (0, None),
                 Decision::Refund => (1, None),

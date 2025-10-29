@@ -46,46 +46,50 @@ export const MakerBridgeListPage: React.FC = () => {
     
     setLoading(true);
     try {
-      // 1. 获取所有活跃做市商
-      const activeMakersEntries = await api.query.marketMaker.activeMarketMakers.entries();
+      // 🆕 获取所有做市商（pallet-trading已合并做市商信息和桥接配置）
+      const makersEntries = await api.query.trading.makerApplications.entries();
       
       const bridgeMakers: any[] = [];
       
-      // 2. 遍历做市商，查询桥接服务配置
-      for (const [key, makerOpt] of activeMakersEntries) {
+      // 遍历做市商，筛选支持桥接的做市商
+      for (const [key, makerOpt] of makersEntries) {
         const mmId = (key.args[0] as any).toNumber();
+        
+        if (makerOpt.isNone) continue;
+        
         const maker = makerOpt.unwrap();
+        const makerData = maker.toJSON() as any;
         
-        // 3. 查询桥接服务配置
-        const serviceOpt = await api.query.marketMaker.bridgeServices(mmId);
-        
-        if (serviceOpt.isSome) {
-          const service = serviceOpt.unwrap();
-          const enabled = service.enabled.toHuman();
-          
-          // 4. 只显示启用的服务
-          if (filterEnabled && !enabled) {
-            continue;
-          }
-          
-          const totalSwaps = service.total_swaps.toNumber();
-          const successCount = service.success_count.toNumber();
-          const successRate = totalSwaps > 0 ? (successCount / totalSwaps) * 100 : 0;
-          
-          bridgeMakers.push({
-            mmId,
-            owner: maker.owner.toHuman(),
-            name: maker.public_cid.toHuman() || `做市商 #${mmId}`,
-            feeRate: service.fee_rate_bps.toNumber() / 100, // bps -> %
-            maxSwapAmount: service.max_swap_amount.toNumber() / 1_000_000, // USDT
-            totalSwaps,
-            successCount,
-            successRate,
-            avgTime: service.avg_time_seconds.toNumber(), // 秒
-            deposit: service.deposit.toNumber() / 1e12, // MEMO
-            enabled,
-          });
+        // 只显示Active状态的做市商
+        if (makerData.status !== 'Active') {
+          continue;
         }
+        
+        // 只显示支持桥接的做市商（Buy或BuyAndSell）
+        const supportsBridge = makerData.direction === 'Buy' || makerData.direction === 'BuyAndSell';
+        if (!supportsBridge) {
+          continue;
+        }
+        
+        // 应用filterEnabled筛选
+        if (filterEnabled && makerData.status !== 'Active') {
+          continue;
+        }
+        
+        // 🆕 从maker数据中提取桥接相关信息
+        bridgeMakers.push({
+          mmId,
+          owner: makerData.owner,
+          name: makerData.publicCid || `做市商 #${mmId}`,
+          feeRate: Math.abs(makerData.buyPremiumBps || 0) / 100, // 使用Buy溢价作为费率
+          maxSwapAmount: 10000, // TODO: 根据deposit计算
+          totalSwaps: 0, // TODO: 需要从统计数据获取
+          successCount: 0,
+          successRate: 0,
+          avgTime: 600, // 默认10分钟
+          deposit: Number(BigInt(makerData.deposit || '0') / BigInt(1e12)),
+          enabled: makerData.status === 'Active',
+        });
       }
       
       // 5. 排序

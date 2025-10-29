@@ -306,3 +306,920 @@ await api.tx.memoReferrals.bindSponsor(sponsor).signAndSend(user);
 // 触发结算当周应得（分页）
 await api.tx.memoAffiliate.settle(weekIndex, 100).signAndSend(anyone);
 ```
+
+## pallet-balance-tiers（多层级余额管理）
+
+- **模块说明**: 提供多层级余额管理系统，支持 Gas、Points、VIP、Gift、Reward、Premium 等多种余额类型
+- **特性**: 完全隔离、来源追踪、使用限制、渐进式解锁、自动回收、VIP 折扣（预留）、智能费率（预留）
+- **未来扩展**: 支持积分系统、VIP 会员、红包赠送、智能费率等创新功能
+
+### Extrinsics（可调用函数）
+
+1. **grant_balance**(to: AccountId, tier: BalanceTier, amount: Balance, source_type: SourceType, expires_in: Option<BlockNumber>)
+   - **权限**: `GrantOrigin`（Root 或其他授权 pallet）
+   - **功能**: 发放指定层级的余额给指定账户
+   - **参数**:
+     - `to`: 接收者账户
+     - `tier`: 余额层级
+       - `Gas`: Gas 专用余额（仅用于交易手续费）
+       - `Points`: 积分余额（未来实现）
+       - `Vip`: VIP 会员余额（未来实现）
+       - `Gift`: 可赠送余额/红包（未来实现）
+       - `Reward`: 奖励余额（未来实现）
+       - `Premium`: 高级余额/智能费率（未来实现）
+     - `amount`: 发放金额
+     - `source_type`: 来源类型
+       - `Airdrop`: 新手空投
+       - `ReferralReward`: 邀请奖励
+       - `EventReward`: 活动奖励
+       - `AdminGrant`: 运营发放
+       - `VipBenefit`: VIP 会员福利（未来）
+       - `PointsExchange`: 积分兑换（未来）
+       - `GiftReceived`: 红包接收（未来）
+     - `expires_in`: 有效期（区块数，None 使用默认配置）
+   - **事件**: `TierBalanceGranted { to, tier, amount, source_type, expires_at }`
+
+2. **set_tier_config**(config: TierConfiguration)
+   - **权限**: `GovernanceOrigin`（仅 Root）
+   - **功能**: 更新全局配置参数
+   - **参数**:
+     - `default_airdrop_amount`: 默认空投金额
+     - `default_daily_limit`: 默认每日限额
+     - `max_gas_per_tx`: 单笔交易 Gas 上限
+     - `default_expiry_blocks`: 默认过期区块数
+     - `auto_recycle_enabled`: 自动回收开关
+     - `unlock_ratio`: 解锁比例 (gas_used, unlocked)
+   - **事件**: `GasConfigUpdated`
+
+3. **recycle_expired_balance**(account: AccountId, tier: Option<BalanceTier>)
+   - **权限**: 任何人都可以调用
+   - **功能**: 回收指定账户的过期层级余额
+   - **参数**:
+     - `account`: 要回收的账户
+     - `tier`: 要回收的层级（None 表示回收所有层级）
+   - **事件**: `TierBalanceRecycled { from, tier, amount }`
+
+### Storage（链上存储）
+
+- **TieredAccounts**: `StorageMap<AccountId, TieredBalanceAccount>`
+  - 存储所有账户的多层级余额信息
+  - 包含：来源列表（最多 20 个）、Gas 每日限额、创建时间、最后使用时间、VIP 等级
+
+- **UsageHistory**: `StorageDoubleMap<AccountId, BlockNumber, BalanceUsageRecord>`
+  - 记录余额使用历史
+  - 用于统计分析和反作弊
+  - 包含层级、金额、交易类型
+
+- **TierConfig**: `StorageValue<TierConfiguration>`
+  - 全局配置参数
+  - 包含各层级的配置（Gas、Points、VIP、Gift 等）
+
+### Events（事件）
+
+- **TierBalanceGranted** { to, tier, amount, source_type, expires_at }
+  - 层级余额已发放
+
+- **GasFeeCharged** { who, amount, remaining }
+  - Gas 费用已从 Gas 层级余额扣除
+
+- **BalanceUnlocked** { who, gas_used, unlocked }
+  - 普通余额已解锁（使用 Gas 后的奖励）
+
+- **TierBalanceRecycled** { from, tier, amount }
+  - 过期层级余额已回收
+
+- **TierConfigUpdated**
+  - 全局配置已更新
+
+### Errors（错误）
+
+- **InvalidAmount**: 金额无效（为零或过大）
+- **AccountNotFound**: Gas-only 账户不存在
+- **TooManySources**: 来源列表已满（最多 10 个）
+- **RecycleDisabled**: 回收功能未启用
+- **InsufficientGasBalance**: Gas-only 余额不足
+- **DailyLimitExceeded**: 超过每日限额
+- **MaxGasPerTxExceeded**: 超过单笔 Gas 上限
+
+### 前端 API 示例
+
+```javascript
+// 查询多层级余额
+const account = await api.query.balanceTiers.tieredAccounts(address);
+console.log('来源数量:', account.sources.length);
+console.log('VIP 等级:', account.vipLevel.toString());
+
+// 查询余额使用历史
+const history = await api.query.balanceTiers.usageHistory.entries(address);
+
+// 查询全局配置
+const config = await api.query.balanceTiers.tierConfig();
+console.log('Gas 默认空投:', config.gasDefaultAirdrop.toString());
+console.log('Gas 解锁比例:', config.gasUnlockRatio);
+console.log('积分兑换比例:', config.pointsExchangeRate);
+
+// 发放 Gas 层级余额（需要 Root 权限）
+await api.tx.balanceTiers.grantBalance(
+  targetAddress,
+  'Gas',  // 层级类型
+  '10000000000000',  // 10 MEMO
+  'FirstPurchaseReward',
+  null  // 使用默认过期时间
+).signAndSend(admin);
+
+// 发放积分余额（未来功能）
+await api.tx.balanceTiers.grantBalance(
+  targetAddress,
+  'Points',
+  '1000',  // 1000 积分
+  'EventReward',
+  null
+).signAndSend(admin);
+
+// 回收过期余额
+await api.tx.balanceTiers.recycleExpiredBalance(
+  targetAddress,
+  'Gas'  // 仅回收 Gas 层级，null 则回收所有层级
+).signAndSend(anyone);
+
+// 更新全局配置（需要 Root 权限）
+await api.tx.balanceTiers.setTierConfig({
+  gasDefaultAirdrop: '10000000000000',
+  gasDefaultDailyLimit: { Some: '100000000000000' },
+  gasMaxPerTx: { Some: '10000000000000' },
+  gasDefaultExpiryBlocks: { Some: 2592000 },
+  gasUnlockRatio: [1, 2],  // 1:2 解锁比例
+  autoRecycleEnabled: true,
+  pointsExchangeRate: { Some: [1, 10] },  // 1 MEMO = 10 积分
+  vipMinBalance: { Some: '100000000000000' },  // VIP 最低余额
+  giftMaxAmount: { Some: '10000000000000' }  // 红包最大金额
+}).signAndSend(root);
+```
+
+### 使用场景
+
+1. **新用户激励**: 运营向新用户发放 Gas 层级余额，用于支付初始交易费用，降低使用门槛
+2. **活动空投**: 运营向活动参与用户发放 Gas 层级余额，提升用户活跃度
+3. **邀请奖励**: 邀请好友注册成功后，邀请人获得 Gas 层级余额奖励
+4. **渐进式解锁**: 用户使用 1 MEMO Gas 后，自动解锁 2 MEMO 普通余额，激励用户活跃
+5. **积分系统（未来）**: 用户参与活动获得积分，可兑换服务或商品
+6. **VIP 会员（未来）**: 持有一定余额自动升级 VIP，享受手续费折扣
+7. **红包系统（未来）**: 用户可以向好友赠送 Gift 层级余额
+8. **智能费率（未来）**: 根据网络拥堵情况动态调整手续费
+
+### 注意事项
+
+1. Gas 层级余额**仅用于支付交易手续费**，不能转账或交易
+2. 每个账户最多支持 20 个不同来源的层级余额（跨层级）
+3. 使用 FIFO（先进先出）原则，优先使用最早的同层级余额
+4. 超过每日限额或单笔上限时，自动回退到普通余额支付
+5. 过期余额不会自动扣除，需要调用 `recycle_expired_balance` 手动回收
+6. 不同层级的余额完全隔离，互不影响
+
+### 未来扩展功能
+
+- **积分系统**: Points 层级，支持兑换、消费、转赠
+- **VIP 会员**: Vip 层级，享受手续费折扣和专属权益
+- **红包系统**: Gift 层级，支持用户间转账和赠送
+- **智能费率**: Premium 层级，根据网络状态动态调整费用
+- **批量折扣**: 高频用户自动享受手续费优惠
+- **自动流转**: 余额在不同层级间自动转换
+
+### 相关文档
+
+- 详细设计文档: `docs/Gas-only-MEMO自定义实现方案.md`（已更新为多层级方案）
+- Pallet README: `pallets/balance-tiers/README.md`
+- 重命名报告: `docs/pallet-balance-tiers-重命名完成报告.md`
+
+---
+
+## pallet-buyer-credit（买家信用风控模块）
+
+### 概述
+
+买家信用风控管理模块，为 OTC 交易提供 **AI 驱动的智能风控系统**。
+
+**核心功能**：
+- ✅ 多维度信任评估（资产、年龄、活跃度、社交、身份）
+- ✅ 新用户分层冷启动（Premium/Standard/Basic/Restricted）
+- ✅ 信用等级体系（Newbie/Bronze/Silver/Gold/Diamond）
+- ✅ 快速学习机制（前3笔权重5x）
+- ✅ 社交信任网络（推荐人连带责任）
+- ✅ 行为模式分析（每5笔自动分析）
+- ✅ 防恶意购买（限额、冷却期、违约惩罚）
+
+**适用场景**：
+- OTC 订单风控检查
+- 买家信用评估
+- 新用户额度分配
+- 老用户信用追踪
+
+---
+
+### 可调用接口（Extrinsics）
+
+#### 1. `endorse_user`
+
+**功能**：老用户为新用户担保推荐
+
+**参数**：
+```rust
+pub fn endorse_user(
+    origin: OriginFor<T>,
+    endorsee: T::AccountId,  // 被推荐人账户
+) -> DispatchResult
+```
+
+**权限**：
+- 需要签名
+- 推荐人风险分 ≤ 300（信用分 ≥ 700）
+
+**效果**：
+- 被推荐人社交信任 +40分
+- 推荐人承担连带责任（被推荐人违约时 -50分）
+
+**事件**：`UserEndorsed`
+
+**错误**：
+- `CannotEndorseSelf`: 不能推荐自己
+- `InsufficientCreditToEndorse`: 推荐人信用不足
+- `AlreadyEndorsed`: 已经被此推荐人推荐过
+
+---
+
+#### 2. `set_referrer`
+
+**功能**：设置邀请人（仅能设置一次）
+
+**参数**：
+```rust
+pub fn set_referrer(
+    origin: OriginFor<T>,
+    referrer: T::AccountId,  // 邀请人账户
+) -> DispatchResult
+```
+
+**权限**：需要签名
+
+**效果**：
+- 建立邀请关系
+- 被邀请人获得邀请人的信誉加成（+0~40分）
+
+**事件**：`ReferrerSet`
+
+**错误**：
+- `CannotReferSelf`: 不能邀请自己
+- `ReferrerAlreadySet`: 邀请人已设置
+
+---
+
+### 只读查询（Queries）
+
+#### 1. `buyer_credit`
+
+**功能**：查询买家信用记录
+
+**参数**：
+```rust
+BuyerCredit<T>::get(account: T::AccountId) -> CreditScore<T>
+```
+
+**返回**：
+```rust
+pub struct CreditScore<T> {
+    pub level: CreditLevel,                    // 信用等级
+    pub new_user_tier: Option<NewUserTier>,    // 新用户等级（前20笔）
+    pub completed_orders: u32,                 // 成功订单数
+    pub total_volume: BalanceOf<T>,            // 累计购买量
+    pub default_count: u32,                    // 违约次数
+    pub dispute_count: u32,                    // 争议次数
+    pub last_purchase_at: BlockNumber,         // 上次购买时间
+    pub risk_score: u16,                       // 风险分（0-1000）
+    pub account_created_at: BlockNumber,       // 账户创建时间
+}
+```
+
+---
+
+#### 2. `daily_volume`
+
+**功能**：查询某天的购买量
+
+**参数**：
+```rust
+DailyVolume<T>::get(account: T::AccountId, day_key: u32) -> u64
+```
+
+**返回**：当天购买总额（USDT，精度6）
+
+---
+
+#### 3. `order_history`
+
+**功能**：查询最近20笔订单记录
+
+**参数**：
+```rust
+OrderHistory<T>::get(account: T::AccountId) -> BoundedVec<OrderRecord, ConstU32<20>>
+```
+
+**返回**：
+```rust
+pub struct OrderRecord {
+    pub amount_usdt: u64,              // 订单金额（USDT）
+    pub payment_time_seconds: u64,     // 付款时间（秒）
+    pub created_at_block: u32,         // 创建区块号
+}
+```
+
+---
+
+#### 4. `referrer`
+
+**功能**：查询邀请人
+
+**参数**：
+```rust
+Referrer<T>::get(account: T::AccountId) -> Option<T::AccountId>
+```
+
+---
+
+#### 5. `endorsements`
+
+**功能**：查询推荐列表
+
+**参数**：
+```rust
+Endorsements<T>::get(account: T::AccountId) -> BoundedVec<Endorsement<T>, ConstU32<10>>
+```
+
+**返回**：
+```rust
+pub struct Endorsement<T> {
+    pub endorser: T::AccountId,           // 推荐人
+    pub endorsed_at: BlockNumber,         // 推荐时间
+    pub is_active: bool,                  // 是否有效
+}
+```
+
+---
+
+### 公共函数（Public Functions）
+
+#### 1. `check_buyer_limit`
+
+**功能**：检查买家是否可以创建订单
+
+**调用**：
+```rust
+pallet_buyer_credit::Pallet::<T>::check_buyer_limit(
+    buyer: &T::AccountId,
+    amount_usdt: u64,
+) -> Result<(), Error<T>>
+```
+
+**检查项**：
+- 信用分是否 > 800（过低禁止交易）
+- 是否超过单笔限额
+- 是否超过每日限额
+- 是否在冷却期内
+
+**返回**：
+- `Ok(())`: 可以创建订单
+- `Err(_)`: 不符合条件，返回错误
+
+---
+
+#### 2. `update_credit_on_success`
+
+**功能**：订单完成后更新信用（快速学习）
+
+**调用**：
+```rust
+pallet_buyer_credit::Pallet::<T>::update_credit_on_success(
+    buyer: &T::AccountId,
+    amount_usdt: u64,
+    payment_time_seconds: u64,
+)
+```
+
+**效果**：
+- 完成订单数 +1
+- 风险分降低（基础 +10分，快速付款 +5~10分，大额交易 +5分）
+- 应用权重系数（前3笔 5x，第4-5笔 3x，第6-10笔 2x）
+- 检查是否可以升级
+- 每5笔分析一次行为模式
+
+---
+
+#### 3. `penalize_default`
+
+**功能**：违约惩罚（买家超时未付款）
+
+**调用**：
+```rust
+pallet_buyer_credit::Pallet::<T>::penalize_default(buyer: &T::AccountId)
+```
+
+**效果**：
+- 违约次数 +1
+- 风险分增加（Newbie +50，Bronze +30，Silver +20，Gold +10，Diamond +5）
+- 所有推荐关系失效
+- 推荐人承担连带责任（+50分）
+
+---
+
+### 事件（Events）
+
+| 事件 | 说明 | 参数 |
+|------|------|------|
+| `NewUserInitialized` | 新用户初始化 | account, tier, risk_score |
+| `CreditUpdated` | 信用更新 | account, new_risk_score, new_level |
+| `LevelUpgraded` | 等级升级 | account, old_level, new_level |
+| `DefaultPenalty` | 违约惩罚 | account, penalty, new_risk_score |
+| `UserEndorsed` | 用户推荐 | endorser, endorsee |
+| `ReferrerSet` | 设置邀请人 | invitee, referrer |
+| `BehaviorPatternDetected` | 行为模式识别 | account, pattern, adjustment |
+
+---
+
+### 错误（Errors）
+
+| 错误 | 说明 |
+|------|------|
+| `CreditScoreTooLow` | 信用分过低（风险分 > 800） |
+| `ExceedSingleLimit` | 超过单笔限额 |
+| `ExceedDailyLimit` | 超过每日限额 |
+| `InCooldownPeriod` | 冷却期内不能交易 |
+| `InsufficientCreditToEndorse` | 推荐人信用不足 |
+| `CannotEndorseSelf` | 不能推荐自己 |
+| `AlreadyEndorsed` | 已经被推荐过 |
+| `ReferrerAlreadySet` | 邀请人已设置 |
+| `CannotReferSelf` | 不能邀请自己 |
+
+---
+
+### 前端调用示例
+
+#### 查询信用信息
+
+```typescript
+import { usePolkadot } from '@/hooks/usePolkadot';
+
+export function useBuyerCredit(address: string) {
+  const { api } = usePolkadot();
+  const [credit, setCredit] = useState(null);
+
+  useEffect(() => {
+    if (!api || !address) return;
+
+    const fetchCredit = async () => {
+      const result = await api.query.buyerCredit.buyerCredit(address);
+      const creditData = result.toJSON();
+      setCredit(creditData);
+    };
+
+    fetchCredit();
+  }, [api, address]);
+
+  return credit;
+}
+```
+
+#### 推荐用户
+
+```typescript
+async function endorseUser(endorseeAddress: string) {
+  const tx = api.tx.buyerCredit.endorseUser(endorseeAddress);
+  
+  await tx.signAndSend(currentAccount, ({ status, events }) => {
+    if (status.isInBlock) {
+      console.log('推荐成功！');
+      // 查找 UserEndorsed 事件
+      events.forEach(({ event }) => {
+        if (event.section === 'buyerCredit' && event.method === 'UserEndorsed') {
+          const [endorser, endorsee] = event.data;
+          console.log(`${endorser} 推荐了 ${endorsee}`);
+        }
+      });
+    }
+  });
+}
+```
+
+#### 设置邀请人
+
+```typescript
+async function setReferrer(referrerAddress: string) {
+  const tx = api.tx.buyerCredit.setReferrer(referrerAddress);
+  
+  await tx.signAndSend(currentAccount, ({ status }) => {
+    if (status.isInBlock) {
+      console.log('邀请人设置成功！');
+    }
+  });
+}
+```
+
+---
+
+### OTC Order 集成示例
+
+#### 开单前检查
+
+```rust
+// 在 otc-order 的 open_order 中
+let amount_usdt = final_price_u64.saturating_mul(qty_b.saturated_into::<u64>()) / 1_000_000_000_000u64;
+pallet_buyer_credit::Pallet::<T>::check_buyer_limit(&who, amount_usdt)
+    .map_err(|_| Error::<T>::BadState)?;
+```
+
+#### 订单完成后更新
+
+```rust
+// 在 otc-order 的 release 中
+let payment_time_seconds = (current_timestamp - ord.created_at).saturated_into::<u64>() / 1000u64;
+pallet_buyer_credit::Pallet::<T>::update_credit_on_success(
+    &ord.taker,
+    amount_usdt,
+    payment_time_seconds,
+);
+```
+
+#### 超时违约惩罚
+
+```rust
+// 在 otc-order 的 refund_on_timeout 中
+if matches!(ord.state, OrderState::Created | OrderState::PaidOrCommitted) {
+    pallet_buyer_credit::Pallet::<T>::penalize_default(&ord.taker);
+}
+```
+
+---
+
+### 信用等级与限额对照表
+
+#### 新用户等级（前20笔）
+
+| 等级 | 风险分 | 单笔限额 | 每日限额 | 冷却期 | 升级条件 |
+|------|--------|----------|----------|--------|----------|
+| Premium | 0-300 | 5000U | 20000U | 无 | 完成3笔 → Gold |
+| Standard | 301-500 | 1000U | 5000U | 12小时 | 完成5笔 → Bronze |
+| Basic | 501-700 | 500U | 2000U | 24小时 | 完成10笔 → Bronze |
+| Restricted | 701-1000 | 100U | 500U | 48小时 | 完成20笔 → Bronze |
+
+#### 信用等级（21笔以上）
+
+| 等级 | 订单数 | 单笔限额 | 每日限额 | 违约惩罚 |
+|------|--------|----------|----------|----------|
+| Newbie | 0-5 | 100U | 500U | -50分/次 |
+| Bronze | 6-20 | 500U | 2000U | -30分/次 |
+| Silver | 21-50 | 2000U | 10000U | -20分/次 |
+| Gold | 51-100 | 10000U | 50000U | -10分/次 |
+| Diamond | 101+ | 50000U | 无限制 | -5分/次 |
+
+---
+
+### 使用场景说明
+
+#### 场景 1：持币大户首次购买
+
+**用户画像**：
+- 持有 10000 MEMO
+- 账户年龄 60 天
+- 无邀请人
+
+**系统处理**：
+1. 资产信任：50分（持币100倍）
+2. 年龄信任：50分（2个月）
+3. 综合信任分：29分
+4. 风险分：710 → **Basic**（500U/笔，24小时冷却）
+
+**首笔快速付款后**：
+- 权重5x，加分125
+- 风险分降至 585
+- 第3笔后 → 风险分210 → **Premium**（5000U/笔）
+
+---
+
+#### 场景 2：零钱包 + 高信用推荐
+
+**用户画像**：
+- 持有 10 MEMO
+- 账户年龄 1 天
+- 高信用推荐人（风险分150）
+
+**系统处理**：
+1. 社交信任：40分（高信用邀请人）
+2. 综合信任分：8分
+3. 风险分：920 → **Restricted**（100U/笔，48小时冷却）
+
+**提升路径**：
+- 需完成20笔升级到 Bronze
+- 但快速付款可加速降低风险分
+
+---
+
+### 注意事项
+
+1. **风险分范围**：0-1000，越低越可信，>800 禁止交易
+2. **新用户优化**：前20笔使用新用户等级，之后切换到信用等级
+3. **快速学习**：前3笔权重5x，快速建立信用画像
+4. **推荐连带责任**：推荐人需谨慎，被推荐人违约会影响自己信用
+5. **行为分析**：每5笔自动分析，优质行为可快速降低风险分
+6. **冷却期计算**：从上次购买时间开始计算，不是区块高度
+
+---
+
+### 相关文档
+
+- 详细设计文档: `docs/AI风控模型-新用户冷启动优化方案.md`
+- Pallet README: `pallets/buyer-credit/README.md`
+- OTC信用制度设计: `docs/OTC信用制度与防恶意购买方案设计.md`
+
+---
+
+## 17. Maker Credit (做市商信用风控)
+
+### 17.1 模块概述
+
+**做市商信用 Pallet** 负责管理做市商的信用评分、履约追踪、违约惩罚和服务质量评价。
+
+**核心目标**:
+- 🎯 提升买家信任：透明的信用评分 + 履约数据展示
+- 🛡️ 降低交易风险：自动筛选低信用做市商 + 违约惩罚
+- 💰 激励优质服务：高信用→保证金折扣→接单成本降低
+- 📊 辅助决策支持：数据化信用指标 + 历史记录追溯
+- ⚖️ 争议解决依据：信用记录作为仲裁参考
+
+**信用评分体系**:
+- 分数范围：800-1000分
+- 初始分数：850分（新做市商）
+- 信用等级：钻石(950-1000)、白金(900-949)、黄金(850-899)、白银(820-849)、青铜(800-819)
+- 服务状态：Active(正常)、Warning(警告,750-799)、Suspended(暂停,<750)
+
+### 17.2 查询接口
+
+#### 17.2.1 查询信用记录
+\`\`\`typescript
+const creditRecord = await api.query.makerCredit.creditRecords(makerId);
+// 返回: Option<CreditRecord>
+// 包含：信用分、等级、状态、履约数据、服务质量、违约记录、活跃度
+\`\`\`
+
+#### 17.2.2 查询当前信用分
+\`\`\`typescript
+const score = await api.query.makerCredit.getCreditScore(makerId);
+// 返回: u16 (800-1000)
+// 自动应用风险分衰减
+\`\`\`
+
+#### 17.2.3 查询信用等级
+\`\`\`typescript
+const tier = await api.query.makerCredit.getCreditTier(makerId);
+// 返回: CreditTier (Diamond/Platinum/Gold/Silver/Bronze)
+\`\`\`
+
+#### 17.2.4 查询服务状态
+\`\`\`typescript
+const status = await api.query.makerCredit.checkServiceStatus(makerId);
+// 返回: ServiceStatus (Active/Warning/Suspended)
+\`\`\`
+
+#### 17.2.5 查询履约率
+\`\`\`typescript
+const rates = await api.query.makerCredit.getFulfillmentRate(makerId);
+// 返回: FulfillmentRate
+// 包含：总订单数、完成订单数、及时释放订单数、完成率、及时率、超时率
+\`\`\`
+
+#### 17.2.6 查询保证金折扣
+\`\`\`typescript
+const discount = await api.query.makerCredit.calculateMarginDiscount(makerId);
+// 返回: u8 (0-50)
+// 钻石:50%, 白金:30%, 黄金:10%, 白银:0%, 青铜:0%
+\`\`\`
+
+#### 17.2.7 查询评价记录
+\`\`\`typescript
+const rating = await api.query.makerCredit.makerRatings(makerId, orderId);
+// 返回: Option<Rating>
+// 包含：买家、评分(1-5星)、标签代码、评价时间
+\`\`\`
+
+#### 17.2.8 查询违约历史
+\`\`\`typescript
+const defaults = await api.query.makerCredit.defaultHistory(makerId);
+// 返回: Vec<(OrderId, DefaultRecord)>
+// DefaultRecord包含：违约类型(Timeout/Dispute)、区块号、惩罚分数、是否恢复
+\`\`\`
+
+### 17.3 交易接口
+
+#### 17.3.1 初始化信用记录
+\`\`\`typescript
+// 仅由 pallet-market-maker 调用（做市商审核通过时）
+// 自动创建初始信用记录（850分，白银等级）
+\`\`\`
+
+#### 17.3.2 买家评价做市商
+\`\`\`typescript
+await api.tx.makerCredit
+    .rateMaker(
+        makerId,      // 做市商ID
+        orderId,      // 订单ID
+        5,            // 评分(1-5星)
+        [0, 1, 2]     // 标签代码数组(最多5个)
+        // 0=FastRelease, 1=GoodCommunication, 2=FairPrice,
+        // 3=SlowRelease, 4=PoorCommunication, 5=Unresponsive
+    )
+    .signAndSend(buyerAccount);
+
+// 信用分影响:
+// 5星: +5分, 4星: +2分, 3星: 0分, 2星: -3分, 1星: -5分
+
+// 验证规则:
+// - 评分必须1-5星
+// - 订单必须已完成(Released)
+// - 调用者必须是订单买家
+// - 每个订单只能评价一次
+\`\`\`
+
+#### 17.3.3 记录订单完成
+\`\`\`typescript
+// 仅由 pallet-otc-order 调用（订单释放时）
+// 自动更新信用分：基础奖励+2分，及时释放(<24h)额外+1分
+\`\`\`
+
+#### 17.3.4 记录超时违约
+\`\`\`typescript
+// 仅由 pallet-otc-order 调用（订单超时时）
+// 惩罚：信用分-10分，风险分+20分
+\`\`\`
+
+#### 17.3.5 记录争议败诉
+\`\`\`typescript
+// 仅由 pallet-arbitration 调用（争议裁决做市商败诉时）
+// 惩罚：信用分-15分，风险分+30分
+\`\`\`
+
+#### 17.3.6 Root 手动调整信用分
+\`\`\`typescript
+await api.tx.sudo
+    .sudo(
+        api.tx.makerCredit.adminAdjustCredit(
+            makerId,
+            -50,  // 调整幅度（可为负数）
+            '严重违规：虚假宣传'  // 调整原因
+        )
+    )
+    .signAndSend(sudoAccount);
+\`\`\`
+
+### 17.4 事件
+
+#### 17.4.1 CreditInitialized
+\`\`\`rust
+CreditInitialized {
+    maker_id: u64,
+    initial_score: u16,  // 850
+}
+\`\`\`
+
+#### 17.4.2 MakerRated
+\`\`\`rust
+MakerRated {
+    maker_id: u64,
+    order_id: u64,
+    buyer: AccountId,
+    stars: u8,
+    tags_codes: Vec<u8>,
+    score_change: i16,
+    new_score: u16,
+}
+\`\`\`
+
+#### 17.4.3 OrderCompleted
+\`\`\`rust
+OrderCompleted {
+    maker_id: u64,
+    order_id: u64,
+    response_time: u32,
+    score_change: i16,
+    new_score: u16,
+}
+\`\`\`
+
+#### 17.4.4 DefaultRecorded
+\`\`\`rust
+DefaultRecorded {
+    maker_id: u64,
+    order_id: u64,
+    default_type: u8,  // 0=Timeout, 1=Dispute
+    penalty: i16,
+    new_score: u16,
+}
+\`\`\`
+
+#### 17.4.5 CreditAdjusted
+\`\`\`rust
+CreditAdjusted {
+    maker_id: u64,
+    amount: i16,
+    reason: Vec<u8>,
+    new_score: u16,
+}
+\`\`\`
+
+#### 17.4.6 LevelChanged
+\`\`\`rust
+LevelChanged {
+    maker_id: u64,
+    old_level_code: u8,  // 0=Diamond, 1=Platinum, 2=Gold, 3=Silver, 4=Bronze
+    new_level_code: u8,
+    credit_score: u16,
+}
+\`\`\`
+
+#### 17.4.7 StatusChanged
+\`\`\`rust
+StatusChanged {
+    maker_id: u64,
+    old_status_code: u8,  // 0=Active, 1=Warning, 2=Suspended
+    new_status_code: u8,
+    credit_score: u16,
+}
+\`\`\`
+
+### 17.5 错误码
+
+- `CreditRecordNotFound`: 信用记录未找到
+- `CreditAlreadyExists`: 信用记录已存在（不能重复初始化）
+- `InvalidRating`: 无效的评分（必须1-5星）
+- `OrderNotFound`: 订单未找到
+- `OrderNotCompleted`: 订单未完成（无法评价）
+- `NotBuyer`: 不是订单买家（无权评价）
+- `AlreadyRated`: 已评价过（不能重复评价）
+- `CreditOverflow`: 信用分计算溢出
+
+### 17.6 使用场景
+
+#### 场景1：创建订单前检查做市商信用
+\`\`\`typescript
+const status = await api.query.makerCredit.checkServiceStatus(makerId);
+if (status.isSuspended) {
+    throw new Error('该做市商信用分过低，暂停接单');
+}
+
+const tier = await api.query.makerCredit.getCreditTier(makerId);
+const rates = await api.query.makerCredit.getFulfillmentRate(makerId);
+console.log(\`信用等级: \${tierNames[tier]}\`);
+console.log(\`完成率: \${rates.completionRateX100 / 100}%\`);
+\`\`\`
+
+#### 场景2：订单完成后买家提交评价
+\`\`\`typescript
+await api.tx.makerCredit
+    .rateMaker(makerId, orderId, 5, [0, 1, 2])  // 5星+快速释放+沟通好+价格公道
+    .signAndSend(buyerAccount);
+\`\`\`
+
+#### 场景3：查看做市商保证金折扣
+\`\`\`typescript
+const discount = await api.query.makerCredit.calculateMarginDiscount(makerId);
+const baseDeposit = 100000; // 100,000 MEMO
+const actualDeposit = baseDeposit * (100 - discount) / 100;
+console.log(\`保证金折扣: \${discount}%, 实际保证金: \${actualDeposit} MEMO\`);
+\`\`\`
+
+### 17.7 集成要点
+
+1. **market-maker 集成**: 做市商审核通过时自动初始化信用记录
+2. **otc-order 集成**: 
+   - 创建订单前检查做市商服务状态
+   - 订单释放后自动记录完成+更新信用分
+   - 订单超时自动记录违约
+3. **arbitration 集成**: 争议裁决做市商败诉时记录违约
+4. **前端集成**: 
+   - 做市商信用仪表板
+   - 买家评价表单
+   - 信用徽章组件
+
+### 17.8 配置参数
+
+\`\`\`rust
+// runtime/src/configs/mod.rs
+impl pallet_maker_credit::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type WeightInfo = ();
+    
+    // 配置常量
+    type BaseCredit = ConstU16<850>;        // 初始信用分
+    type ReviewTimeout = ConstU32<172800>;  // 争议审核超时(48h)
+    type DecayInterval = ConstU32<7200>;    // 衰减周期(7200区块 ≈ 12h)
+    type DecayPerInterval = ConstU16<5>;    // 每周期衰减5分
+}
+\`\`\`
+

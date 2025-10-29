@@ -1,378 +1,673 @@
-# Deceased Pallet
+# Pallet Deceased - 逝者管理系统
 
-## 核心特性
+## 📋 模块概述
 
-### 1. 基础功能
-- 新增只读字段 `creator`（不可变）：记录首次创建该逝者的签名账户，用于审计/治理/统计；不参与权限派生，但用于资金托管账户派生以保证稳定性。
-- 资金派生与计费：主题资金账户（SubjectFunding）基于 `(creator, deceased_id)` 派生，确保 owner 转移时账户地址不变，保持资金连续性。
+`pallet-deceased` 是Memopark生态的**核心业务模块**，提供逝者信息的创建、管理、迁移和查询功能。通过低耦合设计与`pallet-grave`(墓地系统)协作，实现逝者与墓位的关联管理，并集成IPFS自动Pin功能保障媒体文件的持久化存储。
 
-### 2. IPFS自动Pin集成 ✅
+### 设计理念
 
-本模块已集成**自动IPFS pin**功能，支持以下CID字段：
+- **低耦合**：通过GraveInspector Trait与墓地系统解耦
+- **自由迁移**：逝者owner可自由迁移逝者（受墓地准入策略约束）
+- **媒体持久化**：自动Pin逝者主图和全名CID到IPFS
+- **双向同步**：操作deceased时自动同步grave的Interments存储
 
-#### 自动pin的CID字段
+## 🏗️ 架构设计
 
-| 字段 | 触发extrinsic | 说明 |
-|------|--------------|------|
-| `name_full_cid` | `create_deceased` | 创建逝者时自动pin完整姓名CID |
-| `name_full_cid` | `update_deceased` | 更新姓名时自动pin新CID |
-| `main_image_cid` | `set_main_image` | 设置主图时自动pin图片CID |
+```text
+┌──────────────────────────────────────┐
+│     用户操作 (Create/Transfer)       │
+└──────────────┬───────────────────────┘
+               ↓
+┌──────────────────────────────────────┐
+│     Deceased Pallet (逝者管理)       │
+│  - create_deceased()    创建逝者      │
+│  - transfer_deceased()  迁移逝者      │
+│  - update_deceased()    更新信息      │
+│  - set_main_image()     设置主图      │
+└──────────────┬───────────────────────┘
+               ↓ GraveInspector Trait
+┌──────────────────────────────────────┐
+│     Grave Pallet (墓地管理)          │
+│  - grave_exists()       检查墓位存在  │
+│  - can_attach()         检查附加权限  │
+│  - record_interment()   记录安葬      │
+│  - record_exhumation()  记录起掘      │
+│  - check_admission_policy() 检查准入  │
+└──────────────────────────────────────┘
+               ↓
+┌──────────────────────────────────────┐
+│     IPFS Pinner (媒体持久化)         │
+│  - Auto pin name_full_cid            │
+│  - Auto pin main_image_cid           │
+└──────────────────────────────────────┘
+```
 
-#### 扣费机制（三重扣款）
+## 🔑 核心功能
 
-自动pin使用**Triple-Charge机制**，优先级顺序：
-1. **IpfsPoolAccount（公共池）**：优先扣取，有月度额度限制
-2. **SubjectFunding（逝者专户）**：池不足时从专户扣取
-3. **Caller（调用者）**：前两者都不足时从调用者账户扣取
+### 1. 逝者创建
 
-**特点**：
-- 副本数：默认3副本
-- 存储价格：使用`DefaultStoragePrice`配置（1 MEMO/副本/月）
-- 失败容错：pin失败不阻塞业务操作，发出链上事件通知
-
-**事件通知**：
-- `AutoPinSuccess(deceased_id, cid, pin_type)` - pin成功
-- `AutoPinFailed(deceased_id, cid, pin_type, error_code)` - pin失败
-  - error_code: 0=未知, 1=余额不足, 2=网络错误, 3=CID无效
-
-### 3. 迁移策略（开发阶段）
-
-- 当前主网未上线，采用"零迁移"策略：`on_runtime_upgrade` 仅写入 `STORAGE_VERSION`，不进行 translate。
-- 如需结构调整，请清链/重启以应用最新结构；主网前再补充精确迁移逻辑。
-
-## Config 示例
-
+#### create_deceased - 创建逝者记录
 ```rust
-impl pallet_deceased::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DeceasedId = u64;
-    type GraveId = u64;
-    type MaxDeceasedPerGrave = MaxDeceasedPerGrave;
-    type StringLimit = DeceasedStringLimit;
-    type MaxLinks = DeceasedMaxLinks;
-    type GraveProvider = GraveProviderAdapter; // 由 runtime 实现
-    type WeightInfo = ();
-    
-    /// 治理起源（Root | 内容委员会阈值），用于 gov* 接口
-    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
-        frame_system::EnsureRoot<AccountId>,
-        ContentAtLeast2of3
-    >;
-    
-    // ✅ 新增：IPFS自动pin支持
-    type IpfsPinner = PalletMemoIpfs;
-    type Balance = Balance;
-    type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>; // 1 MEMO/副本/月
+pub fn create_deceased(
+    origin: OriginFor<T>,
+    grave_id: T::GraveId,
+    name: BoundedVec<u8, T::MaxNameLen>,
+    gender: u8,
+    name_full_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+    birth_ts: Option<u64>,
+    death_ts: Option<u64>,
+    main_image_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+    links: Vec<BoundedVec<u8, T::MaxLinkLen>>,
+) -> DispatchResult
+```
+
+**参数说明**：
+- `grave_id`: 墓位ID（逝者归属的墓位）
+- `name`: 逝者简短名称（显示用）
+- `gender`: 性别（0=未知, 1=男, 2=女, 3=其他）
+- `name_full_cid`: 完整名称/生平CID（IPFS）
+- `birth_ts`: 出生时间戳
+- `death_ts`: 逝世时间戳
+- `main_image_cid`: 主图CID（IPFS）
+- `links`: 外部链接列表
+
+**工作流程**：
+1. 检查墓位是否存在（`GraveInspector::grave_exists`）
+2. 检查操作者权限（`GraveInspector::can_attach`）
+3. 创建逝者记录
+4. 自动Pin `name_full_cid` 到IPFS
+5. 自动Pin `main_image_cid` 到IPFS
+6. 同步到墓地系统（`GraveInspector::record_interment`）
+7. 建立索引：`DeceasedByGrave[grave_id][deceased_id]`
+
+**权限**：
+- 墓主（grave owner）
+- 被授权者（根据墓地系统的授权机制）
+
+### 2. 逝者迁移
+
+#### transfer_deceased - 迁移逝者到新墓位
+```rust
+pub fn transfer_deceased(
+    origin: OriginFor<T>,
+    deceased_id: u64,
+    to_grave_id: T::GraveId,
+    slot: Option<u16>,
+    note_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+) -> DispatchResult
+```
+
+**功能**：
+- 将逝者从当前墓位迁移到新墓位
+- 支持逝者owner自由迁移（解决需求3）
+- 受目标墓位准入策略约束（解决P0问题2）
+
+**准入策略**：
+- **OwnerOnly（默认）**：仅墓主可迁入
+- **Public**：任何人都可迁入
+- **Whitelist**：仅白名单可迁入
+
+**工作流程**：
+1. 检查调用者是否为逝者owner
+2. 检查目标墓位是否存在
+3. **检查目标墓位准入策略**（`GraveInspector::check_admission_policy`）
+4. 从旧墓位起掘（`GraveInspector::record_exhumation`）
+5. 更新逝者的`grave_id`
+6. 安葬到新墓位（`GraveInspector::record_interment`）
+7. 更新索引
+
+**设计理念**：
+- 平衡**逝者自由迁移**（需求3）与**墓主控制权**
+- 墓主可设置准入策略保护墓位
+- 逝者owner在策略允许范围内自由迁移
+
+### 3. 逝者更新
+
+#### update_deceased - 更新逝者信息
+```rust
+pub fn update_deceased(
+    origin: OriginFor<T>,
+    deceased_id: u64,
+    name: Option<BoundedVec<u8, T::MaxNameLen>>,
+    gender: Option<u8>,
+    name_full_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+    birth_ts: Option<u64>,
+    death_ts: Option<u64>,
+    links: Option<Vec<BoundedVec<u8, T::MaxLinkLen>>>,
+) -> DispatchResult
+```
+
+**权限**：逝者owner或墓主（通过GovernanceOrigin）
+
+**功能**：
+- 更新逝者基本信息
+- 如更新`name_full_cid`，自动Pin新CID到IPFS
+
+#### set_main_image - 设置逝者主图
+```rust
+pub fn set_main_image(
+    origin: OriginFor<T>,
+    deceased_id: u64,
+    cid: BoundedVec<u8, T::MaxCidLen>,
+) -> DispatchResult
+```
+
+**权限**：GovernanceOrigin（墓主或委员会）
+
+**功能**：
+- 设置或更新逝者主图
+- 自动Pin新CID到IPFS
+
+### 4. 逝者删除
+
+#### remove_deceased - 删除逝者记录
+```rust
+pub fn remove_deceased(
+    origin: OriginFor<T>,
+    deceased_id: u64,
+) -> DispatchResult
+```
+
+**权限**：逝者owner或GovernanceOrigin
+
+**功能**：
+- 删除逝者记录
+- 从墓地系统移除（`GraveInspector::record_exhumation`）
+- 清理索引
+
+### 5. 所有权转移
+
+#### transfer_ownership - 转移逝者所有权
+```rust
+pub fn transfer_ownership(
+    origin: OriginFor<T>,
+    deceased_id: u64,
+    new_owner: T::AccountId,
+) -> DispatchResult
+```
+
+**权限**：GovernanceOrigin（墓主或委员会）
+
+**功能**：
+- 转移逝者的管理权
+- 用于继承、授权等场景
+
+## 📦 存储结构
+
+### 逝者记录
+```rust
+pub type Deceased<T: Config> = StorageMap<
+    _,
+    Blake2_128Concat,
+    u64,  // deceased_id
+    DeceasedInfo<T>,
+    OptionQuery,
+>;
+```
+
+**DeceasedInfo结构**：
+```rust
+pub struct DeceasedInfo<T: Config> {
+    pub grave_id: T::GraveId,                          // 归属墓位
+    pub owner: T::AccountId,                           // 所有者
+    pub creator: T::AccountId,                         // 创建者
+    pub name: BoundedVec<u8, T::MaxNameLen>,           // 简短名称
+    pub gender: u8,                                    // 性别
+    pub name_full_cid: Option<BoundedVec<u8, T::MaxCidLen>>, // 完整名称CID
+    pub birth_ts: Option<u64>,                         // 出生时间戳
+    pub death_ts: Option<u64>,                         // 逝世时间戳
+    pub main_image_cid: Option<BoundedVec<u8, T::MaxCidLen>>, // 主图CID
+    pub deceased_token: Option<T::DeceasedToken>,      // 逝者代币（可选）
+    pub links: BoundedVec<BoundedVec<u8, T::MaxLinkLen>, T::MaxLinks>, // 外部链接
+    pub created: BlockNumberFor<T>,                    // 创建时间
+    pub updated: BlockNumberFor<T>,                    // 更新时间
+    pub version: u32,                                  // 版本号
 }
 ```
 
-## Extrinsics
+### 墓位索引
+```rust
+pub type DeceasedByGrave<T: Config> = StorageDoubleMap<
+    _,
+    Blake2_128Concat,
+    T::GraveId,  // grave_id
+    Blake2_128Concat,
+    u64,         // deceased_id
+    (),
+    OptionQuery,
+>;
+```
 
-- create_deceased(grave_id, name, gender_code, birth_ts, death_ts, links, name_full_cid?)
-  - 说明：
-    - gender_code：0=M，1=F，2=B；
-    - birth_ts/death_ts：字符串，格式 YYYYMMDD（如 19811224），必填；
-    - deceased_token：链上自动生成，不需作为参数传入；格式（原始字节）为
-      `gender(1字节大写) + birth(8字节) + death(8字节) + blake2_256(name_norm)`，总长 49 字节。
-      - name_norm：去首尾空格、压缩连续空格为单个 0x20，a-z→A-Z，非 ASCII 字节原样保留。
-      - birth/death 缺省用 "00000000"。
-    - 可见性：创建时默认将 `VisibilityOf(id)` 设为 `true`（公开）。
-    - 去重规则：创建前将按 `deceased_token` 做唯一性校验，若已存在相同 token，则拒绝创建并返回错误 `DeceasedTokenExists`。
-- update_deceased(id, name?, gender_code?, name_full_cid??, birth_ts??, death_ts??, links?)
-  - 新增：name_full_cid??（外层 Option 表示是否修改，内层 Option 表示设置/清空）
-  - 说明：
-    - birth_ts??/death_ts??：外层 Option 表示是否更新；内层 Option 表示设置为 Some(YYYYMMDD) 或 None（清空）。
-    - 令牌约束：上述字段变更会导致 `deceased_token` 重新生成（规则同上）；若新 token 与他人记录冲突，将拒绝更新并返回 `DeceasedTokenExists`，不会移除旧 token 或写入新 token。
-    - 所有权：`owner` 为创建者且永久不可更换；任何试图变更所有者的行为将被拒绝（OwnerImmutable）。
-- remove_deceased(id)
-  - ⚠️ **已永久禁用**：本函数**始终**返回 `DeletionForbidden` 错误，仅保留接口兼容性。
-  - 📜 **设计原则**：
-    - **合规要求**：逝者信息属于历史记录，删除可能违反数据保护法规
-    - **关系稳定**：删除逝者会破坏家族谱系（Relations）的完整性
-    - **审计追溯**：保留所有历史记录用于争议解决
-  - 🔄 **替代方案**（如需"移除"逝者，请使用）：
-    1) **迁移墓位**：`transfer_deceased(id, new_grave)` - 转移到私密墓位
-    2) **设置隐私**：`set_visibility(id, false)` - 设为不公开可见
-    3) **清空信息**：`update_deceased` - 清空敏感字段（保留关系结构）
-- transfer_deceased(id, new_grave)
+**用途**：快速查询墓位下的所有逝者
 
-- set_visibility(id, public)
-  - 仅 Admin（含 owner）
-  - 修改该逝者的公开可见性；默认公开（创建时已设为 true）
+### 下一个ID
+```rust
+pub type NextDeceasedId<T: Config> = StorageValue<_, u64, ValueQuery>;
+```
 
-- set_main_image(id, cid)
-  - 说明：设置/修改逝者主图（链下 CID，如 IPFS CID）。
-  - 权限：仅逝者owner；治理操作请使用 `gov_set_main_image`。
-  - 自动pin：自动调用IPFS pin服务，使用triple-charge机制扣费。
-  - 校验：仅长度校验，使用 `TokenLimit` 限长；不做 URI 语义校验。
-  - 事件：
-    - `MainImageUpdated(id, operator, true)` - 包含操作者信息
-    - `AutoPinSuccess(id, cid, pin_type)` - pin成功
-    - `AutoPinFailed(id, cid, pin_type, error_code)` - pin失败（包含错误码）
+## 🔧 配置参数
 
-- clear_main_image(id)
-  - 说明：清空逝者主图。
-  - 权限：仅逝者owner；治理操作请使用 `gov_set_main_image`。
-  - 事件：`MainImageUpdated(id, operator, false)` - 包含操作者信息
+```rust
+pub trait Config: frame_system::Config {
+    /// 事件类型
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-权限：
-- 创建/迁移：`GraveProvider::can_attach(who, grave_id)`。
-  - 判定规则（单一权威源：`pallet-memo-grave`）：
-    - 若 `who` 为墓主 → 允许
-    - 若 `who` 在 `pallet-memo-grave::GraveAdmins[grave_id]` 中 → 允许
-    - 若 `who` 为墓位所在陵园的管理员（`ParkAdminOrigin::ensure(park_id, Signed(who))` 通过）→ 允许
-- 修改：记录 `owner`；删除已禁用（参见上文）。
+    /// 墓位ID类型
+    type GraveId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
-## 存储
-- NextDeceasedId: DeceasedId
-- DeceasedOf: DeceasedId -> Deceased
-- DeceasedByGrave: GraveId -> BoundedVec<DeceasedId>
-- VisibilityOf: DeceasedId -> bool（OptionQuery；None 视作 true）
-- DeceasedHistory: DeceasedId -> Vec<VersionEntry{version, editor, at}>, 最多 512 条
+    /// 逝者代币类型（可选，用于NFT）
+    type DeceasedToken: Parameter + Member + MaxEncodedLen;
 
-### Deceased 结构体
-- 字段：
-  - gender: 枚举 M/F/B
-  - birth_ts: Option<BoundedVec<u8>>（YYYYMMDD）
-  - death_ts: Option<BoundedVec<u8>>（YYYYMMDD）
-  - deceased_token: BoundedVec<u8>（自动生成：gender+birth(8)+death(8)+blake2_256(name_norm)）
-  - name_full_cid: Option<BoundedVec<u8>>（完整姓名链下指针，建议前端通过该 CID 展示全名）
-  - main_image_cid: Option<BoundedVec<u8>>（主图 CID；用于头像/主图展示）
+    /// 逝者名称最大长度
+    type MaxNameLen: Get<u32>;
 
-### 迁移
-- StorageVersion = 2：
-  - 从旧版 (v1) 迁移至新版：
-    - 将旧记录填充为 gender=B、birth_ts/death_ts=None；
-    - name_badge 由旧 name 上按规则提取（仅 A-Z 大写）；
-    - 生成 deceased_token。
-- StorageVersion = 3：
-  - 从 v2 迁移至 v3：新增 `name_full_cid=None`，不改变既有字段含义。
-- StorageVersion = 5：
-  - 从 v4 迁移至 v5：为 `Deceased` 新增 `main_image_cid=None` 字段。
+    /// IPFS CID最大长度
+    type MaxCidLen: Get<u32>;
 
-### 版本与事件（新增）
-- 结构 `Deceased` 新增字段 `version: u32`（从 1 起）。
-- 每次资料修改（`update_deceased`、`gov_update_profile`）将自增 `version`，并将 {version, editor, at} 追加到 `DeceasedHistory`。
-- 相关事件：沿用 `DeceasedUpdated(id)`；前端/索引可据此读取最新版本并查询历史。
+    /// 外部链接最大长度
+    type MaxLinkLen: Get<u32>;
 
-## 逝者↔逝者关系（族谱）
+    /// 每个逝者最多链接数
+    type MaxLinks: Get<u32>;
 
-### 存储
-- `Relations: (from, to) -> { kind: u8, note: BoundedVec<u8>, created_by, since }`
-- `RelationsByDeceased: deceased -> BoundedVec<(peer, kind)>`
-- `PendingRelationRequests: (from, to) -> (kind, requester, note, created)`
+    /// 墓位检查接口（与pallet-grave低耦合）
+    type GraveInspector: GraveInspector<Self::AccountId, Self::GraveId>;
 
-### Extrinsics
-- `propose_relation(from, to, kind, note?)`（A方管理员）
-- `approve_relation(from, to)` / `reject_relation(from, to)`（B方管理员）
-- `cancel_relation_proposal(from, to)` ✨新增（A方管理员，撤回自己的提案）
-- `revoke_relation(from, to)`（任一方管理员）
-- `update_relation_note(from, to, note?)`
+    /// 治理起源（墓主或委员会）
+    type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
-### 事件
-- RelationProposed/Approved/Rejected/Cancelled/Revoked/Updated
+    /// IPFS自动Pin提供者
+    type IpfsPinner: IpfsPinner<Self::AccountId, Self::Balance>;
 
-### 关系规范与迁移
-- 方向：0=ParentOf（有向），1=SpouseOf（无向），2=SiblingOf（无向），3=ChildOf（有向）。
-- 无向 canonical：存储使用 `(min(id1), max(id2))` 单条记录，并在 `RelationsByDeceased` 为双方写索引；撤销时对称移除索引。
-- 冲突矩阵：父母/子女 与 配偶/兄弟姐妹互斥；父母 与 子女互斥（方向相反视为同类）。
-- 去重：主记录与 Pending 均做无向对称去重与冲突校验。
-- 迁移：StorageVersion=1（`on_runtime_upgrade` 写入版本），为后续状态机与押金/TTL 迁移预留。
+    /// 余额类型（用于IPFS存储费用）
+    type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+
+    /// 默认IPFS存储单价
+    type DefaultStoragePrice: Get<Self::Balance>;
+
+    /// 权重信息
+    type WeightInfo: WeightInfo;
+}
+```
+
+## 📡 可调用接口
+
+### 用户接口
+
+#### 1. create_deceased - 创建逝者
+```rust
+#[pallet::call_index(0)]
+pub fn create_deceased(...) -> DispatchResult
+```
+
+**权限**：墓主或被授权者
+
+#### 2. transfer_deceased - 迁移逝者
+```rust
+#[pallet::call_index(1)]
+pub fn transfer_deceased(...) -> DispatchResult
+```
+
+**权限**：逝者owner（受目标墓位准入策略约束）
+
+#### 3. update_deceased - 更新逝者
+```rust
+#[pallet::call_index(2)]
+pub fn update_deceased(...) -> DispatchResult
+```
+
+**权限**：逝者owner或GovernanceOrigin
+
+### 治理接口
+
+#### 4. set_main_image - 设置主图
+```rust
+#[pallet::call_index(3)]
+pub fn set_main_image(...) -> DispatchResult
+```
+
+**权限**：GovernanceOrigin
+
+#### 5. transfer_ownership - 转移所有权
+```rust
+#[pallet::call_index(4)]
+pub fn transfer_ownership(...) -> DispatchResult
+```
+
+**权限**：GovernanceOrigin
+
+#### 6. remove_deceased - 删除逝者
+```rust
+#[pallet::call_index(5)]
+pub fn remove_deceased(...) -> DispatchResult
+```
+
+**权限**：逝者owner或GovernanceOrigin
+
+## 🎉 事件
+
+### DeceasedCreated - 逝者创建事件
+```rust
+DeceasedCreated {
+    deceased_id: u64,
+    grave_id: T::GraveId,
+    owner: T::AccountId,
+    creator: T::AccountId,
+}
+```
+
+### DeceasedTransferred - 逝者迁移事件
+```rust
+DeceasedTransferred {
+    deceased_id: u64,
+    from_grave_id: T::GraveId,
+    to_grave_id: T::GraveId,
+    operator: T::AccountId,
+}
+```
+
+### DeceasedUpdated - 逝者更新事件
+```rust
+DeceasedUpdated {
+    deceased_id: u64,
+    operator: T::AccountId,
+}
+```
+
+### MainImageSet - 主图设置事件
+```rust
+MainImageSet {
+    deceased_id: u64,
+    cid: BoundedVec<u8, T::MaxCidLen>,
+}
+```
+
+### OwnershipTransferred - 所有权转移事件
+```rust
+OwnershipTransferred {
+    deceased_id: u64,
+    old_owner: T::AccountId,
+    new_owner: T::AccountId,
+}
+```
+
+### DeceasedRemoved - 逝者删除事件
+```rust
+DeceasedRemoved {
+    deceased_id: u64,
+    grave_id: T::GraveId,
+}
+```
+
+## ❌ 错误处理
+
+### DeceasedNotFound
+- **说明**：逝者记录不存在
+- **触发**：操作不存在的deceased_id
+
+### GraveNotFound
+- **说明**：墓位不存在
+- **触发**：创建/迁移到不存在的墓位
+
+### NoPermission
+- **说明**：无权限操作
+- **触发**：非owner/墓主尝试操作
+
+### AdmissionDenied
+- **说明**：准入策略拒绝
+- **触发**：迁移到不允许的墓位
+
+### AlreadyInGrave
+- **说明**：已在目标墓位中
+- **触发**：迁移到当前墓位
+
+### InvalidGender
+- **说明**：无效的性别值
+- **触发**：性别值超出范围(0-3)
+
+## 🔌 GraveInspector Trait
+
+### 接口定义
+
+```rust
+pub trait GraveInspector<AccountId, GraveId> {
+    /// 检查墓位是否存在
+    fn grave_exists(grave_id: GraveId) -> bool;
+    
+    /// 检查操作者是否有权在该墓位管理逝者
+    fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
+    
+    /// 记录安葬操作（同步Interments存储）
+    fn record_interment(
+        grave_id: GraveId,
+        deceased_id: u64,
+        slot: Option<u16>,
+        note_cid: Option<Vec<u8>>,
+    ) -> Result<(), DispatchError>;
+    
+    /// 记录起掘操作（同步Interments存储）
+    fn record_exhumation(
+        grave_id: GraveId,
+        deceased_id: u64,
+    ) -> Result<(), DispatchError>;
+    
+    /// 检查墓位准入策略
+    fn check_admission_policy(
+        who: &AccountId,
+        grave_id: GraveId,
+    ) -> Result<(), DispatchError>;
+}
+```
+
+### Runtime实现示例
+
+```rust
+impl GraveInspector<AccountId, GraveId> for GraveInspectorImpl {
+    fn grave_exists(grave_id: GraveId) -> bool {
+        pallet_memo_grave::Graves::<Runtime>::contains_key(grave_id)
+    }
+    
+    fn can_attach(who: &AccountId, grave_id: GraveId) -> bool {
+        if let Some(grave) = pallet_memo_grave::Graves::<Runtime>::get(grave_id) {
+            grave.owner == *who || grave.authorized_users.contains(who)
+        } else {
+            false
+        }
+    }
+    
+    fn record_interment(
+        grave_id: GraveId,
+        deceased_id: u64,
+        slot: Option<u16>,
+        note_cid: Option<Vec<u8>>,
+    ) -> Result<(), DispatchError> {
+        pallet_memo_grave::Pallet::<Runtime>::sync_interment(
+            grave_id,
+            deceased_id,
+            slot,
+            note_cid,
+        )
+    }
+    
+    fn record_exhumation(
+        grave_id: GraveId,
+        deceased_id: u64,
+    ) -> Result<(), DispatchError> {
+        pallet_memo_grave::Pallet::<Runtime>::sync_exhumation(
+            grave_id,
+            deceased_id,
+        )
+    }
+    
+    fn check_admission_policy(
+        who: &AccountId,
+        grave_id: GraveId,
+    ) -> Result<(), DispatchError> {
+        let grave = pallet_memo_grave::Graves::<Runtime>::get(grave_id)
+            .ok_or(Error::<Runtime>::GraveNotFound)?;
+        
+        match grave.admission_policy {
+            AdmissionPolicy::OwnerOnly => {
+                ensure!(grave.owner == *who, Error::<Runtime>::AdmissionDenied);
+            },
+            AdmissionPolicy::Public => {
+                // 任何人都可以
+            },
+            AdmissionPolicy::Whitelist => {
+                ensure!(
+                    grave.owner == *who || grave.authorized_users.contains(who),
+                    Error::<Runtime>::AdmissionDenied
+                );
+            },
+        }
+        Ok(())
+    }
+}
+```
+
+## 📊 工作流程图
+
+### 创建逝者流程
+
+```text
+用户A（墓主）
+   ↓
+调用 create_deceased()
+   ├─ 检查墓位存在 (GraveInspector::grave_exists)
+   ├─ 检查附加权限 (GraveInspector::can_attach)
+   └─ 验证通过
+   ↓
+创建逝者记录
+   ├─ deceased_id = NextDeceasedId
+   ├─ owner = caller
+   ├─ grave_id = 指定墓位
+   └─ 其他字段
+   ↓
+IPFS自动Pin
+   ├─ Pin name_full_cid (if Some)
+   └─ Pin main_image_cid (if Some)
+   ↓
+同步到墓地系统
+   └─ GraveInspector::record_interment()
+      → grave.Interments[deceased_id] = (slot, note)
+   ↓
+建立索引
+   └─ DeceasedByGrave[grave_id][deceased_id] = ()
+   ↓
+触发 DeceasedCreated 事件
+```
+
+### 迁移逝者流程（解决需求3 + P0问题2）
+
+```text
+用户B（逝者owner，非墓主）
+   ↓
+调用 transfer_deceased(deceased_id, to_grave_id)
+   ├─ 检查调用者是否为逝者owner
+   ├─ 检查目标墓位是否存在
+   └─ 验证通过
+   ↓
+**检查目标墓位准入策略**（新增）
+   └─ GraveInspector::check_admission_policy(B, to_grave_id)
+      ├─ OwnerOnly → B == to_grave.owner? 否 → 拒绝
+      ├─ Public → 通过
+      └─ Whitelist → B in whitelist? 是 → 通过
+   ↓
+从旧墓位起掘
+   └─ GraveInspector::record_exhumation(old_grave_id, deceased_id)
+      → 从old_grave.Interments移除
+   ↓
+更新逝者记录
+   └─ deceased.grave_id = to_grave_id
+   ↓
+安葬到新墓位
+   └─ GraveInspector::record_interment(to_grave_id, deceased_id, slot, note)
+      → 写入to_grave.Interments
+   ↓
+更新索引
+   ├─ 删除 DeceasedByGrave[old_grave_id][deceased_id]
+   └─ 插入 DeceasedByGrave[to_grave_id][deceased_id]
+   ↓
+触发 DeceasedTransferred 事件
+```
+
+## 🛡️ 安全机制
+
+### 1. 权限控制
+
+- **创建**：仅墓主或被授权者
+- **迁移**：逝者owner（受准入策略约束）
+- **更新**：逝者owner或GovernanceOrigin
+- **删除**：逝者owner或GovernanceOrigin
+
+### 2. 准入策略保护
+
+- 墓主可设置OwnerOnly禁止外部迁入
+- Public模式允许所有人迁入
+- Whitelist模式仅允许白名单迁入
+- 平衡逝者自由迁移与墓主控制权
+
+### 3. 双向同步
+
+- deceased操作时自动同步grave.Interments
+- 通过GraveInspector Trait实现低耦合
+- 确保数据一致性
+
+### 4. IPFS自动Pin
+
+- 创建/更新时自动Pin媒体CID
+- 确保媒体文件持久化
+- 失败仅记录日志，不阻塞操作
+
+### 5. 版本控制
+
+- 每次更新递增version
+- 用于冲突检测和审计
+
+## 📝 最佳实践
+
+### 1. 创建逝者
+
+- 提供尽可能完整的信息
+- 主图使用高质量照片
+- 外部链接使用HTTPS
+
+### 2. 迁移逝者
+
+- 确认目标墓位准入策略
+- 提前与墓主沟通（如需要）
+- 选择合适的slot（如有要求）
+
+### 3. 媒体管理
+
+- 优先使用IPFS存储
+- CID使用CIDv1格式
+- 定期检查Pin状态
+
+### 4. 权限管理
+
+- 谨慎转移所有权
+- 定期审计授权列表
+- 使用多签管理重要逝者
+
+## 🔗 相关模块
+
+- **pallet-memo-grave**: 墓地系统（提供GraveInspector实现）
+- **pallet-memo-ipfs**: IPFS管理（自动Pin媒体）
+- **pallet-deceased-media**: 逝者媒体扩展（更多媒体管理）
+- **pallet-deceased-text**: 逝者文本扩展（生平文本）
+- **pallet-memo-offerings**: 供奉系统（供奉对象）
+
+## 📚 参考资源
+
+- [逝者管理系统设计文档](../../docs/deceased-management-design.md)
+- [墓地-逝者同步机制](../../docs/grave-deceased-sync.md)
+- [准入策略设计](../../docs/admission-policy-design.md)
+- [IPFS自动Pin集成指南](../../docs/ipfs-auto-pin-guide.md)
 
 ---
 
-## 关系功能权限说明
-
-### 提案流程
-
-1. **发起提案**：`propose_relation(from, to, kind, note)`
-   - 权限：`from` 对应逝者所在墓位的管理员
-   - 含义：`from` 向 `to` 提出关系声明
-   - 存储：提案存储在 `PendingRelationRequests(from, to)`
-
-2. **批准提案**：`approve_relation(from, to)`
-   - 权限：`to` 对应逝者所在墓位的管理员（⚠️ 注意不是 `from`）
-   - 含义：`to` 方同意 `from` 发起的提案
-   - 存储：关系存储在 `Relations(canonical(from, to))`
-
-3. **拒绝提案**：`reject_relation(from, to)`
-   - 权限：`to` 对应逝者所在墓位的管理员
-   - 含义：`to` 方拒绝 `from` 发起的提案
-   - 存储：移除 `PendingRelationRequests(from, to)`
-
-4. **撤回提案** ✨新增：`cancel_relation_proposal(from, to)`
-   - 权限：`from` 对应逝者所在墓位的管理员（⚠️ 仅发起方）
-   - 含义：`from` 方主动撤回自己发起的提案
-   - 存储：移除 `PendingRelationRequests(from, to)`
-   - 场景：发现错误、改变主意、对方长时间未响应
-
-5. **撤销关系**：`revoke_relation(from, to)`
-   - 权限：`from` **或** `to` 任一方的墓位管理员
-   - 含义：单方面解除已建立的关系
-   - 存储：移除 `Relations` 和双方的 `RelationsByDeceased` 索引
-
-### 参数语义说明
-
-⚠️ **重要**：`approve_relation` 和 `reject_relation` 中的 `from`/`to` 参数是**提案的标识符**，而非操作的方向。
-
-- `from`：提案发起方的逝者ID（不是当前调用者）
-- `to`：提案接收方的逝者ID（必须是当前调用者有权管理的逝者）
-
-### 权限矩阵
-
-| 操作 | 谁可以调用 | 参数中的角色 |
-|------|-----------|-------------|
-| `propose_relation(from, to, ...)` | `from` 的墓位管理员 | 我是 `from` |
-| `approve_relation(from, to)` | `to` 的墓位管理员 | 我是 `to`，对方是 `from` |
-| `reject_relation(from, to)` | `to` 的墓位管理员 | 我是 `to`，对方是 `from` |
-| `cancel_relation_proposal(from, to)` ✨新增 | `from` 的墓位管理员 | 我是 `from`，撤回我的提案 |
-| `revoke_relation(from, to)` | `from` 或 `to` 的墓位管理员 | 我是其中一方（参数顺序任意）|
-
-### 前端调用示例
-
-```typescript
-// 场景：张三（deceased_id=100）想声明与李四（deceased_id=200）是配偶关系
-
-// Step 1: 张三的管理员发起提案
-await api.tx.deceased.proposeRelation(
-  100,  // from: 张三的ID
-  200,  // to: 李四的ID
-  1,    // kind: SpouseOf
-  null  // note: 无备注
-).signAndSend(张三管理员账户);
-
-// Step 2: 李四的管理员批准提案
-await api.tx.deceased.approveRelation(
-  100,  // from: 提案发起方（张三）
-  200   // to: 提案接收方（李四，也就是我管理的逝者）
-).signAndSend(李四管理员账户);
-
-// ❌ 常见错误：张三管理员调用 approve_relation
-await api.tx.deceased.approveRelation(100, 200)
-  .signAndSend(张三管理员账户);
-// 结果：NotProposalResponder 错误，因为只有李四的管理员可以批准
-
-// ✨ 新增：张三发现发错了，主动撤回提案
-await api.tx.deceased.cancelRelationProposal(
-  100,  // from: 张三（我的逝者）
-  200   // to: 李四（对方）
-).signAndSend(张三管理员账户);
-// 结果：提案被撤回，可以重新发起
-
-// Step 3: 关系建立后，任何一方都可以单方面撤销
-await api.tx.deceased.revokeRelation(
-  100,  // 参数顺序可任意
-  200
-).signAndSend(张三管理员账户或李四管理员账户);
-```
-
-### 错误处理
-
-| 错误类型 | 触发场景 | 解释 |
-|---------|---------|------|
-| `NotProposalResponder` | `approve/reject` 时调用者不是 `to` 方管理员 | 只有提案接收方可批准/拒绝 |
-| `NotAuthorized` | 调用者无权操作相关逝者 | 一般权限错误 |
-| `RelationExists` | 关系已存在 | 避免重复建立 |
-| `RelationNotFound` | 提案或关系不存在 | 可能已被处理或从未建立 |
-| `BadRelationKind` | 关系类型冲突 | 如父母关系与配偶关系互斥 |
-| `PendingApproval` | 提案待审批 | 无向关系的反向提案已存在 |
-
-### 功能限制
-
-- ⚠️ **单方面撤销关系**：关系建立后，任何一方都可以单方面解除，无需对方同意
-- ⚠️ **有向关系强制双向审批**：即使是父母声明子女关系，也需要子女方管理员批准
-
-### 未来优化方向
-
-1. ✅ **撤回提案功能**：`cancel_relation_proposal(from, to)` 已实现，允许发起方主动撤回
-2. **考虑单方面声明模式**：对有向关系（ParentOf/ChildOf）支持单方面声明，无需批准
-3. **引入争议机制**：允许被声明方发起争议，由治理委员会审核处理
-
-## 亲友团（Friends）
-
-- 存储：
-  - `FriendPolicyOf: DeceasedId -> { require_approval, is_private, max_members }`
-  - `FriendsOf: (DeceasedId, AccountId) -> { role: Member|Core, since, note }` ✨简化（删除 Admin 角色）
-  - `FriendCount: DeceasedId -> u32`
-  - `FriendJoinRequests: DeceasedId -> BoundedVec<(AccountId, BlockNumber), MaxPending>`
-- Extrinsics：
-  - `set_friend_policy(deceased_id, require_approval, is_private, max_members)` ✨更新（仅 owner）
-  - `request_join(deceased_id, note?)`（若无需审批则直接入团）
-  - `approve_join(deceased_id, who)` / `reject_join(deceased_id, who)` ✨更新（仅 owner）
-  - `leave_friend_group(deceased_id)` ✨简化（任何成员可自由退出）
-  - `kick_friend(deceased_id, who)` ✨简化（owner 可移除任何成员）
-  - `set_friend_role(deceased_id, who, role)` ✨简化（仅 owner；仅支持 Member/Core）
-- 说明：
-  - 亲友团以逝者为主体；墓位不再承载关注/亲友能力（见 `pallet-memo-grave` 方案B）。
-  - `is_private=true` 时，成员明细仅 owner 可见；对外仅暴露 `FriendCount`。
-
-### 权限模型 ✨简化设计
-
-**唯一管理者**：
-- **owner** 是逝者的**唯一管理者**（通过 `DeceasedOf.owner` 字段）
-- owner 的管理权限**不依赖**于亲友团角色
-- owner 即使**不在**亲友团中，依然拥有完整管理权限
-
-**亲友团角色**：
-- ✅ **Member (0)**：普通成员，可查看公开资料、关注逝者
-- ✅ **Core (1)**：核心成员，标识亲密关系（未来可扩展特殊权限）
-- ❌ **Admin 已删除**：避免权限争夺、简化设计
-
-**退出与移除规则**：
-- ✅ **任何成员可以自由退出**（包括 owner）
-- ✅ **owner 可以移除任何成员**（包括自己）
-- ✅ owner 退出/被移除后，依然保留管理权限
-
-**设计理念**：
-- ✅ **简化设计**：删除 Admin 角色，避免复杂的权限管理
-- ✅ **责任明确**：owner 是唯一管理者，无需授权
-- ✅ **避免冲突**：无多人管理，无权限争夺
-- ✅ **亲友团是可选的**：owner 可以自由选择是否参与社交
-
-### 迁移
-- StorageVersion = 4：引入亲友团存储，默认空；原有数据不受影响。
-
-### 前端入口
-- 在 DApp 的 “亲友团” 标签页提供最小操作入口（策略设置、申请/审批、退出/移出、设角色）。
-
-## 安全与隐私
-- 不在链上存储敏感个人信息；仅存少量文本与链下链接（IPFS/HTTPS 等）。
-- 不进行任何 MEMO 代币相关操作，避免资金风险。
-- 字段长度、数量受限，防止滥用与状态膨胀。
-
-## 冗余与迁移
-
-## 治理专用接口（gov*）与“失钥救济”
-
-- 设计目标：当 `owner` 私钥丢失或出现内容合规问题时，通过治理通道执行必要的 C/U/D 行为，且保证可审计与可回溯。
-- 起源：`Config::GovernanceOrigin`（Root 或 内容委员会 2/3）。
-- 证据：所有 gov* 接口都要求携带 `evidence_cid`（IPFS/HTTPS 明文），模块会发出 `GovEvidenceNoted(id, cid)` 事件。
-
-### 接口与事件
-
-- `gov_update_profile(id, name?, name_badge?, gender_code?, name_full_cid??, birth_ts??, death_ts??, links?, evidence_cid)`
-  - 功能：治理更新资料（不改 owner）。
-  - 流程：记录证据事件 → 按传入字段更新 → 重建 `deceased_token` 并维护唯一索引 → 事件 `DeceasedUpdated(id)`。
-  - 失败：若新 token 冲突，返回 `DeceasedTokenExists`。
-
-- `gov_transfer_deceased(id, new_grave, evidence_cid)`
-  - 功能：治理迁移逝者到新墓位（不改 owner）。
-  - 校验：新墓位存在与容量上限（6个）；写入/移除 grave 下索引；事件 `DeceasedTransferred(id, from, to)`。
-
-- `gov_set_visibility(id, public, evidence_cid)`
-  - 功能：治理设置可见性（不要求 owner/Admin）。
-  - 事件：`VisibilityChanged(id, public)`。
-
-- `gov_set_main_image(id, cid?, evidence_cid)`
-  - 功能：治理设置/清空主图（CID）。
-  - 事件：`GovMainImageSet(id, set)`。
-
-- 统一事件：`GovEvidenceNoted(id, cid)`（每次治理动作都记录最近证据）。
-
-### 委员会阈值 + 申诉治理流程
-- 申诉：前端 `#/gov/appeal` 提交 `domain/action/target/reason_cid/evidence_cid`；链上冻结押金。
-- 审批：内容委员会 2/3 通过后进入公示期；若驳回/撤回，按比例罚没至国库。
-- 执行：公示期满路由至本模块 `gov_*` 执行并记录证据；CID 明文保存（不加密）。
-- 模板：前端 `#/gov/templates` 提供常用动作快捷说明。
-
-
+**版本**: 1.5.0  
+**最后更新**: 2025-10-27  
+**维护者**: Memopark 开发团队  
+**Phase**: 1.5（已解决逝者-墓地同步问题 + 准入策略保护）

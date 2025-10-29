@@ -18,7 +18,7 @@ import {
   ThunderboltOutlined,
   DollarOutlined 
 } from '@ant-design/icons';
-import { usePolkadot } from '../../context/PolkadotContext';
+import { useWallet } from '../../providers/WalletProvider';
 import { formatBalance } from '../../utils/format';
 
 interface OperatorInfo {
@@ -42,7 +42,7 @@ interface RewardStats {
 }
 
 const OperatorRewardsDashboard: React.FC = () => {
-  const { api, account } = usePolkadot();
+  const { api, currentAccount: account } = useWallet();
   const [loading, setLoading] = useState(false);
   const [distributing, setDistributing] = useState(false);
   const [operators, setOperators] = useState<OperatorInfo[]>([]);

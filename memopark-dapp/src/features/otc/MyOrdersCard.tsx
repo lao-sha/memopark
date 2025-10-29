@@ -1,10 +1,11 @@
 import React from 'react'
 import { Card, List, Tag, Typography, Spin, Alert, Space, Button, message, Empty } from 'antd'
-import { ClockCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, ShoppingOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, ShoppingOutlined, CloseCircleOutlined, MessageOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
 import { useWallet } from '../../providers/WalletProvider'
 import { formatTimestamp, formatRelativeTime, isExpired as isTimestampExpired, formatRemainingTime } from '../../utils/timeFormat'
 import { parseChainUsdt, usdtToCny, formatCny, calculateTotalUsdt, calculateTotalCny } from '../../utils/currencyConverter'
+import { getOrCreateChatSession } from '../../lib/chat'  // 🆕 2025-10-22：聊天功能集成
 
 const { Text, Title } = Typography
 
@@ -350,7 +351,31 @@ export const MyOrdersCard: React.FC = () => {
                     onClick={() => handleViewDetail(order.id)}
                   >
                     查看详情
-                  </Button>
+                  </Button>,
+                  // 🆕 2025-10-22：联系做市商按钮（仅买方可见）
+                  ...(isTaker ? [
+                    <Button
+                      key="chat"
+                      type="link"
+                      size="small"
+                      icon={<MessageOutlined />}
+                      onClick={async () => {
+                        try {
+                          const sessionId = await getOrCreateChatSession(
+                            currentAccount!,
+                            order.maker
+                          )
+                          window.location.hash = `#/chat/${sessionId}`
+                          message.success('正在打开聊天窗口...')
+                        } catch (error) {
+                          console.error('打开聊天失败:', error)
+                          message.error('打开聊天失败，请稍后重试')
+                        }
+                      }}
+                    >
+                      联系做市商
+                    </Button>
+                  ] : [])
                 ]}
                 style={{
                   padding: '12px 0',

@@ -17,8 +17,10 @@ import {
   ReloadOutlined,
   EyeOutlined,
   CheckOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  UnlockOutlined
 } from '@ant-design/icons'
+import { ViewEncryptedEvidence } from '../../components/Governance/ViewEncryptedEvidence'
 import { useApi } from '@/contexts/Api'
 import { useWallet } from '@/contexts/Wallet'
 import {
@@ -40,6 +42,11 @@ export default function ArbitrationPage() {
   const [selectedCase, setSelectedCase] = useState<any>(null)
   const [decision, setDecision] = useState<string>('RefundBuyer')
   const [loading, setLoading] = useState(false)
+  const [viewEvidenceModal, setViewEvidenceModal] = useState<{
+    visible: boolean
+    evidenceCid?: string
+    orderId?: number
+  }>({ visible: false })
 
   // 模拟数据（实际应从链上查询）
   const [pendingCases] = useState<any[]>([])
@@ -184,6 +191,23 @@ export default function ArbitrationPage() {
           >
             查看详情
           </Button>
+
+          {record.evidenceCid && (
+            <Button
+              type="default"
+              size="small"
+              icon={<UnlockOutlined />}
+              onClick={() => {
+                setViewEvidenceModal({
+                  visible: true,
+                  evidenceCid: record.evidenceCid,
+                  orderId: record.orderId
+                })
+              }}
+            >
+              查看加密证据
+            </Button>
+          )}
 
           {record.status === 'Pending' && (
             <Button
@@ -356,6 +380,29 @@ export default function ArbitrationPage() {
               {selectedCase.reason || '未提供'}
             </Descriptions.Item>
 
+            {selectedCase.evidenceCid && (
+              <Descriptions.Item label="证据" span={2}>
+                <Space>
+                  <Tag color="blue">已提交加密证据</Tag>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<UnlockOutlined />}
+                    onClick={() => {
+                      setViewEvidenceModal({
+                        visible: true,
+                        evidenceCid: selectedCase.evidenceCid,
+                        orderId: selectedCase.orderId
+                      })
+                      setSelectedCase(null)
+                    }}
+                  >
+                    查看加密证据
+                  </Button>
+                </Space>
+              </Descriptions.Item>
+            )}
+
             <Descriptions.Item label="创建时间">
               {new Date(selectedCase.createdAt * 1000).toLocaleString('zh-CN')}
             </Descriptions.Item>
@@ -376,6 +423,18 @@ export default function ArbitrationPage() {
           </Descriptions>
         )}
       </Modal>
+
+      {/* 查看加密证据模态框 */}
+      {viewEvidenceModal.evidenceCid && viewEvidenceModal.orderId && (
+        <ViewEncryptedEvidence
+          evidenceCid={viewEvidenceModal.evidenceCid}
+          orderId={viewEvidenceModal.orderId}
+          visible={viewEvidenceModal.visible}
+          onClose={() => {
+            setViewEvidenceModal({ visible: false })
+          }}
+        />
+      )}
     </div>
   )
 }

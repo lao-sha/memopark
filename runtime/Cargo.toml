@@ -25,46 +25,77 @@ frame-try-runtime = { optional = true, git = "https://github.com/paritytech/polk
 pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
 pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-pallet-forwarder = { path = "../pallets/forwarder", default-features = false }
-pallet-market-maker = { path = "../pallets/market-maker", default-features = false }
+
+# 🆕 2025-10-29 Trading Integration（交易模块整合）
+# 整合了以下3个模块：
+# - pallet-otc-order（OTC订单）
+# - pallet-market-maker（做市商管理）
+# - pallet-simple-bridge（MEMO ↔ USDT 桥接）
+pallet-trading = { path = "../pallets/trading", default-features = false }  # v1.0.0 统一交易模块
+
+# 🔴 2025-10-29 已移除: pallet-market-maker 已整合到 pallet-trading
+# pallet-market-maker = { path = "../pallets/market-maker", default-features = false }
+
 # 函数级中文注释：移除 pallet-otc-maker 依赖
 # pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
+
 # 函数级中文注释：2025-10-20 移除 pallet-otc-listing 依赖，功能已由 pallet-market-maker + pallet-otc-order 替代
 # pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
-pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
+
+# 🔴 2025-10-29 已移除: pallet-otc-order 已整合到 pallet-trading
+# pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
+
 pallet-escrow = { path = "../pallets/escrow", default-features = false }
 pallet-arbitration = { path = "../pallets/arbitration", default-features = false }
 # replaced old ritual/cemetery
 pallet-memo-park = { path = "../pallets/memo-park", default-features = false }
 pallet-memo-grave = { path = "../pallets/memo-grave", default-features = false }
 pallet-ledger = { path = "../pallets/ledger", default-features = false }
-pallet-deceased = { path = "../pallets/deceased", default-features = false }
-pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }
-pallet-deceased-text = { path = "../pallets/deceased-text", default-features = false }
-pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }
-pallet-memo-sacrifice = { path = "../pallets/memo-sacrifice", default-features = false }
-pallet-memo-referrals = { path = "../pallets/memo-referrals", default-features = false }
+pallet-deceased = { path = "../pallets/deceased", default-features = false }  # 🆕 2025-10-28：已整合 deceased-text 和 deceased-media
+# pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }  # 2025-10-28 已移除 - 整合到 pallet-deceased
+# pallet-deceased-text = { path = "../pallets/deceased-text", default-features = false }  # 2025-10-28 已移除 - 整合到 pallet-deceased
+pallet-memorial = { path = "../pallets/memorial", default-features = false }  # 🆕 2025-10-28：已整合 memo-offerings 和 memo-sacrifice
+# pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }  # 2025-10-28 保留作为参考
+# pallet-memo-sacrifice = { path = "../pallets/memo-sacrifice", default-features = false }  # 2025-10-28 保留作为参考
+
+# 🆕 2025-10-28 Affiliate Integration（联盟计酬整合）
+# 整合了以下5个模块：
+# - pallet-memo-referrals（推荐关系，部分保留用于兼容适配器）
+# - pallet-affiliate（托管）
+# - pallet-affiliate-config（配置）
+# - pallet-affiliate-instant（即时分成）
+# - pallet-affiliate-weekly（周结算）
+pallet-affiliate = { path = "../pallets/affiliate", default-features = false }  # v1.0.0 统一联盟计酬系统
+pallet-memo-referrals = { path = "../pallets/memo-referrals", default-features = false }  # 2025-10-28 部分保留，用于兼容适配器
+# pallet-affiliate-weekly = { path = "../pallets/affiliate-weekly", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+# pallet-affiliate-config = { path = "../pallets/affiliate-config", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+# pallet-affiliate-instant = { path = "../pallets/affiliate-instant", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+
 pallet-membership = { path = "../pallets/membership", default-features = false }
-pallet-affiliate = { path = "../pallets/affiliate", default-features = false }
-pallet-affiliate-weekly = { path = "../pallets/affiliate-weekly", default-features = false }
-pallet-affiliate-config = { path = "../pallets/affiliate-config", default-features = false }
-pallet-affiliate-instant = { path = "../pallets/affiliate-instant", default-features = false }
 pallet-evidence = { path = "../pallets/evidence", default-features = false }
 pallet-identity = { path = "../pallets/identity", default-features = false }
 pallet-memo-ipfs = { path = "../pallets/memo-ipfs", default-features = false }
-pallet-memo-content-governance = { path = "../pallets/memo-content-governance", default-features = false }
+pallet-memo-appeals = { path = "../pallets/memo-appeals", default-features = false }
 pallet-collective = { path = "../pallets/collective", default-features = false }
 pallet-memo-pet = { path = "../pallets/memo-pet", default-features = false }
 pallet-pricing = { path = "../pallets/pricing", default-features = false }
-pallet-first-purchase = { path = "../pallets/first-purchase", default-features = false }  # 原名: pallet-otc-claim
+# 函数级中文注释：2025-10-28 移除 pallet-buyer-credit 和 pallet-maker-credit，已整合为 pallet-credit
+# pallet-buyer-credit = { path = "../pallets/buyer-credit", default-features = false }
+# pallet-maker-credit = { path = "../pallets/maker-credit", default-features = false }
+pallet-credit = { path = "../pallets/credit", default-features = false }
+pallet-deposits = { path = "../pallets/deposits", default-features = false }
 pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
-pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
+
+# 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
+# pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
+
+pallet-chat = { path = "../pallets/chat", default-features = false }
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
 pallet-treasury = { path = "../pallets/treasury", default-features = false }
 pallet-origin-restriction = { path = "../pallets/origin-restriction", default-features = false }
-pallet-fee-guard = { path = "../pallets/fee-guard", default-features = false }
+# pallet-fee-guard = { path = "../pallets/fee-guard", default-features = false }  # 已移除 - 使用官方 pallet-proxy 替代
 pallet-transaction-payment-rpc-runtime-api.workspace = true
 pallet-transaction-payment.workspace = true
 scale-info = { features = ["derive", "serde"], workspace = true }
@@ -102,43 +133,51 @@ std = [
 	"pallet-aura/std",
 	"pallet-balances/std",
 	"pallet-grandpa/std",
-	"pallet-forwarder/std",
-	"pallet-market-maker/std",
+	"pallet-trading/std",  # 🆕 2025-10-29：统一交易模块
+	# "pallet-market-maker/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
 	# "pallet-otc-maker/std",  # 已移除
 	# "pallet-otc-listing/std",  # 2025-10-20 已移除
-	"pallet-otc-order/std",
+	# "pallet-otc-order/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
 	"pallet-escrow/std",
 	"pallet-arbitration/std",
 	"pallet-memo-park/std",
 	"pallet-memo-grave/std",
 	"pallet-ledger/std",
-	"pallet-deceased/std",
-"pallet-deceased-media/std",
-"pallet-deceased-text/std",
-	"pallet-memo-offerings/std",
-	"pallet-memo-sacrifice/std",
-	"pallet-memo-referrals/std",
+	"pallet-deceased/std",  # 🆕 2025-10-28：已整合 deceased-text 和 deceased-media
+# "pallet-deceased-media/std",  # 2025-10-28 已移除 - 整合到 pallet-deceased
+# "pallet-deceased-text/std",  # 2025-10-28 已移除 - 整合到 pallet-deceased
+	"pallet-memorial/std",  # 🆕 2025-10-28：已整合 memo-offerings 和 memo-sacrifice
+# "pallet-memo-offerings/std",  # 2025-10-28 保留作为参考
+# "pallet-memo-sacrifice/std",  # 2025-10-28 保留作为参考
+
+	# 🆕 2025-10-28 Affiliate Integration
+	"pallet-affiliate/std",  # v1.0.0 统一联盟计酬系统（已整合5个模块）
+"pallet-memo-referrals/std",  # 2025-10-28 部分保留，用于兼容适配器
+# "pallet-affiliate-weekly/std",  # 2025-10-28 已整合到 pallet-affiliate
+# "pallet-affiliate-config/std",  # 2025-10-28 已整合到 pallet-affiliate
+# "pallet-affiliate-instant/std",  # 2025-10-28 已整合到 pallet-affiliate
+
 	"pallet-membership/std",
-	"pallet-affiliate/std",
-	"pallet-affiliate-weekly/std",
-	"pallet-affiliate-config/std",
-	"pallet-affiliate-instant/std",
 	"pallet-evidence/std",
 	"pallet-identity/std",
 	"pallet-memo-ipfs/std",
-    "pallet-memo-content-governance/std",
+    "pallet-memo-appeals/std",
 	"pallet-collective/std",
 	"pallet-memo-pet/std",
     "pallet-pricing/std",
-    "pallet-first-purchase/std",  # 原名: pallet-otc-claim
+    # "pallet-buyer-credit/std",  # 2025-10-28 已移除
+    # "pallet-maker-credit/std",  # 2025-10-28 已移除
+    "pallet-credit/std",
+    "pallet-deposits/std",
     "pallet-storage-treasury/std",
-    "pallet-simple-bridge/std",
+    # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
+    "pallet-chat/std",
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
 	"pallet-treasury/std",
 	"pallet-origin-restriction/std",
-	"pallet-fee-guard/std",
+	# "pallet-fee-guard/std",  # 已移除
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"scale-info/std",

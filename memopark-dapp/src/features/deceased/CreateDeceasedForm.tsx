@@ -1,9 +1,11 @@
 import React from 'react'
-import { Alert, Button, Form, Input, InputNumber, Modal, Radio, Space, Typography, message, Divider, Select } from 'antd'
+import { Alert, Button, Form, Input, Modal, Radio, Space, Typography, message, Divider, Select } from 'antd'
 import { signAndSendLocalWithPassword } from '../../lib/polkadot-safe'
 import { mapDispatchErrorMessage } from '../../lib/errors'
 import { useWallet } from '../../providers/WalletProvider'
 import { getApi } from '../../lib/polkadot-safe'
+import { useDeceasedEvents } from '../../hooks/useDeceasedEvents'
+import { PinStatusIndicator } from '../../components/deceased/PinStatusIndicator'
 
 /**
  * 函数级详细中文注释：创建逝者表单（挂接到指定墓位）
@@ -24,6 +26,11 @@ const CreateDeceasedForm: React.FC = () => {
   const [graveLoading, setGraveLoading] = React.useState(false)
   const [graveErr, setGraveErr] = React.useState('')
   const [myGraves, setMyGraves] = React.useState<Array<{ id: number; name?: string; slug?: string }>>([])
+  
+  // 事件监听
+  const { events, getEventsByDeceasedId } = useDeceasedEvents(true)
+  const [latestDeceasedId, setLatestDeceasedId] = React.useState<number | null>(null)
+  const [pinStatusShown, setPinStatusShown] = React.useState(false)
 
   // 事务上下文：在校验通过后暂存参数，待输入密码确认再提交
   const txRef = React.useRef<{ args: any[] } | null>(null)
@@ -142,6 +149,24 @@ const CreateDeceasedForm: React.FC = () => {
   }, [toBytes, isYYYYMMDD])
 
   /**
+   * 函数级中文注释：监听创建成功后的事件
+   */
+  React.useEffect(() => {
+    if (!latestDeceasedId || pinStatusShown) return
+
+    const deceasedEvents = getEventsByDeceasedId(latestDeceasedId)
+    
+    // 检查是否有AutoPinSuccess或AutoPinFailed事件
+    const hasAutoPin = deceasedEvents.some(e => 
+      e.event === 'AutoPinSuccess' || e.event === 'AutoPinFailed'
+    )
+
+    if (hasAutoPin) {
+      setPinStatusShown(true)
+    }
+  }, [events, latestDeceasedId, getEventsByDeceasedId, pinStatusShown])
+
+  /**
    * 函数级中文注释：确认密码并提交交易
    */
   const onConfirm = React.useCallback(async () => {
@@ -150,16 +175,38 @@ const CreateDeceasedForm: React.FC = () => {
     const key = 'tx-create-deceased'
     try {
       setConfirmLoading(true)
+      setPinStatusShown(false) // 重置pin状态显示
       message.loading({ key, content: '正在提交交易…' })
       const timer = setTimeout(()=> message.loading({ key, content: '连接节点较慢，仍在等待…' }), 8000)
       const txHash = await signAndSendLocalWithPassword('deceased', 'createDeceased', txRef.current.args, pwdVal)
       clearTimeout(timer)
       message.success({ key, content: `已提交创建逝者：${txHash}` })
       setPwdOpen(false)
-      form.resetFields()
-      try { localStorage.removeItem('mp.deceased.graveId') } catch {}
-      try { window.dispatchEvent(new Event('mp.txUpdate')) } catch {}
-      try { setTimeout(()=> { window.location.hash = '#/grave/my' }, 500) } catch {}
+      
+      // 等待事件并显示pin状态（延迟3秒后再跳转）
+      message.info({ key: 'waiting-events', content: '正在检测IPFS固定状态...' })
+      
+      // 监听DeceasedCreated事件以获取新的deceased_id
+      const checkEvents = setInterval(() => {
+        const createdEvent = events.find(e => e.event === 'DeceasedCreated')
+        if (createdEvent) {
+          setLatestDeceasedId(createdEvent.deceasedId)
+          message.destroy('waiting-events')
+          clearInterval(checkEvents)
+        }
+      }, 500)
+      
+      // 3秒后清理定时器并跳转
+      setTimeout(() => {
+        clearInterval(checkEvents)
+        message.destroy('waiting-events')
+        form.resetFields()
+        try { localStorage.removeItem('mp.deceased.graveId') } catch {}
+        try { window.dispatchEvent(new Event('mp.txUpdate')) } catch {}
+        // 延迟跳转，让用户看到pin状态
+        setTimeout(()=> { window.location.hash = '#/grave/my' }, 2000)
+      }, 3000)
+      
     } catch (e: any) {
       const raw = String(e?.message || '')
       const mapped = mapDispatchErrorMessage(e, '提交失败')
@@ -181,9 +228,9 @@ const CreateDeceasedForm: React.FC = () => {
       setConfirmLoading(false)
       setSubmitting(false)
     }
-  }, [pwdVal, form])
+  }, [pwdVal, form, events])
 
-  const onNameChange = (_e: any) => {}
+  const onNameChange = () => {}
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'left', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
@@ -199,6 +246,27 @@ const CreateDeceasedForm: React.FC = () => {
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <Alert type="info" showIcon message="提示" description="姓名与日期将用于生成逝者唯一 token；请确保信息准确。完整姓名建议通过链下CID提供。" />
         </Space>
+
+        {/* Pin状态指示器 */}
+        {latestDeceasedId && (() => {
+          const deceasedEvents = getEventsByDeceasedId(latestDeceasedId)
+          const pinSuccess = deceasedEvents.find(e => e.event === 'AutoPinSuccess')
+          const pinFailed = deceasedEvents.find(e => e.event === 'AutoPinFailed')
+          
+          if (pinSuccess || pinFailed) {
+            return (
+              <div style={{ marginTop: 12 }}>
+                <PinStatusIndicator
+                  deceasedId={latestDeceasedId}
+                  successData={pinSuccess?.data}
+                  failedData={pinFailed?.data}
+                  showRetry={false}
+                />
+              </div>
+            )
+          }
+          return null
+        })()}
 
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 12 }}>
           <Form.Item label={

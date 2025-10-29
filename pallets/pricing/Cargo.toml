@@ -13,6 +13,10 @@ sp-arithmetic = { workspace = true, default-features = false }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 
+[dev-dependencies]
+sp-core = { workspace = true }
+sp-io = { workspace = true }
+
 [features]
 default = ["std"]
 std = [

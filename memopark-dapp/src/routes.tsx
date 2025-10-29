@@ -21,6 +21,7 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/deceased/create', component: lazy(() => import('./features/deceased/CreateDeceasedForm')) },
   { match: h => h.startsWith('#/grave/detail'), component: lazy(() => import('./features/grave/GraveDetailPage')) },
   { match: h => h === '#/deceased/list', component: lazy(() => import('./features/deceased/DeceasedListPage')) },
+  { match: h => h.startsWith('#/deceased/relationships'), component: lazy(() => import('./features/deceased/RelationshipPage')) },
   { match: h => h === '#/grave/my', component: lazy(() => import('./features/grave/MyGravesPage')) },
   { match: h => h === '#/treasury', component: lazy(() => import('./features/treasury/TreasuryPage')) },
   { match: h => h === '#/dashboard', component: lazy(() => import('./features/dashboard/DashboardPage')) },
@@ -47,24 +48,26 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/otc/market-maker-config', component: lazy(() => import('./features/otc/MarketMakerConfigPage')) },
   { match: h => h === '#/otc/bridge-config', component: lazy(() => import('./features/otc/MakerBridgeConfigPage')) },
   { match: h => h === '#/market-maker/center', component: lazy(() => import('./features/market-maker/MarketMakerCenterPage')) },
+  { match: h => h === '#/market-maker/credit', component: lazy(() => import('./features/market-maker/MakerCreditDashboard')) },  // 🆕 做市商信用仪表板
   { match: h => h === '#/otc/decrypt', component: lazy(() => import('./features/otc/DecryptFilePage')) },
   { match: h => h === '#/otc/pay-result', component: lazy(() => import('./features/otc/PayResultPage')) },
   { match: h => h === '#/otc/pay-test', component: lazy(() => import('./features/otc/PayCreateTestPage')) },
   { match: h => h === '#/otc/claim', component: lazy(() => import('./features/otc/ClaimMemoForm')) },  // 首购领取（原OTC领取）
   { match: h => h === '#/otc/release', component: lazy(() => import('./features/otc/SellerReleasePage')) },
+  { match: h => h === '#/otc/order-free', component: lazy(() => import('./features/otc/CreateFreeOrderPage')) },  // 🆕 买家创建免费订单
+  { match: h => h === '#/market-maker/quota', component: lazy(() => import('./features/market-maker/FreeQuotaManagementPage')) },  // 🆕 做市商配额管理
   { match: h => h === '#/first-purchase/pool', component: lazy(() => import('./features/first-purchase/MarketMakerPoolPage')) },
   { match: h => h === '#/first-purchase', component: lazy(() => import('./features/first-purchase/FirstPurchasePage')) },
   { match: h => h === '#/admin/offer-route', component: lazy(() => import('./features/offerings/AdminOfferRoutePage')) },
   { match: h => h === '#/ipfs/pin', component: lazy(() => import('./features/ipfs/DeceasedPinWizard')) },
   { match: h => h === '#/ipfs/usage', component: lazy(() => import('./features/ipfs/UsagePage')) },
   { match: h => h === '#/evidence/linker', component: lazy(() => import('./features/evidence/EvidenceLinkerPage')) },
-  { match: h => h === '#/fee-guard', component: lazy(() => import('./features/fee-guard/FeeGuardAdminPage')) },
-  { match: h => h === '#/forwarder/session', component: lazy(() => import('./features/forwarder/ForwarderSessionPage')) },
   { match: h => h === '#/ipfs/billing', component: lazy(() => import('./features/ipfs/BillingAdminPage')) },
   { match: h => h.startsWith('#/ref'), component: lazy(() => import('./features/referrals/ReferralBindPage')) },
   { match: h => h === '#/membership/purchase', component: lazy(() => import('./features/membership/MembershipPurchasePage')) },
   { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
   { match: h => h === '#/storage-treasury', component: lazy(() => import('./features/storage-treasury/StorageTreasuryDashboard')) },
+  { match: h => h === '#/chat', component: lazy(() => import('./features/chat/ChatPage')) },
 ];
 
 // UI 组件展示页仅在开发模式暴露

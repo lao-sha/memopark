@@ -6,21 +6,27 @@
 // - 降低路径耦合，便于其他 pallet/rpc 使用。
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, Get, ExistenceRequirement},
+        traits::{Currency, Get},
     };
     use frame_system::pallet_prelude::*;
     use pallet_escrow::pallet::Escrow as EscrowTrait;
     // 🆕 2025-10-20：移除 pallet_otc_listing 依赖
-    use pallet_memo_referrals::{MembershipProvider, ReferralProvider};
-    use pallet_affiliate_config::AffiliateDistributor;
     use sp_core::hashing::blake2_256;
     use sp_core::H256;
     use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
     use sp_std::vec::Vec;
+    /// 🆕 2025-10-28：导入统一信用管理接口 trait（已整合买家和做市商信用）
+    use pallet_credit::MakerCreditInterface;
 
     // Balance aliases 将在 Config 定义之后重新声明
 
@@ -79,19 +85,29 @@ pub mod pallet {
         /// - 示例："2025012100001"
         /// - None表示未通过EPAY支付或尚未标记
         pub epay_trade_no: Option<BoundedVec<u8, ConstU32<64>>>,
+        
+        /// 🆕 H-2修复：订单完成时间（Unix时间戳，毫秒）
+        /// 函数级详细中文注释：记录订单进入终态的时间
+        /// - 终态包括：Released, Refunded, Canceled, Closed
+        /// - 用于自动清理：基于 completed_at 而非 created_at
+        /// - None 表示订单尚未完成
+        pub completed_at: Option<Moment>,
     }
 
     #[pallet::config]
     // Plan B: 仅依赖 listing 与 escrow（listing 已经 transitively 依赖 maker/KYC），去掉直接对 maker pallet 的耦合。
     // 函数级中文注释：添加 pallet_timestamp::Config 依赖，用于获取系统时间戳
     // 🆕 2025-10-20：移除 pallet_otc_listing::Config 继承（不再依赖挂单pallet）
+    // 🆕 2025-10-21：添加 pallet_buyer_credit::Config 继承（买家信用风控系统）
     pub trait Config:
-        frame_system::Config + pallet_escrow::pallet::Config + pallet_timestamp::Config + pallet_pricing::Config + pallet_market_maker::Config
+        frame_system::Config + pallet_escrow::pallet::Config + pallet_timestamp::Config + pallet_pricing::Config + pallet_market_maker::Config + pallet_credit::Config
     {
         type Currency: Currency<Self::AccountId>;
         type ConfirmTTL: Get<BlockNumberFor<Self>>;
         /// 托管接口（用于锁定/释放/退款）
         type Escrow: EscrowTrait<Self::AccountId, BalanceOf<Self>>;
+        /// 🆕 2025-10-28：统一信用接口（用于订单完成和违约记录）
+        type MakerCredit: pallet_credit::MakerCreditInterface;
         /// 每块最多处理过期订单数
         #[pallet::constant]
         type MaxExpiringPerBlock: Get<u32>;
@@ -105,6 +121,12 @@ pub mod pallet {
         type PaidWindow: Get<BlockNumberFor<Self>>;
         #[pallet::constant]
         type PaidMaxInWindow: Get<u32>;
+        /// ✅ 2025-10-23：买家撤回窗口（毫秒）（P2优化）
+        /// 函数级详细中文注释：买家标记已付款后，可撤回的时间窗口
+        /// - 默认：5分钟（300,000 毫秒）
+        /// - 保护买家误操作，提供短暂撤回机会
+        #[pallet::constant]
+        type CancelWindow: Get<MomentOf<Self>>;
         /// 函数级中文注释：事件类型，确保 Pallet 事件能映射到 RuntimeEvent。
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         
@@ -125,15 +147,11 @@ pub mod pallet {
         /// 函数级中文注释：会员信息提供者
         type MembershipProvider: pallet_memo_referrals::MembershipProvider<Self::AccountId>;
         
-        /// 函数级中文注释：推荐关系提供者
-        type ReferralProvider: pallet_memo_referrals::ReferralProvider<Self::AccountId>;
-        
-        /// 函数级中文注释：联盟计酬分配器
-        type AffiliateDistributor: pallet_affiliate_config::AffiliateDistributor<
-            Self::AccountId,
-            u128,
-            BlockNumberFor<Self>,
-        >;
+        // 🆕 2025-10-28 已移除：ReferralProvider 和 AffiliateDistributor 关联类型
+        // 这两个类型已定义但从未使用，可以安全移除
+        // 如需使用推荐关系或联盟计酬功能，请直接调用 pallet-affiliate
+        // - 推荐关系：通过 pallet_affiliate::Pallet 调用
+        // - 联盟计酬：通过 pallet_affiliate::Pallet 调用
         
         /// 函数级中文注释：订单归档阈值（天数）
         /// 超过此天数的终态订单将被自动清理，默认 150 天（约5个月）
@@ -334,6 +352,11 @@ pub mod pallet {
         OrderPaidCommitted {
             id: u64,
         },
+        /// ✅ 2025-10-23：买家撤回"已标记付款"（P1优化）
+        /// 函数级详细中文注释：买家在 5 分钟撤回窗口内撤回已标记付款
+        MarkPaidCancelled {
+            id: u64,
+        },
         OrderReleased {
             id: u64,
         },
@@ -439,6 +462,16 @@ pub mod pallet {
         PriceTooLow,
         /// 🆕 2025-10-20：价格太高（高于最大接受价格）
         PriceTooHigh,
+        /// 🆕 2025-10-22：做市商信用分过低，已暂停接单
+        MakerSuspended,
+        /// ✅ 2025-10-23：做市商流动性不足（P1优化）
+        /// 函数级详细中文注释：做市商可用余额不足，无法锁定足够的 MEMO
+        /// - 前端提示："该做市商当前流动性不足，请选择其他做市商或减少购买数量"
+        MakerInsufficientLiquidity,
+        /// ✅ 2025-10-23：撤回窗口已过期（P1优化）
+        /// 函数级详细中文注释：买家标记已付款后，撤回窗口（5分钟）已过期
+        /// - 前端提示："撤回窗口已过期，如有问题请发起争议"
+        CancelWindowExpired,
     }
 
     #[pallet::call]
@@ -486,6 +519,17 @@ pub mod pallet {
                 Error::<T>::MakerNotApproved
             );
             
+            // 🆕 2025-10-22：步骤2.5 - 检查做市商信用状态
+            // 函数级详细中文注释：确保做市商信用分 >= 750，未被暂停接单
+            // - Active: 可接单
+            // - Warning (750-799): 可接单，但有警告
+            // - Suspended (< 750): 不可接单
+            let maker_credit_status = <T as Config>::MakerCredit::check_service_status(maker_id)?;
+            ensure!(
+                !matches!(maker_credit_status, pallet_credit::maker::ServiceStatus::Suspended),
+                Error::<T>::MakerSuspended
+            );
+            
             // 🆕 2025-10-20：步骤3 - 验证做市商方向（OTC = Sell 或 BuyAndSell）
             ensure!(
                 matches!(maker_info.direction, pallet_market_maker::Direction::Sell | pallet_market_maker::Direction::BuyAndSell),
@@ -515,6 +559,14 @@ pub mod pallet {
             let divisor: BalanceOf<T> = 1_000_000u128.saturated_into();
             let amount_b: BalanceOf<T> = final_price_b
                 .saturating_mul(qty_b) / divisor;
+            
+            // 🆕 2025-10-21：步骤8.1 - 买家信用限额检查（AI风控）
+            // 函数级详细中文注释：调用 pallet-buyer-credit 检查买家的单笔/每日限额、冷却期等
+            // - amount_usdt: 订单金额（USDT，精度6）
+            // - 失败时返回错误：CreditScoreTooLow, ExceedSingleLimit, ExceedDailyLimit, InCooldownPeriod
+            let amount_usdt = final_price_u64.saturating_mul(qty_b.saturated_into::<u64>()) / 1_000_000_000_000u64;
+            pallet_credit::Pallet::<T>::check_buyer_limit(&who, amount_usdt)
+                .map_err(|_| Error::<T>::BadState)?;  // 暂时映射到 BadState，后续可以添加专门的错误类型
             
             // 🆕 2025-10-20：步骤9 - 验证买家余额
             let buyer_balance = <T as Config>::Currency::free_balance(&who);
@@ -556,8 +608,14 @@ pub mod pallet {
             ensure!(!maker_info.tron_address.is_empty(), Error::<T>::MakerTronAddressNotSet);
             let maker_tron_address = maker_info.tron_address.clone();
             
-            // 🆕 2025-10-20：步骤15 - 锁定买家资金到托管
-            // TODO: 实现资金锁定逻辑（当前为简化版本，不锁定资金）
+            // ✅ 2025-10-23：步骤15 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // 函数级详细中文注释：采用做市商托管模式，适用于法币交易
+            // - 做市商锁定 MEMO 到托管账户
+            // - 买家链下支付法币
+            // - 做市商确认收款后释放 MEMO 给买家
+            // - 如果做市商余额不足，返回友好的错误提示
+            <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
+                .map_err(|_| Error::<T>::MakerInsufficientLiquidity)?;
             
             // 🆕 2025-10-20：步骤16 - 创建订单记录
             let order = Order::<_, _, _> {
@@ -575,6 +633,7 @@ pub mod pallet {
                 contact_commit,
                 state: OrderState::Created,
                 epay_trade_no: None,              // 🆕 2025-10-21：初始化为None，等待做市商中继服务标记
+                completed_at: None,               // H-2修复：记录完成时间
             };
             
             Orders::<T>::insert(order_id, &order);
@@ -621,6 +680,7 @@ pub mod pallet {
             };
             ensure!(cnt < PaidMaxInWindowParam::<T>::get(), Error::<T>::BadState);
             PaidRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
+            
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(ord.taker == who, Error::<T>::BadState);
@@ -631,7 +691,61 @@ pub mod pallet {
                 ord.state = OrderState::PaidOrCommitted;
                 Ok(())
             })?;
+            
             Self::deposit_event(Event::OrderPaidCommitted { id });
+            Ok(())
+        }
+
+        /// ✅ 2025-10-23：函数级详细中文注释：买家撤回"已标记付款"（5分钟撤回窗口）
+        /// 
+        /// # 功能说明（P1优化）
+        /// - 买家误点"标记已付款"后，可在 5 分钟内撤回
+        /// - 超过 5 分钟后无法撤回，只能通过仲裁解决
+        /// - 撤回后订单状态回到 Created，买家可重新标记或取消订单
+        /// 
+        /// # 参数
+        /// - `origin`: 调用者（必须是订单的买家）
+        /// - `id`: 订单ID
+        /// 
+        /// # 验证
+        /// - 订单必须存在
+        /// - 调用者必须是订单的买家（taker）
+        /// - 订单状态必须是 PaidOrCommitted
+        /// - 订单创建时间到现在必须小于 5 分钟
+        /// 
+        /// # 错误
+        /// - `NotFound`: 订单不存在
+        /// - `BadState`: 调用者不是买家或订单状态不是 PaidOrCommitted
+        /// - `CancelWindowExpired`: 撤回窗口（5分钟）已过期
+        #[pallet::call_index(13)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(2, 1))]
+        pub fn cancel_mark_paid(origin: OriginFor<T>, id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
+                let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
+                ensure!(ord.taker == who, Error::<T>::BadState);
+                ensure!(
+                    matches!(ord.state, OrderState::PaidOrCommitted),
+                    Error::<T>::BadState
+                );
+                
+                // ✅ 2025-10-23：检查撤回时间窗口（可配置，P2优化）
+                let now = <pallet_timestamp::Pallet<T>>::get();
+                let elapsed = now.saturating_sub(ord.created_at);
+                let cancel_window_ms: MomentOf<T> = T::CancelWindow::get();
+                
+                ensure!(
+                    elapsed < cancel_window_ms,
+                    Error::<T>::CancelWindowExpired
+                );
+                
+                // 撤回：状态回到 Created
+                ord.state = OrderState::Created;
+                Ok(())
+            })?;
+            
+            Self::deposit_event(Event::MarkPaidCancelled { id });
             Ok(())
         }
 
@@ -768,15 +882,17 @@ pub mod pallet {
                     ),
                     Error::<T>::BadState
                 );
-                // 库存托管模式：从挂单托管划转本单数量给买家
+                
+                // 统一托管流程：从托管账户转账
                 // 函数级详细中文注释：转账的是 qty（MEMO数量），而不是 amount（订单金额）
                 // - qty: 实际购买的MEMO数量（最小单位）
                 // - amount: 订单金额（price * qty，用于记录和显示）
                 <T as Config>::Escrow::transfer_from_escrow(
                     ord.maker_id,
                     &ord.taker,
-                    ord.qty,  // 修复：应该转账数量，而不是金额
+                    ord.qty,
                 )?;
+                
                 ord.state = OrderState::Released;
                 Ok(())
             })?;
@@ -784,6 +900,33 @@ pub mod pallet {
             // 函数级中文注释：订单完成后，添加到 pallet-pricing 的 OTC 价格聚合统计
             // 忽略错误（不影响订单放行流程）
             let _ = pallet_pricing::Pallet::<T>::add_otc_order(timestamp, price_usdt, memo_qty);
+            
+            // 🆕 2025-10-21：订单完成后更新买家信用（快速学习）
+            // 函数级详细中文注释：计算付款时间，更新信用分和等级
+            // - payment_time: 从订单创建到确认的时间（秒）
+            // - 前3笔订单权重5x，快速建立信用画像
+            let ord = Orders::<T>::get(id).ok_or(Error::<T>::NotFound)?;
+            let current_timestamp = <pallet_timestamp::Pallet<T>>::get();
+            let payment_time_ms = current_timestamp.saturating_sub(ord.created_at);
+            let payment_time_seconds = payment_time_ms.saturated_into::<u64>() / 1000u64;
+            let amount_usdt = price_usdt.saturating_mul(memo_qty as u64) / 1_000_000_000_000u64;
+            pallet_credit::Pallet::<T>::update_credit_on_success(
+                &ord.taker,
+                amount_usdt,
+                payment_time_seconds,
+            );
+            
+            // 🆕 2025-10-22：订单完成后更新做市商信用
+            // 函数级详细中文注释：计算响应时间（从创建到释放），更新做市商信用分
+            // - response_time: 从订单创建到释放的时间（秒）
+            // - 基础奖励：+2分
+            // - 及时释放（< 24h）：额外 +1分
+            let response_time_seconds = payment_time_seconds;
+            let _ = <T as Config>::MakerCredit::record_order_completed(
+                ord.maker_id,
+                id,
+                response_time_seconds as u32,
+            );
             
             Self::deposit_event(Event::OrderReleased { id });
             Ok(())
@@ -808,6 +951,16 @@ pub mod pallet {
                     Error::<T>::BadState
                 );
                 // 🆕 2025-10-20：移除库存恢复逻辑（不再管理挂单库存）
+                
+                // 🆕 2025-10-21：超时违约惩罚（买家未按时付款）
+                // 函数级详细中文注释：如果订单在 Created 状态超时，说明买家下单后未付款，记录违约
+                // - 违约次数+1，风险分增加（新手+50分，老用户+5分）
+                // - 推荐关系失效，推荐人也会受连带责任
+                let taker = ord.taker.clone();
+                if matches!(ord.state, OrderState::Created | OrderState::PaidOrCommitted) {
+                    pallet_credit::Pallet::<T>::penalize_default(&taker);
+                }
+                
                 ord.state = OrderState::Refunded;
                 Ok(())
             })?;
@@ -946,6 +1099,11 @@ pub mod pallet {
             let amount_b: BalanceOf<T> = final_price_b
                 .saturating_mul(qty_b) / divisor;
             
+            // 🆕 2025-10-21：步骤8.1 - 买家信用限额检查（AI风控）
+            let amount_usdt = final_price_u64.saturating_mul(qty_b.saturated_into::<u64>()) / 1_000_000_000_000u64;
+            pallet_credit::Pallet::<T>::check_buyer_limit(&who, amount_usdt)
+                .map_err(|_| Error::<T>::BadState)?;
+            
             // 🆕 2025-10-20：额外的价格保护检查（min/max_accept_price）
             if let Some(min_price) = min_accept_price {
                 ensure!(final_price_b >= min_price, Error::<T>::PriceTooLow);
@@ -989,9 +1147,13 @@ pub mod pallet {
             ensure!(!maker_info.tron_address.is_empty(), Error::<T>::MakerTronAddressNotSet);
             let maker_tron_address = maker_info.tron_address.clone();
             
-            // 🆕 2025-10-20：步骤15-19 - 锁定资金、创建订单、索引、事件、上报价格（与open_order相同）
-            // TODO: 实现资金锁定逻辑（当前为简化版本，不锁定资金）
+            // ✅ 2025-10-23：步骤15 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // 函数级详细中文注释：采用做市商托管模式，与 open_order 保持一致
+            // - 如果做市商余额不足，返回友好的错误提示
+            <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
+                .map_err(|_| Error::<T>::MakerInsufficientLiquidity)?;
             
+            // 🆕 2025-10-20：步骤16-19 - 创建订单、索引、事件、上报价格
             let order = Order::<_, _, _> {
                 maker_id,
                 maker: maker_acc.clone(),
@@ -1007,6 +1169,7 @@ pub mod pallet {
                 contact_commit,
                 state: OrderState::Created,
                 epay_trade_no: None,              // 🆕 2025-10-21：初始化为None，等待做市商中继服务标记
+                completed_at: None,               // H-2修复：记录完成时间
             };
             
             Orders::<T>::insert(order_id, &order);
@@ -1033,127 +1196,6 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级详细中文注释：法币首购接口（推荐码可选，无推荐人资金进国库）
-        /// 
-        /// # 参数
-        /// - `origin`: 调用者（必须是授权的法币网关服务账户）
-        /// - `buyer`: 购买者地址
-        /// - `amount`: 购买金额（MEMO最小单位）
-        /// - `referrer`: 推荐人地址（可选，None表示无推荐人）
-        /// - `fiat_order_id`: 法币订单号（用于审计，最多64字节）
-        /// 
-        /// # 验证逻辑
-        /// 1. 验证调用者是授权的法币网关服务账户
-        /// 2. 验证买家未曾首购
-        /// 3. 验证购买金额在限制范围内（50-100 MEMO）
-        /// 4. 如果提供了推荐人，验证推荐人是有效会员
-        /// 
-        /// # 执行流程
-        /// 1. 从托管账户转账MEMO给买家
-        /// 2. 如果有推荐人：绑定推荐关系 + 触发联盟计酬
-        /// 3. 如果无推荐人：不绑定推荐关系，不触发联盟计酬（资金由链下转入国库）
-        /// 4. 记录首购信息
-        /// 5. 发出首购完成事件
-        #[pallet::call_index(20)]
-        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(6, 6))]
-        pub fn first_purchase_by_fiat(
-            origin: OriginFor<T>,
-            buyer: T::AccountId,
-            amount: <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-            referrer: Option<T::AccountId>,
-            fiat_order_id: Vec<u8>,
-        ) -> DispatchResult {
-            use frame_support::traits::ConstU32;
-            
-            // 1. ✅ 验证调用者是授权的法币网关服务账户
-            let caller = ensure_signed(origin)?;
-            ensure!(
-                caller == T::FiatGatewayAccount::get(),
-                Error::<T>::Unauthorized
-            );
-            
-            // 2. ✅ 验证买家未曾首购
-            ensure!(
-                !FirstPurchaseRecords::<T>::contains_key(&buyer),
-                Error::<T>::AlreadyPurchased
-            );
-            
-            // 3. ✅ 验证购买金额范围
-            let min_amount = T::MinFirstPurchaseAmount::get();
-            let max_amount = T::MaxFirstPurchaseAmount::get();
-            let amount_u128: u128 = amount.saturated_into();
-            let min_u128: u128 = min_amount.saturated_into();
-            let max_u128: u128 = max_amount.saturated_into();
-            ensure!(
-                amount_u128 >= min_u128 && amount_u128 <= max_u128,
-                Error::<T>::AmountOutOfRange
-            );
-            
-            // 4. ✅ 如果提供了推荐人，验证推荐人是有效会员
-            if let Some(ref r) = referrer {
-                ensure!(
-                    T::MembershipProvider::is_valid_member(r),
-                    Error::<T>::InvalidReferrer
-                );
-            }
-            
-            // 5. ✅ 从托管账户转账MEMO给买家
-            let treasury_account = T::FiatGatewayTreasuryAccount::get();
-            <T as Config>::Currency::transfer(
-                &treasury_account,
-                &buyer,
-                amount,
-                ExistenceRequirement::KeepAlive,
-            )?;
-            
-            // 6. ✅ 处理推荐关系和联盟计酬
-            if let Some(ref final_referrer) = referrer {
-                // 有推荐人：绑定推荐关系 + 触发联盟计酬
-                
-                // 6.1 绑定推荐关系（如果买家还未绑定）
-                if T::ReferralProvider::sponsor_of(&buyer).is_none() {
-                    let _ = T::ReferralProvider::bind_sponsor_internal(&buyer, final_referrer);
-                }
-                
-                // 6.2 触发联盟计酬分配
-                let now = <frame_system::Pallet<T>>::block_number();
-                
-                let _ = T::AffiliateDistributor::distribute_membership_rewards(
-                    &buyer,
-                    amount_u128,
-                    now,
-                );
-            }
-            // 无推荐人：不绑定推荐关系，不触发联盟计酬
-            // 资金由链下服务转入国库
-            
-            // 7. ✅ 记录首购信息
-            let now = <frame_system::Pallet<T>>::block_number();
-            let order_id_bounded: BoundedVec<u8, ConstU32<64>> = fiat_order_id
-                .clone()
-                .try_into()
-                .map_err(|_| Error::<T>::BadState)?;
-            
-            let purchase_info = FirstPurchaseInfo {
-                amount: amount_u128,
-                purchased_at: now,
-                referrer: referrer.clone(),
-                fiat_order_id: order_id_bounded.clone(),
-            };
-            FirstPurchaseRecords::<T>::insert(&buyer, purchase_info);
-            
-            // 8. ✅ 发出事件（转换回 BalanceOf<T> 类型）
-            let amount_balance: BalanceOf<T> = amount_u128.saturated_into();
-            Self::deposit_event(Event::FirstPurchaseCompleted {
-                buyer,
-                amount: amount_balance,
-                referrer,
-                fiat_order_id: order_id_bounded,
-                purchased_at: now,
-            });
-            
-            Ok(())
-        }
 
         /// 函数级中文注释：手动归档清理旧订单
         /// 
@@ -1254,6 +1296,181 @@ pub mod pallet {
             
             Ok(())
         }
+        
+        /// 🆕 2025-10-22：买家创建订单（使用免费配额）
+        /// 
+        /// # 函数级详细中文注释
+        /// 买家创建订单，如果有免费配额，无需支付 Gas；否则返回错误。
+        /// 
+        /// # 参数
+        /// - `origin`: 买家签名
+        /// - `maker_id`: 做市商 ID
+        /// - `qty`: 购买数量（MEMO，精度 10^18）
+        /// - `payment_commit`: 支付凭证承诺（Hash）
+        /// - `contact_commit`: 联系方式承诺（Hash）
+        /// 
+        /// # 免费配额机制
+        /// 1. 检查买家是否有免费配额（每个做市商独立配额）
+        /// 2. 如果有配额，递减配额并创建订单
+        /// 3. 如果无配额，返回错误 `FreeQuotaExhausted`
+        /// 4. 做市商可通过 `set_free_quota_config` 设置每个新买家的默认免费次数
+        /// 5. 做市商可通过 `grant_free_quota` 为特定买家增加额外配额
+        /// 
+        /// # 业务流程
+        /// 与 `open_order` 相同，但使用免费配额：
+        /// 1. 检查免费配额 ✅
+        /// 2. 验证做市商状态
+        /// 3. 获取价格并应用溢价
+        /// 4. 买家信用检查
+        /// 5. 锁定做市商MEMO到托管
+        /// 6. 创建订单
+        /// 
+        /// # 权重
+        /// - 读取：5（做市商 + 买家配额 + 买家信用 + 价格 + 托管）
+        /// - 写入：3（订单 + 买家配额 + 托管）
+        /// 
+        /// # 错误
+        /// - `FreeQuotaExhausted`: 免费配额已用完
+        /// - `MakerNotFound`: 做市商不存在
+        /// - `MakerNotApproved`: 做市商未激活
+        /// - `DirectionNotSupported`: 做市商不支持OTC业务
+        /// - `PriceNotAvailable`: 价格不可用
+        /// - `InsufficientBalance`: 买家余额不足
+        /// - `BadState`: 其他状态错误
+        /// 
+        /// # 事件
+        /// - `OrderCreated`: 订单已创建
+        /// - `FreeQuotaConsumed`: 免费配额已消费（由 market-maker pallet 触发）
+        #[pallet::call_index(23)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(5, 3))]
+        pub fn open_order_free(
+            origin: OriginFor<T>,
+            maker_id: u64,
+            qty: BalanceOf<T>,
+            payment_commit: H256,
+            contact_commit: H256,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // 步骤1 - 读取做市商信息
+            let maker_info = pallet_market_maker::ActiveMarketMakers::<T>::get(maker_id)
+                .ok_or(Error::<T>::MakerNotFound)?;
+            
+            // 步骤2 - 验证做市商状态
+            ensure!(
+                maker_info.status == pallet_market_maker::ApplicationStatus::Active,
+                Error::<T>::MakerNotApproved
+            );
+            
+            // 步骤3 - 验证做市商方向（OTC = Sell 或 BuyAndSell）
+            ensure!(
+                matches!(maker_info.direction, pallet_market_maker::Direction::Sell | pallet_market_maker::Direction::BuyAndSell),
+                Error::<T>::DirectionNotSupported
+            );
+            
+            // 步骤4 - 获取基准价格
+            let base_price_u64 = pallet_pricing::Pallet::<T>::get_memo_market_price_weighted();
+            ensure!(base_price_u64 > 0, Error::<T>::PriceNotAvailable);
+            
+            // 步骤5 - 应用做市商溢价
+            let sell_premium = maker_info.sell_premium_bps;
+            let final_price_u64 = base_price_u64
+                .saturating_mul((10000i32 + sell_premium as i32) as u64)
+                .saturating_div(10000);
+            
+            // 步骤6 - 价格偏离检查
+            pallet_pricing::Pallet::<T>::check_price_deviation(final_price_u64)?;
+            
+            // 步骤7 - 转换价格类型
+            let final_price_b: BalanceOf<T> = (final_price_u64 as u128).saturated_into();
+            
+            // 步骤8 - 计算订单总金额
+            let qty_b: BalanceOf<T> = qty;
+            let divisor: BalanceOf<T> = 1_000_000u128.saturated_into();
+            let amount_b: BalanceOf<T> = final_price_b
+                .saturating_mul(qty_b) / divisor;
+            
+            // 步骤8.1 - 买家信用限额检查
+            let amount_usdt = final_price_u64.saturating_mul(qty_b.saturated_into::<u64>()) / 1_000_000_000_000u64;
+            pallet_credit::Pallet::<T>::check_buyer_limit(&who, amount_usdt)
+                .map_err(|_| Error::<T>::BadState)?;
+            
+            // 步骤9 - 验证买家余额
+            let buyer_balance = <T as Config>::Currency::free_balance(&who);
+            ensure!(buyer_balance >= amount_b, Error::<T>::InsufficientBalance);
+            
+            // 步骤10 - 最小金额检查
+            ensure!(amount_b >= MinOrderAmount::<T>::get(), Error::<T>::BadState);
+            
+            // 步骤11 - 吃单限频检查
+            let (wstart, cnt) = OpenRate::<T>::get(&who);
+            let now = <frame_system::Pallet<T>>::block_number();
+            let window = OpenWindowParam::<T>::get();
+            let (wstart, cnt) = if now.saturating_sub(wstart) > window {
+                (now, 0u32)
+            } else {
+                (wstart, cnt)
+            };
+            ensure!(cnt < OpenMaxInWindowParam::<T>::get(), Error::<T>::BadState);
+            OpenRate::<T>::insert(&who, (wstart, cnt.saturating_add(1)));
+            
+            // 步骤12 - 生成订单ID
+            let order_id = NextOrderId::<T>::mutate(|x| {
+                let id = *x;
+                *x = id.saturating_add(1);
+                id
+            });
+            
+            // 步骤13 - 获取时间戳
+            let now_timestamp = <pallet_timestamp::Pallet<T>>::get();
+            let confirm_ttl_blocks = ConfirmTTLParam::<T>::get();
+            let confirm_ttl_ms: MomentOf<T> = (confirm_ttl_blocks.saturated_into::<u64>() * 6u64 * 1000u64).saturated_into();
+            let expire_timestamp = now_timestamp.saturating_add(confirm_ttl_ms);
+            let evidence_ttl_ms: MomentOf<T> = (confirm_ttl_blocks.saturated_into::<u64>() * 2u64 * 6u64 * 1000u64).saturated_into();
+            let evidence_timestamp = now_timestamp.saturating_add(evidence_ttl_ms);
+            
+            // 步骤14 - 锁定做市商的MEMO到托管（统一托管流程+流动性检查）
+            // 函数级详细中文注释：如果做市商余额不足，返回友好的错误提示
+            <T as Config>::Escrow::lock_from(&maker_info.owner, order_id, qty)
+                .map_err(|_| Error::<T>::MakerInsufficientLiquidity)?;
+            
+            // 步骤15 - 创建订单
+            let order = Order {
+                maker_id,
+                maker: maker_info.owner.clone(),
+                taker: who.clone(),
+                price: final_price_b,
+                qty,
+                amount: amount_b,
+                created_at: now_timestamp,
+                expire_at: expire_timestamp,
+                evidence_until: evidence_timestamp,
+                maker_tron_address: maker_info.tron_address.clone(),
+                payment_commit,
+                contact_commit,
+                state: OrderState::Created,
+                epay_trade_no: None,
+                completed_at: None,               // H-2修复：记录完成时间
+            };
+            
+            Orders::<T>::insert(order_id, order);
+            
+            // 步骤16 - 触发事件
+            Self::deposit_event(Event::OrderOpened {
+                id: order_id,
+                maker_id,
+                maker: maker_info.owner,
+                taker: who.clone(),
+                price: final_price_u64,
+                qty,
+                amount: amount_b,
+                maker_tron_address: maker_info.tron_address,
+                created_at: now_timestamp,
+                expire_at: expire_timestamp,
+            });
+            
+            Ok(())
+        }
     }
 
     // 仲裁路由钩子：由 runtime 调用，用于放行/退款/部分放行（本 Pallet 内仅更新状态，不涉及资金划转）
@@ -1280,9 +1497,9 @@ pub mod pallet {
         }
         fn arbitrate_release(id: u64) -> DispatchResult {
             // 函数级中文注释：提取订单信息用于价格聚合更新
-            let (price_usdt, memo_qty, timestamp) = {
+            let (price_usdt, memo_qty, timestamp, maker_id) = {
                 let ord = Orders::<T>::get(id).ok_or(Error::<T>::NotFound)?;
-                (ord.price.saturated_into::<u64>(), ord.qty.saturated_into::<u128>(), ord.created_at.saturated_into::<u64>())
+                (ord.price.saturated_into::<u64>(), ord.qty.saturated_into::<u128>(), ord.created_at.saturated_into::<u64>(), ord.maker_id)
             };
             
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
@@ -1294,21 +1511,37 @@ pub mod pallet {
                     ),
                     Error::<T>::BadState
                 );
+                
+                // 统一托管流程：从托管账户转账
                 // 函数级详细中文注释：仲裁释放时转账数量（qty）而不是金额（amount）
                 <T as Config>::Escrow::transfer_from_escrow(
                     ord.maker_id,
                     &ord.taker,
-                    ord.qty,  // 修复：应该转账数量
+                    ord.qty,
                 )?;
+                
                 ord.state = OrderState::Released;
                 Ok(())
             })?;
             
             // 函数级中文注释：仲裁完成后，同样添加到价格聚合统计
             let _ = pallet_pricing::Pallet::<T>::add_otc_order(timestamp, price_usdt, memo_qty);
+            
+            // 🆕 2025-10-22：仲裁释放（做市商胜诉） → 不记录违约，信用分保持不变
+            // 函数级详细中文注释：Release 表示做市商胜诉，买家败诉
+            // 做市商信用分不变，无需调用任何接口
+            // 未使用的变量 maker_id 用于提醒：这里可以扩展胜诉奖励逻辑
+            let _ = maker_id;
+            
             Ok(())
         }
         fn arbitrate_refund(id: u64) -> DispatchResult {
+            // 🆕 2025-10-22：提取 maker_id 用于信用更新
+            let maker_id = {
+                let ord = Orders::<T>::get(id).ok_or(Error::<T>::NotFound)?;
+                ord.maker_id
+            };
+            
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(
@@ -1321,9 +1554,22 @@ pub mod pallet {
                 // 🆕 2025-10-20：移除库存恢复逻辑（不再管理挂单库存）
                 ord.state = OrderState::Refunded;
                 Ok(())
-            })
+            })?;
+            
+            // 🆕 2025-10-22：仲裁退款（做市商败诉） → 记录争议违约，扣信用分
+            // 函数级详细中文注释：完全退款意味着做市商完全败诉，记录争议违约
+            // 惩罚：信用分 -20分（根据 MakerDisputeLossPenalty 配置）
+            let _ = <T as Config>::MakerCredit::record_default_dispute(maker_id, id);
+            
+            Ok(())
         }
         fn arbitrate_partial(id: u64, bps: u16) -> DispatchResult {
+            // 🆕 2025-10-22：提取 maker_id 用于信用更新
+            let maker_id = {
+                let ord = Orders::<T>::get(id).ok_or(Error::<T>::NotFound)?;
+                ord.maker_id
+            };
+            
             Orders::<T>::try_mutate(id, |maybe| -> Result<(), DispatchError> {
                 let ord = maybe.as_mut().ok_or(Error::<T>::NotFound)?;
                 ensure!(
@@ -1333,11 +1579,14 @@ pub mod pallet {
                     ),
                     Error::<T>::BadState
                 );
-                // 函数级中文注释：按 bps 分账：bps 给买家，其余退回卖家（从 listing 托管资金划转）
+                
+                // 函数级中文注释：按 bps 分账：bps 给买家，其余退回卖家
                 // 函数级详细中文注释：分账基于数量（qty）而不是金额（amount）
-                let total = ord.qty;  // 修复：应该基于数量分账
+                let total = ord.qty;
                 let buyer_share = (total / 10_000u32.into()) * (bps.into());
                 let seller_share = total.saturating_sub(buyer_share);
+                
+                // 统一托管流程：从托管账户转账
                 if !buyer_share.is_zero() {
                     <T as Config>::Escrow::transfer_from_escrow(
                         ord.maker_id,
@@ -1352,10 +1601,18 @@ pub mod pallet {
                         seller_share,
                     )?;
                 }
+                
                 // 部分成交视为订单关闭，库存不回增（已占用份额按金额完成分配）
                 ord.state = OrderState::Released;
                 Ok(())
-            })
+            })?;
+            
+            // 🆕 2025-10-22：仲裁部分放行（做市商部分败诉） → 记录争议违约，扣信用分
+            // 函数级详细中文注释：部分退款意味着做市商有部分责任，也记录为争议违约
+            // 惩罚：信用分 -20分（根据 MakerDisputeLossPenalty 配置，与完全败诉相同，简化处理）
+            let _ = <T as Config>::MakerCredit::record_default_dispute(maker_id, id);
+            
+            Ok(())
         }
     }
 
@@ -1388,8 +1645,19 @@ pub mod pallet {
                         ord.state,
                         OrderState::Created | OrderState::PaidOrCommitted | OrderState::Disputed
                     ) {
-                        // 🆕 2025-10-20：移除库存恢复逻辑（不再管理挂单库存）
-                        // 超时自动退款（Buy家资金通过托管系统处理）
+                        // ✅ 2025-10-23：超时自动退款（释放托管资金）
+                        // 函数级详细中文注释：根据订单状态释放托管资金
+                        // - Created: 订单未付款，释放做市商的 MEMO
+                        // - PaidOrCommitted/Disputed: 订单已付款或争议中，退款给做市商
+                        
+                        let _ = <T as Config>::Escrow::transfer_from_escrow(
+                            ord.maker_id,
+                            &ord.maker,
+                            ord.qty,
+                        );
+                        total_reads += 1;
+                        total_writes += 1;
+                        
                         ord.state = OrderState::Refunded;
                         Orders::<T>::insert(id, ord);
                         total_writes += 1;

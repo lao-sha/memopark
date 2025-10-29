@@ -3,6 +3,9 @@ import { AppConfig } from './config';
 // 兼容旧代码：重新导出安全封装的API工具函数
 export { getApi, signAndSend, sendViaForwarder } from './polkadot-safe';
 
+// 导出 useApi hook（从 hooks 重新导出）
+export { useApi } from '../hooks/useApi';
+
 /**
  * 函数级详细中文注释：创建 Polkadot API 实例
  * - 优先读取环境变量注入的 `VITE_WS`（通过 `AppConfig.wsEndpoint`）

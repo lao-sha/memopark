@@ -143,69 +143,6 @@ const DashboardPage: React.FC = () => {
             <Col span={24}><Typography.Text type="secondary">创建墓地 CreateFee</Typography.Text><div>{fmt(createFee)}</div></Col>
           </Row>
         </Card>
-
-        {/* 全局链上直连模式，暂时隐藏 Subsquid 相关功能 */}
-        {false && (
-          <Space direction="vertical" style={{ width: '100%' }} size={8}>
-            {squidError && <Alert type="error" showIcon message={squidError} />}
-
-            <Card size="small" title="近30天新增墓地">
-              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 80 }}>
-                {dailyNewGraves.map(d => (
-                  <div key={d.day} title={`${d.day}: ${d.count}`} style={{ width: 6, background: '#1677ff', height: Math.min(70, d.count * 6) || 2, opacity: d.count ? 1 : 0.25 }} />
-                ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#666', marginTop: 4 }}>
-                <span>{dailyNewGraves[0]?.day || ''}</span>
-                <span>{dailyNewGraves[dailyNewGraves.length - 1]?.day || ''}</span>
-              </div>
-            </Card>
-
-            <Row gutter={8}>
-              <Col span={12}>
-                <Card size="small" title="近7天园区 Top5（新增墓地）">
-                  {topParks.length === 0 ? <Typography.Text type="secondary">暂无数据</Typography.Text> : (
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      {topParks.map((p, idx) => (
-                        <div key={p.parkId} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>#{idx + 1} Park {p.parkId}</span>
-                          <Tag color="blue">{p.count}</Tag>
-                        </div>
-                      ))}
-                    </Space>
-                  )}
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card size="small" title="近7天墓地 Top5（按最近动作数）">
-                  {topGraves.length === 0 ? <Typography.Text type="secondary">暂无数据</Typography.Text> : (
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      {topGraves.map((g, idx) => (
-                        <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>#{idx + 1} Grave {g.id}</span>
-                          <Tag color="geekblue">{g.actions}</Tag>
-                        </div>
-                      ))}
-                    </Space>
-                  )}
-                </Card>
-              </Col>
-            </Row>
-
-            <Card size="small" title="最近事件（GraveActions）">
-              {recentActions.length === 0 ? <Typography.Text type="secondary">暂无数据</Typography.Text> : (
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  {recentActions.map((a, i) => (
-                    <div key={`${a.block}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>{a.kind}{typeof a.graveId === 'number' ? ` · #${a.graveId}` : ''}</span>
-                      <span>#{a.block}</span>
-                    </div>
-                  ))}
-                </Space>
-              )}
-            </Card>
-          </Space>
-        )}
       </Space>
     </div>
   )

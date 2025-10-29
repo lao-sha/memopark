@@ -72,8 +72,8 @@ export const MakerBridgeSwapPage: React.FC = () => {
     try {
       const mmId = parseInt(makerId);
       
-      // 1. 查询做市商基本信息
-      const makerOpt = await api.query.marketMaker.activeMarketMakers(mmId);
+      // 🆕 查询做市商信息（pallet-trading 已合并做市商信息和桥接配置）
+      const makerOpt = await api.query.trading.makerApplications(mmId);
       if (makerOpt.isNone) {
         message.error('做市商不存在');
         navigate('/bridge/maker-list');
@@ -81,34 +81,37 @@ export const MakerBridgeSwapPage: React.FC = () => {
       }
       
       const maker = makerOpt.unwrap();
+      const makerData = maker.toJSON() as any;
+      
+      // 检查做市商状态和业务方向
+      if (makerData.status !== 'Active') {
+        message.error('该做市商未激活');
+        navigate('/bridge/maker-list');
+        return;
+      }
+      
+      // 检查是否支持桥接（Buy或BuyAndSell）
+      const supportsBridge = makerData.direction === 'Buy' || makerData.direction === 'BuyAndSell';
+      if (!supportsBridge) {
+        message.error('该做市商不提供桥接服务');
+        navigate('/bridge/maker-list');
+        return;
+      }
+      
       setMakerInfo({
         mmId,
-        owner: maker.owner.toHuman(),
-        name: maker.public_cid.toHuman() || `做市商 #${mmId}`,
+        owner: makerData.owner,
+        name: makerData.publicCid || `做市商 #${mmId}`,
       });
       
-      // 2. 查询桥接服务配置
-      const serviceOpt = await api.query.marketMaker.bridgeServices(mmId);
-      if (serviceOpt.isNone) {
-        message.error('该做市商未提供桥接服务');
-        navigate('/bridge/maker-list');
-        return;
-      }
-      
-      const service = serviceOpt.unwrap();
-      if (!service.enabled.toHuman()) {
-        message.error('该做市商的桥接服务已暂停');
-        navigate('/bridge/maker-list');
-        return;
-      }
-      
+      // 🆕 从maker数据中提取桥接配置
       setServiceConfig({
-        maxSwapAmount: service.max_swap_amount.toNumber() / 1_000_000,
-        feeRate: service.fee_rate_bps.toNumber() / 100,
-        totalSwaps: service.total_swaps.toNumber(),
-        successCount: service.success_count.toNumber(),
-        avgTime: service.avg_time_seconds.toNumber(),
-        deposit: service.deposit.toNumber() / 1e12,
+        maxSwapAmount: 10000, // TODO: 根据deposit计算最大兑换额
+        feeRate: Math.abs(makerData.buyPremiumBps || 0) / 100, // 使用Buy溢价作为费率
+        totalSwaps: 0, // TODO: 需要从其他地方获取统计数据
+        successCount: 0,
+        avgTime: 600, // 默认10分钟
+        deposit: Number(BigInt(makerData.deposit || '0') / BigInt(1e12)),
       });
       
     } catch (error: any) {
@@ -190,8 +193,8 @@ export const MakerBridgeSwapPage: React.FC = () => {
       const memoAmountRaw = BigInt(Math.floor(values.memoAmount * 1e12));
       const tronAddr = values.tronAddress;
       
-      // 调用链上方法
-      const tx = api.tx.simpleBridge.swapWithMaker(
+      // 调用链上方法（🆕 pallet-trading）
+      const tx = api.tx.trading.makerSwap(
         mmId,
         memoAmountRaw,
         tronAddr
@@ -202,10 +205,10 @@ export const MakerBridgeSwapPage: React.FC = () => {
         currentAccount.address,
         (status, events) => {
           if (status.isInBlock) {
-            // 查找 MakerSwapInitiated 事件
+            // 查找 MakerSwapInitiated 事件（🆕 pallet-trading）
             if (events) {
               events.forEach(({ event }: any) => {
-                if (event.section === 'simpleBridge' && event.method === 'MakerSwapInitiated') {
+                if (event.section === 'trading' && event.method === 'MakerSwapInitiated') {
                   const swapIdRaw = event.data[0].toNumber();
                   setSwapId(swapIdRaw);
                   message.success(`兑换已发起！兑换ID: ${swapIdRaw}`);
@@ -235,7 +238,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
     
     const interval = setInterval(async () => {
       try {
-        const recordOpt = await api.query.simpleBridge.makerSwaps(id);
+        const recordOpt = await api.query.trading.makerSwaps(id);
         if (recordOpt.isSome) {
           const record = recordOpt.unwrap();
           setSwapRecord(record.toJSON());
@@ -286,7 +289,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.simpleBridge.confirmReceipt(swapId);
+      const tx = api.tx.trading.confirmSwap(swapId);  // 🆕 pallet-trading
       
       const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
       

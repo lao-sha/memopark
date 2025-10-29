@@ -268,7 +268,7 @@ pub mod pallet {
 	/// 
 	/// **注意**：pallet-deposits作为底层服务模块，主要通过DepositManager trait被其他pallet调用。
 	/// 暂不直接暴露extrinsics，避免复杂类型的codec问题。
-	/// 用户通过使用pallet-deposits的上层pallet（如pallet-memo-content-governance）间接使用押金功能。
+	/// 用户通过使用pallet-deposits的上层pallet（如pallet-memo-appeals）间接使用押金功能。
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		/* Extrinsics暂时注释，使用DepositManager trait替代

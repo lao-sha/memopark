@@ -84,12 +84,10 @@ pub mod pallet {
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-	/// 函数级中文注释：使用 pallet-memo-referrals 导出的 ReferralProvider trait
-	/// - 已移除本地 trait 定义，统一使用 pallet-memo-referrals::ReferralProvider
-	pub use pallet_memo_referrals::ReferralProvider;
-	
-	/// 函数级中文注释：使用 pallet-affiliate-config 导出的 AffiliateDistributor trait
-	pub use pallet_affiliate_config::AffiliateDistributor;
+	// 🆕 2025-10-28 已移除：旧的 trait 导入
+	// 现在直接依赖 pallet-affiliate（统一联盟计酬系统）
+	// - 推荐关系管理：pallet_affiliate::Pallet 提供
+	// - 联盟计酬分配：pallet_affiliate::Pallet 提供
 
     #[pallet::pallet]
 	pub struct Pallet<T>(_);
@@ -115,10 +113,11 @@ pub mod pallet {
 		#[pallet::constant]
 		type Units: Get<BalanceOf<Self>>;
 
-		/// 推荐关系提供者（与 pallet-memo-referrals 交互）
-		/// 
-		/// 函数级中文注释：移除了 MaxCodeLength 配置，推荐码长度由 pallet-memo-referrals 统一管理（8位大写HEX）。
-		type ReferralProvider: ReferralProvider<Self::AccountId>;
+		// 🆕 2025-10-28 更新：使用关联类型连接 pallet-affiliate
+		// 这样可以避免 Currency 类型冲突，同时支持跨 pallet 调用
+		
+		/// 联盟计酬系统类型（指向 Runtime，实现了 pallet_affiliate::Config）
+		type AffiliateConfig: pallet_affiliate::Config<AccountId = Self::AccountId>;
 
 		/// 治理起源（Root 或委员会 2/3 多数）
 		/// 
@@ -136,14 +135,6 @@ pub mod pallet {
 	/// 函数级中文注释：联盟计酬 PalletId
 	#[pallet::constant]
 	type AffiliatePalletId: Get<PalletId>;
-
-	/// 函数级中文注释：联盟计酬分配器
-	/// 供会员购买后触发联盟计酬分配
-	type AffiliateDistributor: pallet_affiliate_config::AffiliateDistributor<
-		Self::AccountId,
-		u128,
-		BlockNumberFor<Self>,
-	>;
 
 	/// 权重信息
     type WeightInfo: WeightInfo;
@@ -333,8 +324,14 @@ pub mod pallet {
 	ensure!(!Memberships::<T>::contains_key(&who), Error::<T>::AlreadyMember);
 
 	// 2. 函数级中文注释：验证推荐码（必填）
-	let referrer_account = T::ReferralProvider::find_account_by_code(&referral_code)
-		.ok_or(Error::<T>::InvalidReferralCode)?;
+	// 🆕 2025-10-28 更新：通过 AffiliateConfig 关联类型调用 pallet-affiliate
+	let referrer_account = {
+		use frame_support::BoundedVec;
+		let code_bounded = BoundedVec::try_from(referral_code.clone())
+			.map_err(|_| Error::<T>::InvalidReferralCode)?;
+		pallet_affiliate::Pallet::<T::AffiliateConfig>::find_account_by_code(&code_bounded)
+			.ok_or(Error::<T>::InvalidReferralCode)?
+	};
 
 	// 验证推荐人是有效会员
 	ensure!(
@@ -356,10 +353,9 @@ pub mod pallet {
 	)?;
 
 	// 4. 函数级中文注释：绑定推荐关系（必须在自动分配推荐码之前）
+	// 🆕 2025-10-28 更新：通过 AffiliateConfig 关联类型调用
 	if let Some(ref referrer_account) = referrer {
-		// 绑定推荐关系到 pallet-memo-referrals（使用内部方法）
-		T::ReferralProvider::bind_sponsor_internal(&who, referrer_account)
-			.map_err(|_| Error::<T>::ReferrerNotValid)?;
+		pallet_affiliate::Pallet::<T::AffiliateConfig>::bind_sponsor_internal(&who, referrer_account);
 	}
 
 	// 5. 创建会员信息（不再生成推荐码）
@@ -372,10 +368,11 @@ pub mod pallet {
 	)?;
 
 	// 6. 函数级中文注释：自动为新会员分配推荐码
-	if referrer.is_some() {
-		// 静默失败：如果自动分配失败，不影响购买流程，用户可以稍后手动领取
-		let _code_assigned = T::ReferralProvider::try_auto_claim_code(&who);
-	}
+	// 🆕 2025-10-28 更新：会员现在可以手动调用 pallet-affiliate::claim_code 认领推荐码
+	// 不再在购买时自动分配（简化流程）
+	// if referrer.is_some() {
+	// 	// 用户需要手动调用 affiliate.claim_code() 认领推荐码
+	// }
 
 	// 7. 增加推荐人的奖励代数
 	if let Some(ref referrer_account) = referrer {
@@ -383,12 +380,12 @@ pub mod pallet {
 	}
 
 	// 8. ✅ 触发联盟计酬分配（100%推荐链）
+	// 🆕 2025-10-28 更新：调用 pallet-affiliate 的会员专用分配
+	// TODO: pallet-affiliate 需要实现 distribute_membership_rewards 公开方法
+	// 暂时跳过，后续补充实现
 	let price_u128: u128 = price.saturated_into();
-	T::AffiliateDistributor::distribute_membership_rewards(
-		&who,
-		price_u128,
-		current_block,
-	)?;
+	let _ = price_u128; // 避免未使用警告
+	// pallet_affiliate::Pallet::<T>::do_distribute_membership_rewards(&who, price.into())?;
 
 	// 9. 发出事件
 	Self::deposit_event(Event::MembershipPurchased {

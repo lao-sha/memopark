@@ -1,0 +1,72 @@
+[package]
+name = "pallet-trading"
+version = "0.1.0"
+edition = "2021"
+license = "Unlicense"
+publish = false
+repository = "https://github.com/memoio/memopark"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.3", default-features = false, features = ["derive"] }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false, optional = true }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+sp-arithmetic = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+log = { version = "0.4.22", default-features = false }
+
+# 依赖其他pallet
+pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+pallet-pricing = { path = "../pricing", default-features = false }
+pallet-escrow = { path = "../escrow", default-features = false }
+
+# 🆕 2025-10-29: 使用整合后的pallet
+pallet-credit = { path = "../credit", default-features = false }  # 替代 buyer-credit 和 maker-credit
+pallet-affiliate = { path = "../affiliate", default-features = false }  # 替代 affiliate-config
+
+pallet-memo-referrals = { path = "../memo-referrals", default-features = false }
+pallet-evidence = { path = "../evidence", default-features = false }
+
+[dev-dependencies]
+pallet-balances = { version = "38.0.0" }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"frame-benchmarking?/std",
+	"frame-support/std",
+	"frame-system/std",
+	"scale-info/std",
+	"sp-runtime/std",
+	"sp-std/std",
+	"sp-core/std",
+	"sp-io/std",
+	"sp-arithmetic/std",
+	"log/std",
+	"pallet-timestamp/std",
+	"pallet-pricing/std",
+	"pallet-escrow/std",
+	"pallet-credit/std",  # 🆕 2025-10-29: 替代 buyer-credit 和 maker-credit
+	"pallet-affiliate/std",  # 🆕 2025-10-29: 替代 affiliate-config
+	"pallet-memo-referrals/std",
+	"pallet-evidence/std",
+]
+runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"sp-runtime/runtime-benchmarks",
+]
+try-runtime = [
+	"frame-support/try-runtime",
+	"frame-system/try-runtime",
+	"sp-runtime/try-runtime",
+]

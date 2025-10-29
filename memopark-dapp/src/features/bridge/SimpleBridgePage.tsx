@@ -144,8 +144,8 @@ export const SimpleBridgePage: React.FC = () => {
         setLoading(true);
         
         try {
-            // 调用 simpleBridge.swap
-            const tx = api.tx.simpleBridge.swap(
+            // 调用 trading.swap（🆕 pallet-trading）
+            const tx = api.tx.trading.swap(
                 BigInt(memoAmount * 1e12), // MEMO 12位小数
                 tronAddress
             );
@@ -161,7 +161,7 @@ export const SimpleBridgePage: React.FC = () => {
                         // 从事件中提取 swap ID 和实际汇率
                         if (events) {
                             events.forEach(({ event }: any) => {
-                                if (event.section === 'simpleBridge' && event.method === 'SwapCreated') {
+                                if (event.section === 'trading' && event.method === 'SwapCreated') {
                                     const id = event.data.id?.toNumber() || event.data[0].toNumber();
                                     const priceUsdt = event.data.price_usdt?.toNumber() || event.data[4]?.toNumber();
                                     

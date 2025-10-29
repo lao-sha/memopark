@@ -78,6 +78,11 @@ pub mod pallet {
         pub price_usdt: u64,
         /// 函数级中文注释：创建时间戳（区块号，用于统计）
         pub created_at: BlockNumberFor<T>,
+        /// ✅ 2025-10-23：超时时间（区块号，P2优化）
+        /// 函数级详细中文注释：兑换请求超时时间（创建时间 + SwapTimeout 配置的区块数）
+        /// - 默认：300 区块（约30分钟，假设6秒/区块）
+        /// - 超时后自动退款给用户，防止 MEMO 永久锁定
+        pub expire_at: BlockNumberFor<T>,
     }
 
     /// 🆕 函数级详细中文注释：做市商兑换状态枚举
@@ -270,23 +275,24 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    /// 🆕 2025-10-19（更新）：已验证的 TRON 交易哈希（防重放攻击）
+    /// 🆕 H-3修复：已验证的 TRON 交易哈希（防重放攻击 - 永久存储）
     /// 函数级详细中文注释：记录所有已使用的 TRON 交易哈希，防止同一笔 TRON 交易被重复使用
     /// 
     /// Key: BoundedVec<u8, ConstU32<128>> - TRON交易哈希（十六进制字符串）
-    /// Value: (u64, BlockNumberFor<T>) - (订单ID, 验证区块号)
+    /// Value: u64 - 订单ID
     /// 
-    /// 更新说明：
-    /// - 原来只存储 order_id
-    /// - 现在增加 block_number，用于支持定期清理过期记录
-    /// - 清理策略：保留期 180 天（TronTxHashRetentionPeriod 配置）
+    /// H-3修复说明：
+    /// - 移除 verified_at_block，改为永久存储
+    /// - 不再清理历史记录，彻底防止重放攻击
+    /// - 存储成本：每笔交易约 160 字节（可接受）
+    /// - 配合布隆过滤器快速查询
     #[pallet::storage]
     #[pallet::getter(fn used_tron_tx_hashes)]
     pub type UsedTronTxHashes<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         BoundedVec<u8, ConstU32<128>>, // tron_tx_hash
-        (u64, BlockNumberFor<T>), // 🆕 (order_id, verified_at_block)
+        u64, // order_id（仅存ID节省空间）
         OptionQuery,
     >;
 
@@ -366,6 +372,13 @@ pub mod pallet {
         /// [swap_id]
         SwapCompleted {
             id: u64,
+        },
+        /// ✅ 2025-10-23：兑换超时自动退款（P2优化）
+        /// 函数级详细中文注释：兑换请求超时，MEMO 已退款给用户
+        SwapRefunded {
+            id: u64,
+            user: T::AccountId,
+            amount: BalanceOf<T>,
         },
         /// 函数级详细中文注释：桥接账户已更新
         BridgeAccountSet {
@@ -692,6 +705,12 @@ pub mod pallet {
             
             let created_at = <frame_system::Pallet<T>>::block_number();
             
+            // ✅ 2025-10-23：计算超时时间（P2优化）
+            // 函数级详细中文注释：超时时间 = 创建时间 + SwapTimeout 配置的区块数
+            // - 默认 300 区块（约30分钟）
+            // - 超时后自动退款，防止 MEMO 永久锁定
+            let expire_at = created_at.saturating_add(T::SwapTimeout::get());
+            
             let request = SwapRequest {
                 id,
                 user: who.clone(),
@@ -700,6 +719,7 @@ pub mod pallet {
                 completed: false,
                 price_usdt,
                 created_at,
+                expire_at,  // ✅ 新增：超时时间
             };
             
             Swaps::<T>::insert(id, &request);
@@ -1520,9 +1540,8 @@ pub mod pallet {
             record.tron_tx_hash = Some(tron_tx_hash.clone());
             OcwMakerSwaps::<T>::insert(swap_id, &record);
             
-            // 🆕 2025-10-19：记录已使用的交易哈希（含区块号用于清理）
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            UsedTronTxHashes::<T>::insert(&tron_tx_hash, (swap_id, current_block));
+            // 🆕 H-3修复：记录已使用的交易哈希（永久存储）
+            UsedTronTxHashes::<T>::insert(&tron_tx_hash, swap_id);
             
             // 加入 OCW 验证队列
             PendingOcwVerification::<T>::insert(swap_id, ());
@@ -1854,7 +1873,56 @@ pub mod pallet {
             let mut total_reads = 0u64;
             let mut total_writes = 0u64;
             
-            // === 自动归档清理（每天一次）===
+            // ✅ 2025-10-23：功能1 - 超时自动退款（P2优化，每区块执行）
+            // 函数级详细中文注释：检查未完成的兑换请求，超时后自动退款
+            // - 防止 MEMO 永久锁定在桥接账户
+            // - 限制每区块最多处理 10 个超时兑换（防止 Gas 爆炸）
+            const MAX_REFUNDS_PER_BLOCK: usize = 10;
+            let mut refunded_count = 0;
+            let bridge_account = BridgeAccount::<T>::get();
+            
+            if let Some(bridge_acc) = bridge_account {
+                for (id, swap) in Swaps::<T>::iter() {
+                    if refunded_count >= MAX_REFUNDS_PER_BLOCK {
+                        break;
+                    }
+                    
+                    total_reads += 1;
+                    
+                    // 检查是否超时且未完成
+                    if !swap.completed && n >= swap.expire_at {
+                        // 退款给用户
+                        let result = <T as pallet_market_maker::Config>::Currency::transfer(
+                            &bridge_acc,
+                            &swap.user,
+                            swap.memo_amount,
+                            ExistenceRequirement::KeepAlive,
+                        );
+                        
+                        if result.is_ok() {
+                            // 标记为已完成（实际是退款）
+                            Swaps::<T>::try_mutate(id, |maybe_swap| -> DispatchResult {
+                                if let Some(s) = maybe_swap {
+                                    s.completed = true;
+                                    total_writes += 1;
+                                }
+                                Ok(())
+                            }).ok();
+                            
+                            // 触发事件
+                            Self::deposit_event(Event::SwapRefunded {
+                                id,
+                                user: swap.user.clone(),
+                                amount: swap.memo_amount,
+                            });
+                            
+                            refunded_count += 1;
+                        }
+                    }
+                }
+            }
+            
+            // === 功能2：自动归档清理（每天一次）===
             // 每14400个区块执行一次（约1天：86400秒 / 6秒 = 14400块）
             const BLOCKS_PER_DAY: u32 = 14400;
             

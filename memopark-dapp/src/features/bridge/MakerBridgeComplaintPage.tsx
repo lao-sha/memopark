@@ -56,7 +56,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
     setRecordLoading(true);
     try {
       const id = parseInt(swapId);
-      const recordOpt = await api.query.simpleBridge.makerSwaps(id);
+      const recordOpt = await api.query.trading.makerSwaps(id);  // 🆕 pallet-trading
       
       if (recordOpt.isNone) {
         message.error('兑换记录不存在');
@@ -115,8 +115,8 @@ export const MakerBridgeComplaintPage: React.FC = () => {
     try {
       const id = parseInt(swapId);
       
-      // 调用链上方法
-      const tx = api.tx.simpleBridge.reportMaker(
+      // 调用链上方法（🆕 pallet-trading）
+      const tx = api.tx.trading.reportSwap(
         id,
         evidenceCid
       );

@@ -6,7 +6,7 @@
  */
 
 import { handshakeWithBackend } from './backend'
-import { SecureStorage } from './secureStorageSimple'
+import { SecureStorage } from './secureStorage'
 
 export interface SessionData {
   sessionId: string

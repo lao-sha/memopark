@@ -11,7 +11,7 @@ const { Title, Text } = Typography
  * 函数级详细中文注释：做市商配置管理页面
  * 设计目标：
  * 1）仅供 Active 状态的做市商使用，用于更新 epay 配置
- * 2）调用 pallet-market-maker::update_epay_config(mm_id, epay_gateway?, epay_port?, epay_pid?, epay_key?)
+ * 2）调用 pallet-market-maker::update_epay_config(maker_id, epay_gateway?, epay_port?, epay_pid?, epay_key?)
  * 3）支持部分更新：只更新用户修改的字段
  * 4）首购资金池使用 deposit_to_first_purchase_pool 接口（单独调用）
  */
@@ -217,7 +217,7 @@ export default function MarketMakerConfigPage() {
 
   /**
    * 函数级详细中文注释：提交 epay 配置更新（链上调用）
-   * - 签名调用 pallet-market-maker::update_epay_config(mm_id, epay_gateway?, epay_port?, epay_pid?, epay_key?)
+   * - 签名调用 pallet-market-maker::update_epay_config(maker_id, epay_gateway?, epay_port?, epay_pid?, epay_key?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    */
   const onUpdateConfig = async (values: any) => {
@@ -314,7 +314,7 @@ export default function MarketMakerConfigPage() {
 
   /**
    * 函数级详细中文注释：向首购资金池充值（链上调用）
-   * - 签名调用 pallet-market-maker::deposit_to_first_purchase_pool(mm_id, amount)
+   * - 签名调用 pallet-market-maker::deposit_to_first_purchase_pool(maker_id, amount)
    */
   const onDepositToPool = async () => {
     if (!api || !marketMakerInfo) {

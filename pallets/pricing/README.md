@@ -1,660 +1,404 @@
-# pallet-pricing（MEMO 市场价格聚合）
+# Pallet Pricing - MEMO价格管理系统
 
-## 概述
+## 📋 模块概述
 
-`pallet-pricing` 是 MEMO 区块链的**链上价格聚合模块**，基于真实成交数据统计市场价格，为其他模块提供可靠的价格参考。
+`pallet-pricing` 是Memopark生态的**价格发现与聚合模块**，基于OTC和Bridge两个市场的真实交易数据，计算MEMO的市场加权均价。采用循环缓冲区+滑动窗口算法，维护最近100万MEMO的价格统计，为OTC订单和桥接兑换提供可靠的价格基准。
 
-**版本**：v3.0.0 (2025-10-19)  
-**状态**：✅ 生产就绪
+### 设计理念
 
-### 核心功能
+- **真实数据驱动**：基于实际成交价格，非预言机喂价
+- **双市场聚合**：OTC+Bridge价格加权平均
+- **滑动窗口**：最近100万MEMO交易，动态更新
+- **冷启动保护**：初期交易量不足时使用默认价格
+- **循环缓冲区**：最多存储1万笔订单，内存高效
 
-1. **价格聚合**：统计 OTC 和 Simple Bridge 的真实成交数据
-2. **滑动窗口**：维护最近 1,000,000 MEMO 的交易记录
-3. **加权平均**：根据交易量计算市场加权均价
-4. **冷启动保护**：市场初期使用默认价格，达到阈值后切换到市场价格
+## 🏗️ 架构设计
 
-### 设计原则
+```text
+┌─────────────────────────────────────┐
+│     OTC订单完成                      │
+│  - 价格: 0.0102 USDT/MEMO           │
+│  - 数量: 100 MEMO                   │
+└──────────────┬──────────────────────┘
+               ↓ 添加到聚合
+┌─────────────────────────────────────┐
+│     OTC价格聚合                      │
+│  - 累计MEMO: 850,000                │
+│  - 累计USDT: 8,670                  │
+│  - 均价: 0.0102 USDT/MEMO           │
+└──────────────┬──────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│     Bridge兑换完成                   │
+│  - 价格: 0.0098 USDT/MEMO           │
+│  - 数量: 200 MEMO                   │
+└──────────────┬──────────────────────┘
+               ↓ 添加到聚合
+┌─────────────────────────────────────┐
+│     Bridge价格聚合                   │
+│  - 累计MEMO: 780,000                │
+│  - 累计USDT: 7,644                  │
+│  - 均价: 0.0098 USDT/MEMO           │
+└──────────────┬──────────────────────┘
+               ↓ 加权平均
+┌─────────────────────────────────────┐
+│     市场加权均价                     │
+│  weighted_price = (OTC_price × OTC_volume + Bridge_price × Bridge_volume) / (OTC_volume + Bridge_volume)
+│  = (0.0102 × 850,000 + 0.0098 × 780,000) / (850,000 + 780,000)
+│  = 0.0100 USDT/MEMO
+└─────────────────────────────────────┘
+```
 
-- ✅ **去中心化**：无需外部喂价，基于链上真实成交
-- ✅ **自适应**：价格随市场供需动态调整
-- ✅ **可靠性**：滑动窗口机制防止单笔交易影响过大
-- ✅ **简单性**：纯数学计算，无复杂逻辑
+## 🔑 核心功能
 
----
+### 1. 价格聚合算法
 
-## 存储项
-
-### 价格聚合数据
-
-#### OtcPriceAggregate
-- **类型**：`StorageValue<PriceAggregateData>`
-- **说明**：OTC 市场的价格聚合统计
-- **字段**：
-  - `total_memo`：累计 MEMO 数量（精度 10^12）
-  - `total_usdt`：累计 USDT 金额（精度 10^6）
-  - `order_count`：订单数量
-  - `oldest_index`：最旧订单索引（0-9999）
-  - `newest_index`：最新订单索引（0-9999）
-
-#### BridgePriceAggregate
-- **类型**：`StorageValue<PriceAggregateData>`
-- **说明**：Simple Bridge 的价格聚合统计
-- **字段**：同 OtcPriceAggregate
-
-### 循环缓冲区
-
-#### OtcOrderRingBuffer
-- **类型**：`StorageMap<u32, OrderSnapshot>`
-- **说明**：存储最多 10,000 笔 OTC 订单快照
-- **索引范围**：0-9999
-- **OrderSnapshot 字段**：
-  - `timestamp`：订单时间戳（Unix 毫秒）
-  - `price_usdt`：USDT 单价（精度 10^6）
-  - `memo_qty`：MEMO 数量（精度 10^12）
-
-#### BridgeOrderRingBuffer
-- **类型**：`StorageMap<u32, OrderSnapshot>`
-- **说明**：存储最多 10,000 笔 Bridge 兑换快照
-- **索引范围**：0-9999
-
-### 冷启动参数
-
-#### ColdStartThreshold
-- **类型**：`StorageValue<u128>`
-- **默认值**：100,000,000 MEMO（1亿，精度 10^12）
-- **说明**：冷启动阈值，当 OTC 和 Bridge 的交易量都低于此值时使用默认价格
-
-#### DefaultPrice
-- **类型**：`StorageValue<u64>`
-- **默认值**：1（0.000001 USDT/MEMO，精度 10^6）
-- **说明**：冷启动期间的默认价格
-
-#### ColdStartExited
-- **类型**：`StorageValue<bool>`
-- **默认值**：false
-- **说明**：冷启动退出标记（单向锁定，一旦退出不再回退）
-
----
-
-## 可调用接口
-
-### set_cold_start_params（治理调整冷启动参数）
-
+#### 循环缓冲区
 ```rust
-pub fn set_cold_start_params(
-    origin: OriginFor<T>,
-    threshold: Option<u128>,
-    default_price: Option<u64>,
-) -> DispatchResult
+// 存储最多10,000笔订单快照
+pub type OtcOrderRingBuffer<T> = StorageMap<
+    _,
+    Blake2_128Concat,
+    u32,  // 索引 0-9999
+    OrderSnapshot,
+>;
+
+pub struct OrderSnapshot {
+    pub timestamp: u64,         // 时间戳
+    pub price_usdt: u64,        // USDT单价（精度10^6）
+    pub memo_qty: u128,         // MEMO数量（精度10^12）
+}
 ```
 
-#### 功能说明
-- 治理调整冷启动阈值和默认价格
-- 只能在冷启动期间调整（`ColdStartExited` = false）
-- 一旦退出冷启动，无法再调整
-
-#### 参数
-- `origin`：必须是 Root 权限
-- `threshold`：可选，新的冷启动阈值（MEMO 数量，精度 10^12）
-- `default_price`：可选，新的默认价格（USDT/MEMO，精度 10^6）
-
-#### 错误
-- `ColdStartAlreadyExited`：已退出冷启动，无法调整参数
-
-#### JavaScript 示例
-
-```javascript
-// 设置冷启动阈值为 5000 万 MEMO
-await api.tx.sudo.sudo(
-  api.tx.pricing.setColdStartParams(
-    50_000_000n * 1_000_000_000_000n,  // 5000万 MEMO
-    null  // 不修改默认价格
-  )
-).signAndSend(sudoKey);
-
-// 设置默认价格为 0.000001 USDT
-await api.tx.sudo.sudo(
-  api.tx.pricing.setColdStartParams(
-    null,  // 不修改阈值
-    1      // 0.000001 USDT/MEMO
-  )
-).signAndSend(sudoKey);
+#### 滑动窗口聚合
+```rust
+pub struct PriceAggregateData {
+    pub total_memo: u128,       // 累计MEMO数量
+    pub total_usdt: u128,       // 累计USDT金额
+    pub order_count: u32,       // 订单数量
+    pub oldest_index: u32,      // 最旧订单索引
+    pub newest_index: u32,      // 最新订单索引
+}
 ```
 
----
-
-## 公开方法（链上调用）
-
-### add_otc_order（添加 OTC 订单）
-
+#### add_otc_order - 添加OTC订单
 ```rust
 pub fn add_otc_order(
-    timestamp: u64,
+    origin: OriginFor<T>,
     price_usdt: u64,
     memo_qty: u128,
+    timestamp: u64,
 ) -> DispatchResult
 ```
 
-#### 功能说明
-- 由 `pallet-otc-order` 调用，添加 OTC 订单成交数据
-- 自动维护滑动窗口（累计超过 1,000,000 MEMO 时删除最旧订单）
-- 更新聚合统计并发出事件
+**算法**：
+1. 添加新订单到缓冲区
+2. 累计total_memo和total_usdt
+3. 如果total_memo超过100万MEMO，从oldest_index开始删除旧订单
+4. 更新聚合数据和均价
 
-#### 参数
-- `timestamp`：订单时间戳（Unix 毫秒）
-- `price_usdt`：USDT 单价（精度 10^6）
-- `memo_qty`：MEMO 数量（精度 10^12）
+### 2. 市场价格计算
 
-#### 调用示例
-
+#### get_market_price - 获取市场价格
 ```rust
-// 在 pallet-otc-order::release 中调用
-let _ = pallet_pricing::Pallet::<T>::add_otc_order(
-    timestamp,
-    price_usdt,
-    memo_qty
-);
-```
-
-### add_bridge_swap（添加 Bridge 兑换）
-
-```rust
-pub fn add_bridge_swap(
-    timestamp: u64,
-    price_usdt: u64,
-    memo_qty: u128,
-) -> DispatchResult
-```
-
-#### 功能说明
-- 由 `pallet-simple-bridge` 调用，添加桥接兑换数据
-- 逻辑与 `add_otc_order` 相同，但操作 Bridge 相关的存储
-
-#### 调用示例
-
-```rust
-// 在 pallet-simple-bridge::complete_swap 中调用
-let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(
-    timestamp,
-    price_usdt,
-    memo_amount
-);
-```
-
-### get_memo_market_price_weighted（获取市场加权均价）
-
-```rust
-pub fn get_memo_market_price_weighted() -> u64
-```
-
-#### 功能说明
-- 返回 MEMO 市场加权均价（USDT/MEMO，精度 10^6）
-- 计算公式：`(OTC总USDT + Bridge总USDT) / (OTC总MEMO + Bridge总MEMO)`
-- 包含冷启动保护
-
-#### 返回值
-- `u64`：市场加权均价（精度 10^6），0 表示无数据
-
-#### 用途
-- **pallet-otc-listing**：创建挂单时进行 ±20% 价格偏离检查
-- **pallet-simple-bridge**：兑换时计算汇率
-- **前端**：显示市场价格
-
-#### 调用示例
-
-```rust
-// 在 pallet-otc-listing::create_listing 中调用
-let market_price = pallet_pricing::Pallet::<T>::get_memo_market_price_weighted();
-if market_price > 0 {
-    // 检查 price_usdt 是否在 market_price ±20% 范围内
+impl<T: Config> PricingProvider for Pallet<T> {
+    fn get_market_price() -> u64 {
+        // 1. 检查冷启动状态
+        if !Self::cold_start_exited() {
+            let otc_volume = Self::otc_aggregate().total_memo;
+            let bridge_volume = Self::bridge_aggregate().total_memo;
+            let threshold = Self::cold_start_threshold();
+            
+            if otc_volume + bridge_volume < threshold {
+                // 返回默认价格（0.000001 USDT/MEMO）
+                return Self::default_price();
+            } else {
+                // 达到阈值，退出冷启动
+                ColdStartExited::<T>::put(true);
+            }
+        }
+        
+        // 2. 计算加权平均价
+        let otc_agg = Self::otc_aggregate();
+        let bridge_agg = Self::bridge_aggregate();
+        
+        let otc_price = if otc_agg.total_memo > 0 {
+            (otc_agg.total_usdt / otc_agg.total_memo) as u64
+        } else {
+            0
+        };
+        
+        let bridge_price = if bridge_agg.total_memo > 0 {
+            (bridge_agg.total_usdt / bridge_agg.total_memo) as u64
+        } else {
+            0
+        };
+        
+        let total_volume = otc_agg.total_memo + bridge_agg.total_memo;
+        if total_volume == 0 {
+            return Self::default_price();
+        }
+        
+        // 加权平均
+        let weighted_price = (
+            (otc_price as u128 * otc_agg.total_memo) +
+            (bridge_price as u128 * bridge_agg.total_memo)
+        ) / total_volume;
+        
+        weighted_price as u64
+    }
 }
 ```
 
-### get_memo_reference_price（获取市场参考价格）
+### 3. 冷启动机制
 
+#### 冷启动阈值
 ```rust
-pub fn get_memo_reference_price() -> u64
+pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery>;
+
+// 默认值：100,000,000 MEMO（1亿）
+fn DefaultColdStartThreshold() -> u128 {
+    100_000_000u128 * 1_000_000_000_000u128
+}
 ```
 
-#### 功能说明
-- 返回 MEMO 市场参考价格（简单平均）
-- 计算公式：`(OTC均价 + Bridge均价) / 2`
-- 包含冷启动保护
-
-#### 返回值
-- `u64`：市场参考价格（精度 10^6），0 表示无数据
-
-#### 用途
-- 前端显示参考价格
-- 价格偏离度计算
-- 简单的市场概览
-
-### get_otc_average_price（获取 OTC 均价）
-
+#### 默认价格
 ```rust
-pub fn get_otc_average_price() -> u64
+pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery>;
+
+// 默认值：1（0.000001 USDT/MEMO，精度10^6）
+fn DefaultPriceValue() -> u64 {
+    1u64
+}
 ```
 
-#### 返回值
-- `u64`：OTC 均价（精度 10^6），0 表示无数据
-
-### get_bridge_average_price（获取 Bridge 均价）
-
+#### 单向锁定退出
 ```rust
-pub fn get_bridge_average_price() -> u64
+pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
 ```
 
-#### 返回值
-- `u64`：Bridge 均价（精度 10^6），0 表示无数据
+**说明**：一旦达到阈值并退出冷启动，此标记永久为true，不再回退到默认价格。避免在阈值附近价格剧烈波动。
 
-### get_otc_stats（获取 OTC 统计）
+### 4. 市场统计
 
+#### get_market_stats - 获取市场统计
 ```rust
-pub fn get_otc_stats() -> (u128, u128, u32, u64)
+pub fn get_market_stats() -> MarketStats {
+    MarketStats {
+        otc_price,          // OTC均价
+        bridge_price,       // Bridge均价
+        weighted_price,     // 加权平均价
+        simple_avg_price,   // 简单平均价
+        otc_volume,         // OTC交易量
+        bridge_volume,      // Bridge交易量
+        total_volume,       // 总交易量
+        otc_order_count,    // OTC订单数
+        bridge_swap_count,  // Bridge兑换数
+    }
+}
 ```
 
-#### 返回值
-- `(累计MEMO, 累计USDT, 订单数, 均价)`
+## 📦 存储结构
 
-### get_bridge_stats（获取 Bridge 统计）
-
+### OTC价格聚合
 ```rust
-pub fn get_bridge_stats() -> (u128, u128, u32, u64)
+pub type OtcPriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
+pub type OtcOrderRingBuffer<T> = StorageMap<_, Blake2_128Concat, u32, OrderSnapshot>;
 ```
 
-#### 返回值
-- `(累计MEMO, 累计USDT, 订单数, 均价)`
-
-### get_market_stats（获取市场统计）
-
+### Bridge价格聚合
 ```rust
-pub fn get_market_stats() -> MarketStats
+pub type BridgePriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
+pub type BridgeOrderRingBuffer<T> = StorageMap<_, Blake2_128Concat, u32, OrderSnapshot>;
 ```
 
-#### 返回值
-- `MarketStats` 结构，包含：
-  - `otc_price`：OTC 均价
-  - `bridge_price`：Bridge 均价
-  - `weighted_price`：加权平均价格
-  - `simple_avg_price`：简单平均价格
-  - `otc_volume`：OTC 交易量
-  - `bridge_volume`：Bridge 交易量
-  - `total_volume`：总交易量
-  - `otc_order_count`：OTC 订单数
-  - `bridge_swap_count`：Bridge 兑换数
+### 冷启动配置
+```rust
+pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery>;
+pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery>;
+pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
+```
 
----
+## 🔧 配置参数
 
-## 事件
+```rust
+pub trait Config: frame_system::Config {
+    /// 事件类型
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-### OtcOrderAdded
+    /// 最大价格偏离（基点，默认2000 = 20%）
+    type MaxPriceDeviation: Get<u16>;
+}
+```
 
+## 📡 可调用接口
+
+### 数据提交接口
+
+#### 1. add_otc_order - 添加OTC订单
+```rust
+#[pallet::call_index(0)]
+pub fn add_otc_order(
+    origin: OriginFor<T>,
+    price_usdt: u64,
+    memo_qty: u128,
+    timestamp: u64,
+) -> DispatchResult
+```
+
+#### 2. add_bridge_swap - 添加Bridge兑换
+```rust
+#[pallet::call_index(1)]
+pub fn add_bridge_swap(
+    origin: OriginFor<T>,
+    price_usdt: u64,
+    memo_qty: u128,
+    timestamp: u64,
+) -> DispatchResult
+```
+
+### 治理接口
+
+#### 3. set_cold_start_threshold - 设置冷启动阈值
+```rust
+#[pallet::call_index(2)]
+pub fn set_cold_start_threshold(
+    origin: OriginFor<T>,
+    threshold: u128,
+) -> DispatchResult
+```
+
+#### 4. set_default_price - 设置默认价格
+```rust
+#[pallet::call_index(3)]
+pub fn set_default_price(
+    origin: OriginFor<T>,
+    price: u64,
+) -> DispatchResult
+```
+
+## 🎉 事件
+
+### OtcOrderAdded - OTC订单添加事件
 ```rust
 OtcOrderAdded {
-    timestamp: u64,
     price_usdt: u64,
     memo_qty: u128,
     new_avg_price: u64,
 }
 ```
 
-**说明**：OTC 订单添加到价格聚合
-
-### BridgeSwapAdded
-
+### BridgeSwapAdded - Bridge兑换添加事件
 ```rust
 BridgeSwapAdded {
-    timestamp: u64,
     price_usdt: u64,
     memo_qty: u128,
     new_avg_price: u64,
 }
 ```
 
-**说明**：Bridge 兑换添加到价格聚合
-
-### ColdStartParamsUpdated
-
-```rust
-ColdStartParamsUpdated {
-    threshold: Option<u128>,
-    default_price: Option<u64>,
-}
-```
-
-**说明**：冷启动参数更新
-
-### ColdStartExited
-
+### ColdStartExited - 冷启动退出事件
 ```rust
 ColdStartExited {
-    final_threshold: u128,
-    otc_volume: u128,
-    bridge_volume: u128,
-    market_price: u64,
+    final_volume: u128,
 }
 ```
 
-**说明**：冷启动退出（标志性事件，市场进入正常定价阶段）
+## 🔌 使用示例
 
----
-
-## 价格计算逻辑
-
-### 滑动窗口机制
-
-#### 原理
-- 维护最近累计 1,000,000 MEMO 的交易记录
-- 使用循环缓冲区（Ring Buffer）存储最多 10,000 笔订单
-- 新订单加入时，如果超过限制，自动删除最旧的订单
-
-#### 优点
-- **防止操纵**：单笔大额交易影响有限
-- **实时性**：价格随最近交易动态调整
-- **存储效率**：固定大小缓冲区，不会无限增长
-
-#### 示例
-
-```
-滑动窗口大小：1,000,000 MEMO
-当前累计：900,000 MEMO
-
-新订单：200,000 MEMO @ 0.5 USDT
-累计变为：1,100,000 MEMO（超过限制）
-
-自动删除最旧订单：100,000 MEMO @ 0.48 USDT
-最终累计：1,000,000 MEMO
-```
-
-### 加权平均算法
-
-#### 公式
-
-```
-加权平均价格 = (OTC总USDT + Bridge总USDT) / (OTC总MEMO + Bridge总MEMO)
-```
-
-#### 示例
-
-```
-OTC：
-  - 累计：500,000 MEMO
-  - 累计：250,000 USDT
-  - 均价：0.5 USDT/MEMO
-
-Bridge：
-  - 累计：500,000 MEMO
-  - 累计：260,000 USDT
-  - 均价：0.52 USDT/MEMO
-
-加权平均 = (250,000 + 260,000) / (500,000 + 500,000)
-         = 510,000 / 1,000,000
-         = 0.51 USDT/MEMO
-```
-
-### 简单平均算法
-
-#### 公式
-
-```
-简单平均价格 = (OTC均价 + Bridge均价) / 2
-```
-
-#### 示例
-
-```
-OTC 均价：0.5 USDT/MEMO
-Bridge 均价：0.52 USDT/MEMO
-
-简单平均 = (0.5 + 0.52) / 2
-         = 0.51 USDT/MEMO
-```
-
-### 冷启动保护
-
-#### 触发条件
-- `ColdStartExited` = false
-- OTC 交易量 < `ColdStartThreshold`
-- Bridge 交易量 < `ColdStartThreshold`
-
-#### 行为
-- 返回 `DefaultPrice`（默认 0.000001 USDT/MEMO）
-
-#### 退出条件
-- OTC 交易量 ≥ `ColdStartThreshold`，或
-- Bridge 交易量 ≥ `ColdStartThreshold`
-
-#### 退出效果
-- 设置 `ColdStartExited` = true（单向锁定，不可逆）
-- 发出 `ColdStartExited` 事件
-- 后续永久使用市场价格
-
----
-
-## 使用流程
-
-### 1. 初始化（治理）
-
-```javascript
-const api = await ApiPromise.create({ provider: wsProvider });
-
-// 设置冷启动阈值为 1 亿 MEMO
-await api.tx.sudo.sudo(
-  api.tx.pricing.setColdStartParams(
-    100_000_000n * 1_000_000_000_000n,  // 1亿 MEMO
-    1  // 默认价格 0.000001 USDT/MEMO
-  )
-).signAndSend(sudoKey);
-```
-
-### 2. OTC 订单成交（自动）
+### 场景1：OTC订单完成后提交价格
 
 ```rust
-// 在 pallet-otc-order::release 中
-let _ = pallet_pricing::Pallet::<T>::add_otc_order(
-    order.created_at.saturated_into::<u64>(),  // 时间戳
-    order.price.saturated_into::<u64>(),       // 价格
-    order.qty.saturated_into::<u128>()         // 数量
-);
+// pallet-otc-order调用
+pallet_pricing::Pallet::<T>::add_otc_order(
+    system_origin,
+    10_200u64,  // 0.0102 USDT/MEMO（精度10^6）
+    100_000_000_000_000u128,  // 100 MEMO
+    current_timestamp,
+)?;
+
+// 查询最新市场价格
+let market_price = <pallet_pricing::Pallet<T> as PricingProvider>::get_market_price();
+// market_price = 10_000 (0.01 USDT/MEMO)
 ```
 
-### 3. Bridge 兑换（自动）
+### 场景2：创建OTC订单时使用市场价格
 
 ```rust
-// 在 pallet-simple-bridge::complete_swap 中
-let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(
-    timestamp,
-    price_usdt,
-    memo_amount
-);
+// 1. 获取市场价格
+let base_price = <T::PricingProvider as PricingProvider>::get_market_price();
+// base_price = 10_000 (0.01 USDT/MEMO)
+
+// 2. 应用做市商溢价
+let maker_premium_bps = 200; // +2%
+let final_price = base_price * (10000 + maker_premium_bps) / 10000;
+// final_price = 10_200 (0.0102 USDT/MEMO)
+
+// 3. 计算订单金额
+let usdt_amount = (qty * final_price) / 1_000_000_000_000;
 ```
 
-### 4. 查询市场价格（前端）
+## 🛡️ 安全机制
 
-```javascript
-// 查询市场加权均价
-const marketPrice = await api.query.pricing.getMemoMarketPriceWeighted();
-console.log(`市场加权均价: ${marketPrice.toNumber() / 1_000_000} USDT/MEMO`);
+### 1. 滑动窗口
 
-// 查询 OTC 均价
-const otcPrice = await api.query.pricing.otcAvgPrice();
-console.log(`OTC 均价: ${otcPrice.toNumber() / 1_000_000} USDT/MEMO`);
+- 最近100万MEMO交易
+- 防止历史价格影响
+- 动态反映市场变化
 
-// 查询 Bridge 均价
-const bridgePrice = await api.query.pricing.bridgeAvgPrice();
-console.log(`Bridge 均价: ${bridgePrice.toNumber() / 1_000_000} USDT/MEMO`);
+### 2. 冷启动保护
 
-// 查询冷启动状态
-const coldStartExited = await api.query.pricing.coldStartExited();
-console.log(`冷启动已退出: ${coldStartExited.toHuman()}`);
-```
+- 初期交易量不足时使用默认价格
+- 避免极端价格
+- 单向锁定退出
 
-### 5. 查询统计信息（前端）
+### 3. 循环缓冲区
 
-```javascript
-// 查询 OTC 聚合数据
-const otcAgg = await api.query.pricing.otcPriceAggregate();
-console.log(`OTC 累计成交: ${otcAgg.total_memo / 1e18} MEMO`);
-console.log(`OTC 订单数: ${otcAgg.order_count}`);
+- 最多存储1万笔订单
+- 内存高效
+- 自动清理旧数据
 
-// 查询 Bridge 聚合数据
-const bridgeAgg = await api.query.pricing.bridgePriceAggregate();
-console.log(`Bridge 累计成交: ${bridgeAgg.total_memo / 1e18} MEMO`);
-console.log(`Bridge 兑换数: ${bridgeAgg.order_count}`);
-```
+### 4. 双市场聚合
+
+- OTC+Bridge价格加权
+- 全面反映市场
+- 防止单一市场操纵
+
+## 📝 最佳实践
+
+### 1. 价格使用
+
+- 总是使用`get_market_price()`获取最新价格
+- 应用做市商溢价前先获取基准价
+- 检查冷启动状态
+
+### 2. 数据提交
+
+- OTC订单释放后立即提交
+- Bridge兑换完成后立即提交
+- 提交准确的价格和数量
+
+### 3. 监控指标
+
+- 冷启动状态
+- OTC/Bridge交易量
+- 价格偏离程度
+- 缓冲区使用率
+
+## 🔗 相关模块
+
+- **pallet-otc-order**: OTC订单（使用市场价格）
+- **pallet-simple-bridge**: 桥接兑换（使用市场价格）
+- **pallet-market-maker**: 做市商管理（应用溢价）
+
+## 📚 参考资源
+
+- [价格聚合算法](../../docs/pricing-aggregation-algorithm.md)
+- [滑动窗口设计](../../docs/sliding-window-design.md)
+- [冷启动策略](../../docs/cold-start-strategy.md)
 
 ---
 
-## 集成说明
-
-### pallet-otc-listing
-
-**依赖**：`pallet_pricing::Config`
-
-**使用场景**：创建挂单时进行价格偏离检查
-
-```rust
-// 获取市场均价
-let market_price = pallet_pricing::Pallet::<T>::get_memo_market_price_weighted();
-
-// 检查 price_usdt 是否在 market_price ±20% 范围内
-if market_price > 0 && max_deviation > 0 {
-    let min_price = market_price * (10000 - max_deviation) / 10000;
-    let max_price = market_price * (10000 + max_deviation) / 10000;
-    ensure!(
-        price_usdt >= min_price && price_usdt <= max_price,
-        Error::<T>::PriceDeviationTooHigh
-    );
-}
-```
-
-### pallet-otc-order
-
-**依赖**：`pallet_pricing::Config`
-
-**使用场景**：订单完成时上报成交数据
-
-```rust
-// 在 release 方法中
-let _ = pallet_pricing::Pallet::<T>::add_otc_order(
-    timestamp,
-    price_usdt,
-    memo_qty
-);
-```
-
-### pallet-simple-bridge
-
-**依赖**：`pallet_pricing::Config`
-
-**使用场景 1**：兑换时获取市场价格
-
-```rust
-// 获取市场均价作为兑换汇率
-let market_price = pallet_pricing::Pallet::<T>::get_memo_market_price_weighted();
-let price_usdt = if market_price > 0 {
-    market_price
-} else {
-    FallbackExchangeRate::<T>::get()
-};
-```
-
-**使用场景 2**：兑换完成时上报数据
-
-```rust
-// 在 complete_swap 方法中
-let _ = pallet_pricing::Pallet::<T>::add_bridge_swap(
-    timestamp,
-    price_usdt,
-    memo_amount
-);
-```
-
----
-
-## 监控建议
-
-### 关键指标
-
-1. **市场加权均价**：监控价格趋势
-2. **OTC / Bridge 均价**：对比分析市场供需
-3. **累计成交量**：监控滑动窗口填充度
-4. **冷启动状态**：确认市场是否已启动
-
-### 告警规则
-
-- ⚠️ 市场均价 24 小时波动 > 30%
-- ⚠️ OTC 和 Bridge 价格差距 > 20%
-- ⚠️ 滑动窗口填充度 < 20%（市场价格可靠性低）
-- ✅ 冷启动已退出
-
----
-
-## 版本变更
-
-### v3.0.0 (2025-10-19) - 删除传统价格预言机
-
-**删除功能**
-- ❌ 删除 `PriceProvider` trait
-- ❌ 删除 `SpotPrice` 结构体
-- ❌ 删除 `Params` 结构体
-- ❌ 删除 `Price<T>` 存储项
-- ❌ 删除 `PricingParams<T>` 存储项
-- ❌ 删除 `Feeders<T>` 存储项
-- ❌ 删除 `set_price` 方法
-- ❌ 删除 `set_params` 方法
-- ❌ 删除 `set_pause` 方法
-- ❌ 删除 `set_feeders` 方法
-- ❌ 删除相关事件（PriceUpdated, ParamsUpdated, FeedersUpdated, Paused）
-
-**保留功能**
-- ✅ 价格聚合（OTC + Bridge）
-- ✅ 滑动窗口机制
-- ✅ 加权平均算法
-- ✅ 冷启动保护
-- ✅ 所有公开方法
-
-**影响**
-- ⚠️ pallet-memo-bridge 已删除（不再依赖传统预言机）
-- ✅ pallet-otc-listing、pallet-otc-order、pallet-simple-bridge 不受影响
-- ✅ 代码简化约 300 行
-- ✅ 运维成本降低（无需喂价服务）
-- ✅ 安全风险降低（无喂价攻击面）
-
-### v2.0.0 (2025-10-18) - 动态定价系统
-
-**新增功能**
-- ✅ 价格聚合（OTC + Bridge）
-- ✅ 滑动窗口机制
-- ✅ 加权平均算法
-- ✅ 冷启动保护
-
-### v1.0.0 (初始版本) - 传统价格预言机
-
-**功能**
-- 外部喂价接口
-- 价格陈旧性检查
-- 价格跳变限制
-- 喂价白名单管理
-
----
-
-## 相关文档
-
-- [删除传统价格预言机功能分析](/home/xiaodong/文档/memopark/docs/删除传统价格预言机功能分析.md)
-- [动态定价完整实施报告](/home/xiaodong/文档/memopark/docs/动态定价完整实施报告.md)
-- [定价基准价格±20%方案分析](/home/xiaodong/文档/memopark/docs/定价基准价格±20%方案分析.md)
-- [pallet-otc-listing README](/home/xiaodong/文档/memopark/pallets/otc-listing/README.md)
-- [pallet-otc-order README](/home/xiaodong/文档/memopark/pallets/otc-order/README.md)
-- [pallet-simple-bridge README](/home/xiaodong/文档/memopark/pallets/simple-bridge/README.md)
-
----
-
-**✅ pallet-pricing v3.0.0 - 传统价格预言机已删除**
-
-**核心特性**：
-- 🎯 基于链上真实成交的价格聚合
-- 📊 滑动窗口机制防止价格操纵
-- 🛡️ 冷启动保护确保初期稳定
-- 🔄 自适应定价随市场动态调整
+**版本**: 1.0.0  
+**最后更新**: 2025-10-27  
+**维护者**: Memopark 开发团队

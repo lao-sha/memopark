@@ -20,6 +20,7 @@ std = [
     "frame-system/std",
     "sp-std/std",
     "pallet-timestamp/std",
+    "pallet-credit/std",  # 🆕 2025-10-29: 替代 maker-credit
 ]
 
 [dependencies]
@@ -31,5 +32,11 @@ frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 sp-arithmetic = { workspace = true, default-features = false }
 pallet-timestamp = { workspace = true, default-features = false }
+pallet-credit = { path = "../credit", default-features = false }  # 🆕 2025-10-29: 替代 maker-credit
+
+[dev-dependencies]
+sp-core = { workspace = true, features = ["std"] }
+sp-io = { workspace = true, features = ["std"] }
+pallet-balances = { workspace = true, features = ["std"] }
 
 

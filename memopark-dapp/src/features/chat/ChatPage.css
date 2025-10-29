@@ -1,0 +1,149 @@
+/**
+ * 聊天页面样式 - 优化版
+ */
+
+.chat-page {
+  height: 100vh;
+  background: linear-gradient(135deg, #f0f2f5 0%, #fafafa 100%);
+  overflow: hidden;
+}
+
+.chat-page-content {
+  display: flex;
+  height: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+}
+
+@media (min-width: 1200px) {
+  .chat-page-content {
+    border-radius: 16px;
+    margin: 16px auto;
+    height: calc(100% - 32px);
+  }
+}
+
+.chat-page-list {
+  width: 320px;
+  height: 100%;
+  flex-shrink: 0;
+  border-radius: 16px 0 0 16px;
+  overflow: hidden;
+}
+
+.chat-page-window {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  border-radius: 0 16px 16px 0;
+  overflow: hidden;
+}
+
+.chat-page-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #8c8c8c;
+  padding: 40px;
+  text-align: center;
+  gap: 20px;
+}
+
+.chat-page-empty::before {
+  content: '💬';
+  font-size: 64px;
+  opacity: 0.3;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.chat-page-empty p {
+  font-size: 16px;
+  margin: 0;
+  color: #8c8c8c;
+}
+
+.chat-page-empty button {
+  margin-top: 10px;
+}
+
+.chat-page-mobile-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e8e8e8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-page-mobile-header .ant-btn {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.chat-page-mobile-header .ant-btn:hover {
+  background: #f5f5f5;
+  transform: scale(1.05);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .chat-page {
+    background: #fff;
+  }
+  
+  .chat-page-content {
+    flex-direction: column;
+    border-radius: 0;
+    margin: 0;
+    height: 100%;
+    box-shadow: none;
+  }
+  
+  .chat-page-list {
+    display: none;
+    border-radius: 0;
+  }
+  
+  .chat-page-window {
+    padding-top: 52px;
+    border-radius: 0;
+  }
+  
+  .chat-page-empty::before {
+    font-size: 48px;
+  }
+  
+  .chat-page-empty p {
+    font-size: 14px;
+  }
+}
+
