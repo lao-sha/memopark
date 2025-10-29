@@ -190,13 +190,13 @@ export const MakerBridgeSwapPage: React.FC = () => {
     setLoading(true);
     try {
       const mmId = parseInt(makerId);
-      const memoAmountRaw = BigInt(Math.floor(values.dustAmount * 1e12));
+      const dustAmountRaw = BigInt(Math.floor(values.dustAmount * 1e12));
       const tronAddr = values.tronAddress;
       
       // 调用链上方法（🆕 pallet-trading）
       const tx = api.tx.trading.makerSwap(
         mmId,
-        memoAmountRaw,
+        dustAmountRaw,
         tronAddr
       );
       
