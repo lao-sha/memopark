@@ -7,7 +7,5 @@
  */
 
 export { usePriceCalculation, type UsePriceCalculationResult, type PriceDeviationResult } from './usePriceCalculation';
-
-// TODO: Phase 2后续添加
-// export { useOrderQuery, type UseOrderQueryResult } from './useOrderQuery';
+export { useOrderQuery, type UseOrderQueryResult, type UseOrderQueryOptions, type OrderData } from './useOrderQuery';
 
