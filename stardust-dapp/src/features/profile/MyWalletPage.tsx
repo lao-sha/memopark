@@ -116,19 +116,21 @@ const MyWalletPage: React.FC = () => {
 
   /**
    * 函数级详细中文注释：加载当前账户的推荐码
-   * - 从链上 memoReferrals.codeOf 读取推荐码
+   * - 从链上 affiliate.accountToCode 读取推荐码
    * - 如果未领取，设置为空字符串
+   * 
+   * 🆕 2025-10-30 迁移: 从 memoReferrals.codeOf 迁移到 affiliate.accountToCode
    */
   const loadRefCode = async (addr: string) => {
     try {
       const api = await getApi();
       const qroot: any = api.query as any;
-      const sec = qroot.memoReferrals || qroot.memo_referrals;
-      if (!sec || !sec.codeOf) {
+      const sec = qroot.affiliate;
+      if (!sec || !sec.accountToCode) {
         setRefCode('');
         return;
       }
-      const raw = await sec.codeOf(addr);
+      const raw = await sec.accountToCode(addr);
       if (raw && raw.isSome) {
         const v = raw.unwrap();
         const code = Buffer.from(v.toU8a()).toString('utf8');

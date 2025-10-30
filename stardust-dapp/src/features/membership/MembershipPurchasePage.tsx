@@ -138,8 +138,10 @@ const MembershipPurchasePage: React.FC = () => {
 
   /**
    * 函数级中文注释：验证推荐码
-   * - 通过链上 ownerOfCode 查询推荐人
+   * - 通过链上 affiliate.codeToAccount 查询推荐人
    * - 验证推荐人是否为有效会员
+   * 
+   * 🆕 2025-10-30 迁移: 从 memoReferrals.ownerOfCode 迁移到 affiliate.codeToAccount
    */
   const validateReferralCode = async (code: string) => {
     if (!code || code.length !== 8) {
@@ -151,11 +153,18 @@ const MembershipPurchasePage: React.FC = () => {
     try {
       const api = await getApi()
       const qroot: any = api.query as any
-      const sec = qroot.memoReferrals || qroot.memo_referrals
+      const sec = qroot.affiliate
+      
+      if (!sec || !sec.codeToAccount) {
+        setReferralCodeValid(false)
+        setReferrerAccount('')
+        message.error('affiliate pallet 未找到，请确认链端配置')
+        return
+      }
       
       // 查询推荐码对应的账户
       const bytes = new TextEncoder().encode(code.toUpperCase())
-      const raw = await sec.ownerOfCode(bytes)
+      const raw = await sec.codeToAccount(bytes)
       
       if (!raw || raw.isNone) {
         setReferralCodeValid(false)
