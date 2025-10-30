@@ -13,6 +13,7 @@ import { MakerCreditBadge } from '../../components/MakerCreditBadge'  // 🆕 20
 import { getOrCreateChatSession } from '../../lib/chat'  // 🆕 2025-10-22：聊天功能集成
 import { useMarketMakers } from '../../hooks/market-maker'  // 🆕 2025-10-29 Phase 2：使用共享Hook
 import type { MarketMaker } from './types/order.types'  // 🆕 2025-10-29 Phase 2：使用统一类型定义
+import { usePriceCalculation } from '../../hooks/trading'  // 🆕 2025-10-30 Phase 2：使用价格计算Hook
 
 const { Title, Text } = Typography
 
@@ -90,36 +91,22 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   // const [listingsError, setListingsError] = React.useState<string>('')
   // const [selectedListing, setSelectedListing] = React.useState<Listing | null>(null)
   const [currentBlockNumber, setCurrentBlockNumber] = React.useState<number>(0)
-  const [basePrice, setBasePrice] = React.useState<number>(0)  // 🆕 2025-10-20：基准价格（USDT，精度10^6）
-  const [loadingPrice, setLoadingPrice] = React.useState<boolean>(true)  // 🆕 2025-10-20
+  
+  // 🆕 2025-10-30 Phase 2：使用价格计算Hook替代本地state
+  const { basePrice, loadingPrice, calculateDeviation } = usePriceCalculation()
 
   /**
    * 函数级中文注释：加载基准价格（pallet-pricing 市场加权均价）
-   * - 🆕 2025-10-20：用于计算订单最终价格和价格偏离率
-   * - 定时更新（每30秒）
+   * 
+   * ✅ 2025-10-30 Phase 2：已移除，改用usePriceCalculation共享Hook
+   * - Hook位置: hooks/trading/usePriceCalculation.ts
+   * - 自动加载基准价格
+   * - 每30秒自动更新
+   * - 提供calculateDeviation函数
+   * 
+   * 旧代码已删除（26行），减少重复代码
    */
-  React.useEffect(() => {
-    const loadBasePrice = async () => {
-      try {
-        const api = await getApi()
-        const price = await (api.query as any).pricing?.memoMarketPriceWeighted?.()
-        if (price) {
-          const priceValue = Number(price.toString())
-          setBasePrice(priceValue)
-          console.log('✅ 基准价格加载成功:', (priceValue / 1_000_000).toFixed(6), 'USDT/DUST')
-        }
-      } catch (e: any) {
-        console.error('加载基准价格失败:', e)
-      } finally {
-        setLoadingPrice(false)
-      }
-    }
-    
-    loadBasePrice()
-    // 定时更新基准价格（每30秒）
-    const interval = setInterval(loadBasePrice, 30000)
-    return () => clearInterval(interval)
-  }, [])
+  // React.useEffect(() => { ... }, [])  // ❌ 已删除，使用usePriceCalculation Hook替代
 
   /**
    * 函数级中文注释：加载当前区块高度
@@ -276,29 +263,22 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
   /**
    * 函数级中文注释：计算价格偏离率和最终价格
-   * - 🆕 2025-10-20：根据基准价格和做市商溢价计算最终价格
-   * - 返回最终价格和偏离率（百分比）
+   * 
+   * ✅ 2025-10-30 Phase 2：简化为调用usePriceCalculation Hook的calculateDeviation函数
+   * - Hook位置: hooks/trading/usePriceCalculation.ts
+   * - 旧代码删除（23行），减少重复逻辑
+   * 
+   * @param makerId - 做市商ID
+   * @returns 价格偏离计算结果
    */
   const calculatePriceDeviation = (makerId: number): { finalPrice: number; deviationPercent: number; isWarning: boolean; isError: boolean } => {
     const maker = marketMakers.find(m => m.mmId === makerId)
-    if (!maker || basePrice === 0) {
+    if (!maker) {
       return { finalPrice: 0, deviationPercent: 0, isWarning: false, isError: false }
     }
     
-    // 应用sell溢价
-    // final_price = base_price × (10000 + sell_premium_bps) / 10000
-    const sellPremium = maker.sellPremiumBps
-    const finalPrice = Math.floor(basePrice * (10000 + sellPremium) / 10000)
-    
-    // 计算偏离率（百分比）
-    const deviationPercent = Math.abs((finalPrice - basePrice) / basePrice * 100)
-    
-    // 警告：偏离率 > 15%
-    const isWarning = deviationPercent > 15 && deviationPercent <= 20
-    // 错误：偏离率 > 20%
-    const isError = deviationPercent > 20
-    
-    return { finalPrice, deviationPercent, isWarning, isError }
+    // 使用Hook的calculateDeviation函数
+    return calculateDeviation(maker.sellPremiumBps)
   }
 
   /**
