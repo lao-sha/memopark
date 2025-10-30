@@ -4,6 +4,7 @@ import { SettingOutlined, SaveOutlined, ReloadOutlined, ArrowLeftOutlined } from
 import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { ApiPromise } from '@polkadot/api'
+import { useCurrentMakerInfo, type MarketMakerInfo } from '../../hooks/market-maker'  // 🆕 2025-10-30 Phase 2：使用共享Hook
 
 const { Title, Text } = Typography
 
@@ -18,20 +19,11 @@ const { Title, Text } = Typography
 
 /**
  * 函数级详细中文注释：做市商信息数据结构
+ * 
+ * ✅ 2025-10-30 Phase 2：此接口已移至hooks/market-maker/useCurrentMakerInfo.ts
+ * 现在从共享Hook导入，避免重复定义
  */
-interface MarketMakerInfo {
-  mmId: number
-  owner: string
-  status: string
-  epayGateway: string
-  epayPort: number
-  epayPid: string
-  epayKey: string
-  firstPurchasePool: string
-  firstPurchaseUsed: string
-  firstPurchaseFrozen: string
-  usersServed: number
-}
+// interface MarketMakerInfo { ... }  // ❌ 已删除，使用hooks/market-maker导出的版本
 
 /**
  * 函数级详细中文注释：格式化 DUST 金额（12 位小数）
@@ -50,59 +42,32 @@ function formatDustAmount(amount: number): string {
 
 /**
  * 函数级详细中文注释：解析字节数组或十六进制字符串为明文字符串
- * - 支持三种输入格式：
- *   1. 数组：[102, 100, 103, ...] → 直接解码
- *   2. 十六进制字符串：'0x6664677366677364666773646667' → 先转数组再解码
- *   3. 普通字符串：直接返回
+ * 
+ * ✅ 2025-10-30 Phase 2：此函数已废弃
+ * - 已移至utils/paymentUtils.ts（decodeEpayField）
+ * - 删除42行重复代码
+ * - 下面的代码中已替换为decodeEpayField（从Hook自动调用）
  */
-function bytesToString(bytes: any): string {
-  if (!bytes) return ''
-  
-  // 🔹 情况1：已经是普通字符串（不是0x开头）
-  if (typeof bytes === 'string' && !bytes.startsWith('0x')) {
-    return bytes
-  }
-  
-  // 🔹 情况2：十六进制字符串（0x开头）
-  if (typeof bytes === 'string' && bytes.startsWith('0x')) {
-    try {
-      const hex = bytes.slice(2) // 去除 '0x' 前缀
-      const byteArray: number[] = []
-      
-      // 将十六进制字符串转换为字节数组
-      for (let i = 0; i < hex.length; i += 2) {
-        byteArray.push(parseInt(hex.substr(i, 2), 16))
-      }
-      
-      // 解码为 UTF-8 字符串
-      return new TextDecoder().decode(new Uint8Array(byteArray))
-    } catch (e) {
-      console.error('十六进制字符串解码失败:', bytes, e)
-      return ''
-    }
-  }
-  
-  // 🔹 情况3：字节数组
-  if (Array.isArray(bytes)) {
-    try {
-      return new TextDecoder().decode(new Uint8Array(bytes))
-    } catch (e) {
-      console.error('字节数组解码失败:', bytes, e)
-      return ''
-    }
-  }
-  
-  return ''
-}
+// function bytesToString(bytes: any): string { ... }  // ❌ 已删除
 
 export default function MarketMakerConfigPage() {
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [loading, setLoading] = React.useState<boolean>(false)
-  const [loadingInfo, setLoadingInfo] = React.useState<boolean>(false)
   const [api, setApi] = React.useState<ApiPromise | null>(null)
-  const [marketMakerInfo, setMarketMakerInfo] = React.useState<MarketMakerInfo | null>(null)
-  const [error, setError] = React.useState<string>('')
+  const [localError, setLocalError] = React.useState<string>('')  // 本地错误信息（用于操作失败时显示）
+  
+  // 🆕 2025-10-30 Phase 2：使用共享Hook加载当前账户的做市商信息
+  const { 
+    mmId, 
+    makerInfo: marketMakerInfo, 
+    loading: loadingInfo, 
+    error: hookError,  // Hook的错误信息（用于加载做市商信息失败时显示）
+    reload: loadMarketMakerInfo 
+  } = useCurrentMakerInfo()
+  
+  // 合并错误信息（优先显示本地错误，其次显示Hook错误）
+  const error = localError || hookError
 
   /**
    * 函数级详细中文注释：初始化 API 连接
@@ -113,7 +78,7 @@ export default function MarketMakerConfigPage() {
         const apiInstance = await getApi()
         setApi(apiInstance)
       } catch (e: any) {
-        setError('API 连接失败：' + (e?.message || ''))
+        console.error('API 连接失败:', e)
       }
     }
     initApi()
@@ -121,99 +86,33 @@ export default function MarketMakerConfigPage() {
 
   /**
    * 函数级详细中文注释：加载当前账户的做市商信息
-   * - 查询当前账户是否为激活的做市商
-   * - 如果是，加载配置信息并填充表单
+   * 
+   * ✅ 2025-10-30 Phase 2：已移除，改用useCurrentMakerInfo共享Hook
+   * - Hook位置: hooks/market-maker/useCurrentMakerInfo.ts
+   * - 自动加载当前账户的做市商信息
+   * - 自动解码EPAY字段
+   * - 包含首购资金池等完整信息
+   * 
+   * 旧代码已删除（102行），减少重复代码
    */
-  const loadMarketMakerInfo = React.useCallback(async () => {
-    if (!api) return
-    
-    try {
-      setLoadingInfo(true)
-      setError('')
-      
-      // 检查 pallet 是否存在
-      if (!(api.query as any).marketMaker) {
-        setError('pallet-market-maker 不存在')
-        return
-      }
-
-      // 获取当前登录账户地址
-      const currentAddress = localStorage.getItem('mp.current')
-      
-      console.log('[配置管理] 检查登录状态，当前地址:', currentAddress)
-      
-      if (!currentAddress) {
-        setError('未找到当前登录账户，请先登录')
-        return
-      }
-
-      // 查询 ActiveMarketMakers 找到当前账户的做市商ID
-      const entries = await (api.query as any).marketMaker.activeMarketMakers.entries()
-      
-      let foundMmId: number | null = null
-      let foundApp: any = null
-      
-      for (const [key, value] of entries) {
-        const mmId = key.args[0].toNumber()
-        const app = value.toJSON() as any
-        
-        // 检查是否属于当前账户且状态为 Active
-        if (app.owner && app.owner.toLowerCase() === currentAddress.toLowerCase() && app.status === 'Active') {
-          foundMmId = mmId
-          foundApp = app
-          console.log('[配置管理] 找到当前账户的做市商记录:', mmId, app)
-          break
-        }
-      }
-      
-      if (foundMmId === null || !foundApp) {
-        setError('您不是已激活的做市商，或者您的申请尚未通过审核')
-        return
-      }
-
-      // 解析数据
-      const info: MarketMakerInfo = {
-        mmId: foundMmId,
-        owner: foundApp.owner || '',
-        status: foundApp.status || 'Unknown',
-        epayGateway: bytesToString(foundApp.epayGateway),
-        epayPort: foundApp.epayPort || 0,
-        epayPid: bytesToString(foundApp.epayPid),
-        epayKey: bytesToString(foundApp.epayKey),
-        firstPurchasePool: foundApp.firstPurchasePool || '0',
-        firstPurchaseUsed: foundApp.firstPurchaseUsed || '0',
-        firstPurchaseFrozen: foundApp.firstPurchaseFrozen || '0',
-        usersServed: foundApp.usersServed || 0,
-      }
-      
-      setMarketMakerInfo(info)
-      
-      // 填充表单默认值（用于显示当前配置）
-      form.setFieldsValue({
-        epay_gateway: info.epayGateway,
-        epay_port: info.epayPort,
-        epay_pid: info.epayPid,
-        epay_key: info.epayKey, // 🆕 2025-10-20：明文显示密钥
-      })
-      
-      console.log('[配置管理] 做市商信息已加载:', info)
-      
-    } catch (e: any) {
-      console.error('[配置管理] 加载失败:', e)
-      setError('加载做市商信息失败：' + (e?.message || '未知错误'))
-    } finally {
-      setLoadingInfo(false)
-    }
-  }, [api, form])
+  // const loadMarketMakerInfo = React.useCallback(async () => { ... }, [api, form])  // ❌ 已删除
+  // React.useEffect(() => { if (api) loadMarketMakerInfo() }, [api, loadMarketMakerInfo])  // ❌ 已删除
 
   /**
-   * 函数级详细中文注释：当 API 连接成功后，加载配置信息
+   * 函数级详细中文注释：当做市商信息加载完成后，填充表单
+   * 🆕 2025-10-30 Phase 2：新增此useEffect替代原来loadMarketMakerInfo中的表单填充逻辑
    */
   React.useEffect(() => {
-    if (api) {
-      loadMarketMakerInfo()
+    if (marketMakerInfo) {
+      form.setFieldsValue({
+        epay_gateway: marketMakerInfo.epayGateway,
+        epay_port: marketMakerInfo.epayPort,
+        epay_pid: marketMakerInfo.epayPid,
+        epay_key: marketMakerInfo.epayKey, // 明文显示密钥
+      })
+      console.log('[配置管理] 做市商信息已加载并填充表单:', marketMakerInfo)
     }
-  }, [api, loadMarketMakerInfo])
+  }, [marketMakerInfo, form])
 
   /**
    * 函数级详细中文注释：提交 epay 配置更新（链上调用）
@@ -222,11 +121,11 @@ export default function MarketMakerConfigPage() {
    */
   const onUpdateConfig = async (values: any) => {
     if (!api || !marketMakerInfo) {
-      setError('API 未初始化或做市商信息未加载')
+      setLocalError('API 未初始化或做市商信息未加载')
       return
     }
 
-    setError('')
+    setLocalError('')
     setLoading(true)
 
     try {
@@ -306,7 +205,7 @@ export default function MarketMakerConfigPage() {
     } catch (e: any) {
       console.error('更新配置失败:', e)
       message.error({ content: '更新配置失败：' + (e?.message || '未知错误'), key: 'update', duration: 5 })
-      setError(e?.message || '更新配置失败')
+      setLocalError(e?.message || '更新配置失败')
     } finally {
       setLoading(false)
     }
@@ -318,7 +217,7 @@ export default function MarketMakerConfigPage() {
    */
   const onDepositToPool = async () => {
     if (!api || !marketMakerInfo) {
-      setError('API 未初始化或做市商信息未加载')
+      setLocalError('API 未初始化或做市商信息未加载')
       return
     }
 
@@ -331,7 +230,7 @@ export default function MarketMakerConfigPage() {
       return
     }
 
-    setError('')
+    setLocalError('')
     setLoading(true)
 
     try {
@@ -358,7 +257,7 @@ export default function MarketMakerConfigPage() {
     } catch (e: any) {
       console.error('充值失败:', e)
       message.error({ content: '充值失败：' + (e?.message || '未知错误'), key: 'deposit', duration: 5 })
-      setError(e?.message || '充值失败')
+      setLocalError(e?.message || '充值失败')
     } finally {
       setLoading(false)
     }
@@ -429,7 +328,7 @@ export default function MarketMakerConfigPage() {
               message={error} 
               style={{ marginBottom: 12 }} 
               closable 
-              onClose={() => setError('')} 
+              onClose={() => setLocalError('')} 
             />
           )}
 

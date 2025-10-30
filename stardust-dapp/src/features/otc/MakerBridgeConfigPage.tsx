@@ -4,6 +4,7 @@ import { SettingOutlined, SaveOutlined, ReloadOutlined, ArrowLeftOutlined, Check
 import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { ApiPromise } from '@polkadot/api'
+import { useCurrentMakerInfo, type MarketMakerInfo } from '../../hooks/market-maker'  // 🆕 2025-10-30 Phase 2：使用共享Hook
 
 const { Title, Text, Paragraph } = Typography
 const { TabPane } = Tabs
@@ -19,19 +20,11 @@ const { TabPane } = Tabs
 
 /**
  * 函数级详细中文注释：做市商信息数据结构
+ * 
+ * ✅ 2025-10-30 Phase 2：此接口已移至hooks/market-maker/useCurrentMakerInfo.ts
+ * 现在从共享Hook导入，避免重复定义
  */
-interface MarketMakerInfo {
-  mmId: number
-  owner: string
-  status: string
-  direction: number  // 🆕 2025-10-19：业务方向（0=Buy, 1=Sell, 2=BuyAndSell）
-  tronAddress: string  // 🆕 2025-10-19：统一TRON地址（OTC收款 + Bridge发款）
-  publicCid: string
-  privateCid: string
-  buyPremiumBps: number  // 🆕 2025-10-19：Buy溢价（基点）
-  sellPremiumBps: number // 🆕 2025-10-19：Sell溢价（基点）
-  minAmount: string
-}
+// interface MarketMakerInfo { ... }  // ❌ 已删除，使用hooks/market-maker导出的版本
 
 /**
  * 函数级详细中文注释：桥接服务配置数据结构
@@ -51,29 +44,35 @@ interface BridgeServiceConfig {
 
 /**
  * 函数级详细中文注释：解析字节数组为字符串
+ * 
+ * ✅ 2025-10-30 Phase 2：此函数已废弃
+ * - 已移至utils/paymentUtils.ts（decodeEpayField）
+ * - 删除重复代码
+ * - Hook自动调用decodeEpayField解析字段
  */
-function bytesToString(bytes: any): string {
-  if (!bytes) return ''
-  if (typeof bytes === 'string') return bytes
-  if (Array.isArray(bytes)) {
-    try {
-      return new TextDecoder().decode(new Uint8Array(bytes))
-    } catch (e) {
-      return ''
-    }
-  }
-  return ''
-}
+// function bytesToString(bytes: any): string { ... }  // ❌ 已删除
 
 export default function MakerBridgeConfigPage() {
   const [bridgeForm] = Form.useForm()
   const [infoForm] = Form.useForm()
   const [loading, setLoading] = React.useState<boolean>(false)
-  const [loadingData, setLoadingData] = React.useState<boolean>(false)
+  const [loadingBridge, setLoadingBridge] = React.useState<boolean>(false)
   const [api, setApi] = React.useState<ApiPromise | null>(null)
-  const [marketMakerInfo, setMarketMakerInfo] = React.useState<MarketMakerInfo | null>(null)
   const [bridgeService, setBridgeService] = React.useState<BridgeServiceConfig | null>(null)
-  const [error, setError] = React.useState<string>('')
+  const [localError, setLocalError] = React.useState<string>('')  // 本地错误信息（用于操作失败时显示）
+  
+  // 🆕 2025-10-30 Phase 2：使用共享Hook加载当前账户的做市商信息
+  const { 
+    mmId, 
+    makerInfo: marketMakerInfo, 
+    loading: loadingMaker, 
+    error: hookError,  // Hook的错误信息（用于加载做市商信息失败时显示）
+    reload: reloadMakerInfo 
+  } = useCurrentMakerInfo()
+  
+  // 合并加载状态和错误信息
+  const loadingData = loadingMaker || loadingBridge
+  const error = localError || hookError
 
   /**
    * 函数级详细中文注释：初始化 API 连接
@@ -84,93 +83,71 @@ export default function MakerBridgeConfigPage() {
         const apiInstance = await getApi()
         setApi(apiInstance)
       } catch (e: any) {
-        setError('API 连接失败：' + (e?.message || ''))
+        setLocalError('API 连接失败：' + (e?.message || ''))
       }
     }
     initApi()
   }, [])
 
   /**
-   * 函数级详细中文注释：加载做市商信息和桥接服务配置
+   * 函数级详细中文注释：填充业务配置表单
+   * 🆕 2025-10-30 Phase 2：当做市商信息加载完成后自动填充表单
    */
-  const loadMakerData = React.useCallback(async () => {
-    if (!api) return
+  React.useEffect(() => {
+    if (marketMakerInfo) {
+      infoForm.setFieldsValue({
+        tron_address: marketMakerInfo.tronAddress,
+        public_cid: marketMakerInfo.publicCid,
+        private_cid: marketMakerInfo.privateCid,
+        buy_premium_bps: marketMakerInfo.buyPremiumBps,
+        sell_premium_bps: marketMakerInfo.sellPremiumBps,
+        min_amount: Number(BigInt(marketMakerInfo.minAmount) / BigInt(1e12)),
+      })
+      console.log('[桥接配置] 做市商信息已填充表单:', marketMakerInfo)
+    }
+  }, [marketMakerInfo, infoForm])
+
+  /**
+   * 函数级详细中文注释：加载桥接服务配置
+   * 
+   * ✅ 2025-10-30 Phase 2：简化此函数，仅加载桥接服务配置
+   * - 做市商信息加载已移至useCurrentMakerInfo Hook
+   * - 旧代码删除（~100行），减少重复代码
+   */
+  const loadBridgeService = React.useCallback(async () => {
+    if (!api || !mmId) return
     
     try {
-      setLoadingData(true)
-      setError('')
+      setLoadingBridge(true)
+      setLocalError('')
       
-      // 检查 pallet 是否存在
-      if (!(api.query as any).marketMaker) {
-        setError('pallet-market-maker 不存在')
-        return
-      }
-
-      // 获取当前登录账户地址
-      const currentAddress = localStorage.getItem('mp.current')
-      
-      if (!currentAddress) {
-        setError('未找到当前登录账户，请先登录')
-        return
-      }
-
-      // 查询 ActiveMarketMakers 找到当前账户的做市商ID
-      const entries = await (api.query as any).marketMaker.activeMarketMakers.entries()
-      
-      let foundMmId: number | null = null
-      let foundApp: any = null
-      
-      for (const [key, value] of entries) {
-        const mmId = key.args[0].toNumber()
-        const app = value.toJSON() as any
-        
-        if (app.owner && app.owner.toLowerCase() === currentAddress.toLowerCase() && app.status === 'Active') {
-          foundMmId = mmId
-          foundApp = app
-          break
-        }
-      }
-      
-      if (foundMmId === null || !foundApp) {
-        setError('您不是已激活的做市商，或者您的申请尚未通过审核')
-        return
-      }
-
-      // 解析做市商基础信息
-      const info: MarketMakerInfo = {
-        mmId: foundMmId,
-        owner: foundApp.owner || '',
-        status: foundApp.status || 'Unknown',
-        direction: foundApp.direction !== undefined ? Number(foundApp.direction) : 2, // 🆕 2025-10-19：解析业务方向，默认为2（BuyAndSell）
-        tronAddress: bytesToString(foundApp.tronAddress),  // 🆕 2025-10-19：解析TRON地址
-        publicCid: bytesToString(foundApp.publicCid),
-        privateCid: bytesToString(foundApp.privateCid),
-        buyPremiumBps: foundApp.buyPremiumBps !== undefined ? Number(foundApp.buyPremiumBps) : 0,  // 🆕 2025-10-19：解析Buy溢价
-        sellPremiumBps: foundApp.sellPremiumBps !== undefined ? Number(foundApp.sellPremiumBps) : 0, // 🆕 2025-10-19：解析Sell溢价
-        minAmount: foundApp.minAmount || '0',
-      }
-      
-      setMarketMakerInfo(info)
-      
-      // 填充业务配置表单
-      infoForm.setFieldsValue({
-        tron_address: info.tronAddress,          // 🆕 2025-10-19：填充TRON地址
-        public_cid: info.publicCid,
-        private_cid: info.privateCid,
-        buy_premium_bps: info.buyPremiumBps,    // 🆕 2025-10-19：填充Buy溢价
-        sell_premium_bps: info.sellPremiumBps,  // 🆕 2025-10-19：填充Sell溢价
-        min_amount: Number(BigInt(info.minAmount) / BigInt(1e12)),
-      })
-
       // 查询桥接服务配置
-      const bridgeData = await (api.query as any).marketMaker.bridgeServices(foundMmId)
+      const bridgeData = await (api.query as any).marketMaker.bridgeServices(mmId)
       
       if (bridgeData.isSome) {
         const bridge = bridgeData.unwrap().toJSON() as any
         
+        // 使用decodeEpayField解析TRON地址（保持一致性）
+        // 注意：bridgeService的tronAddress可能需要单独解析
+        let tronAddr = ''
+        if (bridge.tronAddress) {
+          if (typeof bridge.tronAddress === 'string' && !bridge.tronAddress.startsWith('0x')) {
+            tronAddr = bridge.tronAddress
+          } else if (Array.isArray(bridge.tronAddress)) {
+            tronAddr = new TextDecoder().decode(new Uint8Array(bridge.tronAddress))
+          } else if (typeof bridge.tronAddress === 'string' && bridge.tronAddress.startsWith('0x')) {
+            const hex = bridge.tronAddress.slice(2)
+            const byteArray: number[] = []
+            for (let i = 0; i < hex.length; i += 2) {
+              byteArray.push(parseInt(hex.substr(i, 2), 16))
+            }
+            tronAddr = new TextDecoder().decode(new Uint8Array(byteArray))
+          }
+        }
+        
         const serviceConfig: BridgeServiceConfig = {
           makerAccount: bridge.makerAccount || '',
-          tronAddress: bytesToString(bridge.tronAddress),
+          tronAddress: tronAddr,
           maxSwapAmount: bridge.maxSwapAmount || 0,
           feeRateBps: bridge.feeRateBps || 0,
           enabled: bridge.enabled || false,
@@ -189,26 +166,40 @@ export default function MakerBridgeConfigPage() {
           max_swap_amount: serviceConfig.maxSwapAmount / 1e6, // 转换为 USDT
           fee_rate_bps: serviceConfig.feeRateBps,
         })
+        
+        console.log('[桥接配置] 桥接服务配置已加载:', serviceConfig)
       } else {
         setBridgeService(null)
+        console.log('[桥接配置] 桥接服务未启用')
       }
       
     } catch (e: any) {
-      console.error('[配置管理] 加载失败:', e)
-      setError('加载做市商信息失败：' + (e?.message || '未知错误'))
+      console.error('[桥接配置] 加载桥接服务失败:', e)
+      setLocalError('加载桥接服务失败：' + (e?.message || '未知错误'))
     } finally {
-      setLoadingData(false)
+      setLoadingBridge(false)
     }
-  }, [api, bridgeForm, infoForm])
+  }, [api, mmId, bridgeForm])
 
   /**
-   * 函数级详细中文注释：当 API 连接成功后，加载配置信息
+   * 函数级详细中文注释：当做市商ID可用后，加载桥接服务配置
    */
   React.useEffect(() => {
-    if (api) {
-      loadMakerData()
+    if (mmId) {
+      loadBridgeService()
     }
-  }, [api, loadMakerData])
+  }, [mmId, loadBridgeService])
+
+  /**
+   * 函数级详细中文注释：重新加载所有数据（做市商信息 + 桥接服务配置）
+   * 🆕 2025-10-30 Phase 2：统一的reload函数，替代原来的loadMakerData
+   */
+  const reloadAll = React.useCallback(async () => {
+    await Promise.all([
+      reloadMakerInfo(),  // Hook提供的reload函数
+      loadBridgeService()  // 桥接服务配置reload
+    ])
+  }, [reloadMakerInfo, loadBridgeService])
 
   /**
    * 函数级详细中文注释：更新桥接服务配置
@@ -224,7 +215,7 @@ export default function MakerBridgeConfigPage() {
       return
     }
 
-    setError('')
+    setLocalError('')
     setLoading(true)
 
     try {
@@ -277,12 +268,12 @@ export default function MakerBridgeConfigPage() {
 
       // 等待区块确认后重新加载信息
       await new Promise(resolve => setTimeout(resolve, 3000))
-      await loadMakerData()
+      await reloadAll()
 
     } catch (e: any) {
       console.error('更新桥接服务配置失败:', e)
       message.error({ content: '更新桥接服务配置失败：' + (e?.message || '未知错误'), key: 'update', duration: 5 })
-      setError(e?.message || '更新桥接服务配置失败')
+      setLocalError(e?.message || '更新桥接服务配置失败')
     } finally {
       setLoading(false)
     }
@@ -328,7 +319,7 @@ export default function MakerBridgeConfigPage() {
           })
 
           await new Promise(resolve => setTimeout(resolve, 3000))
-          await loadMakerData()
+          await reloadAll()
 
         } catch (e: any) {
           console.error('重新启用桥接服务失败:', e)
@@ -380,7 +371,7 @@ export default function MakerBridgeConfigPage() {
           })
 
           await new Promise(resolve => setTimeout(resolve, 3000))
-          await loadMakerData()
+          await reloadAll()
 
         } catch (e: any) {
           console.error('禁用桥接服务失败:', e)
@@ -401,7 +392,7 @@ export default function MakerBridgeConfigPage() {
       return
     }
 
-    setError('')
+    setLocalError('')
     setLoading(true)
 
     try {
@@ -494,12 +485,12 @@ export default function MakerBridgeConfigPage() {
 
       // 等待区块确认后重新加载信息
       await new Promise(resolve => setTimeout(resolve, 3000))
-      await loadMakerData()
+      await reloadAll()
 
     } catch (e: any) {
       console.error('更新业务配置失败:', e)
       message.error({ content: '更新业务配置失败：' + (e?.message || '未知错误'), key: 'update', duration: 5 })
-      setError(e?.message || '更新业务配置失败')
+      setLocalError(e?.message || '更新业务配置失败')
     } finally {
       setLoading(false)
     }
@@ -519,7 +510,7 @@ export default function MakerBridgeConfigPage() {
       return
     }
 
-    setError('')
+    setLocalError('')
     setLoading(true)
 
     try {
@@ -545,12 +536,12 @@ export default function MakerBridgeConfigPage() {
 
       // 等待区块确认后重新加载信息
       await new Promise(resolve => setTimeout(resolve, 3000))
-      await loadMakerData()
+      await reloadAll()
 
     } catch (e: any) {
       console.error('更新业务方向失败:', e)
       message.error({ content: '更新业务方向失败：' + (e?.message || '未知错误'), key: 'direction', duration: 5 })
-      setError(e?.message || '更新业务方向失败')
+      setLocalError(e?.message || '更新业务方向失败')
     } finally {
       setLoading(false)
     }
@@ -612,7 +603,7 @@ export default function MakerBridgeConfigPage() {
               message={error} 
               style={{ marginBottom: 12 }} 
               closable 
-              onClose={() => setError('')} 
+              onClose={() => setLocalError('')} 
             />
           )}
 
@@ -639,7 +630,7 @@ export default function MakerBridgeConfigPage() {
                   <Button 
                     type="text" 
                     icon={<ReloadOutlined />} 
-                    onClick={loadMakerData}
+                    onClick={reloadAll}
                     loading={loadingData}
                     size="small"
                   >

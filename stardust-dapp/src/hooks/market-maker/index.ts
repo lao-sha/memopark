@@ -7,7 +7,5 @@
  */
 
 export { useMarketMakers, type UseMarketMakersReturn } from './useMarketMakers'
-
-// TODO: Phase 2后续添加
-// export { useCurrentMakerInfo, type UseCurrentMakerInfoReturn } from './useCurrentMakerInfo'
+export { useCurrentMakerInfo, type UseCurrentMakerInfoResult, type MarketMakerInfo } from './useCurrentMakerInfo'
 
