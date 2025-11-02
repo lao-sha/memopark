@@ -777,7 +777,7 @@ export default function CreateMarketMakerPage() {
               <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 12 }}>
 {`const api = await getApi()
 const current = localStorage.getItem('mp.current')
-const opt = await api.query.marketMaker.ownerIndex(current)
+const opt = await api.query.trading.ownerIndex(current)
 if (opt.isSome) {
   const mmId = opt.unwrap().toNumber()
   console.log('您的 mmId:', mmId)

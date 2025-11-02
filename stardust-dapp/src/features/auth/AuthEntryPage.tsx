@@ -11,9 +11,10 @@ import TransferPage from '../ledger/TransferPage'
 import CreateGraveForm from '../grave/CreateGraveForm'
 import GraveListPage from '../grave/GraveListPage'
 import TreasuryPage from '../treasury/TreasuryPage'
-import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
-import ArticleListPage from '../deceasedMedia/ArticleListPage'
-import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
+// 已移除：deceasedMedia 模块已整合到 deceased 模块
+// import CreateArticleForm from '../deceasedMedia/CreateArticleForm'
+// import ArticleListPage from '../deceasedMedia/ArticleListPage'
+// import ArticleDetailPage from '../deceasedMedia/ArticleDetailPage'
 import FriendsPage from '../deceased/FriendsPage'
 import CreateDeceasedForm from '../deceased/CreateDeceasedForm'
 
@@ -62,9 +63,10 @@ const AuthEntryPage: React.FC = () => {
           { key: 'transfer', label: '转账', children: <TransferPage /> },
           { key: 'create-grave', label: '创建墓地', children: <CreateGraveForm /> },
           { key: 'grave-list', label: '墓地列表', children: <GraveListPage /> },
-          { key: 'article-new', label: '新建文章', children: <CreateArticleForm /> },
-          { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
-          { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
+          // 已移除：文章相关功能已整合到 deceased 模块
+          // { key: 'article-new', label: '新建文章', children: <CreateArticleForm /> },
+          // { key: 'article-list', label: '文章列表', children: <ArticleListPage /> },
+          // { key: 'article-detail', label: '文章详情', children: <ArticleDetailPage /> },
           { key: 'friends', label: '亲友团', children: <FriendsPage /> },
           { key: 'deceased-create', label: '创建逝者', children: <CreateDeceasedForm /> },
           { key: 'treasury', label: '国库', children: <TreasuryPage /> },

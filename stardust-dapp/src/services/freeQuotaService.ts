@@ -56,11 +56,11 @@ export async function getRemainingQuota(
 ): Promise<FreeQuotaInfo> {
   try {
     // 查询当前配额
-    const currentQuota = await api.query.marketMaker.freeOrderQuota(makerId, buyerAddress);
+    const currentQuota = await api.query.trading.freeOrderQuota(makerId, buyerAddress);
     const currentQuotaNum = currentQuota.toNumber();
     
     // 查询默认配额
-    const defaultQuota = await api.query.marketMaker.freeOrderQuotaConfig(makerId);
+    const defaultQuota = await api.query.trading.freeOrderQuotaConfig(makerId);
     const defaultQuotaNum = defaultQuota.toNumber();
     
     // 如果当前配额为0，检查是否为新买家
@@ -101,7 +101,7 @@ export async function getDefaultQuota(
   makerId: number
 ): Promise<number> {
   try {
-    const defaultQuota = await api.query.marketMaker.freeOrderQuotaConfig(makerId);
+    const defaultQuota = await api.query.trading.freeOrderQuotaConfig(makerId);
     return defaultQuota.toNumber();
   } catch (error) {
     console.error('查询默认配额失败:', error);
@@ -128,7 +128,7 @@ export async function getSponsoredStats(
   makerId: number
 ): Promise<SponsoredStats> {
   try {
-    const statsData = await api.query.marketMaker.totalFreeOrdersConsumed(makerId);
+    const statsData = await api.query.trading.totalFreeOrdersConsumed(makerId);
     const [totalCount, totalAmount] = statsData.toJSON() as [number, string];
     
     const totalAmountNum = parseFloat(totalAmount) / 1e18;
@@ -178,7 +178,7 @@ export async function setFreeQuotaConfig(
   onStatusChange?: (status: string) => void
 ): Promise<string> {
   try {
-    const tx = api.tx.marketMaker.setFreeQuotaConfig(makerId, quota);
+    const tx = api.tx.trading.setFreeQuotaConfig(makerId, quota);
     
     return new Promise((resolve, reject) => {
       tx.signAndSend(signer, ({ status, events, dispatchError }) => {
@@ -234,7 +234,7 @@ export async function grantFreeQuota(
   onStatusChange?: (status: string) => void
 ): Promise<string> {
   try {
-    const tx = api.tx.marketMaker.grantFreeQuota(makerId, buyerAddress, additionalQuota);
+    const tx = api.tx.trading.grantFreeQuota(makerId, buyerAddress, additionalQuota);
     
     return new Promise((resolve, reject) => {
       tx.signAndSend(signer, ({ status, events, dispatchError }) => {
@@ -294,7 +294,7 @@ export async function batchGrantFreeQuota(
       throw new Error('批量授予最多支持100个买家');
     }
     
-    const tx = api.tx.marketMaker.batchGrantFreeQuota(makerId, buyerAddresses, quotaPerBuyer);
+    const tx = api.tx.trading.batchGrantFreeQuota(makerId, buyerAddresses, quotaPerBuyer);
     
     return new Promise((resolve, reject) => {
       tx.signAndSend(signer, ({ status, events, dispatchError }) => {
@@ -388,7 +388,7 @@ export async function createFreeOrder(
     const qtyWithDecimals = BigInt(qty) * BigInt(1e18);
     
     // ❌ 旧 API（已移除）
-    // const tx = api.tx.otcOrder.openOrderFree(...);
+    // const tx = api.tx.trading.openOrderFree(...);
     
     // ✅ 新 API（待链端实现）
     // const tx = api.tx.trading.createFirstPurchase(

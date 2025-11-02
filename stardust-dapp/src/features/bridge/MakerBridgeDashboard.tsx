@@ -170,7 +170,7 @@ export const MakerBridgeDashboard: React.FC = () => {
       const feeRateBps = Math.floor(values.feeRate * 100);
       
       // 调用链上方法
-      const tx = api.tx.marketMaker.enableBridgeService(
+      const tx = api.tx.trading.enableBridgeService(
         makerInfo.mmId,
         maxSwapAmountRaw,
         feeRateBps
@@ -202,7 +202,7 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.marketMaker.disableBridgeService(makerInfo.mmId);
+      const tx = api.tx.trading.disableBridgeService(makerInfo.mmId);
       
       const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
       

@@ -387,7 +387,7 @@ export async function getCommitteeKeyShare(
   api: ApiPromise,
   memberAccount: string
 ): Promise<Uint8Array | null> {
-  const share = await api.query.marketMaker.committeeKeyShares(memberAccount);
+  const share = await api.query.trading.committeeKeyShares(memberAccount);
   
   if (share.isNone) {
     return null;
