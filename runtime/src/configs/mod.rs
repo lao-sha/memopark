@@ -1052,211 +1052,6 @@ impl pallet_ledger::Config for Runtime {
     type WeightInfo = pallet_ledger::weights::SubstrateWeight<Runtime>;
 }
 
-// 🆕 2025-10-28 已移除: pallet-memorial 已整合到 pallet-memorial
-// parameter_types! {
-//     pub const OfferMaxCidLen: u32 = 64;
-//     pub const OfferMaxNameLen: u32 = 64;
-//     pub const OfferMaxPerTarget: u32 = 10_000;
-//     pub const OfferMaxMediaPerOffering: u32 = 8;
-//     pub const OfferMaxMemoLen: u32 = 64;
-// }
-// pub struct AllowAllTargetControl;
-// pub struct NoopOfferingHook;
-// // impl pallet_memo_offerings::Config for Runtime {
-//     type RuntimeEvent = RuntimeEvent;
-//     type MaxCidLen = OfferMaxCidLen;
-//     type MaxNameLen = OfferMaxNameLen;
-//     type MaxOfferingsPerTarget = OfferMaxPerTarget;
-//     type MaxMediaPerOffering = OfferMaxMediaPerOffering;
-//     type MaxMemoLen = OfferMaxMemoLen;
-//     type OfferWindow = ConstU32<600>;
-//     type OfferMaxInWindow = ConstU32<100>;
-//     type MinOfferAmount = ConstU128<1_000_000_000>; // 0.001 UNIT
-//     type TargetCtl = AllowAllTargetControl;
-//     type OnOffering = GraveOfferingHook;
-//     /// 函数级中文注释：多路分账路由实现（内容治理可配置）
-//     type DonationRouter = OfferDonationRouter;
-//     /// 函数级中文注释：管理员 Origin 改为 Root | 委员会阈值(2/3)。
-//     type AdminOrigin = frame_support::traits::EitherOfDiverse<
-//         frame_system::EnsureRoot<AccountId>,
-//         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
-//     >;
-//     /// 函数级中文注释：治理起源（Root | 委员会阈值），用于 gov* 接口证据化调整。
-//     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
-//         frame_system::EnsureRoot<AccountId>,
-//         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
-//     >;
-//     /// 函数级中文注释：供奉转账使用链上余额
-//     type Currency = Balances;
-//     /// 函数级中文注释：捐赠账户解析
-//     type DonationResolver = GraveDonationResolver;
-//     /// 目录只读接口由 memo-sacrifice 提供
-//     type Catalog = pallet_memo_sacrifice::Pallet<Runtime>;
-//     /// 函数级中文注释：消费回调绑定占位实现（Noop），后续由 stardust-pet 接管。
-//     type Consumer = NoopConsumer;
-//     /// 函数级中文注释：会员信息提供者（用于供奉折扣验证）
-//     type MembershipProvider = OfferingsMembershipProviderAdapter;
-//     /// 函数级详细中文注释：联盟计酬托管账户
-//     /// - 供奉资金将全额转入此托管账户
-//     /// - 再由 pallet-affiliate-instant 从托管账户统一分配
-//     /// - 确保资金流向可控且推荐奖励能正常发放
-//     type AffiliateEscrowAccount = AffiliateEscrowAccount;
-//     /// 函数级详细中文注释：去中心化存储费用账户
-//     /// - 用于接收供奉产生的去中心化存储费用（通常为2%）
-//     /// - 支付 IPFS 及未来其他去中心化存储方案的成本
-//     /// - 通过路由表配置分配比例
-//     type StorageAccount = DecentralizedStorageAccount;
-//     /// 函数级中文注释：黑洞账户（用于销毁 DUST）
-//     type BurnAccount = BurnAccount;
-//     /// 函数级中文注释：国库账户（用于平台财政收入）
-//     type TreasuryAccount = TreasuryAccount;
-//     /// 函数级详细中文注释：委员会账户（用于接收供奉品审核罚没资金）
-//     /// - 当用户提交的供奉品被拒绝或撤回时，5%的押金将罚没至此账户
-//     /// - 委员会可通过治理提案使用这些资金，用于激励审核工作
-//     type CommitteeAccount = CommitteeAccount;
-//     /// 函数级详细中文注释：供奉品提交押金（1,000,000 DUST）
-//     /// - 用户提交供奉品审核时需要冻结的押金
-//     /// - 1,000,000 DUST = 1,000,000,000,000 单位（假设 1 DUST = 1,000,000 单位）
-//     /// - 批准上架后全额退还；拒绝或撤回时罚没5%到委员会账户
-//     type SubmissionDeposit = ConstU128<1_000_000_000_000>; // 1,000,000 DUST
-//     /// 函数级详细中文注释：拒绝/撤回罚没比例（500 bps = 5%）
-//     /// - bps = basis points，10,000 bps = 100%
-//     /// - 罚没资金进入委员会账户，用于激励委员会成员的审核工作
-//     type RejectionSlashBps = ConstU32<500>;
-// }
-
-// 🆕 2025-10-28 已移除: 旧的供奉路由实现，已整合到 pallet-memorial
-// /// 函数级详细中文注释：供奉收款路由实现
-// /// - 目标域为 Grave(=1) 时，将 SubjectBps 部分路由到"逝者主题资金账户"，其余走原 Resolver。
-// pub struct OfferDonationRouter;
-// // impl pallet_memo_offerings::pallet::DonationRouter<AccountId> for OfferDonationRouter {
-//     fn route(target: (u8, u64), gross: u128) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)> {
-//         if gross == 0 {
-//             return alloc::vec::Vec::new();
-//         }
-//         // 优先按域路由表；无则按全局；再无则按旧 SubjectBps 单路策略
-//         if let Some(table) =
-//             pallet_memo_offerings::pallet::RouteTableByDomain::<Runtime>::get(target.0)
-//         {
-//             return resolve_table(target, table);
-//         }
-//         if let Some(table) = pallet_memo_offerings::pallet::RouteTableGlobal::<Runtime>::get() {
-//             return resolve_table(target, table);
-//         }
-//         // 旧策略回退：仅 Grave 域路由到主题账户
-//         const DOMAIN_GRAVE: u8 = 1;
-//         if target.0 == DOMAIN_GRAVE {
-//             if let Some(primary_id) =
-//                 pallet_stardust_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
-//             {
-//                 if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id) {
-//                     // 函数级中文注释：降级逻辑也使用 creator 确保账户稳定性
-//                     let creator = d.creator.clone();
-//                     let subject_acc =
-//                         EscrowPalletId::get().into_sub_account_truncating((creator, primary_id));
-//                     let bps = pallet_memo_offerings::pallet::SubjectBps::<Runtime>::get();
-//                     return alloc::vec::Vec::from([(subject_acc, bps)]);
-//                 }
-//             }
-//         }
-//         alloc::vec::Vec::new()
-//     }
-// }
-//
-// /// 函数级中文注释：解析路由表，将路由项映射为实际账户与份额
-// /// 支持 4 种路由类型：
-// /// - kind=0: SubjectFunding（派生主题账户）
-// /// - kind=1: SpecificAccount（指定账户）
-// /// - kind=2: Burn（黑洞账户）
-// /// - kind=3: Treasury（国库账户）
-// fn resolve_table<I>(
-//     target: (u8, u64),
-//     table: I,
-// ) -> alloc::vec::Vec<(AccountId, sp_runtime::Permill)>
-// where
-//     I: IntoIterator<Item = pallet_memo_offerings::pallet::RouteEntry<Runtime>>,
-// {
-//     use pallet_memo_offerings::pallet::RouteEntry;
-//     const DOMAIN_GRAVE: u8 = 1;
-//     let mut out: alloc::vec::Vec<(AccountId, sp_runtime::Permill)> = alloc::vec::Vec::new();
-//     
-//     for RouteEntry {
-//         kind,
-//         account,
-//         share,
-//     } in table.into_iter()
-//     {
-//         match (kind, account) {
-//             // kind=0: SubjectFunding - 派生主题资金账户
-//             (0, _) => {
-//                 if target.0 == DOMAIN_GRAVE {
-//                     if let Some(primary_id) =
-//                         pallet_stardust_grave::pallet::PrimaryDeceasedOf::<Runtime>::get(target.1)
-//                     {
-//                         if let Some(d) =
-//                             pallet_deceased::pallet::DeceasedOf::<Runtime>::get(primary_id)
-//                         {
-//                             // 函数级中文注释：使用 creator（不可变）而非 owner（可变），确保主题账户地址永久稳定
-//                             // - creator 创建后永不改变，即使 owner 通过治理转移，主题账户地址也不变
-//                             // - 保证资金连续性：owner 转移前后的供奉都进入同一主题账户
-//                             let creator = d.creator.clone();
-//                             let subject_acc = EscrowPalletId::get()
-//                                 .into_sub_account_truncating((creator, primary_id));
-//                             out.push((subject_acc, share));
-//                         }
-//                     }
-//                 }
-//                 // TODO: 扩展支持宠物域（domain=3）
-//             }
-//             
-//             // kind=1: SpecificAccount - 使用指定账户
-//             (1, Some(acc)) => {
-//                 out.push((acc, share));
-//             }
-//             
-//             // kind=2: Burn - 销毁到黑洞账户
-//             (2, _) => {
-//                 let burn_account = <Runtime as pallet_memo_offerings::Config>::BurnAccount::get();
-//                 out.push((burn_account, share));
-//             }
-//             
-//             // kind=3: Treasury - 转入国库账户
-//             (3, _) => {
-//                 let treasury_account = <Runtime as pallet_memo_offerings::Config>::TreasuryAccount::get();
-//                 out.push((treasury_account, share));
-//             }
-//             
-//             // 其他情况忽略
-//             _ => {}
-//         }
-//     }
-//     out
-// }
-//
-// /// 函数级中文注释：消费回调占位实现（不做任何状态变更），保障编译期绑定。
-// pub struct NoopConsumer;
-// // impl pallet_memo_offerings::pallet::EffectConsumer<AccountId> for NoopConsumer {
-//     fn apply(
-//         _target: (u8, u64),
-//         _who: &AccountId,
-//         _effect: &pallet_memo_offerings::pallet::EffectSpec,
-//     ) -> frame_support::dispatch::DispatchResult {
-//         Ok(())
-//     }
-// }
-
-// 🆕 2025-10-28 已移除: pallet-memorial 已整合到 pallet-memorial
-// // ===== memo-sacrifice（目录）配置 =====
-// parameter_types! {
-//     pub const SacStringLimit: u32 = 64;
-//     pub const SacUriLimit: u32 = 128;
-//     pub const SacDescLimit: u32 = 256;
-//     pub const SacListingDeposit: Balance = 10_000_000_000_000; // 0.01 UNIT 示例
-//     pub const SacComplaintPeriod: BlockNumber = 30 * DAYS;     // 30 天 示例
-//     pub const SacMaxExclusivePerItem: u32 = 8;
-
-// ===== 🆕 2025-10-28：Memorial Integration（统一纪念服务系统）=====
-// 整合 pallet-memorial 和 pallet-memorial
 parameter_types! {
     // Sacrifice（祭祀品目录）参数
     pub const MemorialStringLimit: u32 = 64;
@@ -1508,158 +1303,6 @@ impl pallet_stardust_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
     fn on_interment(_grave_id: u64, _deceased_id: u64) {}
 }
 
-// 🆕 2025-10-28 已移除: 旧的供奉目标控制器，已整合到 pallet-memorial
-// /// 函数级中文注释：供奉目标控制器（允许所有目标，Grave 域做成员校验）
-// // impl pallet_memo_offerings::pallet::TargetControl<RuntimeOrigin, AccountId>
-//     for AllowAllTargetControl
-// {
-//     /// 函数级中文注释：目标存在性检查临时实现：放行（返回 true）。后续应检查对应存储是否存在。
-//     fn exists(target: (u8, u64)) -> bool {
-//         const DOMAIN_GRAVE: u8 = 1;
-//         const DOMAIN_PET: u8 = 3;
-//         if target.0 == DOMAIN_GRAVE {
-//             return pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(target.1);
-//         }
-//         if target.0 == DOMAIN_PET {
-//             return pallet_stardust_pet::pallet::PetOf::<Runtime>::contains_key(target.1);
-//         }
-//         true
-//     }
-//     /// 函数级中文注释：权限检查：若目标域为 Grave(=1)，则要求发起者为该墓位成员；否则放行。
-//     fn ensure_allowed(
-//         origin: RuntimeOrigin,
-//         target: (u8, u64),
-//     ) -> frame_support::dispatch::DispatchResult {
-//         let who = frame_system::ensure_signed(origin)?;
-//         const DOMAIN_GRAVE: u8 = 1;
-//         if target.0 == DOMAIN_GRAVE {
-//             // 若墓位公开则放行，否则必须为成员
-//             let is_public = pallet_stardust_grave::pallet::Graves::<Runtime>::get(target.1)
-//                 .map(|g| g.is_public)
-//                 .unwrap_or(false);
-//             if !is_public {
-//                 ensure!(
-//                     pallet_stardust_grave::pallet::Members::<Runtime>::contains_key(target.1, &who),
-//                     sp_runtime::DispatchError::Other("NotMember")
-//                 );
-//             }
-//         }
-//         // DOMAIN_PET：当前不限制成员，放行（如需限制可在此增加校验）
-//         Ok(())
-//     }
-// }
-
-// 🆕 2025-10-28 已移除: 旧的供奉回调，已整合到 pallet-memorial
-// /// 函数级中文注释：当供奉落账时，将其按 grave 维度写入账本模块。
-// // 🆕 2025-10-28 已移除
-// pub struct GraveOfferingHook;
-// impl pallet_memo_offerings::pallet::OnOfferingCommitted<AccountId> for GraveOfferingHook {
-//     /// 函数级详细中文注释：供奉 Hook（职责转移后版本）
-//     /// - target.0 为域编码（例如 1=grave）；target.1 为对象 id（grave_id）
-//     /// - 携带金额（若 Some）则累计到排行榜；Timed 的持续周数用于标记有效供奉周期
-//     /// - routed: 路由分账记录，用于提取 Affiliate 托管账户的金额
-//     fn on_offering(
-//         target: (u8, u64),
-//         kind_code: u8,
-//         who: &AccountId,
-//         amount: Option<u128>,
-//         duration_weeks: Option<u32>,
-//         routed: alloc::vec::Vec<(AccountId, u128)>,
-//     ) {
-//         const DOMAIN_GRAVE: u8 = 1;
-//         if target.0 == DOMAIN_GRAVE {
-//             let amt: Option<Balance> = amount.map(|a| a as Balance);
-//             // 1) 记录供奉流水（附带去重键）：
-//             //    以 (domain, grave_id, who, block_number, amount, extrinsic_index) 为种子生成 H256
-//             let now = <frame_system::Pallet<Runtime>>::block_number();
-//             let ex_idx = <frame_system::Pallet<Runtime>>::extrinsic_index();
-//             let seed = (target.0, target.1, who.clone(), now, amount, ex_idx);
-//             let tx_key = Some(sp_core::H256::from(sp_core::blake2_256(
-//                 &codec::Encode::encode(&seed),
-//             )));
-//             pallet_ledger::Pallet::<Runtime>::record_from_hook_with_amount(
-//                 target.1,
-//                 who.clone(),
-//                 kind_code,
-//                 amt,
-//                 None,
-//                 tx_key,
-//             );
-//             // 2) 标记有效供奉周期：
-//             // - 若为 Timed（duration_weeks=Some），无论是否转账成功，均标记从当周起连续 w 周
-//             // - 若为 Instant（None），仅当存在金额落账时标记当周
-//             let should_mark = duration_weeks.is_some() || amount.is_some();
-//             if should_mark {
-//                 pallet_ledger::Pallet::<Runtime>::mark_weekly_active(
-//                     target.1,
-//                     who.clone(),
-//                     now,
-//                     duration_weeks,
-//                 );
-//                 // 函数级详细中文注释：1.5) 联盟计酬分配（职责转移后版本）
-//                 // - 从 routed 列表中提取 Affiliate 托管账户收到的金额
-//                 // - 该金额已经是扣除固定费用后的金额（如90,000）
-//                 // - 由 pallet-affiliate-config 根据当前模式（Instant/Weekly）动态分配
-//                 if should_mark {
-//                     let affiliate_escrow = AffiliateEscrowAccount::get();
-//                     if let Some(affiliate_amount) = routed.iter()
-//                         .find(|(acc, _)| acc == &affiliate_escrow)
-//                         .map(|(_, amt)| *amt)
-//                     {
-//                         let affiliate_balance: Balance = affiliate_amount as Balance;
-//                         let _ = pallet_affiliate_config::Pallet::<Runtime>::distribute_rewards(
-//                             who,
-//                             affiliate_balance,
-//                             Some(target),
-//                             now,
-//                             duration_weeks,
-//                         );
-//                     }
-//                 }
-//             }
-//             // 3) 累计到逝者总额：若墓位绑定了 primary_deceased_id 则累加（不含押金，amount 已为实付）
-//             if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(target.1) {
-//                 if let Some(primary) = grave.deceased_tokens.first() {
-//                     // 说明：这里假设第一个 token 对应 primary deceased；若有更严格的 primary 字段，可改为读取专用字段。
-//                     if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::iter()
-//                         .find_map(|(id, rec)| {
-//                             let tok = rec.deceased_token.to_vec();
-//                             if tok == primary.to_vec() {
-//                                 Some(id)
-//                             } else {
-//                                 None
-//                             }
-//                         })
-//                     {
-//                         if let Some(v) = amount {
-//                             pallet_ledger::Pallet::<Runtime>::add_to_deceased_total(
-//                                 d,
-//                                 v as Balance,
-//                             );
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
-// 🆕 2025-10-28 已移除: 旧的捐赠账户解析器，已整合到 pallet-memorial
-// /// 函数级中文注释：纪念馆捐赠账户解析器。
-// /// - 从 GraveId 派生子账户，集中管理捐赠。
-// pub struct GraveDonationResolver;
-// impl pallet_memo_offerings::pallet::DonationAccountResolver<AccountId> for GraveDonationResolver {
-//     fn account_for(target: (u8, u64)) -> AccountId {
-//         // 托管结算：所有供奉先进入联盟托管账户，由联盟模块周期结算再分配。
-//         let escrow = EscrowPalletId::get().into_account_truncating();
-//         let _ = target; // 当前按域统一托管，保留形参以便未来分域托管
-//         escrow
-//     }
-// }
-
-// 备注：memorial-offerings 已改为内置媒体存储，不再需要 EvidenceProvider 适配器。
-
-// ===== evidence 配置 =====
 parameter_types! {
     pub const EvidenceMaxCidLen: u32 = 64;
     pub const EvidenceMaxImg: u32 = 20;
@@ -2141,7 +1784,7 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
             use pallet_trading::ArbitrationHook;
             pallet_trading::pallet::Pallet::<Runtime>::can_dispute(who, id)
         } else if domain == SimpleBridgeNsBytes::get() {
-            // SimpleBridge：TODO - 待pallet-simple-bridge实现ArbitrationHook trait
+            // SimpleBridge：TODO - 待 pallet-trading 实现ArbitrationHook trait
             // 暂时返回false，等待simple-bridge实现仲裁接口
             false
         } else {
@@ -2178,7 +1821,7 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
                 }
             }
         } else if domain == SimpleBridgeNsBytes::get() {
-            // SimpleBridge域：TODO - 待pallet-simple-bridge实现ArbitrationHook trait
+            // SimpleBridge域：TODO - 待 pallet-trading 实现ArbitrationHook trait
             // 暂时返回错误，等待simple-bridge实现仲裁接口
             // 
             // 计划实现：
@@ -2348,21 +1991,6 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
                 None,
                 vec![],
             ),
-            // 🆕 2025-10-28 已移除: offerings 相关的治理调用，已整合到 memorial
-            // // 6=offerings：按域暂停（domain=1 grave）
-            // (6, 50) => pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_pause_domain(
-            //     RuntimeOrigin::root(),
-            //     1u8,
-            //     true,
-            //     vec![],
-            // ),
-            // // 6=offerings：51=上/下架供奉模板
-            // (6, 51) => pallet_memo_offerings::pallet::Pallet::<Runtime>::gov_set_offering_enabled(
-            //     RuntimeOrigin::root(),
-            //     target as u8,
-            //     true,
-            //     vec![],
-            // ),
             _ => Err(sp_runtime::DispatchError::Other("UnsupportedContentAction")),
         }
     }
@@ -2377,15 +2005,6 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
 
 // 已移除：Exchange 管理员适配器实现
 
-// 🆕 2025-10-28 已移除: pallet-memo-referrals 已整合到 pallet-affiliate
-// ===== referrals（推荐关系）配置 =====
-// parameter_types! {
-//     /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
-//     pub const RefMaxHops: u32 = 10;
-
-// （已下线）memo-endowment（基金会）配置块移除
-
-// ===== memo-ipfs（存储+OCW）配置 =====
 parameter_types! { pub const IpfsMaxCidHashLen: u32 = 64; }
 /// 函数级中文注释：为 stardust-ipfs 绑定运行时类型。注意 OCW 需要签名类型约束。
 impl pallet_stardust_ipfs::Config for Runtime {
@@ -2586,21 +2205,6 @@ impl sp_core::Get<&'static [u16]> for AffiliateTierRates {
     }
 }
 
-// 🆕 2025-10-28 已移除: 旧的 pallet-affiliate（托管层）配置
-// 新的统一 pallet-affiliate v1.0.0 配置见下方
-// /// ============================================================================
-// /// 联盟计酬托管层配置 (pallet-affiliate)
-// /// ============================================================================
-// /// 函数级中文注释：托管层只负责资金托管，不涉及分配逻辑
-// impl pallet_affiliate::Config for Runtime {
-//     type RuntimeEvent = RuntimeEvent;
-//     type Currency = Balances;
-//     /// 函数级中文注释：托管 PalletId - 使用独立的联盟计酬托管账户
-//     type EscrowPalletId = AffiliatePalletId;
-//     /// 函数级中文注释：提款权限 - 仅 Root 可以提款（或配置为财务委员会）
-//     type WithdrawOrigin = frame_system::EnsureRoot<AccountId>;
-// }
-
 parameter_types! {
     /// 函数级中文注释：联盟计酬托管账户地址（供 weekly 使用）
     pub AffiliateEscrowAccount: AccountId = AffiliatePalletId::get().into_account_truncating();
@@ -2766,58 +2370,19 @@ impl pallet_storage_treasury::Config for Runtime {
 }
 
 
-
-
-
-//     /// 函数级中文注释：周结算提供者（pallet-affiliate-weekly）
-//     type WeeklyProvider = pallet_affiliate_weekly::Pallet<Runtime>;
-//     
-//     /// 函数级中文注释：即时分成提供者（pallet-affiliate-instant）
-//     type InstantProvider = pallet_affiliate_instant::Pallet<Runtime>;
-//     
-//     /// 函数级中文注释：会员信息提供者（适配器）
-//     type MembershipProvider = ConfigMembershipProviderAdapter;
-//     
-//     /// 函数级中文注释：推荐关系提供者（适配器）
-//     type ReferralProvider = ConfigReferralProviderAdapter;
-//     
-//     /// 函数级中文注释：财务治理起源（Root 或 财务委员会 2/3 多数）
-//     /// 用于切换结算模式等重要财务治理操作
-//     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
-//         frame_system::EnsureRoot<AccountId>,
-//         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance2, 2, 3>,
-//     >;
-//     
-//     /// 函数级中文注释：权重信息（占位）
-//     type WeightInfo = ();
-//     
-//     /// 函数级中文注释：Pallet ID（暂时保留，未来可能移除）
-//     type PalletId = AffiliatePalletId;
-// }
-
 // ============================================================================
-// 🆕 2025-10-28 统一联盟计酬系统配置 (pallet-affiliate v1.0.0)
+// 极简桥接模块配置 (pallet-simple-bridge)
 // ============================================================================
-// 函数级详细中文注释：统一联盟计酬系统 - 整合了5个模块的功能
-//
-// **整合的模块**：
-// - pallet-memo-referrals（推荐关系）
-// - pallet-affiliate（托管）
-// - pallet-affiliate-config（配置）
-// - pallet-affiliate-instant（即时分成）
-// - pallet-affiliate-weekly（周结算）
-//
-// **核心功能**：
-// - 推荐关系管理（bind_sponsor, claim_code）
-// - 资金托管（deposit, withdraw）
-// - 即时分成（实时转账）
-// - 周结算（累计应得 + 周期结算）
-// - 配置管理（set_settlement_mode, set_instant_percents, set_weekly_percents）
-//
-// **模式支持**：
-// - Weekly: 全周结算
-// - Instant: 全即时分成
-// - Hybrid: 前N层即时 + 后M层周结算
+
+// 函数级详细中文注释：SimpleBridge 配置实现
+// - MVP 设计：只支持 DUST → USDT (TRC20) 兑换
+// - 固定汇率：0.5 USDT/DUST（桥接服务端配置）
+// - 托管模式：DUST 锁定在桥接账户
+// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
+// 🗑️ 2025-10-29：pallet-simple-bridge 已整合到 pallet-trading，配置已删除
+
+
+
 parameter_types! {
     /// 函数级中文注释：推荐码最大长度（16字符）
     pub const AffiliateMaxCodeLen: u32 = 16;
@@ -2958,65 +2523,6 @@ pub fn initialize_storage_routes() {
 ///   * 国库 3%（平台运营）
 ///   * 去中心化存储费用 2%（IPFS 及未来扩展）
 ///   * 推荐分配 90%（强激励推荐网络扩张）
-// 🆕 2025-10-28 已移除: 旧的 offerings 路由初始化函数已废弃
-// 已整合到 pallet-memorial，路由逻辑已简化
-// /// - 调整说明：大幅提升推荐激励（80%→90%），削减 SubjectFunding（10%→2%）和 Burn（5%→3%）
-// /// - 治理后续可通过 setRouteTableGlobal 调整
-// /// - 应在 Runtime 升级或初始化时调用
-// #[allow(dead_code)]
-// pub fn initialize_offering_routes() {
-//     use pallet_memo_offerings::RouteEntry;
-//     use sp_runtime::Permill;
-//     use frame_support::BoundedVec;
-//     
-//     let routes = alloc::vec![
-//         // kind=0: SubjectFunding（主题资金账户 2%）- 基于 creator 派生，给逝者家属使用
-//         RouteEntry {
-//             kind: 0,
-//             account: None,
-//             share: Permill::from_percent(2),
-//         },
-//         // kind=2: Burn（销毁 3%）- 通缩机制
-//         RouteEntry {
-//             kind: 2,
-//             account: None,
-//             share: Permill::from_percent(3),
-//         },
-//         // kind=3: Treasury（国库 3%）- 平台运营资金
-//         RouteEntry {
-//             kind: 3,
-//             account: None,
-//             share: Permill::from_percent(3),
-//         },
-//         // kind=1: SpecificAccount - DecentralizedStorageAccount（去中心化存储费用 2%）
-//         RouteEntry {
-//             kind: 1,
-//             account: Some(DecentralizedStorageAccount::get()),
-//             share: Permill::from_percent(2),
-//         },
-//         // kind=1: SpecificAccount - Affiliate（推荐分配 90%）- 强激励推荐网络
-//         RouteEntry {
-//             kind: 1,
-//             account: Some(AffiliateEscrowAccount::get()),
-//             share: Permill::from_percent(90),
-//         },
-//     ];
-//     
-//     let bounded_routes: BoundedVec<RouteEntry<Runtime>, frame_support::traits::ConstU32<5>> = 
-//         routes.try_into().unwrap_or_default(); // 如果失败则使用空表
-//     
-//     pallet_memo_offerings::RouteTableGlobal::<Runtime>::put(bounded_routes);
-// }
-
-// ========= FeeGuard（已移除 - 使用官方 pallet-proxy 纯代理替代） =========
-// 移除原因：
-// 1. 项目中没有 pallet-forwarder（手续费代付），主要使用场景不存在
-// 2. 官方 pallet-proxy 的纯代理（Pure Proxy）已经提供相同功能
-// 3. 减少自研 pallet 维护成本和系统复杂度
-// 替代方案：使用 pallet-proxy 的 createPure() 创建纯代理账户
-
-// ========= Chat（去中心化聊天） =========
-/// 函数级中文注释：去中心化聊天功能配置
 impl pallet_chat::Config for Runtime {
     /// 事件类型
     type RuntimeEvent = RuntimeEvent;
