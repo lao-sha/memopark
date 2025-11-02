@@ -9,7 +9,7 @@
  */
 
 import { u8aToHex, hexToU8a, stringToU8a, u8aToString } from '@polkadot/util';
-import { encryptMessage as polkadotEncrypt, decryptMessage as polkadotDecrypt } from '@polkadot/util-crypto';
+import { naclEncrypt, naclDecrypt, randomAsU8a } from '@polkadot/util-crypto';
 import type { MessageContent } from '../types/chat';
 
 /**
@@ -32,10 +32,19 @@ export async function encryptMessageContent(
     
     // 使用接收方公钥加密
     const receiverPubKey = hexToU8a(receiverPublicKey);
-    const encrypted = polkadotEncrypt(message, receiverPubKey);
     
-    // 返回 hex 格式的加密内容
-    return u8aToHex(encrypted);
+    // 生成随机 nonce
+    const secret = randomAsU8a(32);
+    
+    // 使用 NaCl 加密
+    const { encrypted, nonce } = naclEncrypt(message, secret, receiverPubKey);
+    
+    // 组合 nonce + encrypted 并返回 hex 格式
+    const combined = new Uint8Array(nonce.length + encrypted.length);
+    combined.set(nonce);
+    combined.set(encrypted, nonce.length);
+    
+    return u8aToHex(combined);
   } catch (error) {
     console.error('消息加密失败:', error);
     throw new Error(`消息加密失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -55,11 +64,15 @@ export async function decryptMessageContent(
 ): Promise<MessageContent> {
   try {
     // 转换为 Uint8Array
-    const encrypted = hexToU8a(encryptedContent);
+    const combined = hexToU8a(encryptedContent);
     const privateKey = hexToU8a(myPrivateKey);
     
+    // 分离 nonce 和 encrypted（nonce 是前 24 字节）
+    const nonce = combined.slice(0, 24);
+    const encrypted = combined.slice(24);
+    
     // 解密
-    const decrypted = polkadotDecrypt(encrypted, privateKey);
+    const decrypted = naclDecrypt(encrypted, nonce, privateKey);
     
     if (!decrypted) {
       throw new Error('解密失败：私钥不匹配');

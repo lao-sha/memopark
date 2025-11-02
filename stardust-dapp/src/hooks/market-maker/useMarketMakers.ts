@@ -74,12 +74,12 @@ export function useMarketMakers(): UseMarketMakersReturn {
       const api = await getApi()
       
       // 检查pallet是否存在
-      if (!(api.query as any).marketMaker) {
+      if (!(api.query as any).trading) {
         throw new Error('做市商模块尚未在链上注册')
       }
 
       // 查询所有活跃做市商
-      const entries = await (api.query as any).marketMaker.activeMarketMakers.entries()
+      const entries = await (api.query as any).trading.activeMarketMakers.entries()
       
       // 解析做市商数据
       const makers: MarketMaker[] = []

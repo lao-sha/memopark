@@ -120,7 +120,7 @@ export function useCurrentMakerInfo(
      * 
      * 执行流程：
      * 1. 获取当前账户地址（参数 > localStorage）
-     * 2. 检查pallet-market-maker是否存在
+     * 2. 检查pallet-trading是否存在
      * 3. 查询所有activeMarketMakers
      * 4. 遍历找到owner匹配且status为Active的做市商
      * 5. 解析并返回完整信息
@@ -145,14 +145,14 @@ export function useCurrentMakerInfo(
         const api = await getApi();
 
         // 3. 检查pallet是否存在
-        if (!(api.query as any).marketMaker) {
-          setError('pallet-market-maker 不存在');
+        if (!(api.query as any).trading) {
+          setError('pallet-trading 不存在');
           setLoading(false);
           return;
         }
 
         // 4. 查询所有活跃做市商
-        const entries = await (api.query as any).marketMaker.activeMarketMakers.entries();
+        const entries = await (api.query as any).trading.activeMarketMakers.entries();
         
         let foundMmId: number | null = null;
         let foundApp: any = null;

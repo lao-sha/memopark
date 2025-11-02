@@ -28,7 +28,7 @@ const MarketMakerCenterPage: React.FC = () => {
 
   /**
    * 函数级详细中文注释：加载用户的做市商状态
-   * - 查询链上 pallet-market-maker 的 Applications
+   * - 查询链上 pallet-trading 的 Applications
    * - 解析状态：Pending、DepositLocked、UnderReview、Active、Rejected
    * - 根据状态显示不同的提示和功能
    */

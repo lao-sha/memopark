@@ -2031,15 +2031,15 @@ impl pallet_trading::Config for Runtime {
     type FiatGatewayTreasuryAccount = FiatGatewayTreasuryAccount;
     type MinFirstPurchaseAmount = OtcOrderMinFirstPurchaseAmount;
     type MaxFirstPurchaseAmount = OtcOrderMaxFirstPurchaseAmount;
-    type MembershipProvider = ReferralsMembershipProviderAdapter;
-    type OrderArchiveThresholdDays = OrderArchiveThresholdDays;
-    type MaxOrderCleanupPerBlock = MaxOrderCleanupPerBlock;
-    type TronTxHashRetentionPeriod = ConstU32<2592000>;
-    
-    // ===== 托管和推荐配置 =====
+    // 🔴 2025-11-02：已移除（pallet-stardust-referrals 已移除）
+    //         type MembershipProvider = ();
+        type OrderArchiveThresholdDays = OrderArchiveThresholdDays;
+        type MaxOrderCleanupPerBlock = MaxOrderCleanupPerBlock;
+        type TronTxHashRetentionPeriod = ConstU32<2592000>;
+        
+    // ===== 托管和联盟配置 =====
     type Escrow = pallet_escrow::Pallet<Runtime>;
-    // 🔴 2025-10-29：暂时使用空实现（pallet_stardust_referrals未配置）
-    type ReferralProvider = EmptyReferralProvider;
+    // 🔴 2025-11-02：暂时使用空实现
     type AffiliateDistributor = EmptyAffiliateDistributor;
     
     // ===== Bridge配置 =====
@@ -2061,15 +2061,15 @@ impl pallet_trading::Config for Runtime {
 
 /// 函数级详细中文注释：空的推荐关系提供者（Trading暂不使用推荐功能）
 pub struct EmptyReferralProvider;
-impl pallet_stardust_referrals::ReferralProvider<AccountId> for EmptyReferralProvider {
-    fn sponsor_of(_who: &AccountId) -> Option<AccountId> { None }
-    fn ancestors(_who: &AccountId, _max: u32) -> alloc::vec::Vec<AccountId> { alloc::vec::Vec::new() }
-    fn is_banned(_who: &AccountId) -> bool { false }
-    fn find_account_by_code(_code: &alloc::vec::Vec<u8>) -> Option<AccountId> { None }
-    fn get_referral_code(_who: &AccountId) -> Option<alloc::vec::Vec<u8>> { None }
-    fn try_auto_claim_code(_who: &AccountId) -> bool { false }
-    fn bind_sponsor_internal(_who: &AccountId, _sponsor: &AccountId) -> Result<(), &'static str> { Ok(()) }
-}
+// impl pallet_stardust_referrals::ReferralProvider<AccountId> for EmptyReferralProvider {
+//     fn sponsor_of(_who: &AccountId) -> Option<AccountId> { None }
+//     fn ancestors(_who: &AccountId, _max: u32) -> alloc::vec::Vec<AccountId> { alloc::vec::Vec::new() }
+//     fn is_banned(_who: &AccountId) -> bool { false }
+//     fn find_account_by_code(_code: &alloc::vec::Vec<u8>) -> Option<AccountId> { None }
+//     fn get_referral_code(_who: &AccountId) -> Option<alloc::vec::Vec<u8>> { None }
+//     fn try_auto_claim_code(_who: &AccountId) -> bool { false }
+//     fn bind_sponsor_internal(_who: &AccountId, _sponsor: &AccountId) -> Result<(), &'static str> { Ok(()) }
+// }
 
 /// 函数级详细中文注释：空的联盟分配器（Trading暂不使用联盟功能）
 pub struct EmptyAffiliateDistributor;
@@ -2795,15 +2795,15 @@ impl pallet_storage_treasury::Config for Runtime {
 }
 
 
-/// ============================================================================
-/// 极简桥接模块配置 (pallet-simple-bridge)
-/// ============================================================================
+// ============================================================================
+// 极简桥接模块配置 (pallet-simple-bridge)
+// ============================================================================
 
-/// 函数级详细中文注释：SimpleBridge 配置实现
-/// - MVP 设计：只支持 DUST → USDT (TRC20) 兑换
-/// - 固定汇率：0.5 USDT/DUST（桥接服务端配置）
-/// - 托管模式：DUST 锁定在桥接账户
-/// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
+// 函数级详细中文注释：SimpleBridge 配置实现
+// - MVP 设计：只支持 DUST → USDT (TRC20) 兑换
+// - 固定汇率：0.5 USDT/DUST（桥接服务端配置）
+// - 托管模式：DUST 锁定在桥接账户
+// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
 // 🗑️ 2025-10-29：pallet-simple-bridge 已整合到 pallet-trading，配置已删除
 
 
@@ -2873,15 +2873,22 @@ impl pallet_storage_treasury::Config for Runtime {
 // 🆕 2025-10-28 已移除: 旧的适配器（已整合到统一 pallet-affiliate）
 // /// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-referrals 的 MembershipProvider trait
 // /// - 用于推荐码申请时检查会员状态
-/// 函数级中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-referrals 的 MembershipProvider trait
-pub struct ReferralsMembershipProviderAdapter;
-impl pallet_stardust_referrals::MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
-    /// 函数级中文注释：检查账户是否为有效会员
-    /// - 调用 pallet-membership 的 is_member_valid 方法
-    fn is_valid_member(who: &AccountId) -> bool {
-        pallet_membership::Pallet::<Runtime>::is_member_valid(who)
-    }
-}
+// 函数级中文注释：适配器 - 将 pallet-membership 适配到 MembershipProvider trait
+// 🔴 2025-11-02：pallet-stardust-referrals 已移除，改为内部 trait 定义
+// pub struct ReferralsMembershipProviderAdapter;
+// 
+// // 🔴 2025-11-02：临时内部 trait 定义
+// pub trait MembershipProvider<AccountId> {
+//     fn is_valid_member(who: &AccountId) -> bool;
+// }
+// 
+// impl MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
+//     /// 函数级中文注释：检查账户是否为有效会员
+//     /// - 调用 pallet-membership 的 is_member_valid 方法
+//     fn is_valid_member(who: &AccountId) -> bool {
+//         pallet_membership::Pallet::<Runtime>::is_member_valid(who)
+//     }
+// }
 
 // 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memorial 的 MembershipProvider trait
 // - 用于供奉购买时检查会员状态并应用折扣

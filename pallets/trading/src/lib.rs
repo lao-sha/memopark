@@ -250,11 +250,12 @@ pub mod pallet {
         #[pallet::constant]
         type MaxFirstPurchaseAmount: Get<BalanceOf<Self>>;
         
-        /// 会员信息提供者
-        type MembershipProvider: pallet_stardust_referrals::MembershipProvider<Self::AccountId>;
-        
-        /// 推荐关系提供者
-        type ReferralProvider: pallet_stardust_referrals::ReferralProvider<Self::AccountId>;
+        // 🔴 2025-10-30 已移除: pallet-stardust-referrals 已删除
+        // /// 会员信息提供者
+        // type MembershipProvider: pallet_stardust_referrals::MembershipProvider<Self::AccountId>;
+        // 
+        // /// 推荐关系提供者
+        // type ReferralProvider: pallet_stardust_referrals::ReferralProvider<Self::AccountId>;
         
         /// 联盟计酬分配器
         /// 🆕 2025-10-29: 使用新的 pallet-affiliate

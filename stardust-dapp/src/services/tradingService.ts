@@ -3,7 +3,7 @@
  * 
  * 函数级详细中文注释：
  * 提供OTC订单、做市商管理、跨链桥接的完整功能，对接 pallet-trading。
- * 整合了原 pallet-otc-order、pallet-market-maker、pallet-simple-bridge 的核心功能。
+ * 整合了原 pallet-otc-order、pallet-trading、pallet-simple-bridge 的核心功能。
  * 
  * @module tradingService
  * @created 2025-10-28

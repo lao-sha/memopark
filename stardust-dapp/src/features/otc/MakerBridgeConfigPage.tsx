@@ -122,7 +122,7 @@ export default function MakerBridgeConfigPage() {
       setLocalError('')
       
       // 查询桥接服务配置
-      const bridgeData = await (api.query as any).marketMaker.bridgeServices(mmId)
+      const bridgeData = await (api.query as any).trading.bridgeServices(mmId)
       
       if (bridgeData.isSome) {
         const bridge = bridgeData.unwrap().toJSON() as any

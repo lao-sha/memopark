@@ -93,7 +93,7 @@ export default function CreateMarketMakerPage() {
 
       try {
         // 从链上查询真实的 mmId
-        const ownerIndexOpt = await (api.query as any).marketMaker?.ownerIndex(currentAddress)
+        const ownerIndexOpt = await (api.query as any).trading?.ownerIndex(currentAddress)
         
         if (ownerIndexOpt && ownerIndexOpt.isSome) {
           // 链上有申请记录
@@ -211,8 +211,8 @@ export default function CreateMarketMakerPage() {
       setLoadingConfig(true)
       
       // 检查 pallet 是否存在
-      if (!(api.query as any).marketMaker) {
-        console.warn('pallet-market-maker 不存在')
+      if (!(api.query as any).trading) {
+        console.warn('pallet-trading 不存在')
         return
       }
 
@@ -243,14 +243,14 @@ export default function CreateMarketMakerPage() {
       
       try {
         // 查询 NextId 以确定需要检查的范围
-        const nextIdRaw = await (api.query as any).marketMaker.nextId()
+        const nextIdRaw = await (api.query as any).trading.nextId()
         const nextId = Number(nextIdRaw.toString())
         
         console.log('[配置] 当前 NextId:', nextId, '当前地址:', currentAddress)
         
         // 遍历查询所有申请记录，找到属于当前账户的申请
         for (let id = 0; id < nextId; id++) {
-          const appOption = await (api.query as any).marketMaker.applications(id)
+          const appOption = await (api.query as any).trading.applications(id)
           
           if (appOption.isSome) {
             const app = appOption.unwrap()
@@ -349,13 +349,13 @@ export default function CreateMarketMakerPage() {
       setLoadingDetails(true)
       
       // 检查 pallet 是否存在
-      if (!(api.query as any).marketMaker) {
-        console.warn('pallet-market-maker 不存在')
+      if (!(api.query as any).trading) {
+        console.warn('pallet-trading 不存在')
         return
       }
 
       // 查询申请详情
-      const appOption = await (api.query as any).marketMaker.applications(id)
+      const appOption = await (api.query as any).trading.applications(id)
       
       if (appOption.isSome) {
         const app = appOption.unwrap()
@@ -614,7 +614,7 @@ export default function CreateMarketMakerPage() {
 
   /**
    * 函数级详细中文注释：提交质押（链上调用）
-   * - 签名调用 pallet-market-maker::lock_deposit(amount)
+   * - 签名调用 pallet-trading::lock_deposit(amount)
    * - 监听事件获取 mmId 和截止时间
    */
   const onDeposit = async (values: any) => {
@@ -631,8 +631,8 @@ export default function CreateMarketMakerPage() {
       if (!amount || amount <= 0) throw new Error('请输入有效的质押金额')
 
       // 检查 pallet 是否已注册
-      if (!(api.query as any).marketMaker) {
-        throw new Error('pallet-market-maker 尚未在 runtime 中注册，请联系管理员')
+      if (!(api.query as any).trading) {
+        throw new Error('pallet-trading 尚未在 runtime 中注册，请联系管理员')
       }
 
       // 格式化金额（DUST 使用 12 位小数）
@@ -641,7 +641,7 @@ export default function CreateMarketMakerPage() {
       console.log('[质押] 原始金额:', amount)
       console.log('[质押] 格式化后:', depositAmount)
       console.log('[质押] API 可用:', !!api)
-      console.log('[质押] marketMaker pallet 存在:', !!(api.query as any).marketMaker)
+      console.log('[质押] marketMaker pallet 存在:', !!(api.query as any).trading)
 
       message.loading({ content: '正在签名并提交质押...', key: 'deposit', duration: 0 })
 
@@ -660,7 +660,7 @@ export default function CreateMarketMakerPage() {
 
       try {
         // 查询最新的 mmId（从 NextId 获取）
-        const nextIdRaw = await (api.query as any).marketMaker.nextId()
+        const nextIdRaw = await (api.query as any).trading.nextId()
         const nextId = Number(nextIdRaw.toString())
         
         console.log('[质押] NextId:', nextId)
@@ -682,7 +682,7 @@ export default function CreateMarketMakerPage() {
         
         // 查询申请详情以验证（传递正整数）
         if (true) {
-          const appOption = await (api.query as any).marketMaker.applications(latestMmId)
+          const appOption = await (api.query as any).trading.applications(latestMmId)
           
           if (appOption.isSome) {
             const app = appOption.unwrap()
@@ -727,14 +727,14 @@ export default function CreateMarketMakerPage() {
         try {
           const currentAddress = localStorage.getItem('mp.current')
           if (currentAddress) {
-            const ownerIndexOpt = await (api.query as any).marketMaker.ownerIndex(currentAddress)
+            const ownerIndexOpt = await (api.query as any).trading.ownerIndex(currentAddress)
             
             if (ownerIndexOpt.isSome) {
               const realMmId = Number(ownerIndexOpt.unwrap().toString())
               console.log('[质押] 通过 OwnerIndex 找到 mmId:', realMmId)
               
               // 查询申请详情
-              const appOption = await (api.query as any).marketMaker.applications(realMmId)
+              const appOption = await (api.query as any).trading.applications(realMmId)
               if (appOption.isSome) {
                 const app = appOption.unwrap()
                 const appData = app.toJSON()
@@ -803,7 +803,7 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：提交资料（链上调用）✅ Phase 4优化
-   * - 签名调用 pallet-market-maker::submit_info(maker_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, full_name, id_card, masked_payment_info_json?)
+   * - 签名调用 pallet-trading::submit_info(maker_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, full_name, id_card, masked_payment_info_json?)
    * - ✅ 已删除epay相关参数（首购功能已删除）
    * - ✅ 新增必填：full_name（完整姓名）、id_card（完整身份证）
    * - ✅ 新增可选：masked_payment_info_json（脱敏收款方式）
@@ -1009,7 +1009,7 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：更新申请资料（链上调用）
-   * - 签名调用 pallet-market-maker::update_info(maker_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
+   * - 签名调用 pallet-trading::update_info(maker_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    * - 允许在 DepositLocked 或 PendingReview 状态下调用
    */
@@ -1233,7 +1233,7 @@ if (opt.isSome) {
         const currentAddress = localStorage.getItem('mp.current')
         if (currentAddress) {
           try {
-            const ownerIndexOpt = await (api.query as any).marketMaker.ownerIndex(currentAddress)
+            const ownerIndexOpt = await (api.query as any).trading.ownerIndex(currentAddress)
             if (ownerIndexOpt.isSome) {
               const realMmId = Number(ownerIndexOpt.unwrap().toString())
               console.log('[重新加载] 找到 mmId:', realMmId)
