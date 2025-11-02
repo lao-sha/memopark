@@ -66,6 +66,7 @@ pallet-memorial = { path = "../pallets/memorial", default-features = false }  # 
 # - pallet-affiliate-instant（即时分成）
 # - pallet-affiliate-weekly（周结算）
 pallet-affiliate = { path = "../pallets/affiliate", default-features = false }  # v1.0.0 统一联盟计酬系统
+# pallet-stardust-referrals = { path = "../pallets/stardust-referrals", default-features = false }  # 🔴 2025-11-02 已移除 - 功能已整合到 pallet-affiliate
 # pallet-affiliate-weekly = { path = "../pallets/affiliate-weekly", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
 # pallet-affiliate-config = { path = "../pallets/affiliate-config", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
 # pallet-affiliate-instant = { path = "../pallets/affiliate-instant", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
@@ -151,6 +152,7 @@ std = [
 
 	# 🆕 2025-10-28 Affiliate Integration
 	"pallet-affiliate/std",  # v1.0.0 统一联盟计酬系统（已整合5个模块）
+	# "pallet-stardust-referrals/std",  # 🔴 2025-11-02 已移除 - 功能已整合到 pallet-affiliate
 # "pallet-affiliate-weekly/std",  # 2025-10-28 已整合到 pallet-affiliate
 # "pallet-affiliate-config/std",  # 2025-10-28 已整合到 pallet-affiliate
 # "pallet-affiliate-instant/std",  # 2025-10-28 已整合到 pallet-affiliate

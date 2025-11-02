@@ -57,6 +57,7 @@ std = [
 	"pallet-escrow/std",
 	"pallet-credit/std",  # 🆕 2025-10-29: 替代 buyer-credit 和 maker-credit
 	"pallet-affiliate/std",  # 🆕 2025-10-29: 替代 affiliate-config
+	# "pallet-stardust-referrals/std",  # 🔴 2025-10-30 已移除
 	"pallet-evidence/std",
 ]
 runtime-benchmarks = [

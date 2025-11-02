@@ -1254,6 +1254,24 @@ impl pallet_ledger::Config for Runtime {
 //     pub const SacListingDeposit: Balance = 10_000_000_000_000; // 0.01 UNIT 示例
 //     pub const SacComplaintPeriod: BlockNumber = 30 * DAYS;     // 30 天 示例
 //     pub const SacMaxExclusivePerItem: u32 = 8;
+// }
+// impl pallet_memo_sacrifice::Config for Runtime {
+//     type RuntimeEvent = RuntimeEvent;
+//     type StringLimit = SacStringLimit;
+//     type UriLimit = SacUriLimit;
+//     type DescriptionLimit = SacDescLimit;
+//     // 管理员 Origin：Root | 内容委员会(Instance3，2/3)
+//     // 函数级中文注释：将目录创建/更新的治理权限绑定到"内容委员会"，便于链上内容治理一体化。
+//     type AdminOrigin = frame_support::traits::EitherOfDiverse<
+//         frame_system::EnsureRoot<AccountId>,
+//         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
+//     >;
+//     type Currency = Balances;
+//     type ListingDeposit = SacListingDeposit;
+//     type ComplaintPeriod = SacComplaintPeriod;
+//     type Treasury = TreasuryAccount;
+//     type MaxExclusivePerItem = SacMaxExclusivePerItem;
+// }
 
 // ===== 🆕 2025-10-28：Memorial Integration（统一纪念服务系统）=====
 // 整合 pallet-memorial 和 pallet-memorial
@@ -2382,6 +2400,17 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
 // parameter_types! {
 //     /// 函数级中文注释：推荐关系最大向上遍历层级，用于防御性限制。
 //     pub const RefMaxHops: u32 = 10;
+// }
+// impl pallet_stardust_referrals::Config for Runtime {
+//     /// 函数级中文注释：事件类型绑定到运行时事件。
+//     type RuntimeEvent = RuntimeEvent;
+//     /// 函数级中文注释：最大层级限制（防环遍历的边界）。
+//     type MaxHops = RefMaxHops;
+//     /// 函数级中文注释：会员信息提供者（用于验证推荐码申请资格）
+//     /// - 用于 claim_default_code() 验证用户是否为有效会员
+//     /// - 由 pallet-membership 提供实现
+//     type MembershipProvider = ReferralsMembershipProviderAdapter;
+// }
 
 // （已下线）memo-endowment（基金会）配置块移除
 
@@ -2766,9 +2795,219 @@ impl pallet_storage_treasury::Config for Runtime {
 }
 
 
+// ============================================================================
+// 极简桥接模块配置 (pallet-simple-bridge)
+// ============================================================================
+
+// 函数级详细中文注释：SimpleBridge 配置实现
+// - MVP 设计：只支持 DUST → USDT (TRC20) 兑换
+// - 固定汇率：0.5 USDT/DUST（桥接服务端配置）
+// - 托管模式：DUST 锁定在桥接账户
+// - 注意：Currency、GovernanceOrigin、PalletId 继承自 pallet_market_maker::Config
+// 🗑️ 2025-10-29：pallet-simple-bridge 已整合到 pallet-trading，配置已删除
 
 
 
+// 🆕 2025-10-28 已移除: pallet-affiliate-weekly 配置（已整合到统一 pallet-affiliate）
+// /// ============================================================================
+// /// 联盟计酬周结算分配层配置 (pallet-affiliate-weekly)
+// /// ============================================================================
+// /// 函数级中文注释：分配层负责分配算法和周期结算，从托管层读取资金
+// impl pallet_affiliate_weekly::Config for Runtime {
+//     /// 事件类型
+//     type RuntimeEvent = RuntimeEvent;
+//     /// 货币实现
+//     type Currency = Balances;
+//     /// 推荐关系只读提供者
+//     type Referrals = pallet_stardust_referrals::Pallet<Runtime>;
+//     /// 周对应区块数
+//     type BlocksPerWeek = frame_support::traits::ConstU32<100_800>;
+//     /// 函数级中文注释：从托管层读取托管账户（类似 affiliate-instant 的设计）
+//     type EscrowAccount = AffiliateEscrowAccount;
+//     /// 防御性搜索上限
+//     type MaxSearchHops = frame_support::traits::ConstU32<10_000>;
+//     /// 结算最大层级与阈值
+//     type MaxLevels = frame_support::traits::ConstU32<15>;
+//     type PerLevelNeed = frame_support::traits::ConstU32<3>;
+//     /// 比例（bps）：每层不等比
+//     type LevelRatesBps = LevelRatesArray;
+// }
+//
+// // 运行时可读默认值说明（前端读取 storage）：
+// // - affiliate.totalDeposited / totalWithdrawn（托管层统计）
+// // - affiliateWeekly.budgetCapPerCycle / minStakeForReward / minQualifyingAction（分配层参数）
+//
+// /// 函数级中文注释：分层比例数组 [L1=2000, L2=1000, L3..L15=400]
+// pub struct LevelRatesArray;
+// impl sp_core::Get<&'static [u16]> for LevelRatesArray {
+//     fn get() -> &'static [u16] {
+//         const RATES: &[u16] = &[
+//             2000, // L1 20%
+//             1000, // L2 10%
+//             400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, // L3..L15 各 4%
+//         ];
+//         RATES
+//     }
+// }
+//
+// 🆕 2025-10-28 已移除: pallet-affiliate-instant 配置（已整合到统一 pallet-affiliate）
+// /// ============================================================================
+// /// 联盟计酬即时分配工具配置 (pallet-affiliate-instant)
+// /// ============================================================================
+// /// 函数级中文注释：即时分配工具负责实时计算推荐链并立即转账
+// impl pallet_affiliate_instant::Config for Runtime {
+//     type RuntimeEvent = RuntimeEvent;
+//     type Currency = Balances;
+//     type PalletId = AffiliatePalletId;
+//     type ReferralProvider = InstantReferralProviderAdapter;
+//     type MembershipProvider = InstantMembershipProviderAdapter;
+//     type BurnPercent = frame_support::traits::ConstU8<5>;
+//     type TreasuryPercent = frame_support::traits::ConstU8<2>;
+//     type StoragePercent = frame_support::traits::ConstU8<3>;
+//     type StorageFee = frame_support::traits::ConstU128<1000>;
+//     type BurnFee = frame_support::traits::ConstU128<500>;
+//     type TreasuryAccount = TreasuryAccount;
+//     type StorageAccount = TreasuryAccount;
+// }
+
+// 🆕 2025-10-28 已移除: 旧的适配器（已整合到统一 pallet-affiliate）
+// /// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memo-referrals 的 MembershipProvider trait
+// /// - 用于推荐码申请时检查会员状态
+// 函数级中文注释：适配器 - 将 pallet-membership 适配到 MembershipProvider trait
+// 🔴 2025-11-02：pallet-stardust-referrals 已移除，改为内部 trait 定义
+// pub struct ReferralsMembershipProviderAdapter;
+// 
+// // 🔴 2025-11-02：临时内部 trait 定义
+// pub trait MembershipProvider<AccountId> {
+//     fn is_valid_member(who: &AccountId) -> bool;
+// }
+// 
+// impl MembershipProvider<AccountId> for ReferralsMembershipProviderAdapter {
+//     /// 函数级中文注释：检查账户是否为有效会员
+//     /// - 调用 pallet-membership 的 is_member_valid 方法
+//     fn is_valid_member(who: &AccountId) -> bool {
+//         pallet_membership::Pallet::<Runtime>::is_member_valid(who)
+//     }
+// }
+
+// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-memorial 的 MembershipProvider trait
+// - 用于供奉购买时检查会员状态并应用折扣
+// - 年费会员享受 3 折优惠（30%）
+// 🆕 2025-10-28 已移除
+// pub struct OfferingsMembershipProviderAdapter;
+// impl pallet_memo_offerings::pallet::MembershipProvider<AccountId> for OfferingsMembershipProviderAdapter {
+//     /// 函数级中文注释：检查账户是否为有效会员
+//     /// - 调用 pallet-membership 的 is_member_valid 方法
+//     fn is_valid_member(who: &AccountId) -> bool {
+//         pallet_membership::Pallet::<Runtime>::is_member_valid(who)
+//     }
+//     
+//     /// 函数级中文注释：获取会员折扣比例
+//     /// - 固定返回 30 表示 30%（3折）
+//     /// - 供奉最终价格 = 原价 × 30 / 100
+//     fn get_discount() -> u8 {
+//         30 // 3折（30%）
+//     }
+// }
+
+// 🆕 2025-10-28 已移除: 旧的适配器（已整合到统一 pallet-affiliate）
+// /// 函数级详细中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-instant 的 ReferralProvider trait
+// /// - 用于即时分成系统获取推荐链
+// /// - 从购买者向上遍历，返回最多 max_depth 层的推荐人列表
+// pub struct InstantReferralProviderAdapter;
+// impl pallet_affiliate_instant::ReferralProvider<AccountId> for InstantReferralProviderAdapter {
+//     /// 函数级详细中文注释：获取推荐链（祖先列表，从近到远）
+//     /// - 调用 pallet-memo-referrals 的 ancestors 函数
+//     /// - 返回从直接推荐人到最顶层推荐人的有序列表
+//     /// - 用于供奉分成时逐层分配奖励
+//     fn get_sponsor_chain(who: &AccountId, max_depth: u8) -> alloc::vec::Vec<AccountId> {
+//         pallet_stardust_referrals::Pallet::<Runtime>::ancestors(who, max_depth as u32)
+//     }
+// }
+//
+// /// 函数级详细中文注释：适配器 - 将 pallet-membership 适配到 pallet-affiliate-instant 的 MembershipProvider trait
+// /// - 用于即时分成系统验证推荐人会员资格
+// /// - 只有有效会员才能获得推荐奖励
+// pub struct InstantMembershipProviderAdapter;
+// impl pallet_affiliate_instant::MembershipProvider<AccountId> for InstantMembershipProviderAdapter {
+//     /// 函数级详细中文注释：检查是否为有效会员
+//     /// - 调用 pallet-membership 的 is_member_valid 方法
+//     /// - 验证会员是否已购买且未过期
+//     /// - 无效会员的推荐奖励转入国库
+//     fn is_member_valid(who: &AccountId) -> bool {
+//         pallet_membership::Pallet::<Runtime>::is_member_valid(who)
+//     }
+//     
+//     /// 函数级详细中文注释：获取会员可拿代数
+//     /// - 调用 pallet-membership 获取会员等级对应的推荐层级数
+//     /// - Year1: 6代, Year3: 9代, Year5: 12代, Year10: 15代
+//     /// - 超出代数的层级奖励转入国库
+//     fn get_member_generations(who: &AccountId) -> Option<u8> {
+//         pallet_membership::Pallet::<Runtime>::get_member_generations(who)
+//     }
+//     
+//     /// 函数级详细中文注释：获取会员等级（1-4，对应V1-V4）
+//     /// - 调用 pallet-membership 获取会员等级
+//     /// - 用于分红系统验证会员级别
+//     fn get_member_level(_who: &AccountId) -> Option<u8> {
+//         // 暂时返回None，待实现
+//         None
+//     }
+//     
+//     /// 函数级详细中文注释：获取团队规模（推荐人数）
+//     /// - 获取用户的直推+间推总人数
+//     /// - 用于团队统计和排名
+//     fn get_team_size(_who: &AccountId) -> u32 {
+//         // 暂时返回0，待实现
+//         0
+//     }
+// }
+//
+// /// 函数级中文注释：适配器 - 将 pallet-memo-referrals 适配到 pallet-affiliate-config 的 ReferralProvider trait
+// pub struct ConfigReferralProviderAdapter;
+// impl pallet_affiliate_config::ReferralProvider<AccountId> for ConfigReferralProviderAdapter {
+//     /// 函数级中文注释：通过推荐码查找推荐人
+//     fn get_referrer_by_code(code: &[u8]) -> Option<AccountId> {
+//         // 函数级中文注释：使用 pallet-memo-referrals 的 ReferralProvider trait 方法
+//         use pallet_stardust_referrals::ReferralProvider;
+//         pallet_stardust_referrals::Pallet::<Runtime>::find_account_by_code(&code.to_vec())
+//     }
+// }
+//
+// /// 函数级中文注释：适配器 - 将 Membership 适配到 pallet-affiliate-config 的 MembershipProvider trait
+// pub struct ConfigMembershipProviderAdapter;
+// impl pallet_affiliate_config::MembershipProvider<AccountId> for ConfigMembershipProviderAdapter {
+//     /// 函数级中文注释：获取会员的推荐层级数
+//     fn get_referral_levels(_who: &AccountId) -> u8 {
+//         // 函数级中文注释：临时返回最大层级15
+//         // TODO: 实际应该从 pallet-membership 获取会员等级对应的层级数
+//         15
+//     }
+//     
+//     /// 函数级中文注释：检查是否为有效会员
+//     fn is_valid_member(_who: &AccountId) -> bool {
+//         // 函数级中文注释：临时返回 true
+//         // TODO: 实际应该从 pallet-membership 检查会员有效性
+//         true
+//     }
+// }
+
+// 🆕 2025-10-28 已移除: pallet-affiliate-config 配置（已整合到统一 pallet-affiliate）
+// /// ============================================================================
+// /// 联盟计酬动态切换配置层 (pallet-affiliate-config)
+// /// ============================================================================
+// /// 函数级中文注释：配置层负责模式路由，根据治理设置动态切换 Instant/Weekly 模式
+// impl pallet_affiliate_config::Config for Runtime {
+//     /// 函数级中文注释：事件类型
+//     type RuntimeEvent = RuntimeEvent;
+//     
+//     /// 函数级中文注释：货币类型
+//     type Currency = Balances;
+//     
+//     /// 函数级中文注释：托管账户地址（资金池）
+//     /// 指向 pallet-affiliate 的托管账户，所有模式的资金都来自这里
+//     type EscrowAccount = AffiliateEscrowAccount;
+//     
 //     /// 函数级中文注释：周结算提供者（pallet-affiliate-weekly）
 //     type WeeklyProvider = pallet_affiliate_weekly::Pallet<Runtime>;
 //     

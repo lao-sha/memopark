@@ -25,6 +25,7 @@ members = [
     # 🔴 2025-10-29：已整合到 pallet-memorial
     # "pallets/stardust-offerings",
     # 🔴 2025-11-02：已移除 - 功能已整合到 pallet-affiliate
+    # "pallets/stardust-referrals",
     "pallets/affiliate",
     # 🔴 2025-10-29：已整合到 pallet-affiliate
     # "pallets/affiliate-weekly",

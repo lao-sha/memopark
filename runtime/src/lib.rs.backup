@@ -291,6 +291,7 @@ pub mod runtime {
 
     // 🆕 2025-10-28 已移除: MemorialOfferings 已整合到 Memorial pallet
     // #[runtime::pallet_index(16)]
+    // pub type MemorialOfferings = pallet_memo_offerings;
 
     #[runtime::pallet_index(17)]
     pub type Evidence = pallet_evidence;
@@ -343,14 +344,17 @@ pub mod runtime {
     // 🆕 2025-10-28 已移除: pallet-affiliate-weekly（已整合到统一 pallet-affiliate）
     // /// 联盟计酬周结算分配层（职责：分配算法和周期结算）
     // #[runtime::pallet_index(55)]
+    // pub type AffiliateWeekly = pallet_affiliate_weekly;
 
     // 🆕 2025-10-28 已移除: pallet-affiliate-config（已整合到统一 pallet-affiliate）
     // /// 函数级中文注释：联盟计酬动态切换配置层（职责：模式路由和治理）
     // #[runtime::pallet_index(56)]
+    // pub type AffiliateConfig = pallet_affiliate_config;
 
     // 🆕 2025-10-28 已移除: pallet-affiliate-instant（已整合到统一 pallet-affiliate）
     // /// 函数级中文注释：联盟计酬即时分配工具（职责：即时转账分配）
     // #[runtime::pallet_index(57)]
+    // pub type AffiliateInstant = pallet_affiliate_instant;
 
     #[runtime::pallet_index(58)]
     pub type Membership = pallet_membership;
@@ -374,6 +378,7 @@ pub mod runtime {
 
     // 🆕 2025-10-28 已移除: MemoSacrifice 已整合到 Memorial pallet
     // #[runtime::pallet_index(34)]
+    // pub type MemoSacrifice = pallet_memo_sacrifice;
 
     #[runtime::pallet_index(35)]
     pub type StardustPet = pallet_stardust_pet;
