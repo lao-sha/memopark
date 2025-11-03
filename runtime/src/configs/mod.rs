@@ -1569,8 +1569,28 @@ impl pallet_stardust_pet::Config for Runtime {
 // 原因：OTC订单重构已完成，挂单机制已由直接选择做市商替代
 parameter_types! { 
     pub const OtcOrderConfirmTTL: BlockNumber = 2 * DAYS;
-    pub const OtcOrderMinFirstPurchaseAmount: Balance = 10_000_000_000_000_000; // 10 DUST
-    pub const OtcOrderMaxFirstPurchaseAmount: Balance = 1_000_000_000_000_000_000; // 1000 DUST
+    
+    // 🆕 首购固定USD价值（10美元，精度10^6）
+    pub const FirstPurchaseUsdValue: u128 = 10_000_000; // 10.000000 USD
+    
+    // 🆕 首购DUST数量安全边界（防止汇率异常）
+    pub const MinFirstPurchaseDustAmount: Balance = 100_000_000_000_000_000_000; // 100 DUST
+    pub const MaxFirstPurchaseDustAmount: Balance = 10_000_000_000_000_000_000_000; // 10,000 DUST
+    
+    // 🆕 做市商首购订单配额（最多同时5个）
+    pub const MaxFirstPurchaseOrdersPerMaker: u32 = 5;
+}
+
+// 🆕 函数级详细中文注释：价格提供者实现（从pallet-pricing获取DUST/USD汇率）
+pub struct PricingProviderImpl;
+impl pallet_trading::PricingProvider for PricingProviderImpl {
+    fn get_dust_to_usd_rate() -> Option<u128> {
+        // 从 pallet-pricing 获取 DUST/USD 汇率
+        // TODO: 实际集成 pallet-pricing，目前返回测试值
+        // 格式：1 DUST = X USD（精度10^6）
+        // 示例：返回 10_000 表示 1 DUST = 0.01 USD
+        Some(10_000) // 临时测试值：1 DUST = 0.01 USD
+    }
 }
 
 // 函数级中文注释：法币网关授权账户（用于调用首购接口）
@@ -1654,8 +1674,13 @@ impl pallet_trading::Config for Runtime {
     type PaidMaxInWindow = ConstU32<100>;
     type FiatGatewayAccount = FiatGatewayAccount;
     type FiatGatewayTreasuryAccount = FiatGatewayTreasuryAccount;
-    type MinFirstPurchaseAmount = OtcOrderMinFirstPurchaseAmount;
-    type MaxFirstPurchaseAmount = OtcOrderMaxFirstPurchaseAmount;
+    
+    // 🆕 首购配置（去首购池版本）
+    type FirstPurchaseUsdValue = FirstPurchaseUsdValue;
+    type MinFirstPurchaseDustAmount = MinFirstPurchaseDustAmount;
+    type MaxFirstPurchaseDustAmount = MaxFirstPurchaseDustAmount;
+    type MaxFirstPurchaseOrdersPerMaker = MaxFirstPurchaseOrdersPerMaker;
+    type Pricing = PricingProviderImpl;
     // 🔴 2025-11-02：已移除（pallet-stardust-referrals 已移除）
     //         type MembershipProvider = ();
         type OrderArchiveThresholdDays = OrderArchiveThresholdDays;
@@ -2550,6 +2575,8 @@ impl pallet_chat::Config for Runtime {
 /// - 统一管理申诉押金、审核押金、投诉押金
 /// - 资金安全：使用Currency trait冻结押金
 /// - 权限控制：释放和罚没需要治理权限
+/// [已归档 2025-11-03] 迁移到 Holds API，参考 pallet-stardust-appeals
+/*
 impl pallet_deposits::Config for Runtime {
     /// 事件类型
     type RuntimeEvent = RuntimeEvent;
@@ -2582,4 +2609,5 @@ impl pallet_deposits::Config for Runtime {
     /// M-2修复：提高上限 100 → 128，支持更多并发押金
     type MaxDepositsPerAccount = frame_support::traits::ConstU32<128>;
 }
+*/
 

@@ -46,7 +46,7 @@ members = [
     # "pallets/maker-credit",
     # "pallets/buyer-credit",
     "pallets/credit",
-    "pallets/deposits",
+    # "pallets/deposits",  # [已归档 2025-11-03] 迁移到 archived-pallets/
     "pallets/trading",
     "runtime",
 ]

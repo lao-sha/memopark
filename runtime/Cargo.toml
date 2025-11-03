@@ -82,7 +82,8 @@ pallet-pricing = { path = "../pallets/pricing", default-features = false }
 # pallet-buyer-credit = { path = "../pallets/buyer-credit", default-features = false }
 # pallet-maker-credit = { path = "../pallets/maker-credit", default-features = false }
 pallet-credit = { path = "../pallets/credit", default-features = false }
-pallet-deposits = { path = "../pallets/deposits", default-features = false }
+# [已归档 2025-11-03] 迁移到 Holds API
+# pallet-deposits = { path = "../pallets/deposits", default-features = false }
 pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
 
 # 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
@@ -166,7 +167,7 @@ std = [
     # "pallet-buyer-credit/std",  # 2025-10-28 已移除
     # "pallet-maker-credit/std",  # 2025-10-28 已移除
     "pallet-credit/std",
-    "pallet-deposits/std",
+    # "pallet-deposits/std",  # [已归档 2025-11-03]
     "pallet-storage-treasury/std",
     # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
     "pallet-chat/std",

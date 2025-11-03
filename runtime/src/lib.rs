@@ -456,8 +456,9 @@ pub mod runtime {
     /// - 可追溯性：完整记录押金生命周期（冻结→释放/罚没）
     /// - 灵活策略：支持全额退回、部分罚没、全部罚没
     /// - 扩展性：通过DepositPurpose枚举支持多种业务场景
-    #[runtime::pallet_index(52)]
-    pub type Deposits = pallet_deposits;
+    /// - [已归档 2025-11-03] 迁移到 Holds API，参考 pallet-stardust-appeals
+    // #[runtime::pallet_index(52)]
+    // pub type Deposits = pallet_deposits;
 
     /// 函数级中文注释：统一纪念服务系统（Memorial Integration）
     /// 🆕 2025-10-28：整合 pallet-memorial 和 pallet-memorial

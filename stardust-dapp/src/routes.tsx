@@ -22,6 +22,7 @@ export const routes: RouteItem[] = [
   { match: h => h.startsWith('#/grave/detail'), component: lazy(() => import('./features/grave/GraveDetailPage')) },
   { match: h => h === '#/deceased/list', component: lazy(() => import('./features/deceased/DeceasedListPage')) },
   { match: h => h.startsWith('#/deceased/relationships'), component: lazy(() => import('./features/deceased/RelationshipPage')) },
+  { match: h => h.startsWith('#/memorial/'), component: lazy(() => import('./features/memorial/MemorialHallDetailPage')) },  // 🆕 纪念馆详情页
   { match: h => h === '#/grave/my', component: lazy(() => import('./features/grave/MyGravesPage')) },
   { match: h => h === '#/treasury', component: lazy(() => import('./features/treasury/TreasuryPage')) },
   { match: h => h === '#/dashboard', component: lazy(() => import('./features/dashboard/DashboardPage')) },

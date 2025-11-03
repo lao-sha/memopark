@@ -66,6 +66,24 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+// ===== 价格提供者 Trait =====
+
+/// 函数级详细中文注释：价格提供者接口
+/// 
+/// 用于从 pallet-pricing 获取 DUST/USD 实时汇率
+pub trait PricingProvider {
+    /// 获取 DUST/USD 汇率
+    /// 
+    /// # 返回
+    /// - Some(汇率): 1 DUST = X USD（精度10^6）
+    /// - None: 价格数据不可用
+    /// 
+    /// # 示例
+    /// - 返回 10_000 表示 1 DUST = 0.01 USD
+    /// - 返回 1_000_000 表示 1 DUST = 1.00 USD
+    fn get_dust_to_usd_rate() -> Option<u128>;
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -242,13 +260,24 @@ pub mod pallet {
         /// 法币网关托管账户
         type FiatGatewayTreasuryAccount: Get<Self::AccountId>;
         
-        /// 首购最低金额
+        /// 🆕 首购固定USD价值（精度10^6，例如10_000_000 = 10 USD）
         #[pallet::constant]
-        type MinFirstPurchaseAmount: Get<BalanceOf<Self>>;
+        type FirstPurchaseUsdValue: Get<u128>;
         
-        /// 首购最高金额
+        /// 🆕 首购最小DUST数量（安全边界，防止汇率异常）
         #[pallet::constant]
-        type MaxFirstPurchaseAmount: Get<BalanceOf<Self>>;
+        type MinFirstPurchaseDustAmount: Get<BalanceOf<Self>>;
+        
+        /// 🆕 首购最大DUST数量（安全边界，防止汇率异常）
+        #[pallet::constant]
+        type MaxFirstPurchaseDustAmount: Get<BalanceOf<Self>>;
+        
+        /// 🆕 做市商最大首购订单配额（默认5个）
+        #[pallet::constant]
+        type MaxFirstPurchaseOrdersPerMaker: Get<u32>;
+        
+        /// 🆕 价格提供者（从pallet-pricing获取DUST/USD汇率）
+        type Pricing: PricingProvider;
         
         // 🔴 2025-10-30 已移除: pallet-stardust-referrals 已删除
         // /// 会员信息提供者
@@ -444,9 +473,44 @@ pub mod pallet {
     #[pallet::storage]
     pub type PaidMaxInWindowValue<T: Config> = StorageValue<_, u32, ValueQuery>;
     
-    /// 函数级详细中文注释：首购资金池余额
+    /// 函数级详细中文注释：做市商当前首购订单数量
+    /// Key: maker_id
+    /// Value: 当前首购订单数
     #[pallet::storage]
-    pub type FirstPurchasePool<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+    #[pallet::getter(fn maker_first_purchase_count)]
+    pub type MakerFirstPurchaseCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // maker_id
+        u32, // 当前首购订单数
+        ValueQuery,
+    >;
+    
+    /// 函数级详细中文注释：做市商的首购订单列表
+    /// Key: maker_id
+    /// Value: 该做市商的首购订单ID列表（最多5个）
+    #[pallet::storage]
+    #[pallet::getter(fn maker_first_purchase_orders)]
+    pub type MakerFirstPurchaseOrders<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // maker_id
+        BoundedVec<u64, ConstU32<5>>, // order_id列表
+        ValueQuery,
+    >;
+    
+    /// 函数级详细中文注释：买家是否已完成首购
+    /// Key: AccountId
+    /// Value: 是否已首购
+    #[pallet::storage]
+    #[pallet::getter(fn has_first_purchased)]
+    pub type HasFirstPurchased<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        bool,
+        ValueQuery,
+    >;
 
     // ===== Bridge 模块存储 =====
     
@@ -592,8 +656,24 @@ pub mod pallet {
             actor: Option<T::AccountId>,
         },
         
-        /// 首购资金池已充值 [amount, new_balance]
-        FirstPurchasePoolFunded { amount: BalanceOf<T>, new_balance: BalanceOf<T> },
+        /// 🆕 首购订单已创建 [order_id, buyer, maker_id, usd_value, dust_amount]
+        FirstPurchaseOrderCreated {
+            order_id: u64,
+            buyer: T::AccountId,
+            maker_id: u64,
+            usd_value: u128, // USD价值（精度10^6）
+            dust_amount: BalanceOf<T>, // 动态计算的DUST数量
+        },
+        
+        /// 🆕 订单已过期 [order_id]
+        OrderExpired { order_id: u64 },
+        
+        /// 🆕 首购汇率快照 [order_id, dust_to_usd_rate, timestamp]
+        FirstPurchaseRateSnapshot {
+            order_id: u64,
+            dust_to_usd_rate: u128,
+            timestamp: MomentOf<T>,
+        },
         
         /// 订单已自动清理 [order_id]
         OrderArchived { order_id: u64 },
@@ -707,14 +787,26 @@ pub mod pallet {
         /// 联系方式承诺无效
         InvalidContactCommit,
         
-        /// 首购资金池余额不足
-        FirstPurchasePoolInsufficient,
+        /// 🆕 价格数据不可用（从pallet-pricing获取失败）
+        PricingUnavailable,
         
-        /// 首购金额超出范围
-        FirstPurchaseAmountOutOfRange,
+        /// 🆕 价格无效（零值或异常）
+        InvalidPrice,
         
-        /// 不是首购用户
-        NotFirstPurchaseUser,
+        /// 🆕 计算溢出
+        CalculationOverflow,
+        
+        /// 🆕 做市商首购配额已用尽（最多5个）
+        FirstPurchaseQuotaExhausted,
+        
+        /// 🆕 买家已完成首购
+        AlreadyFirstPurchased,
+        
+        /// 🆕 做市商余额不足（自由余额不足以锁定首购订单）
+        MakerInsufficientBalance,
+        
+        /// 🆕 订单数量超出限制
+        TooManyOrders,
         
         // ===== Bridge 模块错误 =====
         
@@ -908,8 +1000,34 @@ pub mod pallet {
             Ok(())
         }
         
-        /// 函数级详细中文注释：买家标记已付款
+        /// 🆕 函数级详细中文注释：创建首购订单（固定$10 USD，动态计算DUST）
+        /// 
+        /// # 参数
+        /// - maker_id: 做市商ID
+        /// - payment_commit: 支付承诺哈希
+        /// - contact_commit: 联系方式承诺哈希
+        /// 
+        /// # 限制
+        /// - 每个买家仅限首购一次
+        /// - 做市商最多同时接收5个首购订单
+        /// - 使用做市商自由余额（非保证金）
         #[pallet::call_index(11)]
+        #[pallet::weight(<T as Config>::WeightInfo::create_order())]
+        pub fn create_first_purchase(
+            origin: OriginFor<T>,
+            maker_id: u64,
+            payment_commit: [u8; 32],
+            contact_commit: [u8; 32],
+        ) -> DispatchResult {
+            let buyer = ensure_signed(origin)?;
+            let payment_hash = H256::from(payment_commit);
+            let contact_hash = H256::from(contact_commit);
+            crate::otc::create_first_purchase::<T>(&buyer, maker_id, payment_hash, contact_hash)?;
+            Ok(())
+        }
+        
+        /// 函数级详细中文注释：买家标记已付款
+        #[pallet::call_index(12)]
         #[pallet::weight(<T as Config>::WeightInfo::mark_paid())]
         pub fn mark_paid(
             origin: OriginFor<T>,
@@ -1044,6 +1162,12 @@ pub mod pallet {
             weight
         }
         
+        /// 函数级详细中文注释：空闲时自动取消过期订单（1小时未支付）
+        fn on_idle(_n: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
+            // 自动取消过期订单（Created状态且超过1小时）
+            Self::cancel_expired_orders(remaining_weight)
+        }
+        
         /// 函数级详细中文注释：OCW 入口（用于做市商兑换验证）
         fn offchain_worker(block_number: BlockNumberFor<T>) {
             // Bridge OCW 逻辑将在 bridge.rs 中实现
@@ -1067,6 +1191,11 @@ pub mod pallet {
         /// 函数级详细中文注释：清理过期的兑换记录
         fn clean_expired_swaps(current_block: BlockNumberFor<T>) -> Weight {
             crate::bridge_cleanup::clean_expired_swaps::<T>(current_block)
+        }
+        
+        /// 🆕 函数级详细中文注释：自动取消过期订单（1小时未支付）
+        fn cancel_expired_orders(remaining_weight: Weight) -> Weight {
+            crate::otc_cleanup::cancel_expired_orders::<T>(remaining_weight)
         }
         
         // ===== 🆕 查询辅助函数（利用双映射索引，O(1)查询）=====

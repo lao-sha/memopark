@@ -92,3 +92,90 @@ pub fn clean_expired_orders<T: Config>(_current_block: BlockNumberFor<T>) -> Wei
     weight
 }
 
+/// 函数级详细中文注释：自动取消过期订单（1小时未支付）
+/// 
+/// **触发条件**：
+/// - 订单状态为 Created（未支付）
+/// - 当前时间超过 expire_at（创建后1小时）
+/// 
+/// **清理操作**：
+/// 1. 从托管退款到做市商
+/// 2. 释放首购配额（如果是首购订单）
+/// 3. 更新订单状态为 Expired
+/// 4. 从活跃订单列表中移除
+/// 5. 发射 OrderExpired 事件
+/// 
+/// **注意**：
+/// - 每次最多清理 MaxExpiringPerBlock 个订单
+/// - 通过 on_idle hook 自动调用
+pub fn cancel_expired_orders<T: Config>(_remaining_weight: Weight) -> Weight {
+    use crate::pallet::{Orders, BuyerOrders, MakerOrders, Pallet, Event};
+    use pallet_timestamp::Pallet as Timestamp;
+    use crate::otc::{OrderState, release_first_purchase_quota};
+    use sp_runtime::SaturatedConversion;
+    
+    let max_cleanup = T::MaxExpiringPerBlock::get();
+    let current_timestamp = Timestamp::<T>::get();
+    let mut expired_count = 0u32;
+    let mut weight = Weight::zero();
+    
+    // 遍历所有订单，查找过期的 Created 状态订单
+    let expired_orders: Vec<(u64, crate::otc::Order<T>)> = Orders::<T>::iter()
+        .filter(|(_, order)| {
+            order.state == OrderState::Created && current_timestamp > order.expire_at
+        })
+        .take(max_cleanup as usize)
+        .collect();
+    
+    for (order_id, order) in expired_orders {
+        // 1. 从托管退款到做市商
+        // 注意：使用 Escrow trait 的 refund 方法
+        let escrow_account = <T as Config>::Escrow::escrow_account_id(order.maker_id);
+        let refund_result = T::Currency::transfer(
+            &escrow_account,
+            &order.maker,
+            order.qty,
+            frame_support::traits::ExistenceRequirement::AllowDeath,
+        );
+        
+        if refund_result.is_err() {
+            // 退款失败，跳过此订单（可能需要人工处理）
+            weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+            continue;
+        }
+        
+        // 2. 释放首购配额（如果是首购订单）
+        if order.is_first_purchase {
+            let _ = release_first_purchase_quota::<T>(order.maker_id, order_id);
+        }
+        
+        // 3. 更新订单状态
+        Orders::<T>::mutate(order_id, |order_opt| {
+            if let Some(order) = order_opt {
+                order.state = OrderState::Expired;
+                order.completed_at = Some(current_timestamp);
+            }
+        });
+        weight = weight.saturating_add(Weight::from_parts(20_000, 0));
+        
+        // 4. 从买家活跃订单列表移除
+        BuyerOrders::<T>::mutate(&order.taker, |orders| {
+            orders.retain(|&id| id != order_id);
+        });
+        weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+        
+        // 5. 从做市商活跃订单列表移除
+        MakerOrders::<T>::mutate(order.maker_id, |orders| {
+            orders.retain(|&id| id != order_id);
+        });
+        weight = weight.saturating_add(Weight::from_parts(10_000, 0));
+        
+        // 6. 发射事件
+        Pallet::<T>::deposit_event(Event::OrderExpired { order_id });
+        
+        expired_count += 1;
+    }
+    
+    weight
+}
+

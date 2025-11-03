@@ -44,6 +44,8 @@ pub enum OrderState {
     Disputed,
     /// 已关闭
     Closed,
+    /// 🆕 已过期（1小时未支付，自动取消）
+    Expired,
 }
 
 /// 函数级详细中文注释：OTC订单结构
@@ -80,6 +82,8 @@ pub struct Order<T: Config> {
     pub epay_trade_no: Option<BoundedVec<u8, ConstU32<64>>>,
     /// 订单完成时间（Unix时间戳，毫秒）
     pub completed_at: Option<MomentOf<T>>,
+    /// 🆕 是否为首购订单（首购订单不占用做市商保证金配额，使用自由余额）
+    pub is_first_purchase: bool,
 }
 
 // ===== 核心函数实现 =====
@@ -152,6 +156,7 @@ pub fn do_create_order<T: Config>(
         state: OrderState::Created,
         epay_trade_no: None,
         completed_at: None,
+        is_first_purchase: false, // 默认非首购订单
     };
     
     // 存储订单
@@ -552,5 +557,243 @@ impl<T: crate::Config> ArbitrationHook<T> for Pallet<T> {
         
         Ok(())
     }
+}
+
+// ===== 首购订单相关函数 =====
+
+/// 函数级详细中文注释：根据固定USD价值和实时汇率，动态计算首购DUST数量
+/// 
+/// # 逻辑流程
+/// 1. 从 pallet-pricing 获取 DUST/USD 汇率
+/// 2. 计算：DUST数量 = 目标USD ÷ DUST单价
+/// 3. 应用安全边界（防止汇率异常）
+/// 
+/// # 返回
+/// - Ok(BalanceOf<T>): 计算得到的DUST数量
+/// - Err(DispatchError): 价格不可用、计算溢出、除零错误等
+pub fn calculate_first_purchase_dust_amount<T: Config>() -> Result<BalanceOf<T>, DispatchError> {
+    use crate::pallet::{Error, PricingProvider};
+    
+    // 1. 从 pallet-pricing 获取实时汇率
+    let dust_to_usd_rate = T::Pricing::get_dust_to_usd_rate()
+        .ok_or(Error::<T>::PricingUnavailable)?;
+    
+    // 2. 获取目标USD价值（10_000_000 = 10 USD）
+    let target_usd = T::FirstPurchaseUsdValue::get();
+    
+    // 3. 防止除零错误
+    ensure!(!dust_to_usd_rate.is_zero(), Error::<T>::InvalidPrice);
+    
+    // 4. 计算公式：DUST数量 = 目标USD ÷ DUST单价
+    // 示例：如果 1 DUST = 0.01 USD (10,000)
+    //      则 10 USD ÷ 0.01 = 1,000 DUST
+    let calculated_amount_in_usd_units = target_usd
+        .checked_div(dust_to_usd_rate)
+        .ok_or(Error::<T>::CalculationOverflow)?;
+    
+    // 5. 转换为DUST最小单位（假设18位精度）
+    // 注意：这里需要根据实际的 DUST decimals 来调整
+    let dust_decimals: u128 = 1_000_000_000_000_000_000; // 10^18
+    let dust_amount = calculated_amount_in_usd_units
+        .checked_mul(dust_decimals)
+        .ok_or(Error::<T>::CalculationOverflow)?;
+    
+    // 6. 转换为 BalanceOf<T> 类型
+    let dust_amount_balance: BalanceOf<T> = dust_amount
+        .try_into()
+        .map_err(|_| Error::<T>::CalculationOverflow)?;
+    
+    // 7. 应用安全边界（防止汇率异常导致过大/过小订单）
+    let min_amount = T::MinFirstPurchaseDustAmount::get();
+    let max_amount = T::MaxFirstPurchaseDustAmount::get();
+    
+    let final_amount = if dust_amount_balance < min_amount {
+        min_amount
+    } else if dust_amount_balance > max_amount {
+        max_amount
+    } else {
+        dust_amount_balance
+    };
+    
+    Ok(final_amount)
+}
+
+/// 函数级详细中文注释：释放做市商首购订单配额
+/// 
+/// # 逻辑
+/// 1. 减少做市商首购订单计数
+/// 2. 从首购订单列表中移除该订单
+/// 
+/// # 参数
+/// - maker_id: 做市商ID
+/// - order_id: 订单ID
+pub fn release_first_purchase_quota<T: Config>(
+    maker_id: u64,
+    order_id: u64,
+) -> DispatchResult {
+    use crate::pallet::{MakerFirstPurchaseCount, MakerFirstPurchaseOrders};
+    
+    // 减少计数
+    MakerFirstPurchaseCount::<T>::mutate(maker_id, |count| {
+        *count = count.saturating_sub(1);
+    });
+    
+    // 从订单列表移除
+    MakerFirstPurchaseOrders::<T>::mutate(maker_id, |orders| {
+        orders.retain(|&id| id != order_id);
+    });
+    
+    Ok(())
+}
+
+/// 函数级详细中文注释：创建首购订单（使用做市商自由余额）
+/// 
+/// # 参数
+/// - buyer: 买家账户
+/// - maker_id: 做市商ID
+/// - payment_commit: 支付承诺哈希
+/// - contact_commit: 联系方式承诺哈希
+/// 
+/// # 逻辑流程
+/// 1. 检查买家是否已首购
+/// 2. 检查做市商首购订单配额（最多5个）
+/// 3. 动态计算DUST数量
+/// 4. 检查做市商自由余额是否充足
+/// 5. 从做市商账户转账到托管账户（pallet-escrow）
+/// 6. 创建订单记录
+/// 7. 更新首购配额
+/// 8. 标记买家已首购
+pub fn create_first_purchase<T: Config>(
+    buyer: &T::AccountId,
+    maker_id: u64,
+    payment_commit: H256,
+    contact_commit: H256,
+) -> Result<u64, DispatchError> {
+    use crate::pallet::{
+        HasFirstPurchased, MakerFirstPurchaseCount, MakerFirstPurchaseOrders,
+        MakerApplications, NextOrderId, Orders, BuyerOrders, MakerOrders,
+        Pallet, Event, Error,
+    };
+    use crate::maker::ApplicationStatus;
+    use frame_support::traits::{Currency, ExistenceRequirement};
+    
+    // 1. 检查买家是否已首购
+    ensure!(
+        !HasFirstPurchased::<T>::contains_key(buyer),
+        Error::<T>::AlreadyFirstPurchased
+    );
+    
+    // 2. 检查做市商首购配额（最多5个）
+    let current_count = MakerFirstPurchaseCount::<T>::get(maker_id);
+    ensure!(
+        current_count < T::MaxFirstPurchaseOrdersPerMaker::get(),
+        Error::<T>::FirstPurchaseQuotaExhausted
+    );
+    
+    // 3. 获取做市商信息
+    let maker_app = MakerApplications::<T>::get(maker_id)
+        .ok_or(Error::<T>::MakerNotFound)?;
+    
+    // 检查做市商状态
+    ensure!(
+        maker_app.status == ApplicationStatus::Active,
+        Error::<T>::MakerNotActive
+    );
+    ensure!(
+        !maker_app.service_paused,
+        Error::<T>::MakerNotActive
+    );
+    
+    // 4. 动态计算DUST数量
+    let dust_amount = calculate_first_purchase_dust_amount::<T>()?;
+    
+    // 5. 检查做市商自由余额（Free Balance）
+    let maker_free_balance = T::Currency::free_balance(&maker_app.owner);
+    ensure!(
+        maker_free_balance >= dust_amount,
+        Error::<T>::MakerInsufficientBalance
+    );
+    
+    // 6. 从做市商账户转账到托管账户
+    // 注意：这里使用 transfer 而非 reserve（保证金）
+    let escrow_account = <T as Config>::Escrow::escrow_account_id(maker_id);
+    T::Currency::transfer(
+        &maker_app.owner,
+        &escrow_account,
+        dust_amount,
+        ExistenceRequirement::KeepAlive,
+    )?;
+    
+    // 7. 获取订单ID
+    let order_id = NextOrderId::<T>::get();
+    NextOrderId::<T>::put(order_id.saturating_add(1));
+    
+    // 8. 创建订单记录
+    let now = pallet_timestamp::Pallet::<T>::get();
+    let expire_at = now.saturating_add(3600000u32.into()); // 1小时
+    let evidence_until = expire_at.saturating_add(86400000u32.into()); // +24小时
+    
+    let order = Order::<T> {
+        maker_id,
+        maker: maker_app.owner.clone(),
+        taker: buyer.clone(),
+        price: BalanceOf::<T>::default(), // TODO: 从pricing获取
+        qty: dust_amount,
+        amount: T::FirstPurchaseUsdValue::get().try_into()
+            .map_err(|_| Error::<T>::CalculationOverflow)?, // USD金额
+        created_at: now,
+        expire_at,
+        evidence_until,
+        maker_tron_address: maker_app.tron_address.clone(),
+        payment_commit,
+        contact_commit,
+        state: OrderState::Created,
+        epay_trade_no: None,
+        completed_at: None,
+        is_first_purchase: true, // 🆕 标记为首购订单
+    };
+    
+    // 存储订单
+    Orders::<T>::insert(order_id, order);
+    
+    // 添加到买家订单列表
+    BuyerOrders::<T>::try_mutate(buyer, |orders| -> DispatchResult {
+        orders.try_push(order_id)
+            .map_err(|_| Error::<T>::TooManyOrders)?;
+        Ok(())
+    })?;
+    
+    // 添加到做市商订单列表
+    MakerOrders::<T>::try_mutate(maker_id, |orders| -> DispatchResult {
+        orders.try_push(order_id)
+            .map_err(|_| Error::<T>::TooManyOrders)?;
+        Ok(())
+    })?;
+    
+    // 9. 更新做市商首购计数
+    MakerFirstPurchaseCount::<T>::mutate(maker_id, |count| {
+        *count = count.saturating_add(1);
+    });
+    
+    // 添加到首购订单列表
+    MakerFirstPurchaseOrders::<T>::try_mutate(maker_id, |orders| -> DispatchResult {
+        orders.try_push(order_id)
+            .map_err(|_| Error::<T>::TooManyOrders)?;
+        Ok(())
+    })?;
+    
+    // 10. 标记买家已首购
+    HasFirstPurchased::<T>::insert(buyer, true);
+    
+    // 11. 触发事件
+    Pallet::<T>::deposit_event(Event::FirstPurchaseOrderCreated {
+        order_id,
+        buyer: buyer.clone(),
+        maker_id,
+        usd_value: T::FirstPurchaseUsdValue::get(),
+        dust_amount,
+    });
+    
+    Ok(order_id)
 }
 
