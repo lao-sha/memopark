@@ -12,7 +12,7 @@
  * 创建日期：2025-10-28
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { 
   Modal, 
   Form, 
@@ -50,7 +50,7 @@ interface OfferBySacrificeModalProps {
   sacrifice: SacrificeItem | null
   /** 当前账户地址 */
   account: string
-  /** 默认目标（域代码，对象ID） */
+  /** 默认供奉目标：[domain, id] */
   defaultTarget?: [number, number]
   /** 下单成功回调 */
   onSuccess?: () => void
@@ -67,9 +67,9 @@ const formatDUST = (amount: string): string => {
 /**
  * 函数级详细中文注释：快速下单弹窗组件
  */
-export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({ 
-  open, 
-  onClose, 
+export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
+  open,
+  onClose,
   sacrifice,
   account,
   defaultTarget,
@@ -80,6 +80,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
   const [priceInfo, setPriceInfo] = useState<OfferingPriceInfo | null>(null)
   const [weeks, setWeeks] = useState<number | null>(null)
   const [calculating, setCalculating] = useState(false)
+  const fallbackTarget = useMemo<[number, number]>(() => defaultTarget ?? [0, 0], [defaultTarget])
 
   /**
    * 函数级详细中文注释：计算价格
@@ -122,11 +123,11 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
   useEffect(() => {
     if (open && sacrifice) {
       form.setFieldsValue({
-        target: defaultTarget || [1, 0],
+        target: fallbackTarget,
         memo: '',
         weeks: sacrifice.unitPricePerWeek ? 1 : null,
       })
-      
+
       // 初始化周数
       if (sacrifice.unitPricePerWeek) {
         setWeeks(1)
@@ -134,7 +135,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
         setWeeks(null)
       }
     }
-  }, [open, sacrifice, defaultTarget, form])
+  }, [open, sacrifice, fallbackTarget, form])
 
   /**
    * 函数级详细中文注释：提交表单
@@ -149,13 +150,18 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
     try {
       const api = await getApi()
       const service = createMemorialService(api)
-      
-      // 构建交易
+
+      const target = values.target as [number, number] | undefined
+      if (!target || target.length !== 2) {
+        throw new Error('请选择供奉目标')
+      }
+
+      // 构建供奉交易
       const tx = service.buildOfferBySacrificeTx({
-        target: values.target,
+        target,
         sacrificeId: sacrifice.id,
+        media: [],  // 🔧 方案A适配：新增媒体列表字段
         weeks: values.weeks || null,
-        memo: values.memo || '',
       })
 
       // 获取当前账户的injector
@@ -305,6 +311,7 @@ export const OfferBySacrificeModal: React.FC<OfferBySacrificeModalProps> = ({
         layout="vertical"
         onFinish={handleSubmit}
         autoComplete="off"
+        initialValues={{ target: fallbackTarget }}
       >
         {/* 目标选择 */}
         <Form.Item

@@ -124,7 +124,7 @@ export const SacrificeManager: React.FC<SacrificeManagerProps> = ({ adminAccount
     form.setFieldsValue({
       priceType: 'fixed',
       isVipExclusive: false,
-      scene: Scene.Grave,
+      scene: Scene.Memorial,
       category: Category.Flower,
     })
     setEditingSacrifice(null)
@@ -303,7 +303,7 @@ export const SacrificeManager: React.FC<SacrificeManagerProps> = ({ adminAccount
               value={filters.scene}
               onChange={(value) => setFilters({ ...filters, scene: value })}
             >
-              <Select.Option value={Scene.Grave}>墓地</Select.Option>
+              <Select.Option value={Scene.Memorial}>纪念馆</Select.Option>
               <Select.Option value={Scene.Pet}>宠物</Select.Option>
               <Select.Option value={Scene.Park}>公园</Select.Option>
               <Select.Option value={Scene.Memorial}>纪念馆</Select.Option>
@@ -456,7 +456,7 @@ export const SacrificeManager: React.FC<SacrificeManagerProps> = ({ adminAccount
                 rules={[{ required: true, message: '请选择场景' }]}
               >
                 <Select>
-                  <Select.Option value={Scene.Grave}>墓地</Select.Option>
+                  <Select.Option value={Scene.Memorial}>纪念馆</Select.Option>
                   <Select.Option value={Scene.Pet}>宠物</Select.Option>
                   <Select.Option value={Scene.Park}>公园</Select.Option>
                   <Select.Option value={Scene.Memorial}>纪念馆</Select.Option>
@@ -513,7 +513,7 @@ export const SacrificeManager: React.FC<SacrificeManagerProps> = ({ adminAccount
                   {(priceType === 'fixed' || priceType === 'both') && (
                     <Col span={12}>
                       <Form.Item
-                        label="固定价格（MEMO）"
+                        label="固定价格（DUST）"
                         name="fixedPrice"
                         rules={[{ required: true, message: '请输入固定价格' }]}
                       >
@@ -529,7 +529,7 @@ export const SacrificeManager: React.FC<SacrificeManagerProps> = ({ adminAccount
                   {(priceType === 'weekly' || priceType === 'both') && (
                     <Col span={12}>
                       <Form.Item
-                        label="按周单价（MEMO/周）"
+                        label="按周单价（DUST/周）"
                         name="unitPricePerWeek"
                         rules={[{ required: true, message: '请输入按周单价' }]}
                       >

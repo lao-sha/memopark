@@ -221,7 +221,7 @@ export default function MarketMakerConfigPage() {
       return
     }
 
-    const amountInput = window.prompt('请输入要充值的金额（MEMO）：', '1000.00')
+    const amountInput = window.prompt('请输入要充值的金额（DUST）：', '1000.00')
     if (!amountInput) return
 
     const amount = Number(amountInput)
@@ -308,7 +308,7 @@ export default function MarketMakerConfigPage() {
       {/* 主内容区域 */}
       <div
         style={{
-          maxWidth: '800px',
+          maxWidth: '480px',
           margin: '0 auto',
         }}
       >

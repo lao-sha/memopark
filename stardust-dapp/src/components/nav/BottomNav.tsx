@@ -1,26 +1,27 @@
 import React from 'react'
 import { Modal } from 'antd'
-import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, MessageOutlined } from '@ant-design/icons'
 
-/**
- * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
- * - 入口：主页、我的墓地、创建墓地（FAB）、逝者列表、我的钱包
- * - 事件：优先触发 mp.nav 切换 `AuthEntryPage` 内部 Tab；同时回退到哈希路由
- * - 样式：固定于底部，最大宽度 640px 居中
- */
+  /**
+   * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
+   * - 入口：主页、聊天、创建纪念馆（FAB）、我的纪念、我的钱包
+   * - 事件：优先触发 mp.nav 切换 `AuthEntryPage` 内部 Tab；同时回退到哈希路由
+   * - 样式：固定于底部，最大宽度 480px 居中（与页面宽度一致）
+   */
 const BottomNav: React.FC = () => {
   const [active, setActive] = React.useState<string>('home')
   const [current, setCurrent] = React.useState<string | null>(null)
 
   /**
    * 函数级中文注释：根据 hash 推断激活项
+   * - 纪念馆首页（#/memorial 或 #/ 或 #/home）对应 home
+   * - 聊天页面（#/chat）对应 chat
    */
   const computeActiveByHash = React.useCallback(() => {
     const h = window.location.hash || ''
-    if (h === '#/' || h === '' ) return 'home'
-    if (h.startsWith('#/grave/create')) return 'create-grave'
-    if (h.startsWith('#/grave/my')) return 'grave-my'
-    if (h.startsWith('#/deceased/list')) return 'deceased-list'
+    if (h === '#/' || h === '' || h === '#/home' || h === '#/memorial') return 'home'
+    if (h.startsWith('#/chat') || h.startsWith('#/smart-chat')) return 'chat'
+    if (h.startsWith('#/memorial/my')) return 'my-memorial'
     if (h.startsWith('#/profile')) return 'my-wallet'
     return 'home'
   }, [])
@@ -49,8 +50,11 @@ const BottomNav: React.FC = () => {
       return
     }
 
-    // 未登录拦截：创建陵墓/我的墓地/我的钱包需要地址
-    const needAddr = tabKey === 'create-grave' || tabKey === 'grave-my' || tabKey === 'my-wallet'
+    // 函数级中文注释：未登录拦截配置
+    // - 创建纪念馆、我的钱包需要地址
+    // - 首页（home）无需登录，所有人可查看纪念馆
+    // - 我的纪念（my-memorial）无需登录
+    const needAddr = tabKey === 'my-wallet'
     const addr = current || (typeof window !== 'undefined' ? localStorage.getItem('mp.current') : null)
     if (needAddr && !addr) {
       const inst = Modal.confirm({
@@ -59,14 +63,37 @@ const BottomNav: React.FC = () => {
           <div>
             <div style={{ marginBottom: 8 }}>请先登录或创建本地钱包后再继续。</div>
             <div>
-              <a onClick={() => { try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'login' } })) } catch {}; inst.destroy(); }}>去登录</a>
+              <a 
+                style={{ color: '#1890ff', cursor: 'pointer' }}
+                onClick={() => { 
+                  console.log('点击"去登录"，触发 mp.nav 事件: restore');
+                  try { 
+                    window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'restore' } })); 
+                    console.log('mp.nav 事件已触发: restore');
+                  } catch (e) {
+                    console.error('触发 mp.nav 失败:', e);
+                  }
+                  inst.destroy(); 
+                }}>
+                去登录
+              </a>
             </div>
           </div>
         ),
         okText: '去创建钱包',
         cancelText: '继续浏览',
-        onOk: () => { try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })) } catch {} },
-        onCancel: () => {}
+        onOk: () => { 
+          console.log('点击"去创建钱包"，触发 mp.nav 事件: create');
+          try { 
+            window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })); 
+            console.log('mp.nav 事件已触发: create');
+          } catch (e) {
+            console.error('触发 mp.nav 失败:', e);
+          }
+        },
+        onCancel: () => {
+          console.log('用户点击"继续浏览"');
+        }
       })
       return
     }
@@ -88,11 +115,11 @@ const BottomNav: React.FC = () => {
       {/* 底部导航栏 */}
       <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
         <div style={{ 
-          maxWidth: 640, 
+          maxWidth: 480, 
           margin: '0 auto', 
-          background: 'var(--color-bg-elevated)', 
-          borderTop: '1px solid var(--color-border)',
-          boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.05)',
+          background: '#fff', 
+          borderTop: '2px solid rgba(184, 134, 11, 0.2)',
+          boxShadow: '0 -2px 12px rgba(47, 79, 79, 0.08)',
           padding: '8px 8px calc(8px + env(safe-area-inset-bottom))'
         }}>
           <div style={{ 
@@ -101,25 +128,25 @@ const BottomNav: React.FC = () => {
             gap: 0,
             alignItems: 'center'
           }}>
-            <button onClick={() => go('home', '#/')} style={{ ...btnStyle, ...(active==='home'?btnActiveStyle:undefined) }}>
+            <button onClick={() => go('home', '#/memorial')} style={{ ...btnStyle, ...(active==='home'?btnActiveHomeStyle:undefined) }}>
               <HomeOutlined style={{ fontSize: 22 }} />
               <span style={txtStyle}>首页</span>
             </button>
-            
-            <button onClick={() => go('grave-my', '#/grave/my')} style={{ ...btnStyle, ...(active==='grave-my'?btnActiveStyle:undefined) }}>
-              <UnorderedListOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>墓地</span>
+
+            <button onClick={() => go('chat', '#/smart-chat')} style={{ ...btnStyle, ...(active==='chat'?btnActiveChatStyle:undefined) }}>
+              <MessageOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>智能聊天</span>
             </button>
-            
+
             {/* FAB中心大按钮（占位，不计入grid流） */}
             <div />
-            
-            <button onClick={() => go('deceased-list', '#/deceased/list')} style={{ ...btnStyle, ...(active==='deceased-list'?btnActiveStyle:undefined) }}>
+
+            <button onClick={() => go('my-memorial', '#/memorial/my')} style={{ ...btnStyle, ...(active==='my-memorial'?btnActiveMemorialStyle:undefined) }}>
               <TeamOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>逝者</span>
+              <span style={txtStyle}>我的纪念</span>
             </button>
-            
-            <button onClick={() => go('my-wallet')} style={{ ...btnStyle, ...(active==='my-wallet'?btnActiveStyle:undefined) }}>
+
+            <button onClick={() => go('my-wallet', '#/profile')} style={{ ...btnStyle, ...(active==='my-wallet'?btnActiveWalletStyle:undefined) }}>
               <WalletOutlined style={{ fontSize: 22 }} />
               <span style={txtStyle}>我的钱包</span>
             </button>
@@ -142,7 +169,7 @@ const BottomNav: React.FC = () => {
             if (needAddr) {
               Modal.confirm({
                 title: '需要钱包',
-                content: '请先登录或创建本地钱包后再创建墓地',
+                content: '请先登录或创建本地钱包后再创建纪念馆',
                 okText: '去创建钱包',
                 cancelText: '取消',
                 onOk: () => { 
@@ -151,31 +178,30 @@ const BottomNav: React.FC = () => {
               })
               return
             }
-            // 直接跳转创建墓地
-            go('create-grave', '#/grave/create')
+            // 直接跳转创建纪念馆
+            // 跳转到逝者创建页
+            try { window.location.hash = '#/deceased/create' } catch {}
           }}
           style={{
             width: 56,
             height: 56,
             borderRadius: '50%',
             border: 'none',
-            background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%)',
-            color: 'var(--color-text-inverse)',
+            background: 'linear-gradient(135deg, #B8860B 0%, #D4AF37 100%)',
+            color: '#fff',
             fontSize: 28,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            boxShadow: 'var(--shadow-lg)',
-            transition: 'all 0.3s ease'
+            boxShadow: '0 4px 16px rgba(184, 134, 11, 0.3)',
+            transition: 'all 0.2s ease'
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.1)'
-            e.currentTarget.style.boxShadow = '0 8px 32px rgba(184, 134, 11, 0.25)'
+          onTouchStart={(e) => {
+            e.currentTarget.style.transform = 'scale(0.95)'
           }}
-          onMouseLeave={(e) => {
+          onTouchEnd={(e) => {
             e.currentTarget.style.transform = 'scale(1)'
-            e.currentTarget.style.boxShadow = 'var(--shadow-lg)'
           }}
         >
           <PlusCircleOutlined />
@@ -187,6 +213,7 @@ const BottomNav: React.FC = () => {
 
 /**
  * 函数级中文注释：按钮样式（无边框、竖向布局）
+ * 移动端优化：触控目标足够大，颜色统一主题色
  */
 const btnStyle: React.CSSProperties = {
   appearance: 'none',
@@ -196,21 +223,63 @@ const btnStyle: React.CSSProperties = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 2,
-  width: '20%',
-  padding: '6px 0',
-  color: '#333',
+  gap: 4,
+  width: '100%',
+  padding: '8px 0',
+  color: '#708090',
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  minHeight: 56
 }
 
 /**
  * 函数级中文注释：按钮文字样式
  */
-const txtStyle: React.CSSProperties = { fontSize: 11 }
+const txtStyle: React.CSSProperties = { 
+  fontSize: 12,
+  fontWeight: 500
+}
 
 /**
- * 函数级中文注释：激活态样式（主色）
+ * 函数级中文注释：激活态样式（统一青绿色）
+ * 参考图片配色：青绿色 #5DBAAA（云上思念风格）
  */
-const btnActiveStyle: React.CSSProperties = { color: '#1677ff' }
+const btnActiveStyle: React.CSSProperties = {
+  color: '#5DBAAA',
+  fontWeight: 600
+}
+
+/**
+ * 函数级中文注释：首页激活态样式（青绿色）
+ */
+const btnActiveHomeStyle: React.CSSProperties = {
+  color: '#5DBAAA',
+  fontWeight: 600
+}
+
+/**
+ * 函数级中文注释：聊天激活态样式（青绿色）
+ */
+const btnActiveChatStyle: React.CSSProperties = {
+  color: '#5DBAAA',
+  fontWeight: 600
+}
+
+/**
+ * 函数级中文注释：我的纪念馆激活态样式（青绿色）
+ */
+const btnActiveMemorialStyle: React.CSSProperties = {
+  color: '#5DBAAA',
+  fontWeight: 600
+}
+
+/**
+ * 函数级中文注释：钱包激活态样式（青绿色）
+ */
+const btnActiveWalletStyle: React.CSSProperties = {
+  color: '#5DBAAA',
+  fontWeight: 600
+}
 
 export default BottomNav
 

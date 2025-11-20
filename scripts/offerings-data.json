@@ -1,0 +1,373 @@
+{
+  "meta": {
+    "source": "云上思念网站",
+    "extractDate": "2025-11-08",
+    "totalCount": 500,
+    "description": "从云上思念网站提取的完整供奉品列表，用于Stardust项目参考"
+  },
+  "categories": [
+    {
+      "id": 1,
+      "code": "taocan",
+      "name": "套餐",
+      "icon": "🎁",
+      "description": "精选供奉套餐组合"
+    },
+    {
+      "id": 2,
+      "code": "xiangzhu",
+      "name": "香烛",
+      "icon": "🕯️",
+      "description": "蜡烛、香火等祭祀用品"
+    },
+    {
+      "id": 3,
+      "code": "huaguo",
+      "name": "花果",
+      "icon": "🌸",
+      "description": "鲜花、水果等供品"
+    },
+    {
+      "id": 4,
+      "code": "jiucai",
+      "name": "酒菜",
+      "icon": "🍷",
+      "description": "酒水、菜肴等食品"
+    },
+    {
+      "id": 5,
+      "code": "jiajuqiche",
+      "name": "家居汽车",
+      "icon": "🏠",
+      "description": "家用电器、汽车等物品"
+    },
+    {
+      "id": 6,
+      "code": "bieshuyongren",
+      "name": "别墅佣人",
+      "icon": "🏰",
+      "description": "房产、佣人等"
+    },
+    {
+      "id": 7,
+      "code": "fushimingbiao",
+      "name": "服饰名表",
+      "icon": "👔",
+      "description": "服装、手表等配饰"
+    },
+    {
+      "id": 8,
+      "code": "shumayueqi",
+      "name": "数码乐器",
+      "icon": "📱",
+      "description": "电子产品、乐器等"
+    },
+    {
+      "id": 9,
+      "code": "jieri",
+      "name": "节日",
+      "icon": "🎉",
+      "description": "节日特色供品"
+    },
+    {
+      "id": "10",
+      "code": "wanjuchongwu",
+      "name": "玩具宠物",
+      "icon": "🧸",
+      "description": "玩具、宠物等"
+    },
+    {
+      "id": 11,
+      "code": "yundong",
+      "name": "运动",
+      "icon": "⚽",
+      "description": "运动器材、体育用品"
+    }
+  ],
+  "offerings": [
+    {
+      "category": "xiangzhu",
+      "items": [
+        { "name": "蜡烛", "price": 0, "icon": "🕯️" },
+        { "name": "相思烛", "price": 2, "icon": "🕯️" },
+        { "name": "富贵香", "price": 3, "icon": "🪔" },
+        { "name": "祈福香", "price": 3, "icon": "🪔" },
+        { "name": "莲花烛", "price": 3, "icon": "🕯️" },
+        { "name": "缅怀烛", "price": 3, "icon": "🕯️" },
+        { "name": "消灾烛", "price": 3, "icon": "🕯️" },
+        { "name": "献瑞香", "price": 3, "icon": "🪔" },
+        { "name": "回忆香", "price": 3, "icon": "🪔" },
+        { "name": "功德香", "price": 3, "icon": "🪔" },
+        { "name": "平安香", "price": 3, "icon": "🪔" },
+        { "name": "长生烛", "price": 3, "icon": "🕯️" },
+        { "name": "三清香", "price": 3, "icon": "🪔" },
+        { "name": "天地香", "price": 3, "icon": "🪔" },
+        { "name": "元宝蜡烛", "price": 8, "icon": "🕯️" },
+        { "name": "孔明灯", "price": 2, "icon": "🏮" },
+        { "name": "河灯", "price": 2, "icon": "🏮" }
+      ]
+    },
+    {
+      "category": "huaguo",
+      "items": [
+        { "name": "鲜花", "price": 0, "icon": "🌸" },
+        { "name": "鲜花", "price": 3, "icon": "🌸" },
+        { "name": "白百合", "price": 3, "icon": "🌺" },
+        { "name": "深情追思", "price": 3, "icon": "🌹" },
+        { "name": "深沉的爱", "price": 3, "icon": "🌹" },
+        { "name": "思念玫瑰", "price": 3, "icon": "🌹" },
+        { "name": "爱永恒", "price": 3, "icon": "💐" },
+        { "name": "康乃馨", "price": 3, "icon": "🌺" },
+        { "name": "感念亲恩", "price": 3, "icon": "💐" },
+        { "name": "念你", "price": 3, "icon": "🌸" },
+        { "name": "念念不忘", "price": 3, "icon": "🌸" },
+        { "name": "相依相伴", "price": 3, "icon": "💐" },
+        { "name": "一生有你", "price": 3, "icon": "💐" },
+        { "name": "永远幸福", "price": 3, "icon": "🌹" },
+        { "name": "真情永恒", "price": 3, "icon": "🌹" },
+        { "name": "永远怀念", "price": 3, "icon": "💐" },
+        { "name": "心底的爱", "price": 3, "icon": "❤️" },
+        { "name": "99朵玫瑰", "price": 9, "icon": "🌹" },
+        { "name": "永生花", "price": 8, "icon": "🌸" },
+        { "name": "花篮", "price": 4, "icon": "🧺" },
+        { "name": "一篮水果", "price": 8, "icon": "🧺" },
+        { "name": "火龙果", "price": 2, "icon": "🐉" },
+        { "name": "荔枝", "price": 2, "icon": "🍒" },
+        { "name": "车厘子", "price": 5, "icon": "🍒" },
+        { "name": "橙子", "price": 2, "icon": "🍊" },
+        { "name": "哈密瓜", "price": 3, "icon": "🍈" },
+        { "name": "榴莲", "price": 5, "icon": "🥭" },
+        { "name": "猕猴桃", "price": 2, "icon": "🥝" },
+        { "name": "牛油果", "price": 3, "icon": "🥑" },
+        { "name": "葡萄", "price": 3, "icon": "🍇" },
+        { "name": "西瓜", "price": 2, "icon": "🍉" },
+        { "name": "香蕉", "price": 2, "icon": "🍌" },
+        { "name": "雪梨", "price": 2, "icon": "🍐" },
+        { "name": "杨桃", "price": 2, "icon": "⭐" },
+        { "name": "草莓", "price": 2, "icon": "🍓" },
+        { "name": "红枣", "price": 2, "icon": "🍎" },
+        { "name": "蓝莓", "price": 3, "icon": "🫐" },
+        { "name": "李子", "price": 2, "icon": "🍑" },
+        { "name": "龙眼", "price": 2, "icon": "🍈" },
+        { "name": "苹果", "price": 2, "icon": "🍎" },
+        { "name": "圣女果", "price": 2, "icon": "🍅" },
+        { "name": "福橘", "price": 2, "icon": "🍊" },
+        { "name": "柿子", "price": 2, "icon": "🍊" },
+        { "name": "桃子", "price": 2, "icon": "🍑" },
+        { "name": "鲜枣", "price": 2, "icon": "🍎" },
+        { "name": "杏子", "price": 2, "icon": "🍑" },
+        { "name": "杨梅", "price": 2, "icon": "🍒" },
+        { "name": "西柚", "price": 2, "icon": "🍊" },
+        { "name": "石榴", "price": 2, "icon": "🍎" },
+        { "name": "无花果", "price": 2, "icon": "🍐" },
+        { "name": "柚子", "price": 3, "icon": "🍊" },
+        { "name": "秋月梨", "price": 3, "icon": "🍐" }
+      ]
+    },
+    {
+      "category": "jiucai",
+      "items": [
+        { "name": "白酒", "price": 3, "icon": "🍶" },
+        { "name": "习酒", "price": 3, "icon": "🍶" },
+        { "name": "梦之蓝", "price": 3, "icon": "🍶" },
+        { "name": "泸州老窖", "price": 3, "icon": "🍶" },
+        { "name": "五粮液", "price": 3, "icon": "🍶" },
+        { "name": "茅台", "price": 3, "icon": "🍶" },
+        { "name": "洋酒", "price": 3, "icon": "🍷" },
+        { "name": "拉菲", "price": 3, "icon": "🍷" },
+        { "name": "桂花酒", "price": 3, "icon": "🍶" },
+        { "name": "糯米酒", "price": 3, "icon": "🍶" },
+        { "name": "青梅酒", "price": 3, "icon": "🍶" },
+        { "name": "菊花酒", "price": 3, "icon": "🍶" },
+        { "name": "雄黄酒", "price": 3, "icon": "🍶" },
+        { "name": "烤乳猪", "price": 5, "icon": "🍖" },
+        { "name": "红烧肉", "price": 3, "icon": "🍖" },
+        { "name": "糖醋排骨", "price": 3, "icon": "🍖" },
+        { "name": "脆皮烧肉", "price": 2, "icon": "🍖" },
+        { "name": "梅菜扣肉", "price": 2, "icon": "🍖" },
+        { "name": "糯米蒸排骨", "price": 2, "icon": "🍖" },
+        { "name": "肘子", "price": 2, "icon": "🍖" },
+        { "name": "水晶肘子", "price": 2, "icon": "🍖" },
+        { "name": "四喜丸子", "price": 2, "icon": "🍖" },
+        { "name": "黄豆猪脚", "price": 2, "icon": "🍖" },
+        { "name": "红烧鱼", "price": 2, "icon": "🐟" },
+        { "name": "清蒸鱼", "price": 3, "icon": "🐟" },
+        { "name": "糖醋鲤鱼", "price": 3, "icon": "🐟" },
+        { "name": "白切鸡", "price": 2, "icon": "🍗" },
+        { "name": "宫保鸡丁", "price": 2, "icon": "🍗" },
+        { "name": "新疆大盘鸡", "price": 2, "icon": "🍗" },
+        { "name": "烧鸡", "price": 2, "icon": "🍗" },
+        { "name": "烤鸭", "price": 3, "icon": "🦆" },
+        { "name": "北京烤鸭", "price": 3, "icon": "🦆" },
+        { "name": "烤全羊", "price": 5, "icon": "🐑" },
+        { "name": "烤羊排", "price": 3, "icon": "🐑" },
+        { "name": "白灼虾", "price": 2, "icon": "🦐" },
+        { "name": "小龙虾", "price": 3, "icon": "🦞" },
+        { "name": "油焖大虾", "price": 2, "icon": "🦐" },
+        { "name": "大闸蟹", "price": 5, "icon": "🦀" },
+        { "name": "香烟", "price": 3, "icon": "🚬" }
+      ]
+    },
+    {
+      "category": "jiajuqiche",
+      "items": [
+        { "name": "洗衣机", "price": 8, "icon": "🧺" },
+        { "name": "冰箱", "price": 8, "icon": "🧊" },
+        { "name": "空调", "price": 8, "icon": "❄️" },
+        { "name": "智能电视", "price": 5, "icon": "📺" },
+        { "name": "电饭锅", "price": 5, "icon": "🍚" },
+        { "name": "音响", "price": 3, "icon": "🔊" },
+        { "name": "微波炉", "price": 3, "icon": "📦" },
+        { "name": "扫地机器人", "price": 5, "icon": "🤖" },
+        { "name": "饮水机", "price": 3, "icon": "💧" },
+        { "name": "按摩椅", "price": 5, "icon": "💺" },
+        { "name": "奔驰", "price": 8, "icon": "🚗" },
+        { "name": "宝马", "price": 8, "icon": "🚗" },
+        { "name": "奥迪", "price": 8, "icon": "🚗" },
+        { "name": "法拉利", "price": 10, "icon": "🏎️" },
+        { "name": "劳斯莱斯", "price": 10, "icon": "🚙" },
+        { "name": "兰博基尼", "price": 10, "icon": "🏎️" },
+        { "name": "宾利", "price": 10, "icon": "🚙" },
+        { "name": "迈巴赫", "price": 10, "icon": "🚙" },
+        { "name": "飞机", "price": 8, "icon": "✈️" },
+        { "name": "游艇", "price": 8, "icon": "🛥️" },
+        { "name": "直升机", "price": 8, "icon": "🚁" }
+      ]
+    },
+    {
+      "category": "bieshuyongren",
+      "items": [
+        { "name": "豪华别墅", "price": 8, "icon": "🏰" },
+        { "name": "四合院", "price": 12, "icon": "🏛️" },
+        { "name": "小洋楼", "price": 6, "icon": "🏠" },
+        { "name": "欧式别墅", "price": 6, "icon": "🏰" },
+        { "name": "钟楼别墅", "price": 8, "icon": "🏰" },
+        { "name": "欧式城堡", "price": 12, "icon": "🏰" },
+        { "name": "新中式", "price": 10, "icon": "🏛️" },
+        { "name": "苏式园林", "price": 12, "icon": "🏛️" },
+        { "name": "男佣人", "price": 2, "icon": "👨" },
+        { "name": "女佣人", "price": 2, "icon": "👩" }
+      ]
+    },
+    {
+      "category": "fushimingbiao",
+      "items": [
+        { "name": "唐装", "price": 5, "icon": "👘" },
+        { "name": "西装套装", "price": 5, "icon": "🤵" },
+        { "name": "真丝套装", "price": 6, "icon": "👔" },
+        { "name": "冰丝套装", "price": 6, "icon": "👔" },
+        { "name": "运动套装", "price": 5, "icon": "🏃" },
+        { "name": "棉衣", "price": 3, "icon": "🧥" },
+        { "name": "羽绒服", "price": 3, "icon": "🧥" },
+        { "name": "男羽绒服", "price": 3, "icon": "🧥" },
+        { "name": "女羽绒服", "price": 3, "icon": "🧥" },
+        { "name": "手表", "price": 3, "icon": "⌚" },
+        { "name": "劳力士", "price": 3, "icon": "⌚" },
+        { "name": "宝格丽", "price": 3, "icon": "⌚" },
+        { "name": "萧邦", "price": 3, "icon": "⌚" },
+        { "name": "钻戒", "price": 5, "icon": "💍" },
+        { "name": "黄金手镯", "price": 2, "icon": "💍" },
+        { "name": "耳环", "price": 3, "icon": "💎" },
+        { "name": "珍珠项链", "price": 3, "icon": "📿" }
+      ]
+    },
+    {
+      "category": "shumayueqi",
+      "items": [
+        { "name": "苹果15", "price": 3, "icon": "📱" },
+        { "name": "华为mate60", "price": 3, "icon": "📱" },
+        { "name": "华为matex5", "price": 3, "icon": "📱" },
+        { "name": "AirPods", "price": 3, "icon": "🎧" },
+        { "name": "IPad", "price": 3, "icon": "📱" },
+        { "name": "苹果电脑", "price": 3, "icon": "💻" },
+        { "name": "平板电脑", "price": 3, "icon": "📱" },
+        { "name": "耳机", "price": 3, "icon": "🎧" },
+        { "name": "单反相机", "price": 3, "icon": "📷" },
+        { "name": "钢琴", "price": 5, "icon": "🎹" },
+        { "name": "古筝", "price": 3, "icon": "🎵" },
+        { "name": "吉他", "price": 3, "icon": "🎸" },
+        { "name": "小提琴", "price": 3, "icon": "🎻" },
+        { "name": "二胡", "price": 3, "icon": "🎵" },
+        { "name": "琵琶", "price": 3, "icon": "🎵" },
+        { "name": "架子鼓", "price": 3, "icon": "🥁" },
+        { "name": "萨克斯", "price": 3, "icon": "🎷" }
+      ]
+    },
+    {
+      "category": "jieri",
+      "items": [
+        { "name": "端午礼盒", "price": 8, "icon": "🎁" },
+        { "name": "粽子礼盒", "price": 8, "icon": "🎁" },
+        { "name": "重阳礼盒", "price": 8, "icon": "🎁" },
+        { "name": "中秋礼盒", "price": 8, "icon": "🎁" },
+        { "name": "月饼礼盒", "price": 8, "icon": "🎁" },
+        { "name": "五仁月饼", "price": 3, "icon": "🥮" },
+        { "name": "豆沙月饼", "price": 3, "icon": "🥮" },
+        { "name": "双黄莲蓉", "price": 3, "icon": "🥮" },
+        { "name": "粽子", "price": 3, "icon": "🥟" },
+        { "name": "板栗粽", "price": 3, "icon": "🥟" },
+        { "name": "蜜枣粽", "price": 3, "icon": "🥟" },
+        { "name": "汤圆", "price": 3, "icon": "🍡" },
+        { "name": "饺子", "price": 3, "icon": "🥟" },
+        { "name": "年糕", "price": 3, "icon": "🍰" },
+        { "name": "重阳糕", "price": 3, "icon": "🍰" },
+        { "name": "菊花糕", "price": 3, "icon": "🍰" },
+        { "name": "桂花糕", "price": 3, "icon": "🍰" },
+        { "name": "腊八粥", "price": 2, "icon": "🥘" },
+        { "name": "黑森林蛋糕", "price": 2, "icon": "🎂" },
+        { "name": "巧克力蛋糕", "price": 2, "icon": "🎂" }
+      ]
+    },
+    {
+      "category": "wanjuchongwu",
+      "items": [
+        { "name": "泰迪熊", "price": 6, "icon": "🧸" },
+        { "name": "玩具坦克", "price": 5, "icon": "🚗" },
+        { "name": "玩具消防车", "price": 5, "icon": "🚒" },
+        { "name": "汽车机器人", "price": 5, "icon": "🤖" },
+        { "name": "太空人", "price": 5, "icon": "👨‍🚀" },
+        { "name": "玩具水枪", "price": 5, "icon": "🔫" },
+        { "name": "滑翔飞机", "price": 3, "icon": "✈️" },
+        { "name": "航天飞机积木", "price": 6, "icon": "🚀" },
+        { "name": "波斯猫", "price": 2, "icon": "🐱" },
+        { "name": "布偶猫", "price": 2, "icon": "🐱" },
+        { "name": "金毛", "price": 2, "icon": "🐕" },
+        { "name": "秋田犬", "price": 2, "icon": "🐕" },
+        { "name": "狸花猫", "price": 2, "icon": "🐱" }
+      ]
+    },
+    {
+      "category": "yundong",
+      "items": [
+        { "name": "篮球", "price": 3, "icon": "🏀" },
+        { "name": "足球", "price": 3, "icon": "⚽" },
+        { "name": "排球", "price": 3, "icon": "🏐" },
+        { "name": "羽毛球拍", "price": 3, "icon": "🏸" },
+        { "name": "乒乓球拍", "price": 3, "icon": "🏓" },
+        { "name": "网球拍", "price": 3, "icon": "🎾" },
+        { "name": "跑步机", "price": 3, "icon": "🏃" },
+        { "name": "健身车", "price": 3, "icon": "🚴" },
+        { "name": "山地车", "price": 3, "icon": "🚲" },
+        { "name": "台球桌", "price": 3, "icon": "🎱" },
+        { "name": "高尔夫球", "price": 3, "icon": "⛳" },
+        { "name": "麻将", "price": 5, "icon": "🀄" },
+        { "name": "围棋", "price": 3, "icon": "⚫" },
+        { "name": "象棋", "price": 3, "icon": "♟️" },
+        { "name": "国际象棋", "price": 3, "icon": "♟️" }
+      ]
+    },
+    {
+      "category": "taocan",
+      "items": [
+        { "name": "富贵圆满", "price": 6, "icon": "🎁" },
+        { "name": "平安富贵", "price": 6, "icon": "🎁" },
+        { "name": "感念亲恩", "price": 5, "icon": "🎁" },
+        { "name": "思念永在", "price": 5, "icon": "🎁" },
+        { "name": "福满中秋", "price": 16, "icon": "🎁" },
+        { "name": "月下美人", "price": 16, "icon": "🎁" },
+        { "name": "花好月圆", "price": 12, "icon": "🎁" }
+      ]
+    }
+  ]
+}
+

@@ -11,7 +11,9 @@
     "create-listing": "node create-listing.js",
     "listing": "node create-listing.js",
     "create-offerings": "node create-offerings.js",
-    "offerings": "node create-offerings.js"
+    "offerings": "node create-offerings.js",
+    "create-graves": "node create-graves-and-deceased.js",
+    "graves": "node create-graves-and-deceased.js"
   },
   "keywords": [
     "governance",

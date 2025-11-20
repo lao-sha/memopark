@@ -27,8 +27,7 @@ export enum ComplaintType {
   DeceasedText = 'deceased-text',
   /** 逝者媒体投诉 */
   DeceasedMedia = 'deceased-media',
-  /** 墓地投诉 */
-  Grave = 'grave',
+  // 旧墓位投诉类型已删除，链端已移除相关功能
   /** OTC订单争议 */
   OtcOrder = 'otc-order',
   /** SimpleBridge争议 */
@@ -41,7 +40,7 @@ export enum ComplaintType {
 const DOMAIN_CONFIG = {
   [ComplaintType.DeceasedText]: { domain: 3, namespace: null },
   [ComplaintType.DeceasedMedia]: { domain: 4, namespace: null },
-  [ComplaintType.Grave]: { domain: 1, namespace: null },
+  // 相关投诉类型已删除
   [ComplaintType.OtcOrder]: { domain: null, namespace: 'otc_ord_' },
   [ComplaintType.SimpleBridge]: { domain: null, namespace: 'sm_brdge' },
 };

@@ -134,7 +134,7 @@ const VerifyMnemonicPage: React.FC<VerifyMnemonicPageProps> = ({
     <div
       style={{
         padding: '20px',
-        maxWidth: '640px',
+        maxWidth: '480px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',

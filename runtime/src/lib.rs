@@ -11,9 +11,6 @@ pub mod configs;
 
 extern crate alloc;
 use alloc::vec::Vec;
-// 🆕 2025-10-28 已移除: OnRuntimeUpgrade 和 Weight 不再需要（RenameDeceasedMediaToData已注释）
-// use frame_support::traits::OnRuntimeUpgrade;
-// use frame_support::weights::Weight;
 use sp_runtime::{
     generic, impl_opaque_keys,
     traits::{BlakeTwo256, IdentifyAccount, Verify},
@@ -74,7 +71,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   `spec_version`, and `authoring_version` are the same between Wasm and native.
     // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
     //   the compatible custom types.
-    spec_version: 101,
+    // v102: Remove deprecated remove_deceased extrinsic from pallet-deceased
+    spec_version: 102,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -141,7 +139,7 @@ pub type BlockNumber = u32;
 
 // 为新加入的 pallet 提供类型别名，便于统一使用
 pub type DeceasedId = u64;
-pub type GraveId = u64;
+// pub type GraveId = u64;  // 🗑️ 2025-11-16: 已删除 - pallet-stardust-grave 已移除
 // （已下线）基金会 pallet 类型别名移除
 
 /// The address format for describing accounts.
@@ -159,7 +157,20 @@ pub type SignedBlock = generic::SignedBlock<Block>;
 /// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
 
-/// The `TransactionExtension` to the basic transaction logic.
+/// 函数级中文注释：交易扩展（TransactionExtension）配置
+/// 
+/// **2025-11-07 修复**：临时移除 CheckMetadataHash 和 WeightReclaim
+/// - 这两个扩展导致 TransactionPayment 在计算手续费时 panic
+/// - 日志显示: "Unknown signed extensions CheckMetadataHash, WeightReclaim"
+/// - 移除后可正常提交交易和预估手续费
+/// 
+/// **原因分析**：
+/// - CheckMetadataHash 需要编译时启用 `metadata-hash` feature
+/// - WeightReclaim 可能与当前的 pallet-transaction-payment 版本不兼容
+/// 
+/// **后续优化**：
+/// - 研究这两个扩展的正确配置方式
+/// - 考虑是否需要启用 metadata-hash feature
 pub type TxExtension = (
     frame_system::CheckNonZeroSender<Runtime>,
     frame_system::CheckSpecVersion<Runtime>,
@@ -169,8 +180,9 @@ pub type TxExtension = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
-    frame_system::WeightReclaim<Runtime>,
+    // 临时注释：修复 TransactionPayment panic
+    // frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
+    // frame_system::WeightReclaim<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -192,25 +204,6 @@ impl frame_system::offchain::SigningTypes for Runtime {
 /// This can be a tuple of types, each implementing `OnRuntimeUpgrade`.
 #[allow(unused_parens)]
 type Migrations = (); // 🆕 2025-10-28: RenameDeceasedMediaToData 已移除 - deceased-media整合到deceased
-
-// 🆕 2025-10-28 已注释: DeceasedMedia 已整合到 Deceased pallet
-/*
-/// 函数级中文注释：运行时迁移——将旧 Pallet 名称 `DeceasedMedia` 的存储前缀整体迁移到新别名 `DeceasedData`。
-/// - 仅移动存储前缀，不变更内部键结构；应在升级窗口内配合前端/SDK 兼容新的 section 名。
-pub struct RenameDeceasedMediaToData;
-
-impl OnRuntimeUpgrade for RenameDeceasedMediaToData {
-    fn on_runtime_upgrade() -> Weight {
-        use frame_support::storage::migration::move_pallet;
-        // 旧/新 Pallet 名（以 construct_runtime 别名为准）
-        let old = b"DeceasedMedia";
-        let new = b"DeceasedData";
-        move_pallet(new, old);
-        // 近似权重：常数 + 读写开销（此处返回常数，实际可用 try-runtime 校验）
-        Weight::from_parts(10_000, 0)
-    }
-}
-*/
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
@@ -286,8 +279,9 @@ pub mod runtime {
     #[runtime::pallet_index(14)]
     pub type MemorialPark = pallet_stardust_park;
 
-    #[runtime::pallet_index(15)]
-    pub type Grave = pallet_stardust_grave;
+    // 🗑️ 2025-11-16: pallet_stardust_grave 已删除 - 功能迁移到 memorial-space + social
+    // #[runtime::pallet_index(15)]
+    // pub type Grave = pallet_stardust_grave;
 
     // 🆕 2025-10-28 已移除: MemorialOfferings 已整合到 Memorial pallet
     // #[runtime::pallet_index(16)]
@@ -309,7 +303,7 @@ pub mod runtime {
     // pub type DeceasedText = pallet_deceased_text;
 
     #[runtime::pallet_index(21)]
-    pub type GraveLedger = pallet_ledger;
+    pub type Ledger = pallet_ledger;  // 重命名：GraveLedger → Ledger（grave已删除）
 
     // 🆕 2025-10-28 已移除: pallet-stardust-referrals（已整合到统一 pallet-affiliate）
     // #[runtime::pallet_index(22)]
@@ -484,44 +478,229 @@ pub mod runtime {
     #[runtime::pallet_index(59)]
     pub type Memorial = pallet_memorial;
 
-    /// 函数级详细中文注释：统一交易模块 v1.0.0 (Trading Pallet)
+    /// 函数级详细中文注释：做市商管理模块 v2.0.0 (Maker Pallet)
     /// 
-    /// 🆕 2025-10-29：整合 pallet-otc-order, pallet-market-maker, pallet-simple-bridge
+    /// 🆕 2025-11-03：从 pallet-trading 拆分为独立模块
     /// 
-    /// **做市商管理（Maker）**：
-    /// - 押金锁定与解锁
-    /// - 资料提交与审核（支持阈值加密）
-    /// - 状态流转（DepositLocked → PendingReview → Active）
-    /// - 提现申请与冷却期
-    /// - 溢价配置（买入/卖出 -500~500 bps）
-    /// - 服务暂停/恢复
+    /// **核心功能**：
+    /// - ✅ 押金锁定与解锁（1000 DUST）
+    /// - ✅ 资料提交与审核（姓名、身份证、生日、TRON地址、EPAY配置）
+    /// - ✅ 状态流转（DepositLocked → PendingReview → Active）
+    /// - ✅ 提现申请与冷却期（7天）
+    /// - ✅ 治理权限审批（approve/reject/emergency_withdrawal）
+    /// - ✅ 信用评分集成（MakerCreditInterface）
     /// 
-    /// **OTC订单（OTC）**：
-    /// - 订单创建与匹配
-    /// - 买家付款标记
-    /// - 做市商释放DUST
-    /// - 订单取消与争议
-    /// - 首购订单支持（限额100-500 DUST）
-    /// - 限频保护（防刷单攻击）
-    /// 
-    /// **MEMO桥接（Bridge）**：
-    /// - DUST → USDT TRC20 兑换
-    /// - 做市商兑换服务
-    /// - OCW链下验证
-    /// - 自动完成兑换
-    /// 
-    /// **Phase 5优化（2025-10-28）**：
-    /// - ✅ 双映射索引：O(1)查询用户/做市商订单和兑换
-    /// - ✅ 事件精简：状态码化，减少60%存储
-    /// - ✅ 自动清理：过期订单/兑换自动归档
-    /// - ✅ CID优化：64字节（-75%）
-    /// - ✅ TRON地址优化：34字节（-47%）
-    /// 
-    /// **优势**：
-    /// - Pallet数量：3 → 1 (-67%)
-    /// - 代码复用：高
-    /// - 维护成本：低（-50%）
-    /// - Gas成本：优化（-5-10%）
+    /// **安全特性**：
+    /// - ✅ 押金托管（使用 Currency::reserve）
+    /// - ✅ 提现冷却期（防止快速提现）
+    /// - ✅ 治理权限控制（仅治理账户可审批）
+    /// - ✅ 数据掩码（隐私保护）
     #[runtime::pallet_index(60)]
-    pub type Trading = pallet_trading;
+    pub type Maker = pallet_maker;
+
+    /// 函数级详细中文注释：OTC 订单管理模块 v2.0.0 (OTC Order Pallet)
+    /// 
+    /// 🆕 2025-11-03：从 pallet-trading 拆分为独立模块
+    /// 
+    /// **核心功能**：
+    /// - ✅ 普通订单创建/支付/释放（用户指定数量和金额）
+    /// - ✅ 首购订单创建（固定 $10 USD，动态 DUST）
+    /// - ✅ 订单自动过期（1小时未支付）
+    /// - ✅ 做市商首购订单配额管理（最多5个）
+    /// - ✅ 订单取消与争议
+    /// - ✅ 托管集成（自动锁定/释放/退款）
+    /// - ✅ 信用评分集成（BuyerCreditInterface）
+    /// 
+    /// **首购逻辑**：
+    /// - 固定 $10 USD 价值
+    /// - 动态计算 DUST 数量（基于 pallet-pricing 实时汇率）
+    /// - 安全边界：100 DUST ≤ DUST 数量 ≤ 10,000 DUST
+    /// - 不占用做市商押金配额（从自由余额扣除）
+    /// - 每个做市商最多同时接收 5 个首购订单
+    /// 
+    /// **安全特性**：
+    /// - ✅ 自动过期清理（on_idle hook）
+    /// - ✅ 价格异常保护（安全边界）
+    /// - ✅ 配额管理（防止滥用）
+    #[runtime::pallet_index(61)]
+    pub type OtcOrder = pallet_otc_order;
+
+    /// 函数级详细中文注释：DUST ↔ USDT 桥接模块 v2.0.0 (Bridge Pallet)
+    /// 
+    /// 🆕 2025-11-03：从 pallet-trading 拆分为独立模块
+    /// 
+    /// **核心功能**：
+    /// - ✅ 官方桥接（DUST → USDT TRC20）
+    /// - ✅ 做市商桥接（更快速，点对点）
+    /// - ✅ OCW 链下验证（自动处理 TRON 转账）
+    /// - ✅ 超时退款机制（30分钟）
+    /// - ✅ 举报/仲裁流程
+    /// - ✅ 托管集成（自动锁定/释放/退款）
+    /// 
+    /// **安全特性**：
+    /// - ✅ 最小兑换金额（10 DUST）
+    /// - ✅ 超时保护（防止资金冻结）
+    /// - ✅ OCW 去中心化处理
+    /// - ✅ 仲裁机制（用户举报 + 治理裁决）
+    #[runtime::pallet_index(62)]
+    pub type Bridge = pallet_bridge;
+
+    /// 函数级详细中文注释：AI驱动的交易策略管理模块 v1.0.0 (AI Strategy Pallet)
+    /// 
+    /// 🆕 2025-11-04：AI增强的自动化交易系统
+    /// 
+    /// **核心功能**：
+    /// - ✅ AI策略配置管理（GPT-4/Transformer/LSTM/Ensemble）
+    /// - ✅ AI模型参数配置（置信度阈值、特征集）
+    /// - ✅ AI信号历史记录（推理理由、特征重要性）
+    /// - ✅ 策略表现跟踪（盈亏、胜率、夏普比率）
+    /// - ✅ 多策略类型支持（网格、做市、套利、AI纯策略）
+    /// - ✅ 风控管理（最大仓位、杠杆、止损止盈）
+    /// 
+    /// **创新特性**：
+    /// - ✅ AI + 区块链深度融合（完全透明可追溯）
+    /// - ✅ 多层AI决策架构（集成多个模型）
+    /// - ✅ 链上风控 + AI风险评估
+    /// - ✅ OCW自动化执行（7×24运行）
+    /// 
+    /// **安全特性**：
+    /// - ✅ API密钥加密存储
+    /// - ✅ 置信度阈值过滤
+    /// - ✅ 多层风控检查
+    /// - ✅ 完整审计追踪
+    #[runtime::pallet_index(65)]
+    pub type AITrader = pallet_ai_trader;
+
+    /// 函数级中文注释：DUST 跨链桥接模块（v0.1.0 2025-11-05）
+    /// 
+    /// ## 功能说明
+    /// 实现 Stardust 链原生 DUST 与 Arbitrum ERC20 DUST 的跨链桥接
+    /// 
+    /// ## 桥接模型
+    /// - **锁定-铸造（Lock & Mint）**：
+    ///   - Stardust → Arbitrum: 锁定原生 DUST，铸造 ERC20 DUST
+    ///   - Arbitrum → Stardust: 销毁 ERC20 DUST，解锁原生 DUST
+    /// 
+    /// ## 核心特性
+    /// - ✅ OCW 自动中继服务
+    /// - ✅ 多签桥接账户
+    /// - ✅ 防重放攻击
+    /// - ✅ 金额限制保护
+    /// - ✅ 超时自动失败
+    #[runtime::pallet_index(66)]
+    pub type DustBridge = pallet_dust_bridge;
+
+    /// 函数级详细中文注释：逝者AI准备层（Phase 3 - Layer 2）
+    ///
+    /// 🆕 2025-11-13：Phase 3 第二层 - AI训练准备层
+    ///
+    /// **核心功能**：
+    /// - ✅ AI智能体管理（创建/配置/暂停）
+    /// - ✅ 训练任务提交与状态跟踪
+    /// - ✅ 作品数据导出（标准化格式）
+    /// - ✅ 训练进度监控
+    /// - ✅ 智能体版本管理
+    ///
+    /// **三层架构定位**：
+    /// - Layer 1 (pallet-deceased): 数据存储层 - 作品、元数据
+    /// - **Layer 2 (pallet-deceased-ai)**: AI准备层 - 服务管理、训练任务
+    /// - Layer 3 (pallet-ai-chat): AI集成层 - 对话服务、实时交互
+    ///
+    /// **设计理念**：
+    /// - ✅ 低耦合：通过 DeceasedDataProvider trait 解耦
+    /// - ✅ 可扩展：支持多种AI服务商（OpenAI、Anthropic等）
+    /// - ✅ 可审计：完整记录训练过程和结果
+    #[runtime::pallet_index(67)]
+    pub type DeceasedAI = pallet_deceased_ai;
+
+    /// 函数级详细中文注释：AI对话集成层（Phase 3 - Layer 3）
+    ///
+    /// 🆕 2025-11-13：Phase 3 第三层 - AI对话集成层
+    ///
+    /// **核心功能**：
+    /// - ✅ 对话会话管理（创建/暂停/归档）
+    /// - ✅ 消息发送与接收
+    /// - ✅ 个性化配置（风格、参数）
+    /// - ✅ API配置管理（多服务商支持）
+    /// - ✅ OCW AI请求处理
+    /// - ✅ 质量评估体系（6维度评分）
+    ///
+    /// **三层架构定位**：
+    /// - Layer 1 (pallet-deceased): 数据存储层 - 作品、元数据
+    /// - Layer 2 (pallet-deceased-ai): AI准备层 - 服务管理、训练任务
+    /// - **Layer 3 (pallet-ai-chat)**: AI集成层 - 对话服务、实时交互
+    ///
+    /// **设计理念**：
+    /// - ✅ 实时交互：OCW worker自动处理AI请求
+    /// - ✅ 多服务商：支持OpenAI、Anthropic、Alibaba、Baidu
+    /// - ✅ 质量保证：多维度质量评估系统
+    /// - ✅ 个性化：风格标签、温度参数、提示词定制
+    #[runtime::pallet_index(68)]
+    pub type AIChat = pallet_ai_chat;
+
+    /// 函数级详细中文注释：治理参数集中管理模块 v0.1.0 (Governance Params Pallet)
+    ///
+    /// 🆕 2025-01-20：集中管理所有治理相关参数
+    ///
+    /// **核心功能**：
+    /// - ✅ 押金参数管理：申诉押金、投诉押金、非拥有者操作押金
+    /// - ✅ 期限参数管理：公示期、投票期、执行延迟、投诉期
+    /// - ✅ 费率参数管理：投诉人分配比例、委员会分配比例、拥有者分配比例
+    /// - ✅ 阈值参数管理：提案门槛、投票通过门槛、仲裁费用门槛
+    /// - ✅ 治理调整：所有参数变更需要治理投票
+    /// - ✅ 事件通知：参数变更时发出事件
+    ///
+    /// **设计理念**：
+    /// - 单一参数源：所有治理参数集中在一个模块管理
+    /// - 治理调整：参数变更需要通过治理投票（Root或委员会2/3多数）
+    /// - 类型安全：强类型参数定义，编译时检查
+    /// - 向后兼容：接口稳定，便于其他模块集成
+    #[runtime::pallet_index(69)]
+    pub type GovernanceParams = pallet_governance_params;
+
+    /// 函数级详细中文注释：社交关系管理模块 v1.0.0
+    ///
+    /// 🆕 2025-11-17：多类型目标关注系统
+    ///
+    /// **核心功能**：
+    /// - ✅ 多类型目标支持：Deceased（逝者）、User（用户）、Grave（墓地）、Pet（宠物）、Memorial（纪念馆）
+    /// - ✅ 双向索引：FollowingMap（关注列表）+ FollowersList（关注者列表）
+    /// - ✅ 关注管理：follow、unfollow、remove_follower
+    /// - ✅ 批量操作：batch_follow、batch_unfollow
+    /// - ✅ 通知设置：update_notification_setting
+    /// - ✅ 兼容接口：为 deceased 迁移提供完整适配
+    ///
+    /// **设计理念**：
+    /// - 统一管理：将分散的关注功能集中到单一模块
+    /// - 类型扩展：支持未来添加新的目标类型
+    /// - 高效查询：双向索引 + 计数缓存
+    /// - 迁移友好：保留 deceased 兼容接口
+    #[runtime::pallet_index(70)]
+    pub type Social = pallet_social;
+
+	// 🆕 2025-11-03 Frontier: 以太坊兼容层（官方 Parity Pallet）
+	// ⚠️ 临时禁用以排查 runtime 启动问题
+	// /// 函数级中文注释：EVM 虚拟机（执行以太坊智能合约）
+	// /// - 支持 Solidity/Vyper 编译的合约
+	// /// - Gas 费用使用 DUST 代币
+	// /// - Chain ID: 8888 (测试网)
+	// #[runtime::pallet_index(100)]
+	// pub type EVM = pallet_evm;
+	//
+	// /// 函数级中文注释：Ethereum 兼容层（处理以太坊交易格式）
+	// /// - 支持 Legacy、EIP-1559、EIP-2930 交易
+	// /// - 生成以太坊兼容的区块头和收据
+	// #[runtime::pallet_index(101)]
+	// pub type Ethereum = pallet_ethereum;
+	//
+	// /// 函数级中文注释：BaseFee 管理（EIP-1559 基础费用）
+	// /// - 动态调整 Gas 价格
+	// /// - 初始值: 1 Gwei
+	// #[runtime::pallet_index(102)]
+	// pub type BaseFee = pallet_base_fee;
+	//
+	// /// 函数级中文注释：DynamicFee（动态费用调整）
+	// /// - 根据网络负载自动调整费用
+	// #[runtime::pallet_index(103)]
+	// pub type DynamicFee = pallet_dynamic_fee;
 }

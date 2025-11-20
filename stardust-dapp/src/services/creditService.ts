@@ -39,7 +39,7 @@ export interface BuyerCreditRecord {
   newUserTier: NewUserTier | null;
   /** 成功完成订单数 */
   completedOrders: number;
-  /** 累计购买金额（MEMO） */
+  /** 累计购买金额（DUST） */
   totalVolume: string;
   /** 违约次数 */
   defaultCount: number;
@@ -198,7 +198,7 @@ export interface MakerDefaultRecord {
 export interface MakerCreditDetail {
   /** 基础信用记录 */
   credit: MakerCreditRecord;
-  /** 动态保证金要求（MEMO） */
+  /** 动态保证金要求（DUST） */
   requiredDeposit: string;
   /** 保证金折扣系数（百分比） */
   depositDiscount: number;

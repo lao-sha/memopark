@@ -98,7 +98,7 @@
    api.tx.trading.claimFreeDust(orderId)
    ```
 
-**原因**：品牌统一（MEMO → DUST）
+**原因**：品牌统一（DUST → DUST）
 
 ---
 

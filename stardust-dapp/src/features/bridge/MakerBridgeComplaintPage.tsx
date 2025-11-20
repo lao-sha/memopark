@@ -56,7 +56,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
     setRecordLoading(true);
     try {
       const id = parseInt(swapId);
-      const recordOpt = await api.query.trading.makerSwaps(id);  // 🆕 pallet-trading
+      const recordOpt = await api.query.bridge.makerSwaps(id);  // 🆕 pallet-bridge
       
       if (recordOpt.isNone) {
         message.error('兑换记录不存在');
@@ -115,8 +115,8 @@ export const MakerBridgeComplaintPage: React.FC = () => {
     try {
       const id = parseInt(swapId);
       
-      // 调用链上方法（🆕 pallet-trading）
-      const tx = api.tx.trading.reportSwap(
+      // 调用链上方法（🆕 pallet-bridge）
+      const tx = api.tx.bridge.reportSwap(
         id,
         evidenceCid
       );
@@ -206,7 +206,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
   };
   
   return (
-    <div style={{ padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
       <Card>
         {/* 返回按钮 */}
         <Button 
@@ -256,7 +256,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
                   </Text>
                 </Descriptions.Item>
                 <Descriptions.Item label="兑换价格">
-                  {swapRecord.priceUsdt.toFixed(4)} USDT/MEMO
+                  {swapRecord.priceUsdt.toFixed(4)} USDT/DUST
                 </Descriptions.Item>
                 {swapRecord.trc20TxHash && (
                   <Descriptions.Item label="TRC20 交易哈希" span={2}>

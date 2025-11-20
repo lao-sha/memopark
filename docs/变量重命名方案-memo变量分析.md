@@ -80,9 +80,9 @@ const formatted = formatDustAmount(amount);
 #### 变量列表
 ```typescript
 // ✅ 保留 - 表示交易方向
-memoToTron: 'MEMO → TRON-USDT'
-memoToUsdt: 'MEMO → USDT'
-usdtToMemo: 'USDT → MEMO'
+memoToTron: 'DUST → TRON-USDT'
+memoToUsdt: 'DUST → USDT'
+usdtToMemo: 'USDT → DUST'
 
 // ✅ 保留 - 表单tab key
 activeTab: 'memoToTron' | 'usdtToMemo'

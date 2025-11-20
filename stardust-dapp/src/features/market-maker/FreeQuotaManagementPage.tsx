@@ -350,7 +350,7 @@ const FreeQuotaManagementPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
       <h2 style={{ marginBottom: 24 }}>
         <GiftOutlined style={{ marginRight: 8, color: '#52c41a' }} />
         免费配额管理

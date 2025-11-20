@@ -46,8 +46,8 @@ export const MakerBridgeListPage: React.FC = () => {
     
     setLoading(true);
     try {
-      // 🆕 获取所有做市商（pallet-trading已合并做市商信息和桥接配置）
-      const makersEntries = await api.query.trading.makerApplications.entries();
+      // 🆕 获取所有做市商（使用新的 pallet-maker）
+      const makersEntries = await api.query.maker.makerApplications.entries();
       
       const bridgeMakers: any[] = [];
       
@@ -258,7 +258,7 @@ export const MakerBridgeListPage: React.FC = () => {
   ];
   
   return (
-    <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
       <Card>
         {/* 页面标题 */}
         <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 24 }}>

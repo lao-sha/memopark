@@ -3,7 +3,7 @@
 **📅 方案时间**: 2025-10-29  
 **🎯 重命名目标**: 
 - 项目名：stardust → **stardust**
-- 代币名：MEMO → **DUST**
+- 代币名：DUST → **DUST**
 
 **⏱️ 预计耗时**: 4-6小时  
 **🎯 成功标准**: 所有引用更新完毕，编译通过，功能正常
@@ -88,9 +88,9 @@ pallet_memo_appeals                          → pallet_stardust_appeals
 pallet_memo_referrals                        → pallet_stardust_referrals
 
 // 代币相关
-MEMO (在注释和常量中)                        → DUST
-10 MEMO                                      → 10 DUST
-1000 MEMO                                    → 1000 DUST
+DUST (在注释和常量中)                        → DUST
+10 DUST                                      → 10 DUST
+1000 DUST                                    → 1000 DUST
 memo_amount                                  → dust_amount (可选，建议保持)
 ```
 
@@ -102,7 +102,7 @@ memo_amount                                  → dust_amount (可选，建议保
 
 // 变量名（可选，建议保持API稳定性）
 memoAmount                                   → 可保持（内部变量）
-MEMO                                         → DUST（显示文本）
+DUST                                         → DUST（显示文本）
 
 // 注释
 // MEMO代币                                   → // DUST代币
@@ -377,17 +377,17 @@ find . -name "*.rs" -type f -exec sed -i 's/stardust/stardust/g' {} \;
 
 # 替换代币名称（注意：这个需要谨慎，可能有false positive）
 # 建议手动查找替换或使用更精确的正则
-find . -name "*.rs" -type f -exec sed -i 's/ MEMO / DUST /g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/ DUST / DUST /g' {} \;
 find . -name "*.rs" -type f -exec sed -i 's/\bMEMO\b/DUST/g' {} \;
 ```
 
 #### 5.2 更新注释中的代币单位
 ```bash
 # 替换注释中的常见模式
-find . -name "*.rs" -type f -exec sed -i 's/10 MEMO/10 DUST/g' {} \;
-find . -name "*.rs" -type f -exec sed -i 's/100 MEMO/100 DUST/g' {} \;
-find . -name "*.rs" -type f -exec sed -i 's/1000 MEMO/1000 DUST/g' {} \;
-find . -name "*.rs" -type f -exec sed -i 's/10_000 MEMO/10_000 DUST/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/10 DUST/10 DUST/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/100 DUST/100 DUST/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/1000 DUST/1000 DUST/g' {} \;
+find . -name "*.rs" -type f -exec sed -i 's/10_000 DUST/10_000 DUST/g' {} \;
 ```
 
 ---
@@ -422,7 +422,7 @@ sed -i 's/stardust/stardust/g' vite.config.ts
 # 更新README.md
 sed -i 's/Stardust/Stardust/g' README.md
 sed -i 's/stardust/stardust/g' README.md
-sed -i 's/MEMO/DUST/g' README.md
+sed -i 's/DUST/DUST/g' README.md
 ```
 
 #### 6.3 全局替换前端代码中的显示文本
@@ -431,7 +431,7 @@ cd stardust-dapp/src
 
 # 替换UI中显示的文本（注意：API变量名可以选择性保留）
 # 显示的代币名称
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO/DUST/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST/DUST/g'
 
 # 显示的项目名称
 find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/Stardust/Stardust/g'
@@ -477,7 +477,7 @@ find . -name "*.md" -exec sed -i 's/\bMEMO\b/DUST/g' {} \;
 cd /home/xiaodong/文档/stardust
 sed -i 's/Stardust/Stardust/g' README.md
 sed -i 's/stardust/stardust/g' README.md
-sed -i 's/MEMO/DUST/g' README.md
+sed -i 's/DUST/DUST/g' README.md
 ```
 
 ---
@@ -614,9 +614,9 @@ npm run dev
 | 原内容 | 新内容 | 位置 | 优先级 |
 |--------|--------|------|--------|
 | `Stardust` | `Stardust` | 注释、文档 | P1 |
-| `MEMO` (代币) | `DUST` | 注释、UI文本 | P1 |
-| `10 MEMO` | `10 DUST` | 注释 | P1 |
-| `1000 MEMO` | `1000 DUST` | 注释 | P1 |
+| `DUST` (代币) | `DUST` | 注释、UI文本 | P1 |
+| `10 DUST` | `10 DUST` | 注释 | P1 |
+| `1000 DUST` | `1000 DUST` | 注释 | P1 |
 | `<title>Stardust</title>` | `<title>Stardust</title>` | index.html | P1 |
 
 ### 🟢 可选替换的内容
@@ -689,7 +689,7 @@ npm run dev
 - [ ] README.md更新完毕
 - [ ] docs/目录下所有文档更新
 - [ ] package.json中的描述更新
-- [ ] 无遗漏的"stardust"或"MEMO"引用
+- [ ] 无遗漏的"stardust"或"DUST"引用
 
 ### Git验证
 - [ ] 所有更改已提交
@@ -792,7 +792,7 @@ echo "✅ 重命名完成！"
 
 ### 代码检查 ✅
 - [ ] 无"stardust"残留（除文档说明）
-- [ ] 无"MEMO"残留（除API变量名）
+- [ ] 无"DUST"残留（除API变量名）
 - [ ] Pallet名称全部更新
 - [ ] 包名全部更新
 
@@ -821,5 +821,5 @@ echo "✅ 重命名完成！"
 
 **📅 方案生成时间**: 2025-10-29  
 **✍️ 方案作者**: AI Assistant  
-**🏷️ 标签**: `项目重命名` `stardust-to-stardust` `MEMO-to-DUST` `重构`
+**🏷️ 标签**: `项目重命名` `stardust-to-stardust` `DUST-to-DUST` `重构`
 

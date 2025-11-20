@@ -10,8 +10,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Button, Avatar, Spin, Empty, message as antMessage, Typography, Modal, Alert } from 'antd';
-import { SendOutlined, UserOutlined, WarningOutlined } from '@ant-design/icons';
+import { Input, Button, Avatar, Spin, Empty, message as antMessage, Typography } from 'antd';
+import { SendOutlined, UserOutlined } from '@ant-design/icons';
 import { MessageType } from '../../types/chat';
 import type { Message, MessageContent, Session } from '../../types/chat';
 import {
@@ -25,11 +25,6 @@ import { useWallet } from '../../providers/WalletProvider';
 import { FileUploader } from './FileUploader';
 import { ImagePreview } from './ImagePreview';
 import { FileMessage } from './FileMessage';
-import {
-  validateRecipientName,
-  extractPaymentInfo,
-  generatePaymentTemplate,
-} from '../../lib/chat-validator';  // 🆕 2025-10-22：聊天验证工具
 import './ChatWindow.css';
 
 const { TextArea } = Input;

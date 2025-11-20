@@ -5,6 +5,7 @@ import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore, queryFreeBalance } from '../../lib/polkadot-safe'
 import { ApiPromise } from '@polkadot/api'
 import FileEncryptUpload from '../../components/FileEncryptUpload'
+import './CreateMarketMakerPage.css'
 
 /**
  * 函数级详细中文注释：做市商申请（两步式：先质押 → 再提交资料）
@@ -243,14 +244,14 @@ export default function CreateMarketMakerPage() {
       
       try {
         // 查询 NextId 以确定需要检查的范围
-        const nextIdRaw = await (api.query as any).trading.nextId()
+        const nextIdRaw = await (api.query as any).maker.nextMakerId()
         const nextId = Number(nextIdRaw.toString())
         
         console.log('[配置] 当前 NextId:', nextId, '当前地址:', currentAddress)
         
         // 遍历查询所有申请记录，找到属于当前账户的申请
         for (let id = 0; id < nextId; id++) {
-          const appOption = await (api.query as any).trading.applications(id)
+          const appOption = await (api.query as any).maker.makerApplications(id)
           
           if (appOption.isSome) {
             const app = appOption.unwrap()
@@ -355,7 +356,7 @@ export default function CreateMarketMakerPage() {
       }
 
       // 查询申请详情
-      const appOption = await (api.query as any).trading.applications(id)
+      const appOption = await (api.query as any).maker.makerApplications(id)
       
       if (appOption.isSome) {
         const app = appOption.unwrap()
@@ -660,7 +661,7 @@ export default function CreateMarketMakerPage() {
 
       try {
         // 查询最新的 mmId（从 NextId 获取）
-        const nextIdRaw = await (api.query as any).trading.nextId()
+        const nextIdRaw = await (api.query as any).maker.nextMakerId()
         const nextId = Number(nextIdRaw.toString())
         
         console.log('[质押] NextId:', nextId)
@@ -682,7 +683,7 @@ export default function CreateMarketMakerPage() {
         
         // 查询申请详情以验证（传递正整数）
         if (true) {
-          const appOption = await (api.query as any).trading.applications(latestMmId)
+          const appOption = await (api.query as any).maker.makerApplications(latestMmId)
           
           if (appOption.isSome) {
             const app = appOption.unwrap()
@@ -727,14 +728,14 @@ export default function CreateMarketMakerPage() {
         try {
           const currentAddress = localStorage.getItem('mp.current')
           if (currentAddress) {
-            const ownerIndexOpt = await (api.query as any).trading.ownerIndex(currentAddress)
+            const ownerIndexOpt = await (api.query as any).maker.accountToMaker(currentAddress)
             
             if (ownerIndexOpt.isSome) {
               const realMmId = Number(ownerIndexOpt.unwrap().toString())
-              console.log('[质押] 通过 OwnerIndex 找到 mmId:', realMmId)
+              console.log('[质押] 通过 AccountToMaker 找到 mmId:', realMmId)
               
               // 查询申请详情
-              const appOption = await (api.query as any).trading.applications(realMmId)
+              const appOption = await (api.query as any).maker.makerApplications(realMmId)
               if (appOption.isSome) {
                 const app = appOption.unwrap()
                 const appData = app.toJSON()
@@ -777,7 +778,7 @@ export default function CreateMarketMakerPage() {
               <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 12 }}>
 {`const api = await getApi()
 const current = localStorage.getItem('mp.current')
-const opt = await api.query.trading.ownerIndex(current)
+const opt = await api.query.maker.accountToMaker(current)
 if (opt.isSome) {
   const mmId = opt.unwrap().toNumber()
   console.log('您的 mmId:', mmId)
@@ -1233,7 +1234,7 @@ if (opt.isSome) {
         const currentAddress = localStorage.getItem('mp.current')
         if (currentAddress) {
           try {
-            const ownerIndexOpt = await (api.query as any).trading.ownerIndex(currentAddress)
+            const ownerIndexOpt = await (api.query as any).maker.accountToMaker(currentAddress)
             if (ownerIndexOpt.isSome) {
               const realMmId = Number(ownerIndexOpt.unwrap().toString())
               console.log('[重新加载] 找到 mmId:', realMmId)
@@ -1266,118 +1267,105 @@ if (opt.isSome) {
   }
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        minHeight: '100vh',
-        background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
-      }}
-    >
-      {/* 顶部操作按钮 */}
-      {/* 返回按钮 - 固定在左上角 */}
-      <div style={{ 
-        position: 'absolute', 
-        top: '10px', 
-        left: '10px',
-        zIndex: 10,
-      }}>
-        <Button 
-          type="text" 
+    <div className="create-market-maker-page">
+      {/* 顶部导航栏（统一青绿色风格） */}
+      <div className="mm-header">
+        <Button
+          type="text"
           icon={<ArrowLeftOutlined />}
           onClick={handleBackToOrder}
-          style={{ 
-            padding: '4px 8px',
-            background: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-          }}
+          className="back-button"
         >
-          返回购买MEMO
+          返回购买DUST
         </Button>
-      </div>
-      
-      {/* 解密工具按钮 - 固定在右上角（委员会专用） */}
-      <div style={{ 
-        position: 'absolute', 
-        top: '10px', 
-        right: '10px',
-        zIndex: 10,
-      }}>
+        <div className="page-title">做市商申请</div>
         <Button
           type="primary"
           icon={<UnlockOutlined />}
           onClick={() => window.location.hash = '#/otc/decrypt'}
-          style={{ 
-            padding: '4px 12px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            border: 'none',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(102, 126, 234, 0.4)',
-          }}
+          className="decrypt-button"
+          size="small"
         >
           委员会解密工具
         </Button>
       </div>
 
-      {/* 主内容区域 */}
-      <div
-        style={{
-          padding: '60px 20px 20px',
-          maxWidth: '640px',
-          margin: '0 auto',
-        }}
-      >
-        <Card 
-          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+      {/* 主要内容区域 */}
+      <div className="mm-content">
+        <Card
+          className="mm-main-card"
           extra={
             <Button
               icon={<ReloadOutlined />}
               onClick={handleClearCacheAndRefresh}
               size="small"
               type="link"
+              className="mm-refresh-button"
             >
               清除缓存并刷新
             </Button>
           }
         >
-          <Typography.Title level={5}>做市商申请（两步式：先质押 → 再提交资料）</Typography.Title>
+          <Typography.Title level={5} className="mm-text-primary">
+            做市商申请（两步式：先质押 → 再提交资料）
+          </Typography.Title>
 
           {!api && (
-            <Alert type="info" showIcon message="正在连接链上节点..." style={{ marginBottom: 12 }} />
+            <Alert type="info" showIcon message="正在连接链上节点..." className="mm-alert info" />
           )}
 
-          {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} closable onClose={() => setError('')} />}
+          {error && (
+            <Alert
+              type="error"
+              showIcon
+              message={error}
+              className="mm-alert error"
+              closable
+              onClose={() => setError('')}
+            />
+          )}
 
-          <Steps size="small" current={current} items={[
-            { 
-              title: '质押保证金',
-              icon: current > 0 ? <CheckCircleOutlined /> : undefined
-            },
-            { 
-              title: '提交资料（待审）',
-              icon: current === 1 ? <InfoCircleOutlined /> : undefined
-            },
-          ]} />
+          <Steps
+            size="small"
+            current={current}
+            className="mm-steps"
+            items={[
+              {
+                title: '质押保证金',
+                icon: current > 0 ? <CheckCircleOutlined /> : undefined
+              },
+              {
+                title: '提交资料（待审）',
+                icon: current === 1 ? <InfoCircleOutlined /> : undefined
+              },
+            ]}
+          />
 
-          <Divider />
+          <Divider className="mm-divider" />
 
           {/* 步骤 1：质押保证金 */}
           {current === 0 && (
             <>
-              <Form form={form1} layout="vertical" onFinish={onDeposit} initialValues={{ deposit_amount: 1000, direction: 2 }}>
-                <Form.Item 
-                  label="质押金额（MEMO）" 
-                  name="deposit_amount" 
+              <Form
+                form={form1}
+                layout="vertical"
+                onFinish={onDeposit}
+                initialValues={{ deposit_amount: 1000, direction: 2 }}
+                className="mm-form"
+              >
+                <Form.Item
+                  label="质押金额（DUST）"
+                  name="deposit_amount"
                   rules={[
                     { required: true, message: '请输入质押金额' },
                     { type: 'number', min: config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1, message: `质押金额必须大于等于 ${config ? (BigInt(config.minDeposit) / BigInt(1e12)).toString() : '1000'} DUST` }
                   ]}
                   extra={config ? `最低质押金额：${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST（链上配置）` : '最低质押金额：1000 DUST（链上配置）'}
-                > 
-                  <InputNumber 
-                    min={config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1} 
-                    precision={2} 
-                    step={100} 
+                >
+                  <InputNumber
+                    min={config ? Number(BigInt(config.minDeposit) / BigInt(1e12)) : 1}
+                    precision={2}
+                    step={100}
                     style={{ width: '100%' }}
                     placeholder={config ? `最少 ${(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST` : '请输入质押金额'}
                     disabled={loading}
@@ -1385,20 +1373,20 @@ if (opt.isSome) {
                 </Form.Item>
 
                 {/* 🆕 2025-10-19：业务方向选择 */}
-                <Form.Item 
-                  label="业务方向" 
-                  name="direction" 
+                <Form.Item
+                  label="业务方向"
+                  name="direction"
                   rules={[{ required: true, message: '请选择业务方向' }]}
                   extra={
-                    <Alert 
-                      type="info" 
-                      showIcon 
-                      style={{ marginTop: 8 }}
+                    <Alert
+                      type="info"
+                      showIcon
+                      className="mm-alert info"
                       message="业务方向说明"
                       description={
-                        <div style={{ fontSize: '12px' }}>
-                          <p style={{ margin: '4px 0' }}><strong>🟢 仅买入（Buy）</strong>：只能做Bridge业务，购买MEMO，支付USDT</p>
-                          <p style={{ margin: '4px 0' }}><strong>🔴 仅卖出（Sell）</strong>：只能做OTC业务，出售MEMO，收取USDT</p>
+                        <div className="mm-text-secondary">
+                          <p style={{ margin: '4px 0' }}><strong>🟢 仅买入（Buy）</strong>：只能做Bridge业务，购买DUST，支付USDT</p>
+                          <p style={{ margin: '4px 0' }}><strong>🔴 仅卖出（Sell）</strong>：只能做OTC业务，出售DUST，收取USDT</p>
                           <p style={{ margin: '4px 0' }}><strong>🟡 双向（BuyAndSell）</strong>：可以做OTC和Bridge业务（推荐）</p>
                           <p style={{ margin: '4px 0', fontStyle: 'italic' }}>💡 建议新手选择单向，资金压力小；大型做市商建议选择双向，提高流动性</p>
                         </div>
@@ -1406,21 +1394,21 @@ if (opt.isSome) {
                     />
                   }
                 >
-                  <Radio.Group style={{ width: '100%' }} disabled={loading}>
+                  <Radio.Group className="mm-radio-group" disabled={loading}>
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <Radio value={0} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+                      <Radio value={0} className="mm-radio-option">
                         <Space>
                           <Tag color="green">仅买入</Tag>
-                          <span>Bridge - 购买MEMO，支付USDT</span>
+                          <span>Bridge - 购买DUST，支付USDT</span>
                         </Space>
                       </Radio>
-                      <Radio value={1} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+                      <Radio value={1} className="mm-radio-option">
                         <Space>
                           <Tag color="red">仅卖出</Tag>
-                          <span>OTC - 出售MEMO，收取USDT</span>
+                          <span>OTC - 出售DUST，收取USDT</span>
                         </Space>
                       </Radio>
-                      <Radio value={2} style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px', background: '#fffbe6' }}>
+                      <Radio value={2} className="mm-radio-option selected">
                         <Space>
                           <Tag color="orange">双向（推荐）</Tag>
                           <span>OTC + Bridge - 买卖双向</span>
@@ -1432,39 +1420,35 @@ if (opt.isSome) {
 
                 {/* 配置信息展示 */}
                 {loadingConfig && (
-                  <Card size="small" style={{ marginBottom: 12 }}>
+                  <Card size="small" className="mm-loading">
                     <Spin tip="正在加载配置信息..." />
                   </Card>
                 )}
 
                 {config && (
-                  <Card 
+                  <Card
                     title={
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Typography.Text strong>
+                        <Typography.Text strong className="mm-text-primary">
                           {config.isUserApplication ? '您的做市商申请情况' : '做市商申请要求'}
                         </Typography.Text>
                         {config.isUserApplication && config.applicationMmId !== undefined && (
-                          <Tag color="blue">做市商 ID: {config.applicationMmId}</Tag>
+                          <Tag color="blue" className="mm-tag status-tag">做市商 ID: {config.applicationMmId}</Tag>
                         )}
                       </div>
                     }
-                    size="small" 
-                    style={{ 
-                      marginBottom: 12, 
-                      background: config.isUserApplication ? '#e6f7ff' : '#fafafa',
-                      border: config.isUserApplication ? '1px solid #91d5ff' : undefined
-                    }}
+                    size="small"
+                    className={`mm-config-card ${config.isUserApplication ? 'user-application' : ''}`}
                   >
-                    <Descriptions column={2} size="small" bordered>
+                    <Descriptions column={2} size="small" bordered className="mm-descriptions">
                       <Descriptions.Item label={config.isUserApplication ? '已质押金额' : '最小质押金额'}>
-                        <Typography.Text strong style={{ color: config.isUserApplication ? '#52c41a' : '#1890ff' }}>
+                        <Typography.Text strong className={config.isUserApplication ? 'mm-text-success' : 'mm-text-accent'}>
                           {(BigInt(config.minDeposit) / BigInt(1e12)).toString()} DUST
                         </Typography.Text>
                       </Descriptions.Item>
                       <Descriptions.Item label={config.isUserApplication ? '设置最小下单额' : '最小下单额'}>
-                        <Typography.Text>
-                          {config.minAmount !== '0' 
+                        <Typography.Text className="mm-text-primary">
+                          {config.minAmount !== '0'
                             ? `${(BigInt(config.minAmount) / BigInt(1e12)).toString()} DUST`
                             : '未设置'
                           }
@@ -1472,12 +1456,15 @@ if (opt.isSome) {
                       </Descriptions.Item>
                       <Descriptions.Item label="申请状态">
                         {config.isUserApplication && config.applicationStatus ? (
-                          <Tag color={
-                            config.applicationStatus === 'DepositLocked' ? 'orange' :
-                            config.applicationStatus === 'PendingReview' ? 'blue' :
-                            config.applicationStatus === 'Active' ? 'green' :
-                            config.applicationStatus === 'Rejected' ? 'red' : 'default'
-                          }>
+                          <Tag
+                            color={
+                              config.applicationStatus === 'DepositLocked' ? 'orange' :
+                              config.applicationStatus === 'PendingReview' ? 'blue' :
+                              config.applicationStatus === 'Active' ? 'green' :
+                              config.applicationStatus === 'Rejected' ? 'red' : 'default'
+                            }
+                            className="mm-tag status-tag"
+                          >
                             {config.applicationStatus === 'DepositLocked' ? '已质押' :
                              config.applicationStatus === 'PendingReview' ? '审核中' :
                              config.applicationStatus === 'Active' ? '已激活' :
@@ -1485,81 +1472,61 @@ if (opt.isSome) {
                              config.applicationStatus}
                           </Tag>
                         ) : (
-                          <Tag color={config.reviewEnabled ? 'green' : 'orange'}>
+                          <Tag
+                            color={config.reviewEnabled ? 'green' : 'orange'}
+                            className="mm-tag status-tag"
+                          >
                             {config.reviewEnabled ? '需要审核' : '无需审核'}
                           </Tag>
                         )}
                       </Descriptions.Item>
                     </Descriptions>
                     {config.isUserApplication && (
-                      <Alert 
-                        type="info" 
-                        showIcon 
-                        message="您已有申请记录" 
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="您已有申请记录"
+                        className="mm-alert info"
                         description={
-                          config.applicationStatus === 'DepositLocked' 
-                            ? '您已完成质押，请继续提交资料' 
+                          config.applicationStatus === 'DepositLocked'
+                            ? '您已完成质押，请继续提交资料'
                             : config.applicationStatus === 'PendingReview'
                             ? '您的申请正在审核中，请耐心等待'
                             : config.applicationStatus === 'Active'
                             ? '恭喜！您已成为做市商'
                             : '请查看申请详情'
                         }
-                        style={{ marginTop: 12 }}
                       />
                     )}
 
                     {/* 🆕 做市商配置管理入口（仅 Active 状态显示） */}
                     {config.isUserApplication && config.applicationStatus === 'Active' && (
-                      <Card 
-                        style={{ 
-                          marginTop: 12, 
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                          border: 'none'
-                        }}
-                      >
-                        <div style={{ color: 'white' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                            <span style={{ fontSize: 24, marginRight: 8 }}>⚙️</span>
-                            <Typography.Title level={5} style={{ margin: 0, color: 'white' }}>
-                              做市商配置管理
-                            </Typography.Title>
-                          </div>
-                          <Typography.Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block', marginBottom: 16 }}>
-                            您可以随时更新您的做市商配置，包括 Epay 配置和业务参数
-                          </Typography.Text>
-                          <Space size="middle" wrap>
-                            <Button 
-                              type="primary" 
-                              onClick={() => window.location.hash = '#/otc/market-maker-config'}
-                              style={{
-                                background: 'white',
-                                color: '#667eea',
-                                border: 'none',
-                                fontWeight: 'bold',
-                                height: 40
-                              }}
-                            >
-                              ⚙️ Epay 配置管理
-                            </Button>
-                            <Button 
-                              type="primary" 
-                              onClick={() => window.location.hash = '#/otc/bridge-config'}
-                              style={{
-                                background: 'rgba(255,255,255,0.2)',
-                                color: 'white',
-                                border: '1px solid white',
-                                fontWeight: 'bold',
-                                height: 40
-                              }}
-                            >
-                              💰 业务配置管理
-                            </Button>
-                          </Space>
-                          <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
-                            💡 <strong>Epay配置</strong>：更新支付网关、商户ID、密钥等<br/>
-                            💡 <strong>业务配置</strong>：更新溢价、最小额、TRON地址、资料CID等
-                          </div>
+                      <Card className="mm-management-card">
+                        <div className="mm-management-title">
+                          ⚙️ 做市商配置管理
+                        </div>
+                        <div className="mm-management-desc">
+                          您可以随时更新您的做市商配置，包括 Epay 配置和业务参数
+                        </div>
+                        <Space size="middle" wrap>
+                          <Button
+                            type="primary"
+                            onClick={() => window.location.hash = '#/otc/market-maker-config'}
+                            className="mm-config-button"
+                          >
+                            ⚙️ Epay 配置管理
+                          </Button>
+                          <Button
+                            type="primary"
+                            onClick={() => window.location.hash = '#/otc/bridge-config'}
+                            className="mm-business-button"
+                          >
+                            💰 业务配置管理
+                          </Button>
+                        </Space>
+                        <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                          💡 <strong>Epay配置</strong>：更新支付网关、商户ID、密钥等<br/>
+                          💡 <strong>业务配置</strong>：更新溢价、最小额、TRON地址、资料CID等
                         </div>
                       </Card>
                     )}
@@ -1567,16 +1534,17 @@ if (opt.isSome) {
                 )}
 
                 <Collapse
+                  className="mm-collapse"
                   items={[{
                     key: '1',
                     label: '资料准备要求（点击展开）',
                     children: (
-                      <div style={{ fontSize: 13 }}>
-                        <Typography.Title level={5} style={{ fontSize: 14, marginTop: 0 }}>
+                      <div className="mm-text-secondary">
+                        <Typography.Title level={5} style={{ fontSize: 14, marginTop: 0 }} className="mm-text-primary">
                           <WarningOutlined /> 提交前请准备好以下资料
                         </Typography.Title>
-                        
-                        <Typography.Paragraph strong>1. 公开资料（public_root_cid）</Typography.Paragraph>
+
+                        <Typography.Paragraph strong className="mm-text-primary">1. 公开资料（public_root_cid）</Typography.Paragraph>
                         <ul style={{ paddingLeft: 20, margin: 0 }}>
                           <li>公司/个人介绍（mm.json）</li>
                           <li>Logo 图标</li>
@@ -1585,7 +1553,7 @@ if (opt.isSome) {
                           <li>支持的交易对列表</li>
                         </ul>
 
-                        <Typography.Paragraph strong style={{ marginTop: 12 }}>2. 私密资料（private_root_cid）</Typography.Paragraph>
+                        <Typography.Paragraph strong style={{ marginTop: 12 }} className="mm-text-primary">2. 私密资料（private_root_cid）</Typography.Paragraph>
                         <ul style={{ paddingLeft: 20, margin: 0 }}>
                           <li>营业执照（加密存储，CID 明文）</li>
                           <li>身份证明文件（加密）</li>
@@ -1594,7 +1562,7 @@ if (opt.isSome) {
                           <li>manifest.json（记录加密文件清单）</li>
                         </ul>
 
-                        <Alert type="warning" showIcon style={{ marginTop: 12, fontSize: 12 }} message={
+                        <Alert type="warning" showIcon className="mm-alert warning" message={
                           <>
                             <strong>CID 规则：</strong>
                             <p style={{ margin: '4px 0 0 0' }}>• CID 一律不加密（明文 IPFS CID）</p>
@@ -1605,28 +1573,28 @@ if (opt.isSome) {
                       </div>
                     )
                   }]}
-                  style={{ marginBottom: 12 }}
                 />
 
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Button 
-                    type="primary" 
-                    htmlType="submit" 
+                <Space direction="vertical" className="mm-space">
+                  <Button
+                    type="primary"
+                    htmlType="submit"
                     loading={loading}
                     disabled={!api}
                     block
+                    className="mm-submit-button"
                   >
                     {loading ? '正在签名...' : '签名质押'}
                   </Button>
                 </Space>
               </Form>
 
-              <Alert 
-                type="info" 
-                showIcon 
+              <Alert
+                type="info"
+                showIcon
                 icon={<InfoCircleOutlined />}
-                style={{ marginTop: 12 }} 
-                message="质押说明" 
+                className="mm-alert info"
+                message="质押说明"
                 description={
                   <>
                     <p>• 完成质押后，将获得 <strong>24 小时</strong>提交资料窗口</p>
@@ -1642,17 +1610,17 @@ if (opt.isSome) {
           {/* 步骤 2：提交资料 */}
           {current === 1 && (
             <>
-              <Alert 
-                type="success" 
-                showIcon 
+              <Alert
+                type="success"
+                showIcon
                 icon={<CheckCircleOutlined />}
-                style={{ marginBottom: 12 }} 
+                className="mm-alert success"
                 message={
                   <div>
                     <strong>质押成功！mmId = {mmId !== null ? mmId : '加载中...'}</strong>
                     {deadlineSec && (
                       <div style={{ fontSize: 12, marginTop: 4 }}>
-                        <Tag color="orange">剩余时间：{remainingTime}</Tag>
+                        <Tag color="orange" className="mm-tag">剩余时间：{remainingTime}</Tag>
                         <span style={{ marginLeft: 8 }}>截止时间：{deadlineText}</span>
                       </div>
                     )}
@@ -1661,10 +1629,10 @@ if (opt.isSome) {
               />
 
               {mmId === null && (
-                <Alert 
-                  type="warning" 
-                  showIcon 
-                  style={{ marginBottom: 12 }} 
+                <Alert
+                  type="warning"
+                  showIcon
+                  className="mm-alert warning"
                   message="mmId 加载中"
                   description="正在从链上获取申请编号，请稍候..."
                 />
@@ -1672,33 +1640,36 @@ if (opt.isSome) {
 
               {/* 已质押详情 */}
               {loadingDetails && (
-                <Card style={{ marginBottom: 12 }} size="small">
+                <Card className="mm-loading">
                   <Spin tip="正在加载申请详情..." />
                 </Card>
               )}
 
               {appDetails && (
-                <Card 
+                <Card
                   title={
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Typography.Text strong>已质押详情</Typography.Text>
-                      <Tag color={
-                        appDetails.status === 'DepositLocked' ? 'orange' :
-                        appDetails.status === 'PendingReview' ? 'blue' :
-                        appDetails.status === 'Active' ? 'green' : 'default'
-                      }>
+                      <Typography.Text strong className="mm-text-primary">已质押详情</Typography.Text>
+                      <Tag
+                        color={
+                          appDetails.status === 'DepositLocked' ? 'orange' :
+                          appDetails.status === 'PendingReview' ? 'blue' :
+                          appDetails.status === 'Active' ? 'green' : 'default'
+                        }
+                        className="mm-tag status-tag"
+                      >
                         {appDetails.status}
                       </Tag>
                     </div>
                   }
-                  size="small" 
-                  style={{ marginBottom: 12 }}
+                  size="small"
+                  className="mm-config-card"
                 >
-                  <Descriptions column={1} size="small" bordered>
+                  <Descriptions column={1} size="small" bordered className="mm-descriptions">
                     <Descriptions.Item label="做市商 ID">{appDetails.mmId}</Descriptions.Item>
                     <Descriptions.Item label="申请人地址">
-                      <Typography.Text 
-                        copyable={{ text: appDetails.owner, icon: <CopyOutlined /> }}
+                      <Typography.Text
+                        copyable={{ text: appDetails.owner, icon: <CopyOutlined className="mm-copy-button" /> }}
                         ellipsis={{ tooltip: appDetails.owner }}
                         style={{ maxWidth: 400 }}
                       >
@@ -1964,7 +1935,7 @@ if (opt.isSome) {
                 </Form.Item>
 
                 <Form.Item 
-                  label="最小下单额（MEMO）" 
+                  label="最小下单额（DUST）" 
                   name="min_amount" 
                   rules={
                     appDetails && appDetails.minAmount
@@ -2150,28 +2121,30 @@ if (opt.isSome) {
                   }
                 />
 
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Button 
-                    type="primary" 
-                    htmlType="submit" 
+                <Space direction="vertical" className="mm-space">
+                  <Button
+                    type="primary"
+                    htmlType="submit"
                     loading={loading}
                     disabled={!api || mmId === null}
                     block
                     size="large"
+                    className="mm-submit-button"
                   >
-                    {loading 
-                      ? '正在签名...' 
-                      : mmId === null 
-                      ? 'mmId 加载中...' 
-                      : appDetails && appDetails.publicCid 
-                      ? '更新资料' 
+                    {loading
+                      ? '正在签名...'
+                      : mmId === null
+                      ? 'mmId 加载中...'
+                      : appDetails && appDetails.publicCid
+                      ? '更新资料'
                       : '提交资料'
                     }
                   </Button>
-                  <Button 
-                    onClick={() => setCurrent(0)} 
+                  <Button
+                    onClick={() => setCurrent(0)}
                     disabled={loading}
                     block
+                    className="mm-secondary-button"
                   >
                     返回上一步
                   </Button>

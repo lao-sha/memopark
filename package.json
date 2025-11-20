@@ -1,0 +1,16 @@
+{
+  "name": "stardust-testing",
+  "version": "1.0.0",
+  "description": "Stardust 链端测试脚本",
+  "scripts": {
+    "test:ai-trader": "node test-ai-trader.js"
+  },
+  "dependencies": {
+    "@polkadot/api": "^10.11.2",
+    "@polkadot/util-crypto": "^12.6.2"
+  },
+  "devDependencies": {},
+  "author": "",
+  "license": "MIT"
+}
+

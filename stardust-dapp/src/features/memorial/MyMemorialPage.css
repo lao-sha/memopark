@@ -1,0 +1,450 @@
+/**
+ * 函数级详细中文注释：我的纪念馆页面样式
+ * - 统一青绿色主题 #5DBAAA
+ * - 移动端优先设计
+ * - 卡片式布局，参考云上思念风格
+ */
+
+/* 主容器 */
+.my-memorial-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #F0F9F8 0%, #FAFAFA 100%);
+  padding-bottom: 80px;
+}
+
+/* 顶部导航栏 */
+.memorial-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+}
+
+.back-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: #5DBAAA;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.back-btn:active {
+  transform: scale(0.95);
+  color: #4AA896;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin: 0;
+}
+
+/* 主要内容区域 */
+.memorial-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: 100px; /* 为底部导航栏留出空间 */
+}
+
+/* 纪念馆列表区域 */
+.memorial-list-section {
+  margin-top: 24px;
+}
+
+.memorial-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 纪念馆列表卡片 */
+.memorial-item-card {
+  border-radius: 12px;
+  border: 1px solid rgba(93, 186, 170, 0.15);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.memorial-item-card:hover {
+  border-color: rgba(93, 186, 170, 0.3);
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.15);
+  transform: translateY(-2px);
+}
+
+.memorial-item-card .ant-card-body {
+  padding: 16px;
+}
+
+/* 卡片内容布局 */
+.card-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 纪念馆头像 */
+.memorial-avatar {
+  flex-shrink: 0;
+  border: 2px solid rgba(93, 186, 170, 0.2);
+}
+
+/* 纪念馆信息 */
+.memorial-info {
+  flex: 1;
+  min-width: 0; /* 防止文字溢出 */
+}
+
+.memorial-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.memorial-date-row {
+  margin-bottom: 6px;
+}
+
+.date-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(93, 186, 170, 0.1);
+  border-radius: 12px;
+  font-size: 13px;
+  color: #5DBAAA;
+  font-weight: 500;
+}
+
+.badge-icon {
+  font-size: 14px;
+}
+
+.memorial-date-text {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.memorial-stats {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* 右侧标签 */
+.memorial-tag {
+  flex-shrink: 0;
+}
+
+.status-tag {
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 4px 12px;
+  border: none;
+  margin: 0;
+}
+
+/* 快捷入口区域 */
+.action-section {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 16px;
+  padding-left: 4px;
+}
+
+/* 卡片网格 - 三列并列布局 */
+.memorial-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* 纪念馆卡片 - 紧凑垂直布局 */
+.memorial-card {
+  border-radius: 12px;
+  border: 2px solid rgba(93, 186, 170, 0.15);
+  background: #fff;
+  padding: 16px 12px;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.memorial-card:hover {
+  border-color: rgba(93, 186, 170, 0.4);
+  box-shadow: 0 4px 16px rgba(93, 186, 170, 0.2);
+  transform: translateY(-4px);
+}
+
+.memorial-card:active {
+  transform: translateY(-2px);
+}
+
+.memorial-card .ant-card-body {
+  padding: 0;
+}
+
+/* 卡片图标 - 适配三列布局 */
+.card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin: 0 auto 12px;
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.card-icon.created {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+}
+
+.card-icon.family {
+  background: linear-gradient(135deg, #FF9A76 0%, #FFBC98 100%);
+}
+
+.card-icon.followed {
+  background: linear-gradient(135deg, #FF6B9D 0%, #FFA8C5 100%);
+}
+
+.memorial-card:hover .card-icon {
+  transform: scale(1.1);
+}
+
+/* 卡片标题 - 适配三列布局 */
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 6px;
+  line-height: 1.2;
+}
+
+/* 卡片描述 - 隐藏描述文字 */
+.card-desc {
+  display: none;
+}
+
+/* 使用说明区域 */
+.guide-section {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin-top: 24px;
+}
+
+.guide-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+}
+
+.guide-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: rgba(93, 186, 170, 0.06);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.guide-item:active {
+  background: rgba(93, 186, 170, 0.12);
+  transform: scale(0.98);
+}
+
+.guide-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(93, 186, 170, 0.15);
+  border-radius: 50%;
+}
+
+.guide-text {
+  flex: 1;
+}
+
+.guide-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.guide-item-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+  .my-memorial-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 小屏幕优化 - 保持三列布局 */
+@media (max-width: 360px) {
+  .memorial-content {
+    padding: 12px;
+    padding-bottom: 100px;
+  }
+
+  .memorial-grid {
+    gap: 8px;
+  }
+
+  .memorial-card {
+    padding: 12px 8px;
+    min-height: 100px;
+  }
+
+  .card-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  .card-title {
+    font-size: 12px;
+  }
+
+  .memorial-name {
+    font-size: 16px;
+  }
+
+  .memorial-date-text {
+    font-size: 13px;
+  }
+
+  .memorial-stats {
+    gap: 12px;
+  }
+
+  .stat-item {
+    font-size: 13px;
+  }
+}
+
+/* 页面进入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.my-memorial-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.action-section {
+  animation: fadeInUp 0.5s ease-out;
+  animation-delay: 0.1s;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+.memorial-item-card {
+  animation: fadeInUp 0.5s ease-out;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+.memorial-item-card:nth-child(1) {
+  animation-delay: 0.2s;
+}
+
+.memorial-item-card:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.memorial-item-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.memorial-item-card:nth-child(4) {
+  animation-delay: 0.35s;
+}
+
+.memorial-item-card:nth-child(5) {
+  animation-delay: 0.4s;
+}

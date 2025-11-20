@@ -362,7 +362,7 @@ chmod +x docs/链端memopark清理-自动执行.sh
    ```bash
    # 验证无残留
    grep -r "memopark" pallets runtime node --include="*.rs"
-   grep -r "MEMO" pallets runtime node --include="*.rs" | grep -v "DUST"
+   grep -r "DUST" pallets runtime node --include="*.rs" | grep -v "DUST"
    ```
 
 3. **完整编译**

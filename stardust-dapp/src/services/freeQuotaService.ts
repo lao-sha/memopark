@@ -29,7 +29,7 @@ export interface FreeQuotaInfo {
 export interface SponsoredStats {
   /** 累计代付次数 */
   totalCount: number;
-  /** 累计代付金额（MEMO） */
+  /** 累计代付金额（DUST） */
   totalAmount: number;
   /** 平均每笔Gas */
   avgGasPerOrder: number;
@@ -55,27 +55,28 @@ export async function getRemainingQuota(
   buyerAddress: string
 ): Promise<FreeQuotaInfo> {
   try {
+    // 注意：首购功能在新架构中可能由 pallet-otc-order 管理
     // 查询当前配额
-    const currentQuota = await api.query.trading.freeOrderQuota(makerId, buyerAddress);
-    const currentQuotaNum = currentQuota.toNumber();
+    const currentQuota = await api.query.otcOrder.hasFirstPurchased(buyerAddress);
+    const hasUsedFirstPurchase = currentQuota.isTrue || currentQuota === true;
     
-    // 查询默认配额
-    const defaultQuota = await api.query.trading.freeOrderQuotaConfig(makerId);
-    const defaultQuotaNum = defaultQuota.toNumber();
+    // 查询做市商的首购订单数量
+    const makerFirstPurchaseCount = await api.query.otcOrder.makerFirstPurchaseCount(makerId);
+    const countNum = makerFirstPurchaseCount.toNumber();
     
-    // 如果当前配额为0，检查是否为新买家
-    if (currentQuotaNum === 0) {
+    // 如果用户还没有首购过，返回可用配额
+    if (!hasUsedFirstPurchase) {
       return {
-        remaining: defaultQuotaNum,
+        remaining: 1,  // 首购只能使用一次
         isNewBuyer: true,
-        defaultQuota: defaultQuotaNum,
+        defaultQuota: 1,
       };
     }
     
     return {
-      remaining: currentQuotaNum,
+      remaining: 0,
       isNewBuyer: false,
-      defaultQuota: defaultQuotaNum,
+      defaultQuota: 1,
     };
   } catch (error) {
     console.error('查询免费配额失败:', error);
@@ -101,8 +102,8 @@ export async function getDefaultQuota(
   makerId: number
 ): Promise<number> {
   try {
-    const defaultQuota = await api.query.trading.freeOrderQuotaConfig(makerId);
-    return defaultQuota.toNumber();
+    // 新架构中，首购配额是固定的 1 次，不需要链上配置
+    return 1;
   } catch (error) {
     console.error('查询默认配额失败:', error);
     throw new Error('查询默认配额失败');
@@ -128,16 +129,15 @@ export async function getSponsoredStats(
   makerId: number
 ): Promise<SponsoredStats> {
   try {
-    const statsData = await api.query.trading.totalFreeOrdersConsumed(makerId);
-    const [totalCount, totalAmount] = statsData.toJSON() as [number, string];
+    // 查询做市商的首购订单计数
+    const totalCount = await api.query.otcOrder.makerFirstPurchaseCount(makerId);
+    const countNum = totalCount.toNumber();
     
-    const totalAmountNum = parseFloat(totalAmount) / 1e18;
-    const avgGasPerOrder = totalCount > 0 ? totalAmountNum / totalCount : 0;
-    
+    // 新架构中暂时没有总金额统计，返回基本信息
     return {
-      totalCount,
-      totalAmount: totalAmountNum,
-      avgGasPerOrder,
+      totalCount: countNum,
+      totalAmount: 0,  // TODO: 需要遍历订单计算总金额
+      avgGasPerOrder: 0,
     };
   } catch (error) {
     console.error('查询代付统计失败:', error);
@@ -177,36 +177,9 @@ export async function setFreeQuotaConfig(
   signer: any,
   onStatusChange?: (status: string) => void
 ): Promise<string> {
-  try {
-    const tx = api.tx.trading.setFreeQuotaConfig(makerId, quota);
-    
-    return new Promise((resolve, reject) => {
-      tx.signAndSend(signer, ({ status, events, dispatchError }) => {
-        if (status.isInBlock) {
-          onStatusChange?.('已打包到区块');
-          
-          if (dispatchError) {
-            let errorMessage = '交易失败';
-            
-            if (dispatchError.isModule) {
-              const decoded = api.registry.findMetaError(dispatchError.asModule);
-              errorMessage = `${decoded.section}.${decoded.name}: ${decoded.docs}`;
-            }
-            
-            reject(new Error(errorMessage));
-          } else {
-            onStatusChange?.('交易成功');
-            resolve(status.asInBlock.toString());
-          }
-        } else if (status.isFinalized) {
-          onStatusChange?.('交易已确认');
-        }
-      }).catch(reject);
-    });
-  } catch (error) {
-    console.error('设置默认配额失败:', error);
-    throw error;
-  }
+  // 新架构中，首购配额是固定的，不需要设置
+  // 该功能已移除
+  throw new Error('首购配额设置功能已移除：新架构中首购配额固定为 1 次');
 }
 
 /**
@@ -233,36 +206,8 @@ export async function grantFreeQuota(
   signer: any,
   onStatusChange?: (status: string) => void
 ): Promise<string> {
-  try {
-    const tx = api.tx.trading.grantFreeQuota(makerId, buyerAddress, additionalQuota);
-    
-    return new Promise((resolve, reject) => {
-      tx.signAndSend(signer, ({ status, events, dispatchError }) => {
-        if (status.isInBlock) {
-          onStatusChange?.('已打包到区块');
-          
-          if (dispatchError) {
-            let errorMessage = '交易失败';
-            
-            if (dispatchError.isModule) {
-              const decoded = api.registry.findMetaError(dispatchError.asModule);
-              errorMessage = `${decoded.section}.${decoded.name}: ${decoded.docs}`;
-            }
-            
-            reject(new Error(errorMessage));
-          } else {
-            onStatusChange?.('交易成功');
-            resolve(status.asInBlock.toString());
-          }
-        } else if (status.isFinalized) {
-          onStatusChange?.('交易已确认');
-        }
-      }).catch(reject);
-    });
-  } catch (error) {
-    console.error('授予免费配额失败:', error);
-    throw error;
-  }
+  // 新架构中，首购配额是一次性的，不支持额外授予
+  throw new Error('首购配额授予功能已移除：新架构中首购只能使用一次');
 }
 
 /**
@@ -289,40 +234,8 @@ export async function batchGrantFreeQuota(
   signer: any,
   onStatusChange?: (status: string) => void
 ): Promise<string> {
-  try {
-    if (buyerAddresses.length > 100) {
-      throw new Error('批量授予最多支持100个买家');
-    }
-    
-    const tx = api.tx.trading.batchGrantFreeQuota(makerId, buyerAddresses, quotaPerBuyer);
-    
-    return new Promise((resolve, reject) => {
-      tx.signAndSend(signer, ({ status, events, dispatchError }) => {
-        if (status.isInBlock) {
-          onStatusChange?.('已打包到区块');
-          
-          if (dispatchError) {
-            let errorMessage = '交易失败';
-            
-            if (dispatchError.isModule) {
-              const decoded = api.registry.findMetaError(dispatchError.asModule);
-              errorMessage = `${decoded.section}.${decoded.name}: ${decoded.docs}`;
-            }
-            
-            reject(new Error(errorMessage));
-          } else {
-            onStatusChange?.('交易成功');
-            resolve(status.asInBlock.toString());
-          }
-        } else if (status.isFinalized) {
-          onStatusChange?.('交易已确认');
-        }
-      }).catch(reject);
-    });
-  } catch (error) {
-    console.error('批量授予免费配额失败:', error);
-    throw error;
-  }
+  // 新架构中，首购配额是一次性的，不支持批量授予
+  throw new Error('首购配额批量授予功能已移除：新架构中首购只能使用一次');
 }
 
 /**
@@ -330,7 +243,7 @@ export async function batchGrantFreeQuota(
  * 
  * @param api - Polkadot.js API 实例
  * @param makerId - 做市商 ID
- * @param qty - 购买数量（MEMO，精度 10^18）
+ * @param qty - 购买数量（DUST，精度 10^18）
  * @param paymentCommit - 支付凭证承诺（Hash）
  * @param contactCommit - 联系方式承诺（Hash）
  * @param signer - 买家账户

@@ -84,7 +84,7 @@ const AdminOfferRoutePage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Typography.Title level={4} style={{ marginTop: 0 }}>供奉分账路由（治理）</Typography.Title>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Card size="small">
@@ -109,7 +109,7 @@ const AdminOfferRoutePage: React.FC = () => {
           <Button type="primary" onClick={()=>save(false)}>保存到域</Button>
           <Button onClick={()=>save(true)}>保存到全局</Button>
         </Space>
-        <Alert type="warning" showIcon message="说明：Subject 类型仅在 Grave 域生效；剩余按策略回退至默认账户；最多 5 条，合计 ≤ 100%。"/>
+        <Alert type="warning" showIcon message="说明：Subject 类型仅在纪念馆域生效；剩余按策略回退至默认账户；最多 5 条，合计 ≤ 100%。"/>
       </Space>
     </div>
   )

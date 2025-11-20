@@ -25,10 +25,10 @@ const CreateMemorialForm: React.FC = () => {
       const meta = new TextEncoder().encode(JSON.stringify({ name: values.name || '' }))
       const api = await getApi()
       const cid = Array.from(meta) // 简化演示：直接用 JSON bytes；实际应使用 IPFS CID 字节
-      const args = [ Number(values.park_id || 0), 0, 1, cid ]
-      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'createHall', args)
-      message.success(`已上链：${txHash}`)
-      form.resetFields()
+      // TODO: 需要替换为新的纪念馆创建接口
+      // 旧墓位功能已删除，纪念馆创建需要新的实现
+      message.error('纪念馆创建功能已迁移，请使用新的接口')
+      return
     } catch (e: any) {
       // 函数级详细中文注释：捕获并识别来自链上的模块错误（尤其是 DeceasedTokenExists），给出引导。
       const errText = String(e?.message || e || '')
@@ -37,13 +37,13 @@ const CreateMemorialForm: React.FC = () => {
       if (isDeceasedTokenExists) {
         Modal.confirm({
           title: '该逝者已存在',
-          content: '是否申请加入亲友团（族谱关系）或关注该逝者？也可联系墓主发起迁移到你的墓位。',
+          content: '是否申请加入亲友团（族谱关系）或关注该逝者？也可联系纪念馆管理员发起迁移到你创建的纪念馆。',
           okText: '申请加入亲友团',
           cancelText: '关闭',
           onOk: () => {
             try {
-              window.location.hash = '#grave/relation-proposal'
-              window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'grave-relation' } }))
+              window.location.hash = '#/deceased/relationships'
+              window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'friends' } }))
             } catch {}
           },
         })
@@ -82,7 +82,7 @@ const CreateMemorialForm: React.FC = () => {
         <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ solar_birth: true, solar_death: true, agree: true }}>
           <Space direction="vertical" style={{ width: '100%' }}>
             <Alert type="info" showIcon message="将创建纪念馆(Hall)，支持平台代付（可选）" />
-            <Alert type="warning" showIcon message="重要提示：逝者一经创建不可删除。若需调整，请使用“迁移至新墓位(transfer_deceased)”或加入亲友团（通过逝者关系功能）。" />
+            <Alert type="warning" showIcon message="重要提示：逝者一经创建不可删除。若需调整，请使用“迁移至新的纪念馆(transfer_deceased)”或加入亲友团（通过逝者关系功能）。" />
           </Space>
           <Form.Item name="owner" label="你的地址(owner)" rules={[{ required: true }]}>
             <Input placeholder="5F..." size="large" />

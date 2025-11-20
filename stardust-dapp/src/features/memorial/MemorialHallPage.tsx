@@ -1,7 +1,7 @@
 import React from 'react'
 import { Button, Typography, Avatar, List, Card, Space, Tag, Divider } from 'antd'
 import { HomeOutlined, ShareAltOutlined, MoreOutlined, HeartOutlined } from '@ant-design/icons'
-import ActionsBar from '../grave/ActionsBar'
+// ActionsBar 已删除，旧墓位功能已移除
 
 /**
  * 函数级详细中文注释：逝者纪念馆页面（移动端新视觉，还原参考图布局）
@@ -38,7 +38,7 @@ const MemorialHallPage: React.FC = () => {
   }))
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'left', background: '#f7f1e6' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', background: '#f7f1e6' }}>
       {/* 顶部背景 + 交互条 */}
       <div style={{ position: 'relative' }}>
         <img src="https://picsum.photos/seed/park-forest/1200/800" style={{ width: '100%', display: 'block' }} />
@@ -115,10 +115,9 @@ const MemorialHallPage: React.FC = () => {
         />
       </div>
 
-      {/* 底部链上动作栏（供奉/扫墓），以及创建 CTA */}
+      {/* 底部创建 CTA */}
       <div style={{ position: 'sticky', bottom: 0, padding: 12, background: 'linear-gradient(180deg,rgba(247,241,230,0.2),#f7f1e6 40%, #f7f1e6)' }}>
-        <ActionsBar graveId={1} />
-        <Divider style={{ margin: '12px 0' }} />
+        {/* ActionsBar 已删除，旧墓位功能已移除 */}
         <Button block type="primary" style={{ height: 48, borderRadius: 8 }} onClick={onCreate}>创建纪念馆</Button>
         <div style={{ textAlign: 'center', marginTop: 8, color: '#8c6d3b' }}>
           <HomeOutlined /> 返回首页

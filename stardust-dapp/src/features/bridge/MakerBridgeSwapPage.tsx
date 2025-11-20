@@ -72,8 +72,8 @@ export const MakerBridgeSwapPage: React.FC = () => {
     try {
       const mmId = parseInt(makerId);
       
-      // 🆕 查询做市商信息（pallet-trading 已合并做市商信息和桥接配置）
-      const makerOpt = await api.query.trading.makerApplications(mmId);
+      // 🆕 查询做市商信息（使用新的 pallet-maker）
+      const makerOpt = await api.query.maker.makerApplications(mmId);
       if (makerOpt.isNone) {
         message.error('做市商不存在');
         navigate('/bridge/maker-list');
@@ -193,8 +193,8 @@ export const MakerBridgeSwapPage: React.FC = () => {
       const dustAmountRaw = BigInt(Math.floor(values.dustAmount * 1e12));
       const tronAddr = values.tronAddress;
       
-      // 调用链上方法（🆕 pallet-trading）
-      const tx = api.tx.trading.makerSwap(
+      // 调用链上方法（🆕 pallet-bridge）
+      const tx = api.tx.bridge.makerSwap(
         mmId,
         dustAmountRaw,
         tronAddr
@@ -238,7 +238,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
     
     const interval = setInterval(async () => {
       try {
-        const recordOpt = await api.query.trading.makerSwaps(id);
+        const recordOpt = await api.query.bridge.makerSwaps(id);
         if (recordOpt.isSome) {
           const record = recordOpt.unwrap();
           setSwapRecord(record.toJSON());
@@ -289,7 +289,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.trading.confirmSwap(swapId);  // 🆕 pallet-trading
+      const tx = api.tx.bridge.completeSwap(swapId);  // 🆕 pallet-bridge (官方桥接完成)
       
       const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
       
@@ -326,7 +326,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
   ];
   
   return (
-    <div style={{ padding: '24px', maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
       <Card>
         {/* 返回按钮 */}
         <Button 
@@ -398,7 +398,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
                     <Spin size="small" />
                   ) : (
                     <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                      {marketPrice > 0 ? `${marketPrice.toFixed(4)} USDT/MEMO` : '暂无数据'}
+                      {marketPrice > 0 ? `${marketPrice.toFixed(4)} USDT/DUST` : '暂无数据'}
                     </Text>
                   )}
                 </Space>
@@ -417,7 +417,7 @@ export const MakerBridgeSwapPage: React.FC = () => {
               initialValues={{ dustAmount: 0 }}
             >
               <Form.Item
-                label="兑换数量 (MEMO)"
+                label="兑换数量 (DUST)"
                 name="dustAmount"
                 rules={[
                   { required: true, message: '请输入兑换数量' },

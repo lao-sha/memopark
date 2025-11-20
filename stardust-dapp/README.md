@@ -1,4 +1,4 @@
-# Stardust DApp 前端（本地钱包模式）
+# Stardust - 星尘纪 数字永生纪念馆
 
 本前端已切换为"本地钱包模式"，不依赖浏览器扩展。用户在"创建钱包"页生成助记词并设置密码，前端使用 PBKDF2 + AES-GCM 将助记词加密存储于浏览器 `localStorage`，后续在"登录"页输入密码解密并使用本地 sr25519 密钥进行签名与上链。
 
@@ -9,9 +9,8 @@
 ### 📱 DAPP（移动端优先）
 - **定位**：大众参与，日常管理
 - **功能**：
-  - ✅ 创建墓地和逝者
+  - ✅ 创建逝者
   - ✅ 供奉、留言、扫墓
-  - ✅ 查看墓地详情
   - ✅ 提交申诉（简化版）
   - ✅ OTC交易和做市商申请
 
@@ -23,7 +22,6 @@
   - ✅ 委员会管理（Council/Technical/Content）
   - ✅ 做市商审批（详细审查、IPFS直达）
   - ✅ 仲裁管理（争议案件、裁决执行）
-  - ✅ 墓地/陵园强制治理
   - ✅ 轨道系统和公投管理
   - ✅ 数据分析和导出
 
@@ -44,14 +42,13 @@
 
 **影响的功能**（暂时禁用）：
 - ❌ Dashboard 页面的历史趋势图
-- ❌ 墓位排行榜（TopGravesPage）
 - ❌ 供奉时间线（OfferingsTimeline）
 - ❌ 按地址查询供奉历史（OfferingsByWho）
 
 **正常工作的功能**：
 - ✅ 委员会提案和投票
 - ✅ 做市商申请和审批
-- ✅ 创建墓地/逝者
+- ✅ 创建逝者
 - ✅ 供奉操作
 - ✅ OTC 交易
 - ✅ 所有链上写入和实时查询
@@ -59,9 +56,6 @@
 ## 快速导航
 
 ### 核心功能（移动端）
-- **创建墓地**: `#/grave/create` - 创建新墓地
-- **我的墓地**: `#/grave/my` - 管理我的墓地
-- **墓地详情**: `#/grave/detail?gid=123` - 查看墓地详情
 - **创建逝者**: `#/deceased/create` - 添加逝者信息
 - **提交申诉**: `#/gov/appeal` - 快速申诉入口（移动端）
 
@@ -73,7 +67,6 @@
 - **委员会提案**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/proposals
 - **内容治理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/content-governance
 - **仲裁管理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/arbitration
-- **墓地治理**: ⚠️ **已迁移到Web平台** - https://governance.stardust.com/grave-governance
 
 ## 快速开始
 
@@ -116,30 +109,6 @@ VITE_ALLOW_DEV_SESSION=1
 - 会话握手：开发环境使用本地签名与后端交互；可通过 `VITE_ALLOW_DEV_SESSION=1` 启用开发回退会话。
 - 数据查询：高变动/易膨胀查询建议下沉到 Subsquid（详见 `stardust-squid`）。
 
-### 墓位背景音乐（Grave Audio）
-
-- 播放：`GraveAudioPlayer` 读取 `memoGrave.audioCidOf(graveId)`，并尝试读取 `memoGrave.audioPlaylistOf(graveId)`；若播放列表存在，则优先使用列表并提供“上一首/下一首”。
-- 设置：`GraveAudioPicker` 页面 `#/grave/audio`
-  - 公共目录：读取 `memoGrave.audioOptions()`，墓主可从目录使用 `setAudioFromOption(id, index)`，非墓主会自动发起治理提案（`setAudioViaGovernance`）。
-  - 私有候选：仅墓主可维护 `addPrivateAudioOption/removePrivateAudioOption`，并可用 `setAudioFromPrivateOption` 设为背景音乐。
-  - 播放列表：编辑顺序后调用 `setAudioPlaylist(id, items)` 覆盖写入。
-  - 网关播放：`https://<gateway>/ipfs/<cid>`；默认 `VITE_IPFS_GATEWAY=https://ipfs.io`。
-  - 移动端：播放器底部悬浮控制条，显式点击播放；音量本地记忆 key：`mp.grave.audio.vol.<graveId>`。
-
-> 只读示例（使用 polkadot.js API）：
-```ts
-// 读取公共目录
-const opts = await api.query.memoGrave.audioOptions();
-const list: string[] = (opts.toJSON() as any[]).map(u8 => new TextDecoder().decode(new Uint8Array(u8)));
-
-// 读取某墓位选中 CID（Option<Bytes>）
-const v = await api.query.memoGrave.audioCidOf(graveId);
-const cid = v.isSome ? new TextDecoder().decode(v.unwrap().toU8a()) : '';
-
-// 读取某墓位播放列表
-const pl = await api.query.memoGrave.audioPlaylistOf(graveId);
-const playlist: string[] = (pl.toJSON() as any[]).map(u8 => new TextDecoder().decode(new Uint8Array(u8)));
-```
 
 ### 与 pallet-evidence 集成（V1/V2 并存）
 
@@ -254,7 +223,7 @@ function quoteEthOut(netAmount: bigint) {
 ### 锁定（携带最小可得 ETH 保护）
 
 ```ts
-// amount: MEMO 原生单位（u128）；ethAddressBytes：ETH 地址字节
+// amount: DUST 原生单位（u128）；ethAddressBytes：ETH 地址字节
 // minEthOut: 由前端根据净额与链上价格估算后，给出用户可接受的最小值
 await signAndSendLocalFromKeystore(
   'memoBridge',

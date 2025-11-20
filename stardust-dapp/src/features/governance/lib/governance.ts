@@ -205,10 +205,10 @@ export async function buildDeceasedGovSetVisibility(id: number, isPublic: boolea
   return buildCallPreimageHex(section, 'govSetVisibility', [id, isPublic, evidenceCid])
 }
 
-export async function buildDeceasedGovTransferDeceased(id: number, newGraveId: number, evidenceCid: string) {
+export async function buildDeceasedGovTransferDeceased(id: number, newTargetId: number, evidenceCid: string) {
   const api = await getApi()
   const section = await resolveDeceasedSection(api)
-  return buildCallPreimageHex(section, 'govTransferDeceased', [id, newGraveId, evidenceCid])
+  return buildCallPreimageHex(section, 'govTransferDeceased', [id, newTargetId, evidenceCid])
 }
 
 /**

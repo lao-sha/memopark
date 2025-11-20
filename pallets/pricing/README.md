@@ -1,404 +1,612 @@
-# Pallet Pricing - DUST价格管理系统
+# Pallet Pricing（动态定价与市场统计模块）
 
 ## 📋 模块概述
 
-`pallet-pricing` 是Stardust生态的**价格发现与聚合模块**，基于OTC和Bridge两个市场的真实交易数据，计算MEMO的市场加权均价。采用循环缓冲区+滑动窗口算法，维护最近100万MEMO的价格统计，为OTC订单和桥接兑换提供可靠的价格基准。
-
-### 设计理念
-
-- **真实数据驱动**：基于实际成交价格，非预言机喂价
-- **双市场聚合**：OTC+Bridge价格加权平均
-- **滑动窗口**：最近100万MEMO交易，动态更新
-- **冷启动保护**：初期交易量不足时使用默认价格
-- **循环缓冲区**：最多存储1万笔订单，内存高效
-
-## 🏗️ 架构设计
-
-```text
-┌─────────────────────────────────────┐
-│     OTC订单完成                      │
-│  - 价格: 0.0102 USDT/DUST           │
-│  - 数量: 100 DUST                   │
-└──────────────┬──────────────────────┘
-               ↓ 添加到聚合
-┌─────────────────────────────────────┐
-│     OTC价格聚合                      │
-│  - 累计MEMO: 850,000                │
-│  - 累计USDT: 8,670                  │
-│  - 均价: 0.0102 USDT/DUST           │
-└──────────────┬──────────────────────┘
-               ↓
-┌─────────────────────────────────────┐
-│     Bridge兑换完成                   │
-│  - 价格: 0.0098 USDT/DUST           │
-│  - 数量: 200 DUST                   │
-└──────────────┬──────────────────────┘
-               ↓ 添加到聚合
-┌─────────────────────────────────────┐
-│     Bridge价格聚合                   │
-│  - 累计MEMO: 780,000                │
-│  - 累计USDT: 7,644                  │
-│  - 均价: 0.0098 USDT/DUST           │
-└──────────────┬──────────────────────┘
-               ↓ 加权平均
-┌─────────────────────────────────────┐
-│     市场加权均价                     │
-│  weighted_price = (OTC_price × OTC_volume + Bridge_price × Bridge_volume) / (OTC_volume + Bridge_volume)
-│  = (0.0102 × 850,000 + 0.0098 × 780,000) / (850,000 + 780,000)
-│  = 0.0100 USDT/DUST
-└─────────────────────────────────────┘
-```
-
-## 🔑 核心功能
-
-### 1. 价格聚合算法
-
-#### 循环缓冲区
-```rust
-// 存储最多10,000笔订单快照
-pub type OtcOrderRingBuffer<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    u32,  // 索引 0-9999
-    OrderSnapshot,
->;
-
-pub struct OrderSnapshot {
-    pub timestamp: u64,         // 时间戳
-    pub price_usdt: u64,        // USDT单价（精度10^6）
-    pub dust_qty: u128,         // DUST数量（精度10^12）
-}
-```
-
-#### 滑动窗口聚合
-```rust
-pub struct PriceAggregateData {
-    pub total_memo: u128,       // 累计DUST数量
-    pub total_usdt: u128,       // 累计USDT金额
-    pub order_count: u32,       // 订单数量
-    pub oldest_index: u32,      // 最旧订单索引
-    pub newest_index: u32,      // 最新订单索引
-}
-```
-
-#### add_otc_order - 添加OTC订单
-```rust
-pub fn add_otc_order(
-    origin: OriginFor<T>,
-    price_usdt: u64,
-    dust_qty: u128,
-    timestamp: u64,
-) -> DispatchResult
-```
-
-**算法**：
-1. 添加新订单到缓冲区
-2. 累计total_memo和total_usdt
-3. 如果total_memo超过100万MEMO，从oldest_index开始删除旧订单
-4. 更新聚合数据和均价
-
-### 2. 市场价格计算
-
-#### get_market_price - 获取市场价格
-```rust
-impl<T: Config> PricingProvider for Pallet<T> {
-    fn get_market_price() -> u64 {
-        // 1. 检查冷启动状态
-        if !Self::cold_start_exited() {
-            let otc_volume = Self::otc_aggregate().total_memo;
-            let bridge_volume = Self::bridge_aggregate().total_memo;
-            let threshold = Self::cold_start_threshold();
-            
-            if otc_volume + bridge_volume < threshold {
-                // 返回默认价格（0.000001 USDT/DUST）
-                return Self::default_price();
-            } else {
-                // 达到阈值，退出冷启动
-                ColdStartExited::<T>::put(true);
-            }
-        }
-        
-        // 2. 计算加权平均价
-        let otc_agg = Self::otc_aggregate();
-        let bridge_agg = Self::bridge_aggregate();
-        
-        let otc_price = if otc_agg.total_memo > 0 {
-            (otc_agg.total_usdt / otc_agg.total_memo) as u64
-        } else {
-            0
-        };
-        
-        let bridge_price = if bridge_agg.total_memo > 0 {
-            (bridge_agg.total_usdt / bridge_agg.total_memo) as u64
-        } else {
-            0
-        };
-        
-        let total_volume = otc_agg.total_memo + bridge_agg.total_memo;
-        if total_volume == 0 {
-            return Self::default_price();
-        }
-        
-        // 加权平均
-        let weighted_price = (
-            (otc_price as u128 * otc_agg.total_memo) +
-            (bridge_price as u128 * bridge_agg.total_memo)
-        ) / total_volume;
-        
-        weighted_price as u64
-    }
-}
-```
-
-### 3. 冷启动机制
-
-#### 冷启动阈值
-```rust
-pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery>;
-
-// 默认值：100,000,000 DUST（1亿）
-fn DefaultColdStartThreshold() -> u128 {
-    100_000_000u128 * 1_000_000_000_000u128
-}
-```
-
-#### 默认价格
-```rust
-pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery>;
-
-// 默认值：1（0.000001 USDT/DUST，精度10^6）
-fn DefaultPriceValue() -> u64 {
-    1u64
-}
-```
-
-#### 单向锁定退出
-```rust
-pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
-```
-
-**说明**：一旦达到阈值并退出冷启动，此标记永久为true，不再回退到默认价格。避免在阈值附近价格剧烈波动。
-
-### 4. 市场统计
-
-#### get_market_stats - 获取市场统计
-```rust
-pub fn get_market_stats() -> MarketStats {
-    MarketStats {
-        otc_price,          // OTC均价
-        bridge_price,       // Bridge均价
-        weighted_price,     // 加权平均价
-        simple_avg_price,   // 简单平均价
-        otc_volume,         // OTC交易量
-        bridge_volume,      // Bridge交易量
-        total_volume,       // 总交易量
-        otc_order_count,    // OTC订单数
-        bridge_swap_count,  // Bridge兑换数
-    }
-}
-```
-
-## 📦 存储结构
-
-### OTC价格聚合
-```rust
-pub type OtcPriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
-pub type OtcOrderRingBuffer<T> = StorageMap<_, Blake2_128Concat, u32, OrderSnapshot>;
-```
-
-### Bridge价格聚合
-```rust
-pub type BridgePriceAggregate<T> = StorageValue<_, PriceAggregateData, ValueQuery>;
-pub type BridgeOrderRingBuffer<T> = StorageMap<_, Blake2_128Concat, u32, OrderSnapshot>;
-```
-
-### 冷启动配置
-```rust
-pub type ColdStartThreshold<T> = StorageValue<_, u128, ValueQuery>;
-pub type DefaultPrice<T> = StorageValue<_, u64, ValueQuery>;
-pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
-```
-
-## 🔧 配置参数
-
-```rust
-pub trait Config: frame_system::Config {
-    /// 事件类型
-    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
-    /// 最大价格偏离（基点，默认2000 = 20%）
-    type MaxPriceDeviation: Get<u16>;
-}
-```
-
-## 📡 可调用接口
-
-### 数据提交接口
-
-#### 1. add_otc_order - 添加OTC订单
-```rust
-#[pallet::call_index(0)]
-pub fn add_otc_order(
-    origin: OriginFor<T>,
-    price_usdt: u64,
-    dust_qty: u128,
-    timestamp: u64,
-) -> DispatchResult
-```
-
-#### 2. add_bridge_swap - 添加Bridge兑换
-```rust
-#[pallet::call_index(1)]
-pub fn add_bridge_swap(
-    origin: OriginFor<T>,
-    price_usdt: u64,
-    dust_qty: u128,
-    timestamp: u64,
-) -> DispatchResult
-```
-
-### 治理接口
-
-#### 3. set_cold_start_threshold - 设置冷启动阈值
-```rust
-#[pallet::call_index(2)]
-pub fn set_cold_start_threshold(
-    origin: OriginFor<T>,
-    threshold: u128,
-) -> DispatchResult
-```
-
-#### 4. set_default_price - 设置默认价格
-```rust
-#[pallet::call_index(3)]
-pub fn set_default_price(
-    origin: OriginFor<T>,
-    price: u64,
-) -> DispatchResult
-```
-
-## 🎉 事件
-
-### OtcOrderAdded - OTC订单添加事件
-```rust
-OtcOrderAdded {
-    price_usdt: u64,
-    dust_qty: u128,
-    new_avg_price: u64,
-}
-```
-
-### BridgeSwapAdded - Bridge兑换添加事件
-```rust
-BridgeSwapAdded {
-    price_usdt: u64,
-    dust_qty: u128,
-    new_avg_price: u64,
-}
-```
-
-### ColdStartExited - 冷启动退出事件
-```rust
-ColdStartExited {
-    final_volume: u128,
-}
-```
-
-## 🔌 使用示例
-
-### 场景1：OTC订单完成后提交价格
-
-```rust
-// pallet-otc-order调用
-pallet_pricing::Pallet::<T>::add_otc_order(
-    system_origin,
-    10_200u64,  // 0.0102 USDT/DUST（精度10^6）
-    100_000_000_000_000u128,  // 100 DUST
-    current_timestamp,
-)?;
-
-// 查询最新市场价格
-let market_price = <pallet_pricing::Pallet<T> as PricingProvider>::get_market_price();
-// market_price = 10_000 (0.01 USDT/DUST)
-```
-
-### 场景2：创建OTC订单时使用市场价格
-
-```rust
-// 1. 获取市场价格
-let base_price = <T::PricingProvider as PricingProvider>::get_market_price();
-// base_price = 10_000 (0.01 USDT/DUST)
-
-// 2. 应用做市商溢价
-let maker_premium_bps = 200; // +2%
-let final_price = base_price * (10000 + maker_premium_bps) / 10000;
-// final_price = 10_200 (0.0102 USDT/DUST)
-
-// 3. 计算订单金额
-let usdt_amount = (qty * final_price) / 1_000_000_000_000;
-```
-
-## 🛡️ 安全机制
-
-### 1. 滑动窗口
-
-- 最近100万MEMO交易
-- 防止历史价格影响
-- 动态反映市场变化
-
-### 2. 冷启动保护
-
-- 初期交易量不足时使用默认价格
-- 避免极端价格
-- 单向锁定退出
-
-### 3. 循环缓冲区
-
-- 最多存储1万笔订单
-- 内存高效
-- 自动清理旧数据
-
-### 4. 双市场聚合
-
-- OTC+Bridge价格加权
-- 全面反映市场
-- 防止单一市场操纵
-
-## 📝 最佳实践
-
-### 1. 价格使用
-
-- 总是使用`get_market_price()`获取最新价格
-- 应用做市商溢价前先获取基准价
-- 检查冷启动状态
-
-### 2. 数据提交
-
-- OTC订单释放后立即提交
-- Bridge兑换完成后立即提交
-- 提交准确的价格和数量
-
-### 3. 监控指标
-
-- 冷启动状态
-- OTC/Bridge交易量
-- 价格偏离程度
-- 缓冲区使用率
-
-## 🔗 相关模块
-
-- **pallet-otc-order**: OTC订单（使用市场价格）
-- **pallet-simple-bridge**: 桥接兑换（使用市场价格）
-- **pallet-market-maker**: 做市商管理（应用溢价）
-
-## 📚 参考资源
-
-- [价格聚合算法](../../docs/pricing-aggregation-algorithm.md)
-- [滑动窗口设计](../../docs/sliding-window-design.md)
-- [冷启动策略](../../docs/cold-start-strategy.md)
+`pallet-pricing` 是 Stardust 区块链的 **动态定价与市场统计模块**，负责聚合 OTC 和 Bridge 两个市场的交易数据，计算 DUST/USD 市场参考价格，并提供完整的市场统计信息。
+
+### 核心特性
+
+- ✅ **双市场价格聚合**：同时聚合 OTC 和 Bridge 市场的价格数据
+- ✅ **循环缓冲区设计**：最多存储 10,000 笔订单快照，自动滚动更新
+- ✅ **交易量限制**：维护最近累计 1,000,000 DUST 的订单统计
+- ✅ **加权平均价格**：基于交易量的加权平均，更准确反映市场情况
+- ✅ **简单平均价格**：两个市场均价的简单平均，用于快速参考
+- ✅ **冷启动保护**：市场初期使用默认价格，达到阈值后自动退出
+- ✅ **价格偏离检查**：防止极端价格订单，保护买卖双方利益
+- ✅ **治理可调参数**：冷启动阈值、默认价格可通过治理调整
 
 ---
 
-**版本**: 1.0.0  
-**最后更新**: 2025-10-27  
-**维护者**: Stardust 开发团队
+## 🔑 主要功能
+
+### 1. 价格聚合管理
+
+#### 添加 OTC 订单（`add_otc_order`）
+
+将 OTC 订单添加到价格聚合数据。
+
+**流程：**
+1. 读取当前 OTC 聚合数据
+2. 如果累计超过 1,000,000 DUST，删除最旧的订单直到满足限制
+3. 添加新订单到循环缓冲区（索引 0-9999）
+4. 更新聚合统计数据（总 DUST、总 USDT、订单数）
+5. 发出 `OtcOrderAdded` 事件
+
+**调用者：** `pallet-otc-order`（内部调用）
+
+**参数：**
+- `timestamp`: 订单时间戳（Unix 毫秒）
+- `price_usdt`: USDT 单价（精度 10^6）
+- `dust_qty`: DUST 数量（精度 10^12）
+
+#### 添加 Bridge 兑换（`add_bridge_swap`）
+
+将 Bridge 兑换添加到价格聚合数据。
+
+**流程：** 与 `add_otc_order` 相同，但操作 Bridge 相关的存储。
+
+**调用者：** `pallet-bridge`（内部调用）
+
+**参数：** 与 `add_otc_order` 相同
+
+---
+
+### 2. 价格查询接口
+
+#### 获取 DUST 市场参考价格（`get_memo_reference_price`）
+
+获取 DUST/USD 市场参考价格（简单平均 + 冷启动保护）。
+
+**算法：**
+- **冷启动阶段**：如果两个市场交易量都未达阈值，返回默认价格
+- **正常阶段**：
+  - 如果两个市场都有数据：`(OTC 均价 + Bridge 均价) / 2`
+  - 如果只有一个市场有数据：使用该市场的均价
+  - 如果都无数据：返回默认价格（兜底）
+
+**返回：** `u64`（USDT/DUST 价格，精度 10^6）
+
+**用途：**
+- 前端显示参考价格
+- 价格偏离度计算
+- 简单的市场概览
+
+#### 获取 DUST 市场价格（`get_dust_market_price_weighted`）
+
+获取 DUST/USD 市场价格（加权平均 + 冷启动保护）。
+
+**算法：**
+- **冷启动阶段**：如果两个市场交易量都未达阈值，返回默认价格
+- **正常阶段**：加权平均 = `(OTC 总 USDT + Bridge 总 USDT) / (OTC 总 DUST + Bridge 总 DUST)`
+
+**优点：**
+- 考虑交易量权重，更准确反映市场情况
+- 大交易量市场的价格权重更高
+- 符合市值加权指数的计算方式
+- 冷启动保护避免初期价格为 0 或被操纵
+
+**返回：** `u64`（USDT/DUST 价格，精度 10^6）
+
+**用途：**
+- 资产估值（钱包总值计算）
+- 清算价格参考
+- 市场指数计算
+
+#### 获取市场统计信息（`get_market_stats`）
+
+获取完整的 DUST 市场统计信息。
+
+**返回：** `MarketStats` 结构，包含：
+- OTC 和 Bridge 各自的均价
+- 加权平均价格和简单平均价格
+- 各市场的交易量和订单数
+- 总交易量
+
+**用途：**
+- 市场概况 Dashboard
+- 价格比较和分析
+- 交易量统计
+- API 查询接口
+
+---
+
+### 3. 价格偏离检查
+
+#### 检查价格偏离（`check_price_deviation`）
+
+检查订单价格是否在允许的偏离范围内。
+
+**逻辑：**
+1. 获取当前市场加权平均价格作为基准价格
+2. 验证基准价格有效（> 0）
+3. 计算订单价格与基准价格的偏离率（绝对值，单位：bps）
+4. 检查偏离率是否超过 `MaxPriceDeviation` 配置的限制
+
+**示例：**
+- 基准价格：1.0 USDT/DUST（1,000,000）
+- `MaxPriceDeviation`：2000 bps（20%）
+- 允许范围：0.8 ~ 1.2 USDT/DUST
+- 订单价格 1.1 USDT/DUST → 偏离 10% → 通过 ✅
+- 订单价格 1.5 USDT/DUST → 偏离 50% → 拒绝 ❌
+
+**用途：**
+- OTC 订单创建时的价格合理性检查
+- Bridge 兑换创建时的价格合理性检查
+- 防止极端价格订单，保护买卖双方
+
+---
+
+### 4. 冷启动机制
+
+#### 冷启动保护
+
+为避免市场初期价格为 0 或被操纵，本模块实现了冷启动保护机制。
+
+**机制：**
+1. **冷启动阶段**：
+   - 如果 OTC 和 Bridge 的交易量都低于 `ColdStartThreshold`（默认 1 亿 DUST）
+   - 返回 `DefaultPrice`（默认 0.000001 USDT/DUST）
+   
+2. **退出冷启动**：
+   - 当任一市场交易量达到阈值时，自动退出冷启动
+   - 设置 `ColdStartExited = true`（单向锁定，不可回退）
+   - 发出 `ColdStartExited` 事件
+   
+3. **正常阶段**：
+   - 使用实际市场数据计算价格
+   - 不再使用默认价格
+
+#### 治理调整冷启动参数（`set_cold_start_params`）
+
+治理可在冷启动期间调整参数。
+
+**权限：** Root（治理投票）
+
+**参数：**
+- `threshold`: 可选，新的冷启动阈值（DUST 数量，精度 10^12）
+- `default_price`: 可选，新的默认价格（USDT/DUST，精度 10^6）
+
+**限制：**
+- 只能在冷启动期间调整（`ColdStartExited = false`）
+- 一旦退出冷启动，无法再调整这些参数
+
+#### 治理紧急重置冷启动（`reset_cold_start`）
+
+在极端市场条件下，允许治理重新进入冷启动状态。
+
+**权限：** Root（治理投票）
+
+**参数：**
+- `reason`: 重置原因（最多 256 字节，用于审计和追溯）
+
+**使用场景：**
+- 市场崩盘，价格长期失真
+- 系统维护，需要暂停市场定价
+- 数据异常，需要重新校准
+
+**效果：**
+- 将 `ColdStartExited` 设置为 `false`
+- 系统将重新使用 `DefaultPrice` 直到市场恢复
+- 发出 `ColdStartReset` 事件
+
+**安全考虑：**
+- 仅限 Root 权限（通常需要治理投票）
+- 不清理历史数据，保留市场记录
+- 可多次调用，适应复杂市场环境
+
+---
+
+## 📊 核心数据结构
+
+### OrderSnapshot（订单快照）
+
+```rust
+pub struct OrderSnapshot {
+    pub timestamp: u64,     // 订单时间戳（Unix 毫秒）
+    pub price_usdt: u64,    // USDT 单价（精度 10^6）
+    pub dust_qty: u128,     // DUST 数量（精度 10^12）
+}
+```
+
+### PriceAggregateData（价格聚合数据）
+
+```rust
+pub struct PriceAggregateData {
+    pub total_dust: u128,      // 累计 DUST 数量（精度 10^12）
+    pub total_usdt: u128,      // 累计 USDT 金额（精度 10^6）
+    pub order_count: u32,      // 订单数量
+    pub oldest_index: u32,     // 最旧订单索引（循环缓冲区指针，0-9999）
+    pub newest_index: u32,     // 最新订单索引（循环缓冲区指针，0-9999）
+}
+```
+
+### MarketStats（市场统计信息）
+
+```rust
+pub struct MarketStats {
+    pub otc_price: u64,            // OTC 均价（精度 10^6）
+    pub bridge_price: u64,         // Bridge 均价（精度 10^6）
+    pub weighted_price: u64,       // 加权平均价格（精度 10^6）
+    pub simple_avg_price: u64,     // 简单平均价格（精度 10^6）
+    pub otc_volume: u128,          // OTC 交易量（精度 10^12）
+    pub bridge_volume: u128,       // Bridge 交易量（精度 10^12）
+    pub total_volume: u128,        // 总交易量（精度 10^12）
+    pub otc_order_count: u32,      // OTC 订单数
+    pub bridge_swap_count: u32,    // Bridge 兑换数
+}
+```
+
+---
+
+## 🔐 存储结构
+
+| 存储项 | 类型 | 说明 |
+|--------|------|------|
+| `OtcPriceAggregate` | `PriceAggregateData` | OTC 订单价格聚合数据 |
+| `OtcOrderRingBuffer` | `Map<u32, OrderSnapshot>` | OTC 订单历史循环缓冲区（0-9999） |
+| `BridgePriceAggregate` | `PriceAggregateData` | Bridge 兑换价格聚合数据 |
+| `BridgeOrderRingBuffer` | `Map<u32, OrderSnapshot>` | Bridge 兑换历史循环缓冲区（0-9999） |
+| `ColdStartThreshold` | `u128` | 冷启动阈值（默认 1 亿 DUST） |
+| `DefaultPrice` | `u64` | 默认价格（默认 0.000001 USDT/DUST） |
+| `ColdStartExited` | `bool` | 冷启动退出标记（单向锁定） |
+
+---
+
+## 🎯 事件（Events）
+
+```rust
+pub enum Event<T: Config> {
+    /// OTC 订单添加到价格聚合
+    OtcOrderAdded {
+        timestamp: u64,
+        price_usdt: u64,
+        dust_qty: u128,
+        new_avg_price: u64,
+    },
+    
+    /// Bridge 兑换添加到价格聚合
+    BridgeSwapAdded {
+        timestamp: u64,
+        price_usdt: u64,
+        dust_qty: u128,
+        new_avg_price: u64,
+    },
+    
+    /// 冷启动参数更新事件
+    ColdStartParamsUpdated {
+        threshold: Option<u128>,
+        default_price: Option<u64>,
+    },
+    
+    /// 冷启动退出事件（标志性事件，市场进入正常定价阶段）
+    ColdStartExited {
+        final_threshold: u128,
+        otc_volume: u128,
+        bridge_volume: u128,
+        market_price: u64,
+    },
+    
+    /// 冷启动重置事件（治理紧急恢复机制）
+    ColdStartReset {
+        reason: BoundedVec<u8, ConstU32<256>>,
+    },
+}
+```
+
+---
+
+## ❌ 错误（Errors）
+
+| 错误 | 说明 |
+|------|------|
+| `ColdStartAlreadyExited` | 冷启动已退出，无法再调整冷启动参数 |
+| `PriceDeviationTooLarge` | 价格偏离过大，超出允许的最大偏离范围 |
+| `InvalidBasePrice` | 基准价格无效（为 0 或获取失败） |
+| `ColdStartNotExited` | 冷启动未退出，无法重置 |
+
+---
+
+## 🔧 Runtime 配置
+
+```rust
+impl pallet_pricing::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    
+    // 最大价格偏离（基点，bps）
+    // 2000 bps = 20%，表示订单价格不能超过基准价格的 ±20%
+    type MaxPriceDeviation = ConstU16<2000>;
+}
+
+// 在 construct_runtime! 中添加
+construct_runtime! {
+    pub struct Runtime {
+        // ... 其他模块
+        Pricing: pallet_pricing,
+    }
+}
+```
+
+---
+
+## 📱 前端调用示例
+
+### 1. 查询市场价格
+
+```typescript
+import { ApiPromise } from '@polkadot/api';
+
+// 获取市场参考价格（简单平均）
+async function getReferencePrice(api: ApiPromise) {
+  const price = await api.query.pricing.getRemarkablePrice();
+  console.log('DUST 市场参考价格:', price.toNumber() / 1_000_000, 'USDT');
+}
+
+// 获取市场价格（加权平均）
+async function getMarketPrice(api: ApiPromise) {
+  const price = await api.query.pricing.getDustMarketPriceWeighted();
+  console.log('DUST 市场价格:', price.toNumber() / 1_000_000, 'USDT');
+}
+```
+
+### 2. 查询市场统计
+
+```typescript
+// 获取完整市场统计
+async function getMarketStats(api: ApiPromise) {
+  const stats = await api.query.pricing.marketStats();
+  
+  console.log('市场统计:', {
+    otcPrice: stats.otcPrice.toNumber() / 1_000_000,
+    bridgePrice: stats.bridgePrice.toNumber() / 1_000_000,
+    weightedPrice: stats.weightedPrice.toNumber() / 1_000_000,
+    simpleAvgPrice: stats.simpleAvgPrice.toNumber() / 1_000_000,
+    otcVolume: stats.otcVolume.toString(),
+    bridgeVolume: stats.bridgeVolume.toString(),
+    totalVolume: stats.totalVolume.toString(),
+    otcOrderCount: stats.otcOrderCount.toNumber(),
+    bridgeSwapCount: stats.bridgeSwapCount.toNumber(),
+  });
+}
+```
+
+### 3. 查询聚合数据
+
+```typescript
+// 获取 OTC 聚合数据
+async function getOtcStats(api: ApiPromise) {
+  const aggregate = await api.query.pricing.otcAggregate();
+  
+  console.log('OTC 聚合数据:', {
+    totalDust: aggregate.totalDust.toString(),
+    totalUsdt: aggregate.totalUsdt.toString(),
+    orderCount: aggregate.orderCount.toNumber(),
+    oldestIndex: aggregate.oldestIndex.toNumber(),
+    newestIndex: aggregate.newestIndex.toNumber(),
+  });
+  
+  // 计算均价
+  const avgPrice = aggregate.totalDust.isZero() 
+    ? 0 
+    : aggregate.totalUsdt.mul(1_000_000_000_000).div(aggregate.totalDust).toNumber();
+  console.log('OTC 均价:', avgPrice / 1_000_000, 'USDT');
+}
+
+// 获取 Bridge 聚合数据
+async function getBridgeStats(api: ApiPromise) {
+  const aggregate = await api.query.pricing.bridgeAggregate();
+  // 类似 OTC 的处理
+}
+```
+
+### 4. 查询冷启动状态
+
+```typescript
+// 查询冷启动状态
+async function getColdStartStatus(api: ApiPromise) {
+  const exited = await api.query.pricing.coldStartExited();
+  const threshold = await api.query.pricing.coldStartThreshold();
+  const defaultPrice = await api.query.pricing.defaultPrice();
+  
+  console.log('冷启动状态:', {
+    exited: exited.isTrue,
+    threshold: threshold.toString(),
+    defaultPrice: defaultPrice.toNumber() / 1_000_000,
+  });
+}
+```
+
+### 5. 治理调整冷启动参数
+
+```typescript
+import { Keyring } from '@polkadot/keyring';
+
+// 治理调整冷启动参数
+async function setColdStartParams(
+  api: ApiPromise,
+  sudoAccount: KeyringPair,
+  threshold?: string,
+  defaultPrice?: number
+) {
+  const tx = api.tx.pricing.setColdStartParams(
+    threshold || null,
+    defaultPrice ? defaultPrice * 1_000_000 : null
+  );
+  
+  // 需要 Root 权限
+  const sudoTx = api.tx.sudo.sudo(tx);
+  await sudoTx.signAndSend(sudoAccount);
+}
+```
+
+### 6. 治理紧急重置冷启动
+
+```typescript
+// 治理紧急重置冷启动
+async function resetColdStart(
+  api: ApiPromise,
+  sudoAccount: KeyringPair,
+  reason: string
+) {
+  const reasonBytes = new TextEncoder().encode(reason);
+  
+  const tx = api.tx.pricing.resetColdStart(reasonBytes);
+  const sudoTx = api.tx.sudo.sudo(tx);
+  await sudoTx.signAndSend(sudoAccount);
+}
+```
+
+---
+
+## 🧮 价格计算详解
+
+### 1. OTC 均价计算
+
+```
+OTC 均价 = (总 USDT / 总 DUST)
+         = total_usdt / (total_dust / 10^12)
+         = (total_usdt * 10^12) / total_dust
+```
+
+**示例：**
+- 总 USDT：1000（精度 10^6）= 0.001 USDT
+- 总 DUST：1,000,000,000,000（精度 10^12）= 1 DUST
+- 均价 = (1000 * 10^12) / 1,000,000,000,000 = 1,000,000（精度 10^6）= 1 USDT/DUST
+
+### 2. 加权平均价格计算
+
+```
+加权平均价格 = (OTC 总 USDT + Bridge 总 USDT) / (OTC 总 DUST + Bridge 总 DUST)
+```
+
+**示例：**
+- OTC 总 USDT：1000（0.001 USDT）
+- OTC 总 DUST：1,000,000,000,000（1 DUST）
+- Bridge 总 USDT：2000（0.002 USDT）
+- Bridge 总 DUST：1,000,000,000,000（1 DUST）
+- 加权平均 = (1000 + 2000) * 10^12 / (1,000,000,000,000 + 1,000,000,000,000) = 1,500,000（1.5 USDT/DUST）
+
+### 3. 简单平均价格计算
+
+```
+简单平均价格 = (OTC 均价 + Bridge 均价) / 2
+```
+
+**示例：**
+- OTC 均价：1,000,000（1 USDT/DUST）
+- Bridge 均价：2,000,000（2 USDT/DUST）
+- 简单平均 = (1,000,000 + 2,000,000) / 2 = 1,500,000（1.5 USDT/DUST）
+
+### 4. 价格偏离计算
+
+```
+偏离率（bps）= |订单价格 - 基准价格| / 基准价格 × 10000
+```
+
+**示例：**
+- 基准价格：1,000,000（1 USDT/DUST）
+- 订单价格：1,200,000（1.2 USDT/DUST）
+- 偏离率 = (1,200,000 - 1,000,000) / 1,000,000 × 10000 = 2000 bps = 20%
+
+---
+
+## 🛡️ 安全考虑
+
+### 1. 冷启动保护
+
+- ✅ **默认价格锚点**：避免市场初期价格为 0 或被操纵
+- ✅ **单向锁定**：一旦退出冷启动，不可回退（除非治理重置）
+- ✅ **治理可调**：冷启动参数可通过治理调整
+
+### 2. 循环缓冲区
+
+- ✅ **自动滚动**：最多存储 10,000 笔订单，自动删除最旧的
+- ✅ **交易量限制**：维护最近累计 1,000,000 DUST 的订单
+- ✅ **防止存储膨胀**：存储空间固定，不会无限增长
+
+### 3. 价格偏离检查
+
+- ✅ **极端价格保护**：防止恶意或错误的极端价格订单
+- ✅ **可配置阈值**：`MaxPriceDeviation` 可通过 Runtime 配置调整
+- ✅ **双向保护**：溢价和折价都受限
+
+### 4. 计算溢出保护
+
+- ✅ **饱和运算**：使用 `saturating_*` 方法防止溢出
+- ✅ **检查除零**：计算均价前验证分母不为 0
+- ✅ **精度转换**：谨慎处理 `u64` 和 `u128` 之间的转换
+
+---
+
+## 📊 循环缓冲区详解
+
+### 设计原理
+
+```text
+循环缓冲区索引：0 ───► 9999 ───► 0（循环）
+                   ▲           │
+                   │           │
+              oldest_index   newest_index
+```
+
+### 添加订单流程
+
+```text
+初始状态：
+- oldest_index = 0
+- newest_index = 0
+- order_count = 0
+
+添加第 1 笔订单：
+- 写入索引 0
+- newest_index = 0
+- order_count = 1
+
+添加第 2 笔订单：
+- 写入索引 1
+- newest_index = 1
+- order_count = 2
+
+...
+
+添加第 10,001 笔订单：
+- 累计 DUST 超过 1,000,000 限制
+- 删除索引 0 的订单
+- oldest_index = 1
+- 写入索引 1（覆盖）
+- newest_index = 1
+- order_count = 10000
+```
+
+### 限制机制
+
+```rust
+// 当累计 DUST 超过 1,000,000 时
+while new_total > limit && agg.order_count > 0 {
+    // 删除最旧的订单
+    let oldest = OtcOrderRingBuffer::<T>::take(agg.oldest_index);
+    // 从聚合数据中减去
+    agg.total_dust -= oldest.dust_qty;
+    agg.total_usdt -= oldest.dust_qty / 10^12 * oldest.price_usdt;
+    agg.order_count -= 1;
+    // 移动最旧索引
+    agg.oldest_index = (agg.oldest_index + 1) % 10000;
+}
+```
+
+---
+
+## 📚 相关模块
+
+- **pallet-otc-order**: OTC 订单管理（调用 `add_otc_order`）
+- **pallet-bridge**: DUST ↔ USDT 桥接（调用 `add_bridge_swap`）
+- **pallet-trading**: 统一接口层
+- **pallet-trading-common**: 公共工具库
+
+---
+
+## 🚀 版本历史
+
+| 版本 | 日期 | 说明 |
+|------|------|------|
+| v1.0.0 | 2025-11-04 | 初始版本，支持双市场价格聚合和冷启动保护 |
+| v1.1.0 | 2025-11-04 | 添加治理紧急重置冷启动功能（M-3 修复） |

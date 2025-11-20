@@ -38,6 +38,12 @@
 - 做市商身份自动检查
 - 完整的交易信息展示
 
+✅ **创建祭祀品** (管理员专用)
+- 批量创建 50 个随机参数的祭祀品
+- 支持 9 大分类（鲜花、香烛、食品等）
+- 自动生成合理的价格和库存
+- 详细的创建进度和结果统计
+
 ## 环境要求
 
 - Node.js >= 16.0.0
@@ -94,6 +100,21 @@ npm run create-listing
 npm run listing
 ```
 
+### 创建祭祀品脚本 (create-offerings.js)
+
+```bash
+# 方式 1: 直接运行
+node create-offerings.js
+
+# 方式 2: 使用 npm script
+npm run create-offerings
+
+# 方式 3: 使用快捷命令
+npm run offerings
+```
+
+详细使用说明请查看：[创建祭祀品使用说明.md](./创建祭祀品使用说明.md)
+
 ### 2. 操作流程
 
 #### 治理脚本操作流程
@@ -139,7 +160,7 @@ npm run listing
 发送账户和接收地址在脚本中预配置：
 - 发送账户：`5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4`
 - 接收地址：4个预设地址
-- 金额范围：1,000,000,000 MEMO 到 10,000,000,000 MEMO（随机，即10亿到100亿）
+- 金额范围：1,000,000,000 DUST 到 10,000,000,000 DUST（随机，即10亿到100亿）
 
 如需修改，请编辑 `batch-transfer.js` 中的配置项。
 

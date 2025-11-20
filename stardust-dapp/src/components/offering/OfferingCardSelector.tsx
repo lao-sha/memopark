@@ -13,7 +13,7 @@ export interface OfferingItem {
   name: string        // 供品名称
   icon: string        // Emoji图标
   description: string // 描述
-  price: number       // 单价（MEMO）
+  price: number       // 单价（DUST）
   unit: string        // 单位（周、份、束等）
   duration?: boolean  // 是否需要时长
   color: string       // 主题色

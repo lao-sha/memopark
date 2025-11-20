@@ -640,7 +640,7 @@ export default function MakerBridgeConfigPage() {
               >
                 <Descriptions column={2} size="small" bordered>
                   <Descriptions.Item label="账户地址" span={2}>
-                    <Text copyable={{ text: marketMakerInfo.owner }} ellipsis style={{ maxWidth: 800 }}>
+                    <Text copyable={{ text: marketMakerInfo.owner }} ellipsis style={{ maxWidth: 480 }}>
                       {marketMakerInfo.owner}
                     </Text>
                   </Descriptions.Item>
@@ -1013,7 +1013,7 @@ export default function MakerBridgeConfigPage() {
                     </Form.Item>
 
                     <Form.Item 
-                      label="最小下单额（MEMO）" 
+                      label="最小下单额（DUST）" 
                       name="min_amount" 
                       rules={[
                         { type: 'number', min: 0, message: '最小下单额必须大于 0' }

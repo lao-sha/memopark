@@ -4,23 +4,23 @@ import { InfoCircleOutlined, WarningOutlined, ThunderboltOutlined } from '@ant-d
 import { useDeceasedPagination, type DeceasedItem } from '../../hooks/useDeceasedPagination'
 
 /**
- * 函数级详细中文注释：逝者分页列表组件（支持大墓位）
+ * 函数级详细中文注释：逝者分页列表组件（支持大集合）
  * 
  * ### 功能
  * - 自动分页加载，每页默认20人
- * - 大墓位智能提示（>200人警告，>1000人强提示）
+ * - 大集合智能提示（>200人警告，>1000人强提示）
  * - 性能监控与统计
  * - 移动端友好设计
  * 
  * ### 设计理念
- * - **渐进增强**：小墓位无感知，大墓位自动优化
+ * - **渐进增强**：小集合无感知，大集合自动优化
  * - **用户友好**：明确告知当前状态和性能
  * - **可扩展**：支持自定义渲染和操作
  * 
  * ### 使用场景
- * - 墓位详情页：显示墓位下所有逝者
  * - 逝者列表页：显示用户创建的所有逝者
  * - 搜索结果页：显示搜索到的逝者
+ * - 关系网络页：显示相关逝者
  * 
  * ### 性能考虑
  * - 50人以下：直接渲染，无需分页
@@ -64,8 +64,8 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
   const {
     currentPageData,
     total,
-    isLargeGrave,
-    isVeryLargeGrave,
+    isLargeCollection,
+    isVeryLargeCollection,
     performanceLevel,
     loadTime,
     paginationConfig,
@@ -123,15 +123,15 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
   const renderPerformanceAlert = () => {
     if (!showPerformanceStats || total === 0) return null
 
-    // 超大墓位强提示
-    if (isVeryLargeGrave) {
+    // 超大集合强提示
+    if (isVeryLargeCollection) {
       return (
         <Alert
           type="warning"
           showIcon
           icon={<WarningOutlined />}
           style={{ marginBottom: 12 }}
-          message={`超大墓位：${total} 位逝者`}
+          message={`超大集合：${total} 位逝者`}
           description={
             <Space direction="vertical" style={{ width: '100%' }} size={4}>
               <div>
@@ -155,8 +155,8 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
       )
     }
 
-    // 大墓位提示
-    if (isLargeGrave) {
+    // 大集合提示
+    if (isLargeCollection) {
       return (
         <Alert
           type="info"
@@ -173,13 +173,13 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
       )
     }
 
-    // 正常墓位，无需提示
+    // 正常集合，无需提示
     return null
   }
 
   // 统计卡片
   const renderStatsCard = () => {
-    if (!showPerformanceStats || !isLargeGrave) return null
+    if (!showPerformanceStats || !isLargeCollection) return null
 
     return (
       <div style={{ 
@@ -219,7 +219,7 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
         type="info"
         showIcon
         message="暂无逝者"
-        description="该墓位下还没有逝者信息，请先创建逝者。"
+        description="还没有逝者信息，请先创建逝者。"
       />
     )
   }
@@ -267,8 +267,8 @@ const DeceasedPaginatedList: React.FC<DeceasedPaginatedListProps> = ({
               <div>当前页数据：{currentPageData.length} 条</div>
               <div>性能等级：{performanceLevel}</div>
               <div>加载时间：{loadTime}ms</div>
-              <div>是否大墓位：{isLargeGrave ? '是' : '否'}</div>
-              <div>是否超大墓位：{isVeryLargeGrave ? '是' : '否'}</div>
+              <div>是否大集合：{isLargeCollection ? '是' : '否'}</div>
+              <div>是否超大集合：{isVeryLargeCollection ? '是' : '否'}</div>
             </Space>
           }
         />

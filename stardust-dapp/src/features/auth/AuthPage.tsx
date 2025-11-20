@@ -35,7 +35,7 @@ const AuthPage: React.FC = () => {
   return (
     <div style={{ 
       padding: '20px', 
-      maxWidth: '640px', 
+      maxWidth: '480px', 
       margin: '0 auto',
       minHeight: '100vh',
       background: '#f5f5f5',

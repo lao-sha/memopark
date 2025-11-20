@@ -13,9 +13,7 @@ import type { DispatchError } from '@polkadot/types/interfaces';
  */
 export enum DeceasedErrorType {
   // 通用错误
-  GraveNotFound = 'GraveNotFound',
   NotAuthorized = 'NotAuthorized',
-  TooManyDeceasedInGrave = 'TooManyDeceasedInGrave',
   DeceasedNotFound = 'DeceasedNotFound',
   Overflow = 'Overflow',
   BadInput = 'BadInput',
@@ -45,17 +43,9 @@ export enum DeceasedErrorType {
  */
 const errorMessages: Record<DeceasedErrorType, { title: string; description: string }> = {
   // 通用错误
-  [DeceasedErrorType.GraveNotFound]: {
-    title: '墓位不存在',
-    description: '指定的墓位不存在，请检查墓位ID是否正确',
-  },
   [DeceasedErrorType.NotAuthorized]: {
     title: '权限不足',
-    description: '你无权执行此操作，请确认你是墓位管理员',
-  },
-  [DeceasedErrorType.TooManyDeceasedInGrave]: {
-    title: '墓位已满',
-    description: '该墓位下的逝者数量已达上限，无法添加更多逝者',
+    description: '你无权执行此操作，请确认你是管理员',
   },
   [DeceasedErrorType.DeceasedNotFound]: {
     title: '逝者不存在',

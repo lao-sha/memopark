@@ -1,25 +1,27 @@
 /**
- * 文件消息组件样式 - 优化版
+ * 函数级详细中文注释：文件消息组件样式（移动端优化）
+ * - 优化触控反馈
+ * - 保持主题色统一
  */
 
 .file-message {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 14px 16px;
   background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
   border-radius: 12px;
-  border: 1.5px solid #e8e8e8;
-  min-width: 280px;
-  max-width: 400px;
-  transition: all 0.3s ease;
+  border: 2px solid #e8e8e8;
+  min-width: 240px;
+  max-width: 340px;
+  transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.file-message:hover {
-  border-color: #1890ff;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.08);
-  transform: translateY(-2px);
+.file-message:active {
+  border-color: #B8860B;
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.1);
+  transform: scale(0.98);
 }
 
 .file-message-icon {
@@ -32,18 +34,18 @@
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
 }
 
-.file-message:hover .file-message-icon {
-  transform: rotate(5deg) scale(1.05);
+.file-message:active .file-message-icon {
+  transform: scale(0.95);
 }
 
 .file-message-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -51,6 +53,7 @@
   max-width: 100%;
   font-weight: 500;
   color: #262626;
+  font-size: 14px;
 }
 
 .file-message-size {
@@ -61,16 +64,20 @@
 .file-message .ant-btn {
   border-radius: 8px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
-  transition: all 0.3s ease;
-}
-
-.file-message .ant-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border: none;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.15);
+  transition: all 0.2s ease;
 }
 
 .file-message .ant-btn:active {
-  transform: translateY(0);
+  transform: scale(0.95);
 }
 
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .file-message:hover {
+    transform: none;
+  }
+}

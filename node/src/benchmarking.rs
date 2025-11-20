@@ -120,6 +120,9 @@ pub fn create_benchmark_extrinsic(
         .checked_next_power_of_two()
         .map(|c| c / 2)
         .unwrap_or(2) as u64;
+    // 函数级中文注释：Benchmarking 交易扩展配置
+    // 2025-11-07 修复：与 runtime 的 TxExtension 保持一致
+    // 移除了 CheckMetadataHash 和 WeightReclaim
     let tx_ext: runtime::TxExtension = (
         frame_system::CheckNonZeroSender::<runtime::Runtime>::new(),
         frame_system::CheckSpecVersion::<runtime::Runtime>::new(),
@@ -132,8 +135,7 @@ pub fn create_benchmark_extrinsic(
         frame_system::CheckNonce::<runtime::Runtime>::from(nonce),
         frame_system::CheckWeight::<runtime::Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<runtime::Runtime>::from(0),
-        frame_metadata_hash_extension::CheckMetadataHash::<runtime::Runtime>::new(false),
-        frame_system::WeightReclaim::<runtime::Runtime>::new(),
+        // 已移除: CheckMetadataHash 和 WeightReclaim
     );
 
     let raw_payload = runtime::SignedPayload::from_raw(
@@ -148,8 +150,7 @@ pub fn create_benchmark_extrinsic(
             (),
             (),
             (),
-            None,
-            (),
+            // 已移除: CheckMetadataHash 和 WeightReclaim 对应的 implicit 参数
         ),
     );
     let signature = raw_payload.using_encoded(|e| sender.sign(e));

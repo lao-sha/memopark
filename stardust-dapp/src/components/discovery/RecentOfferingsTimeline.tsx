@@ -13,8 +13,8 @@ import { getOfferingIcon, getOfferingName } from '../offering/OfferingCardSelect
 interface OfferingActivity {
   id: number
   who: string
-  graveId: number
-  graveName?: string
+  targetId: number  // 改为通用的 targetId，替代旧的墓位ID
+  targetName?: string  // 改为通用的 targetName
   kind: number
   amount: string
   timestamp: number
@@ -22,12 +22,13 @@ interface OfferingActivity {
 
 export const RecentOfferingsTimeline: React.FC = () => {
   // 模拟数据（实际应从链上或Subsquid查询）
+  // 旧的墓位功能已删除，统一使用通用 targetId
   const activities: OfferingActivity[] = [
     {
       id: 1,
       who: '5GrwvaEF...2Jd',
-      graveId: 1,
-      graveName: '张氏家族墓',
+      targetId: 1,
+      targetName: '纪念馆 #1',
       kind: 12,
       amount: '10',
       timestamp: Date.now() - 2 * 60 * 1000
@@ -35,8 +36,8 @@ export const RecentOfferingsTimeline: React.FC = () => {
     {
       id: 2,
       who: '5D5aBzXy...5Yx',
-      graveId: 2,
-      graveName: '李府纪念馆',
+      targetId: 2,
+      targetName: '纪念馆 #2',
       kind: 11,
       amount: '5',
       timestamp: Date.now() - 5 * 60 * 1000
@@ -44,7 +45,8 @@ export const RecentOfferingsTimeline: React.FC = () => {
     {
       id: 3,
       who: '5F3sa2TJ...9Qx',
-      graveId: 3,
+      targetId: 3,
+      targetName: '纪念馆 #3',
       kind: 13,
       amount: '8',
       timestamp: Date.now() - 15 * 60 * 1000
@@ -123,10 +125,10 @@ export const RecentOfferingsTimeline: React.FC = () => {
                     cursor: 'pointer'
                   }}
                   onClick={() => {
-                    window.location.hash = `#/grave/detail?gid=${activity.graveId}`
+                    // 可以跳转到纪念馆详情页（需要确认正确的路由）
                   }}
                 >
-                  {activity.graveName || `墓地#${activity.graveId}`}
+                  {activity.targetName || `纪念馆#${activity.targetId}`}
                 </Typography.Text>
               </div>
               

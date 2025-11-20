@@ -89,7 +89,7 @@ export const IpfsFeeDashboard: React.FC = () => {
   const stats = getMockStats();
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <Title level={2}>
         <FireOutlined /> IPFS存储费用监控
       </Title>

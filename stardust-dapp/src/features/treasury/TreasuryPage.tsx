@@ -85,7 +85,7 @@ const TreasuryPage: React.FC = () => {
   }, [txList])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 16 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 16 }}>
       <div style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 10, padding: '4px 0' }}>
         <button onClick={()=> window.history.back()} style={{ border: '1px solid #eee', padding: '4px 10px', borderRadius: 8 }}>返回</button>
       </div>

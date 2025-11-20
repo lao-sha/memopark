@@ -64,6 +64,7 @@ mod tests;
 pub mod buyer;
 pub mod maker;
 pub mod common;
+pub mod quota; // 🆕 方案C+：买家额度管理模块
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -81,6 +82,7 @@ pub mod pallet {
     pub use crate::buyer;
     pub use crate::maker;
     pub use crate::common;
+    pub use crate::quota; // 🆕 方案C+：买家额度管理
 
     // ===== 类型别名 =====
     
@@ -130,9 +132,9 @@ pub mod pallet {
     /// 
     /// 统一配置买家信用和做市商信用系统所需的参数
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_timestamp::Config {
-        /// 基础配置
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    /// 函数级中文注释：Credit Pallet 配置 trait
+    /// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式声明
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> + pallet_timestamp::Config {
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
         
         // 买家信用配置
@@ -306,6 +308,39 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    // ===== 🆕 方案C+：买家额度管理存储 =====
+
+    /// 函数级详细中文注释：买家额度配置记录
+    #[pallet::storage]
+    #[pallet::getter(fn buyer_quota)]
+    pub type BuyerQuotas<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        quota::BuyerQuotaProfile<T>,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：买家违约记录历史（最多保留20条）
+    #[pallet::storage]
+    pub type BuyerViolations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<quota::ViolationRecord<T>, ConstU32<20>>,
+        ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：买家当前活跃订单列表
+    #[pallet::storage]
+    pub type BuyerActiveOrders<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u64, ConstU32<10>>, // 最多10个并发订单
+        ValueQuery,
+    >;
+
     // ===== Event =====
     
     #[pallet::event]
@@ -438,6 +473,85 @@ pub mod pallet {
             new_level_code: u8,
             credit_score: u16,
         },
+
+        // ===== 🆕 方案C+：买家额度管理事件 =====
+
+        /// 函数级详细中文注释：买家额度初始化
+        BuyerQuotaInitialized {
+            account: T::AccountId,
+            initial_quota_usd: u64,
+            credit_score: u16,
+        },
+
+        /// 函数级详细中文注释：占用额度（创建订单）
+        QuotaOccupied {
+            account: T::AccountId,
+            order_id: u64,
+            amount_usd: u64,
+            remaining_quota: u64,
+        },
+
+        /// 函数级详细中文注释：释放额度（订单完成/取消）
+        QuotaReleased {
+            account: T::AccountId,
+            order_id: u64,
+            amount_usd: u64,
+            new_available_quota: u64,
+        },
+
+        /// 函数级详细中文注释：额度提升（信用分提升或订单完成）
+        QuotaIncreased {
+            account: T::AccountId,
+            old_max_quota: u64,
+            new_max_quota: u64,
+            reason: BoundedVec<u8, ConstU32<64>>,
+        },
+
+        /// 函数级详细中文注释：额度降低（违约惩罚）
+        QuotaDecreased {
+            account: T::AccountId,
+            old_max_quota: u64,
+            new_max_quota: u64,
+            reduction_bps: u16,
+            duration_days: u32,
+        },
+
+        /// 函数级详细中文注释：买家违约记录
+        BuyerViolationRecorded {
+            account: T::AccountId,
+            violation_type: u8, // 0=Timeout, 1=DisputeLoss, 2=Malicious
+            score_penalty: u16,
+            new_credit_score: u16,
+        },
+
+        /// 函数级详细中文注释：买家服务暂停
+        BuyerSuspended {
+            account: T::AccountId,
+            reason: BoundedVec<u8, ConstU32<128>>,
+            suspension_until: BlockNumberFor<T>,
+        },
+
+        /// 函数级详细中文注释：买家服务恢复
+        BuyerReinstated {
+            account: T::AccountId,
+            new_credit_score: u16,
+            new_max_quota: u64,
+        },
+
+        /// 函数级详细中文注释：买家被永久拉黑
+        BuyerBlacklisted {
+            account: T::AccountId,
+            reason: BoundedVec<u8, ConstU32<128>>,
+            total_violations: u32,
+        },
+
+        /// 函数级详细中文注释：信用恢复（30天无违约或10单奖励）
+        CreditRecovered {
+            account: T::AccountId,
+            recovery_points: u16,
+            new_credit_score: u16,
+            recovery_reason: u8, // 0=30DaysClean, 1=10OrdersBonus
+        },
     }
 
     // ===== Error =====
@@ -485,6 +599,25 @@ pub mod pallet {
         ServiceSuspended,
         /// 函数级详细中文注释：信用分计算溢出
         ScoreOverflow,
+
+        // ===== 🆕 方案C+：买家额度管理错误 =====
+
+        /// 函数级详细中文注释：可用额度不足
+        InsufficientQuota,
+        /// 函数级详细中文注释：超过并发订单数限制
+        ExceedConcurrentLimit,
+        /// 函数级详细中文注释：买家已被暂停服务
+        BuyerSuspended,
+        /// 函数级详细中文注释：买家已被拉黑
+        BuyerBlacklisted,
+        /// 函数级详细中文注释：订单未找到（无法释放额度）
+        OrderNotFoundForQuotaRelease,
+        /// 函数级详细中文注释：额度配置未初始化
+        QuotaProfileNotInitialized,
+        /// 函数级详细中文注释：违约记录过多（达到上限20条）
+        TooManyViolationRecords,
+        /// 函数级详细中文注释：活跃订单列表已满（达到上限10个）
+        ActiveOrderListFull,
     }
 
     // ===== Hooks =====
@@ -651,7 +784,7 @@ pub mod pallet {
                 balance_u128.checked_div(min_u128).unwrap_or(0)
             };
 
-            // MEMO 余额信任分
+            // DUST 余额信任分
             let balance_score = if balance_multiplier >= 10000 {
                 50  // >= 10000倍：高信任
             } else if balance_multiplier >= 1000 {
@@ -1674,8 +1807,373 @@ impl<T: pallet::Config> crate::MakerCreditInterface<T::AccountId> for pallet::Pa
         _maker: &T::AccountId,
         _buyer_win: bool,
     ) -> sp_runtime::DispatchResult {
-        // TODO: 实现从AccountId到maker_id的映射  
+        // TODO: 实现从AccountId到maker_id的映射
         // 当前简化实现：直接返回Ok
         Ok(())
+    }
+}
+
+// ===== 🆕 方案C+：买家额度管理接口实现 =====
+
+/// 函数级详细中文注释：为OTC订单实现BuyerQuotaInterface
+///
+/// 这个实现提供了OTC订单所需的买家额度管理功能，
+/// 包括额度占用、释放、违约记录等核心功能。
+impl<T: pallet::Config> crate::quota::BuyerQuotaInterface<T::AccountId> for pallet::Pallet<T> {
+    /// 函数级详细中文注释：获取可用额度
+    fn get_available_quota(buyer: &T::AccountId) -> Result<u64, sp_runtime::DispatchError> {
+        use frame_support::ensure;
+        use pallet::{BuyerQuotas, Error};
+
+        let profile = BuyerQuotas::<T>::get(buyer);
+
+        // 检查是否被暂停或拉黑
+        ensure!(!profile.is_suspended, Error::<T>::BuyerSuspended);
+        ensure!(!profile.is_blacklisted, Error::<T>::BuyerBlacklisted);
+
+        Ok(profile.available_quota)
+    }
+
+    /// 函数级详细中文注释：占用额度（创建订单时）
+    fn occupy_quota(buyer: &T::AccountId, amount_usd: u64) -> sp_runtime::DispatchResult {
+        use pallet::{BuyerQuotas, Error, Event};
+        use frame_support::traits::Get;
+
+        BuyerQuotas::<T>::try_mutate(buyer, |profile| -> sp_runtime::DispatchResult {
+            use frame_support::ensure;
+            // 检查是否被暂停或拉黑
+            ensure!(!profile.is_suspended, Error::<T>::BuyerSuspended);
+            ensure!(!profile.is_blacklisted, Error::<T>::BuyerBlacklisted);
+
+            // 如果是新用户，初始化额度
+            if profile.total_orders == 0 && profile.max_quota == 0 {
+                profile.credit_score = T::InitialBuyerCreditScore::get();
+                profile.max_quota = crate::quota::calculate_max_quota(
+                    profile.credit_score,
+                    profile.total_orders,
+                );
+                profile.available_quota = profile.max_quota;
+                profile.max_concurrent_orders = crate::quota::calculate_max_concurrent(
+                    profile.total_orders,
+                );
+
+                Self::deposit_event(Event::BuyerQuotaInitialized {
+                    account: buyer.clone(),
+                    initial_quota_usd: profile.max_quota,
+                    credit_score: profile.credit_score,
+                });
+            }
+
+            // 检查可用额度是否充足
+            ensure!(
+                profile.available_quota >= amount_usd,
+                Error::<T>::InsufficientQuota
+            );
+
+            // 检查并发订单数限制
+            ensure!(
+                profile.active_orders < profile.max_concurrent_orders,
+                Error::<T>::ExceedConcurrentLimit
+            );
+
+            // 占用额度
+            profile.available_quota = profile.available_quota
+                .checked_sub(amount_usd)
+                .ok_or(Error::<T>::InsufficientQuota)?;
+            profile.occupied_quota = profile.occupied_quota
+                .checked_add(amount_usd)
+                .ok_or(Error::<T>::ScoreOverflow)?;
+            profile.active_orders += 1;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// 函数级详细中文注释：释放额度（订单完成/取消时）
+    fn release_quota(buyer: &T::AccountId, amount_usd: u64) -> sp_runtime::DispatchResult {
+        use pallet::{BuyerQuotas, Error};
+
+        BuyerQuotas::<T>::try_mutate(buyer, |profile| -> sp_runtime::DispatchResult {
+            // 释放已占用额度
+            profile.occupied_quota = profile.occupied_quota
+                .checked_sub(amount_usd)
+                .unwrap_or(0); // 防御性编程：即使为0也不报错
+
+            profile.available_quota = profile.available_quota
+                .checked_add(amount_usd)
+                .ok_or(Error::<T>::ScoreOverflow)?;
+
+            profile.active_orders = profile.active_orders.saturating_sub(1);
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// 函数级详细中文注释：检查并发订单数是否超限
+    fn check_concurrent_limit(buyer: &T::AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        let profile = BuyerQuotas::<T>::get(buyer);
+        Ok(profile.active_orders < profile.max_concurrent_orders)
+    }
+
+    /// 函数级详细中文注释：记录订单完成（提升信用）
+    fn record_order_completed(
+        buyer: &T::AccountId,
+        _order_id: u64,
+    ) -> sp_runtime::DispatchResult {
+        use pallet::{BuyerQuotas, Event};
+
+        BuyerQuotas::<T>::try_mutate(buyer, |profile| -> sp_runtime::DispatchResult {
+            // 增加完成订单数
+            profile.total_orders += 1;
+            profile.consecutive_good_orders += 1;
+
+            // 提升信用分（每笔+2分，上限1000）
+            profile.credit_score = profile.credit_score.saturating_add(2).min(1000);
+
+            // 🆕 检查是否达到连续10单奖励条件
+            if profile.consecutive_good_orders >= 10 {
+                let bonus = 5u16;
+                profile.credit_score = profile.credit_score.saturating_add(bonus).min(1000);
+
+                // 重置计数器
+                profile.consecutive_good_orders = 0;
+
+                // 发出信用恢复事件
+                Self::deposit_event(Event::CreditRecovered {
+                    account: buyer.clone(),
+                    recovery_points: bonus,
+                    new_credit_score: profile.credit_score,
+                    recovery_reason: 1, // 10单奖励
+                });
+            }
+
+            // 重新计算最大额度
+            let old_max_quota = profile.max_quota;
+            profile.max_quota = crate::quota::calculate_max_quota(
+                profile.credit_score,
+                profile.total_orders,
+            );
+
+            // 重新计算并发订单数限制
+            profile.max_concurrent_orders = crate::quota::calculate_max_concurrent(
+                profile.total_orders,
+            );
+
+            // 如果额度提升，发出事件
+            if profile.max_quota > old_max_quota {
+                Self::deposit_event(Event::QuotaIncreased {
+                    account: buyer.clone(),
+                    old_max_quota,
+                    new_max_quota: profile.max_quota,
+                    reason: b"Order completed".to_vec().try_into().unwrap_or_default(),
+                });
+            }
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// 函数级详细中文注释：记录订单取消（轻度降低信用）
+    fn record_order_cancelled(
+        buyer: &T::AccountId,
+        _order_id: u64,
+    ) -> sp_runtime::DispatchResult {
+        use pallet::BuyerQuotas;
+
+        BuyerQuotas::<T>::try_mutate(buyer, |profile| -> sp_runtime::DispatchResult {
+            // 轻度惩罚：信用分-5
+            profile.credit_score = profile.credit_score.saturating_sub(5);
+
+            // 重置连续良好订单计数
+            profile.consecutive_good_orders = 0;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// 函数级详细中文注释：记录违约行为（降低信用+减少额度）
+    fn record_violation(
+        buyer: &T::AccountId,
+        violation_type: crate::quota::ViolationType,
+    ) -> sp_runtime::DispatchResult {
+        use sp_runtime::traits::{CheckedAdd, CheckedMul};
+        use frame_support::traits::Get;
+        use pallet::{BuyerQuotas, Error, Event};
+
+        BuyerQuotas::<T>::try_mutate(buyer, |profile| -> sp_runtime::DispatchResult {
+            // 计算惩罚参数
+            let (score_penalty, quota_reduction_bps, penalty_duration_days, should_suspend) =
+                crate::quota::calculate_violation_penalty(&violation_type, profile.total_violations);
+
+            // 扣除信用分
+            profile.credit_score = profile.credit_score.saturating_sub(score_penalty);
+
+            // 减少额度（按比例）
+            let quota_reduction = (profile.max_quota as u128)
+                .saturating_mul(quota_reduction_bps as u128)
+                .saturating_div(10000);
+            profile.max_quota = profile.max_quota.saturating_sub(quota_reduction as u64);
+            profile.available_quota = profile.available_quota.min(profile.max_quota);
+
+            // 增加违约次数
+            profile.total_violations += 1;
+            profile.warnings += 1;
+
+            // 重置连续良好订单计数
+            profile.consecutive_good_orders = 0;
+
+            // 记录违约时间
+            profile.last_violation_at = <frame_system::Pallet<T>>::block_number();
+
+            // 是否暂停服务
+            if should_suspend {
+                profile.is_suspended = true;
+
+                // 计算暂停解除时间（如果不是永久拉黑）
+                if penalty_duration_days < u32::MAX {
+                    let blocks_per_day = T::BlocksPerDay::get();
+                    let suspension_blocks = blocks_per_day
+                        .checked_mul(&penalty_duration_days.into())
+                        .ok_or(Error::<T>::ScoreOverflow)?;
+                    let suspension_until = profile.last_violation_at
+                        .checked_add(&suspension_blocks)
+                        .ok_or(Error::<T>::ScoreOverflow)?;
+                    profile.suspension_until = Some(suspension_until);
+
+                    Self::deposit_event(Event::BuyerSuspended {
+                        account: buyer.clone(),
+                        reason: b"Violation penalty".to_vec().try_into().unwrap_or_default(),
+                        suspension_until,
+                    });
+                } else {
+                    // 永久拉黑
+                    profile.is_blacklisted = true;
+                    profile.suspension_until = None;
+
+                    Self::deposit_event(Event::BuyerBlacklisted {
+                        account: buyer.clone(),
+                        reason: b"Malicious behavior".to_vec().try_into().unwrap_or_default(),
+                        total_violations: profile.total_violations,
+                    });
+                }
+            }
+
+            // 保存违约记录
+            BuyerViolations::<T>::try_mutate(buyer, |violations| {
+                let violation_record = crate::quota::ViolationRecord {
+                    violation_type: violation_type.clone(),
+                    occurred_at: profile.last_violation_at,
+                    score_penalty,
+                    quota_reduction_bps,
+                    penalty_duration_days,
+                    caused_suspension: should_suspend,
+                };
+
+                violations.try_push(violation_record)
+                    .map_err(|_| Error::<T>::TooManyViolationRecords)
+            })?;
+
+            // 发出事件
+            let violation_type_code = match violation_type {
+                crate::quota::ViolationType::OrderTimeout { .. } => 0u8,
+                crate::quota::ViolationType::DisputeLoss { .. } => 1u8,
+                crate::quota::ViolationType::MaliciousBehavior { .. } => 2u8,
+            };
+
+            Self::deposit_event(Event::BuyerViolationRecorded {
+                account: buyer.clone(),
+                violation_type: violation_type_code,
+                score_penalty,
+                new_credit_score: profile.credit_score,
+            });
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// 函数级详细中文注释：检查是否被暂停服务
+    fn is_suspended(buyer: &T::AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        use frame_support::traits::Get;
+        use pallet::{BuyerQuotas, Event};
+
+        let profile = BuyerQuotas::<T>::get(buyer);
+
+        // 🆕 方案C+：检查30天无违约恢复条件
+        let current_block = <frame_system::Pallet<T>>::block_number();
+        let (can_recover, recovery_points) = crate::quota::can_recover_credit(
+            &profile,
+            current_block,
+            T::BlocksPerDay::get()
+        );
+
+        if can_recover && recovery_points > 0 {
+            BuyerQuotas::<T>::mutate(buyer, |p| {
+                p.credit_score = p.credit_score.saturating_add(recovery_points).min(1000);
+
+                // 重新计算最大额度
+                let old_max_quota = p.max_quota;
+                p.max_quota = crate::quota::calculate_max_quota(
+                    p.credit_score,
+                    p.total_orders,
+                );
+
+                // 如果额度提升，更新可用额度
+                if p.max_quota > old_max_quota {
+                    let quota_increase = p.max_quota - old_max_quota;
+                    p.available_quota = p.available_quota.saturating_add(quota_increase);
+                }
+            });
+
+            let updated_profile = BuyerQuotas::<T>::get(buyer);
+
+            Self::deposit_event(Event::CreditRecovered {
+                account: buyer.clone(),
+                recovery_points,
+                new_credit_score: updated_profile.credit_score,
+                recovery_reason: 0, // 30天无违约恢复
+            });
+        }
+
+        // 如果被暂停且有解除时间，检查是否已过期
+        if profile.is_suspended {
+            if let Some(suspension_until) = profile.suspension_until {
+                if current_block >= suspension_until {
+                    // 自动解除暂停
+                    BuyerQuotas::<T>::mutate(buyer, |p| {
+                        p.is_suspended = false;
+                        p.suspension_until = None;
+                    });
+
+                    let reinstated_profile = BuyerQuotas::<T>::get(buyer);
+
+                    Self::deposit_event(Event::BuyerReinstated {
+                        account: buyer.clone(),
+                        new_credit_score: reinstated_profile.credit_score,
+                        new_max_quota: reinstated_profile.max_quota,
+                    });
+
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    /// 函数级详细中文注释：检查是否被拉黑
+    fn is_blacklisted(buyer: &T::AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        let profile = BuyerQuotas::<T>::get(buyer);
+        Ok(profile.is_blacklisted)
     }
 }

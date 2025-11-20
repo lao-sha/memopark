@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Form, Radio, Input, Button, Space, Typography, Alert, message, Divider, InputNumber, FloatButton } from 'antd'
+import { Card, Form, Radio, Input, Button, Space, Typography, Alert, message, Divider, FloatButton } from 'antd'
 import { CrownOutlined, StarOutlined, TrophyOutlined, RocketOutlined, ArrowLeftOutlined, CommentOutlined } from '@ant-design/icons'
 import { getApi, signAndSendLocalFromKeystore } from '../../lib/polkadot-safe'
 import { getCurrentAddress } from '../../lib/keystore'
 import FeedbackModal from '../../components/feedback/FeedbackModal'
+import DynamicPriceDisplay from '../../components/membership/DynamicPriceDisplay'
+import { MEMBERSHIP_LEVELS, formatDustAmount } from '../../utils/membershipPricing'
 
 const { Title, Text, Paragraph } = Typography
 
 /**
  * 函数级详细中文注释：年费会员购买页面组件
- * 
+ *
  * 功能：
  * - 展示四种会员等级：Year1/Year3/Year5/Year10
- * - 显示每种会员的价格、代数、有效期
+ * - 🆕 2025-11-10：显示固定 USDT 价格 + 动态 DUST 数量
+ * - 🆕 实时查询 DUST 市场价格并计算所需数量
  * - 输入推荐码购买会员
  * - 自动验证推荐码有效性
  * - 购买成功后自动分配推荐码
@@ -26,91 +29,16 @@ const MembershipPurchasePage: React.FC = () => {
   const [referralCodeValid, setReferralCodeValid] = useState<boolean | null>(null)
   const [referrerAccount, setReferrerAccount] = useState<string>('')
   const [feedbackVisible, setFeedbackVisible] = useState(false)
-  const [prices, setPrices] = useState<Record<number, string>>({
-    0: '400',
-    1: '800',
-    2: '1600',
-    3: '2000'
-  })
 
-  // 会员等级配置
-  const membershipLevels = [
-    {
-      id: 0,
-      name: 'Year1 年费会员',
-      icon: <StarOutlined style={{ fontSize: '32px', color: '#faad14' }} />,
-      price: prices[0],
-      baseGenerations: 6,
-      years: 1,
-      color: '#faad14',
-      bgColor: '#fffbe6',
-      description: '适合体验用户，基础6代推荐奖励'
-    },
-    {
-      id: 1,
-      name: 'Year3 三年会员',
-      icon: <CrownOutlined style={{ fontSize: '32px', color: '#1890ff' }} />,
-      price: prices[1],
-      baseGenerations: 9,
-      years: 3,
-      color: '#1890ff',
-      bgColor: '#e6f7ff',
-      description: '性价比之选，基础9代推荐奖励'
-    },
-    {
-      id: 2,
-      name: 'Year5 五年会员',
-      icon: <TrophyOutlined style={{ fontSize: '32px', color: '#722ed1' }} />,
-      price: prices[2],
-      baseGenerations: 12,
-      years: 5,
-      color: '#722ed1',
-      bgColor: '#f9f0ff',
-      description: '长期用户优选，基础12代推荐奖励'
-    },
-    {
-      id: 3,
-      name: 'Year10 十年会员',
-      icon: <RocketOutlined style={{ fontSize: '32px', color: '#f5222d' }} />,
-      price: prices[3],
-      baseGenerations: 15,
-      years: 10,
-      color: '#f5222d',
-      bgColor: '#fff1f0',
-      description: '最高性价比，满级15代推荐奖励'
-    }
-  ]
+  // 🆕 2025-11-10：动态价格状态
+  const [currentDustAmount, setCurrentDustAmount] = useState<number>(0)
+  const [currentDustPrice, setCurrentDustPrice] = useState<number>(100)
 
   useEffect(() => {
     const addr = getCurrentAddress()
     setCurrentAddr(addr)
     // 数据埋点：页面访问
     logEvent('membership_page_view', { address: addr })
-  }, [])
-
-  // 读取链上会员价格（如果治理动态调整过）
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const api = await getApi()
-        const qroot: any = api.query as any
-        // 尝试读取治理设置的价格
-        const sec = qroot.membership
-        if (sec?.membershipPrices) {
-          for (let i = 0; i < 4; i++) {
-            const raw = await sec.membershipPrices(i)
-            if (raw && raw.isSome) {
-              const priceRaw = raw.unwrap()
-              const priceUnits = Number(priceRaw.toString()) / 1_000_000_000_000 // 转换为 DUST 单位
-              setPrices(prev => ({ ...prev, [i]: priceUnits.toString() }))
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('读取会员价格失败，使用默认价格', e)
-      }
-    }
-    fetchPrices()
   }, [])
 
   /**
@@ -267,10 +195,26 @@ const MembershipPurchasePage: React.FC = () => {
     }
   }
 
-  const currentLevel = membershipLevels[selectedLevel]
+  /**
+   * 🆕 2025-11-10：价格更新回调
+   */
+  const handlePriceUpdate = (dustAmount: number, dustPrice: number) => {
+    setCurrentDustAmount(dustAmount)
+    setCurrentDustPrice(dustPrice)
+  }
+
+  const currentLevel = MEMBERSHIP_LEVELS[selectedLevel]
+
+  // 会员等级图标配置
+  const levelIcons = [
+    <StarOutlined style={{ fontSize: '32px', color: MEMBERSHIP_LEVELS[0].color }} />,
+    <CrownOutlined style={{ fontSize: '32px', color: MEMBERSHIP_LEVELS[1].color }} />,
+    <TrophyOutlined style={{ fontSize: '32px', color: MEMBERSHIP_LEVELS[2].color }} />,
+    <RocketOutlined style={{ fontSize: '32px', color: MEMBERSHIP_LEVELS[3].color }} />
+  ]
 
   return (
-    <div style={{ padding: '60px 20px 80px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ padding: '60px 20px 80px', maxWidth: '480px', margin: '0 auto' }}>
       {/* 返回按钮 */}
       <Button
         icon={<ArrowLeftOutlined />}
@@ -290,6 +234,21 @@ const MembershipPurchasePage: React.FC = () => {
         </Text>
       </div>
 
+      {/* 🆕 2025-11-10：USDT 定价说明 */}
+      <Alert
+        type="info"
+        showIcon
+        message="全新 USDT 定价"
+        description={
+          <Space direction="vertical" size={4}>
+            <div>• 固定 USDT 价格，价格透明稳定</div>
+            <div>• DUST 数量根据市场价格实时计算</div>
+            <div>• 自动刷新，最终以交易时价格为准</div>
+          </Space>
+        }
+        style={{ marginBottom: '24px' }}
+      />
+
       {/* 会员等级选择 */}
       <Card title="选择会员等级" style={{ marginBottom: '24px' }}>
         <Radio.Group
@@ -301,7 +260,7 @@ const MembershipPurchasePage: React.FC = () => {
           style={{ width: '100%' }}
         >
           <Space direction="vertical" style={{ width: '100%' }} size={16}>
-            {membershipLevels.map((level) => (
+            {MEMBERSHIP_LEVELS.map((level, index) => (
               <Card
                 key={level.id}
                 hoverable
@@ -313,7 +272,7 @@ const MembershipPurchasePage: React.FC = () => {
               >
                 <Radio value={level.id} style={{ width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div>{level.icon}</div>
+                    <div>{levelIcons[index]}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '18px', fontWeight: 'bold', color: level.color }}>
                         {level.name}
@@ -322,7 +281,8 @@ const MembershipPurchasePage: React.FC = () => {
                         {level.description}
                       </div>
                       <div style={{ marginTop: '8px', fontSize: '12px', color: '#999' }}>
-                        价格: <Text strong style={{ fontSize: '16px', color: level.color }}>{level.price} DUST</Text>
+                        {/* 🆕 2025-11-10：显示 USDT 固定价格 */}
+                        价格: <Text strong style={{ fontSize: '16px', color: level.color }}>${level.usdtPrice} USDT</Text>
                         {' '}|{' '}
                         基础代数: <Text strong>{level.baseGenerations}代</Text>
                         {' '}|{' '}
@@ -396,6 +356,7 @@ const MembershipPurchasePage: React.FC = () => {
 
           <Divider />
 
+          {/* 🆕 2025-11-10：动态价格显示 */}
           <div style={{ marginBottom: '24px' }}>
             <Title level={4}>购买摘要</Title>
             <Space direction="vertical" style={{ width: '100%' }}>
@@ -411,13 +372,16 @@ const MembershipPurchasePage: React.FC = () => {
                 <Text>有效期：</Text>
                 <Text strong>{currentLevel.years}年</Text>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>支付金额：</Text>
-                <Text strong style={{ fontSize: '20px', color: currentLevel.color }}>
-                  {currentLevel.price} DUST
-                </Text>
-              </div>
             </Space>
+
+            {/* 动态价格组件 */}
+            <Divider style={{ margin: '16px 0' }} />
+            <DynamicPriceDisplay
+              levelId={selectedLevel}
+              levelColor={currentLevel.color}
+              showMarketPrice={true}
+              onPriceUpdate={handlePriceUpdate}
+            />
           </div>
 
           <Form.Item>
@@ -430,7 +394,7 @@ const MembershipPurchasePage: React.FC = () => {
               size="large"
               style={{ height: '48px', fontSize: '16px' }}
             >
-              {loading ? '购买中...' : `支付 ${currentLevel.price} DUST`}
+              {loading ? '购买中...' : `支付 ${formatDustAmount(currentDustAmount)} DUST`}
             </Button>
           </Form.Item>
 

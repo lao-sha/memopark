@@ -1,5 +1,7 @@
 /**
- * 图片预览组件样式 - 优化版
+ * 函数级详细中文注释：图片预览组件样式（移动端优化）
+ * - 优化触控反馈
+ * - 保持主题色统一
  */
 
 .image-preview {
@@ -8,12 +10,13 @@
   overflow: hidden;
   position: relative;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  max-width: 100%;
 }
 
-.image-preview:hover {
+.image-preview:active {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  transform: scale(1.02);
+  transform: scale(0.98);
 }
 
 .image-preview-placeholder {
@@ -24,17 +27,20 @@
   background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
   color: #8c8c8c;
   font-size: 13px;
+  position: relative;
 }
 
 .image-preview img {
   border-radius: 12px;
   cursor: pointer;
   display: block;
-  transition: transform 0.3s ease;
+  max-width: 100%;
+  height: auto;
+  transition: transform 0.2s ease;
 }
 
-.image-preview:hover img {
-  transform: scale(1.05);
+.image-preview:active img {
+  transform: scale(0.95);
 }
 
 /* 加载动画 */
@@ -46,7 +52,7 @@
   width: 20px;
   height: 20px;
   margin: -10px 0 0 -10px;
-  border: 2px solid #1890ff;
+  border: 2px solid #B8860B;
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -58,3 +64,9 @@
   }
 }
 
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .image-preview:hover {
+    transform: none;
+  }
+}

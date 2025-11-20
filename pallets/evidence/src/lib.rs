@@ -532,7 +532,7 @@ pub mod pallet {
             // 临时方案：只pin content_cid本身
             let deceased_id_u64 = target_id;
             let cid_vec: Vec<u8> = ev.content_cid.clone().into_inner();
-            if let Err(e) = T::IpfsPinner::pin_cid_for_grave(
+            if let Err(e) = T::IpfsPinner::pin_cid_for_deceased(
                 who.clone(),
                 deceased_id_u64,
                 cid_vec,

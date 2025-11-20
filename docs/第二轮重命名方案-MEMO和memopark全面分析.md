@@ -1,8 +1,8 @@
 # 📊 第二轮重命名方案 - MEMO和stardust全面分析
 
 **📅 日期**: 2025-10-29  
-**🎯 目标**: 全面扫描并重命名项目中所有"MEMO"和"stardust"字样  
-**📈 扫描结果**: MEMO 2760处，stardust 1541处
+**🎯 目标**: 全面扫描并重命名项目中所有"DUST"和"stardust"字样  
+**📈 扫描结果**: DUST 2760处，stardust 1541处
 
 ---
 
@@ -63,9 +63,9 @@
 **代币单位显示** (~200处):
 ```typescript
 // ❌ 修改前
-<Text>{amount} MEMO</Text>
-<Input suffix="MEMO" />
-return `${whole}.${fracStr} MEMO`
+<Text>{amount} DUST</Text>
+<Input suffix="DUST" />
+return `${whole}.${fracStr} DUST`
 
 // ✅ 修改后
 <Text>{amount} DUST</Text>
@@ -78,8 +78,8 @@ return `${whole}.${fracStr} DUST`
 - `stardust-governance/src/**/*.tsx` - ~50处
 
 **修改策略**:
-- 使用全局搜索替换 `MEMO"` → `DUST"`
-- 使用全局搜索替换 `MEMO<` → `DUST<`
+- 使用全局搜索替换 `DUST"` → `DUST"`
+- 使用全局搜索替换 `DUST<` → `DUST<`
 - 手动检查边界情况（如变量名 `memoAmount` 已处理）
 
 #### Rust代码中的UI文本
@@ -111,9 +111,9 @@ Self::deposit_event(Event::DUSTDeposited { amount });
 **发现场景**:
 ```rust
 // ❌ 修改前
-/// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/MEMO）
-/// 最高押金上限：单次押金不超过 100,000 MEMO
-const MAX_DEPOSIT: Balance = 100_000 * MEMO_PRECISION; // 最高 100,000 MEMO
+/// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/DUST）
+/// 最高押金上限：单次押金不超过 100,000 DUST
+const MAX_DEPOSIT: Balance = 100_000 * MEMO_PRECISION; // 最高 100,000 DUST
 
 // ✅ 修改后
 /// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/DUST）
@@ -141,8 +141,8 @@ const MEMO_PRECISION: Balance = 1_000_000_000_000; // 12位小数
 ```typescript
 // ❌ 修改前
 /**
- * 函数级中文注释：格式化 MEMO 金额
- * 将最小单位转换为 MEMO（除以 10^12）
+ * 函数级中文注释：格式化 DUST 金额
+ * 将最小单位转换为 DUST（除以 10^12）
  */
 
 // ✅ 修改后
@@ -210,7 +210,7 @@ members = [
 # Stardust  → # Stardust
 
 A blockchain project for memorial park services.  
-Token: MEMO → Token: DUST
+Token: DUST → Token: DUST
 ```
 
 #### 修改难度
@@ -225,7 +225,7 @@ Token: MEMO → Token: DUST
 #### Markdown文档
 
 **统计**: 
-- MEMO: 2027处（大部分在文档中）
+- DUST: 2027处（大部分在文档中）
 - stardust: 1311处（大部分在文档中）
 
 **影响文件** (估计):
@@ -234,8 +234,8 @@ Token: MEMO → Token: DUST
 - 各种使用说明和完成报告
 
 **修改策略**:
-- 批量替换 " MEMO" → " DUST"
-- 批量替换 "MEMO " → "DUST "
+- 批量替换 " DUST" → " DUST"
+- 批量替换 "DUST " → "DUST "
 - 批量替换 "stardust" → "stardust"
 - 手动检查Git历史、提交信息等特殊场景
 
@@ -258,7 +258,7 @@ pub fn development_config() -> ChainSpec {
         "Stardust Development",  // → "Stardust Development"
         "stardust_dev",  // → "stardust_dev"
         // ...
-        properties.insert("tokenSymbol".into(), "MEMO".into());  // → "DUST"
+        properties.insert("tokenSymbol".into(), "DUST".into());  // → "DUST"
         properties.insert("tokenDecimals".into(), 12.into());
         // ...
     )
@@ -293,7 +293,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 **目标**: UI显示文本和用户可见内容
 
 **范围**:
-1. 前端UI显示文本: "MEMO" → "DUST"
+1. 前端UI显示文本: "DUST" → "DUST"
 2. 前端包配置: package.json中的name和description
 3. Git仓库URL更新
 
@@ -310,8 +310,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 **目标**: 代码注释和开发文档
 
 **范围**:
-1. Rust代码注释: MEMO → DUST
-2. TypeScript代码注释: MEMO → DUST
+1. Rust代码注释: DUST → DUST
+2. TypeScript代码注释: DUST → DUST
 3. README文档更新
 4. pallet文档更新
 
@@ -368,22 +368,22 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 
 **搜索模式**:
 ```bash
-# 搜索所有 " MEMO" 和 "MEMO "
-grep -r " MEMO\|MEMO " stardust-dapp/src --include="*.tsx" --include="*.ts"
+# 搜索所有 " DUST" 和 "DUST "
+grep -r " DUST\|DUST " stardust-dapp/src --include="*.tsx" --include="*.ts"
 ```
 
 **修改示例**:
 ```typescript
 // 示例文件: src/components/Balance.tsx
-- <Text>{formatNumber(balance)} MEMO</Text>
+- <Text>{formatNumber(balance)} DUST</Text>
 + <Text>{formatNumber(balance)} DUST</Text>
 
 // 示例文件: src/utils/format.ts
-- * @param amount - 金额（MEMO）
+- * @param amount - 金额（DUST）
 + * @param amount - 金额（DUST）
 
 // 示例文件: src/hooks/useBalance.ts
-- /** 可用余额（MEMO） */
+- /** 可用余额（DUST） */
 + /** 可用余额（DUST） */
 ```
 
@@ -439,9 +439,9 @@ grep -r " MEMO\|MEMO " stardust-dapp/src --include="*.tsx" --include="*.ts"
 
 ```rust
 // 修改前
-/// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/MEMO）
-/// 最高押金上限：单次押金不超过 100,000 MEMO（防止价格异常导致押金过高）
-/// 最低押金下限：单次押金不少于 1 MEMO（保证押金有意义）
+/// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/DUST）
+/// 最高押金上限：单次押金不超过 100,000 DUST（防止价格异常导致押金过高）
+/// 最低押金下限：单次押金不少于 1 DUST（保证押金有意义）
 
 // 修改后
 /// 最低价格保护：如果市场价格为0或过低，使用默认价格（0.000001 USDT/DUST）
@@ -459,8 +459,8 @@ grep -r " MEMO\|MEMO " stardust-dapp/src --include="*.tsx" --include="*.ts"
 
 ```rust
 // 典型修改
-/// 函数级详细中文注释：供奉品提交押金（1,000,000 MEMO）
-/// - 1,000,000 MEMO = 1,000,000,000,000 单位（假设 1 MEMO = 1,000,000 单位）
+/// 函数级详细中文注释：供奉品提交押金（1,000,000 DUST）
+/// - 1,000,000 DUST = 1,000,000,000,000 单位（假设 1 DUST = 1,000,000 单位）
 
 // 修改为
 /// 函数级详细中文注释：供奉品提交押金（1,000,000 DUST）
@@ -482,7 +482,7 @@ grep -r " MEMO\|MEMO " stardust-dapp/src --include="*.tsx" --include="*.ts"
 
 A blockchain project for memorial park services.
 
-**Token**: MEMO
+**Token**: DUST
 **Network**: Stardust Network
 
 # 修改后
@@ -495,7 +495,7 @@ A blockchain project for memorial park services.
 ```
 
 **pallet README**:
-- 批量替换所有 pallet README.md中的 "MEMO" → "DUST"
+- 批量替换所有 pallet README.md中的 "DUST" → "DUST"
 - 批量替换 "stardust" → "stardust"
 
 **预计修改**: ~50个文件
@@ -520,30 +520,30 @@ git tag -f before-ui-text-rename -m "备份：UI文本重命名前"
 # 前端DApp
 echo "1️⃣ 更新前端DApp UI文本..."
 cd stardust-dapp/src
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ MEMO/ DUST/g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO /DUST /g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO"/DUST"/g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO</DUST</g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i "s/MEMO'/DUST'/g"
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ DUST/ DUST/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST /DUST /g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST"/DUST"/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST</DUST</g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i "s/DUST'/DUST'/g"
 
 # 治理前端
 echo "2️⃣ 更新治理前端UI文本..."
 cd ../../stardust-governance/src
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ MEMO/ DUST/g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO /DUST /g'
-find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/MEMO"/DUST"/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/ DUST/ DUST/g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST /DUST /g'
+find . -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/DUST"/DUST"/g'
 
 echo "✅ UI文本重命名完成"
 
 # 验证
 cd ../..
 echo "🔍 验证剩余MEMO..."
-grep -r " MEMO\|MEMO " stardust-dapp/src stardust-governance/src \
+grep -r " DUST\|DUST " stardust-dapp/src stardust-governance/src \
   --include="*.ts" --include="*.tsx" | wc -l
 
 # 提交
 git add stardust-dapp/src stardust-governance/src
-git commit -m "UI文本更新: MEMO → DUST
+git commit -m "UI文本更新: DUST → DUST
 
 - 前端DApp: ~200处
 - 治理前端: ~50处
@@ -567,23 +567,23 @@ git tag -f before-comment-rename -m "备份：注释重命名前"
 
 # Rust代码注释
 echo "1️⃣ 更新Rust代码注释..."
-find runtime pallets -name "*.rs" | xargs sed -i 's/ MEMO/ DUST/g'
-find runtime pallets -name "*.rs" | xargs sed -i 's/MEMO /DUST /g'
-find runtime pallets -name "*.rs" | xargs sed -i 's/MEMO）/DUST）/g'
-find runtime pallets -name "*.rs" | xargs sed -i 's/（MEMO/（DUST/g'
+find runtime pallets -name "*.rs" | xargs sed -i 's/ DUST/ DUST/g'
+find runtime pallets -name "*.rs" | xargs sed -i 's/DUST /DUST /g'
+find runtime pallets -name "*.rs" | xargs sed -i 's/DUST）/DUST）/g'
+find runtime pallets -name "*.rs" | xargs sed -i 's/（DUST/（DUST/g'
 
 # TypeScript代码注释
 echo "2️⃣ 更新TypeScript代码注释..."
 cd stardust-dapp/src
-find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/格式化 MEMO/格式化 DUST/g'
-find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/金额（MEMO）/金额（DUST）/g'
+find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/格式化 DUST/格式化 DUST/g'
+find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/金额（DUST）/金额（DUST）/g'
 
 echo "✅ 注释重命名完成"
 
 # 提交
 cd ../..
 git add runtime pallets stardust-dapp stardust-governance
-git commit -m "代码注释更新: MEMO → DUST
+git commit -m "代码注释更新: DUST → DUST
 
 - Rust注释: ~130处
 - TypeScript注释: ~70处
@@ -751,7 +751,7 @@ pub const DUST_PRECISION: Balance = 1_000_000_000_000;
 
 ### 2. Git历史处理
 
-**问题**: 历史提交消息中包含"MEMO"和"stardust"
+**问题**: 历史提交消息中包含"DUST"和"stardust"
 
 **建议**: **不修改Git历史**
 

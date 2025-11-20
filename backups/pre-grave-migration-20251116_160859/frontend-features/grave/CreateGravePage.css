@@ -1,0 +1,416 @@
+/**
+ * 函数级详细中文注释：创建纪念馆页面样式（移动端专用）
+ * - 专为移动端设计，固定宽度布局
+ * - 去除所有响应式自适应代码
+ * - 优化触控体验，按钮足够大
+ * - 保持与项目主题色系统一致
+ * - 主色：深金色 #B8860B
+ * - 辅色：墨绿色 #2F4F4F
+ * - 强调色：朱红色 #DC143C
+ * - 背景：米白色 #F5F5DC
+ */
+
+/* ============== 页面容器 ============== */
+.mobile-create-grave-page {
+  width: 100%;
+  min-height: 100vh;
+  background: #F5F5DC;
+  padding-bottom: 24px;
+}
+
+/* ============== 顶部导航栏 ============== */
+.mobile-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(135deg, #B8860B 0%, #2F4F4F 100%);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-back-button {
+  color: #fff !important;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+.mobile-back-button:active {
+  transform: scale(0.95);
+}
+
+.mobile-page-title {
+  margin: 0 !important;
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+/* ============== 主要内容区域 ============== */
+.mobile-page-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ============== 步骤卡片 ============== */
+.mobile-steps-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  box-shadow: 0 2px 8px rgba(47, 79, 79, 0.08);
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.mobile-steps-card .ant-card-body {
+  padding: 16px;
+}
+
+.mobile-steps-card .ant-steps {
+  padding: 0;
+}
+
+.mobile-steps-card .ant-steps-item-process .ant-steps-item-icon {
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border-color: #B8860B;
+}
+
+.mobile-steps-card .ant-steps-item-finish .ant-steps-item-icon {
+  background: linear-gradient(135deg, #2F4F4F 0%, #5F9EA0 100%);
+  border-color: #2F4F4F;
+}
+
+.mobile-steps-card .ant-steps-item-title {
+  font-size: 13px;
+}
+
+/* ============== 提示信息卡片 ============== */
+.mobile-alert {
+  border-radius: 12px;
+  border-width: 2px;
+  margin-bottom: 16px;
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.mobile-alert .alert-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-alert .alert-content p {
+  margin: 0 0 6px 0;
+}
+
+.mobile-alert .alert-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ============== 表单卡片 ============== */
+.mobile-form-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  box-shadow: 0 2px 8px rgba(47, 79, 79, 0.1);
+  background: #fff;
+  animation: fadeInUp 0.5s ease-out 0.2s backwards;
+}
+
+.mobile-form-card .ant-card-body {
+  padding: 20px;
+}
+
+/* ============== 表单样式 ============== */
+.mobile-form-card .ant-form-item-label > label {
+  font-size: 15px;
+  color: #2F4F4F;
+}
+
+.mobile-form-card .ant-form-item-extra {
+  font-size: 12px;
+  color: #708090;
+  margin-top: 6px;
+}
+
+.mobile-form-card .ant-input,
+.mobile-form-card .ant-input-number {
+  border-radius: 8px;
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  font-size: 15px;
+}
+
+.mobile-form-card .ant-input:focus,
+.mobile-form-card .ant-input-number:focus,
+.mobile-form-card .ant-input-number-focused {
+  border-color: #B8860B;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.1);
+}
+
+/* ============== 提交按钮 ============== */
+.mobile-submit-button {
+  height: 48px;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.3);
+  margin-top: 8px;
+}
+
+.mobile-submit-button:active {
+  transform: scale(0.98);
+}
+
+.mobile-submit-button:disabled {
+  background: #E0E0E0 !important;
+  color: #999 !important;
+  box-shadow: none !important;
+}
+
+/* ============== 快捷链接 ============== */
+.mobile-quick-link {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.mobile-quick-link .ant-btn-link {
+  color: #708090;
+  font-size: 14px;
+  padding: 0;
+  height: auto;
+}
+
+.mobile-quick-link .ant-btn-link:active {
+  color: #B8860B;
+}
+
+/* ============== 密码弹窗 ============== */
+.mobile-password-modal .ant-modal-content {
+  border-radius: 16px;
+}
+
+.mobile-password-modal .ant-modal-header {
+  background: linear-gradient(135deg, #F5F5DC 0%, #FEFAF5 100%);
+  border-bottom: 2px solid rgba(184, 134, 11, 0.15);
+  padding: 16px 20px;
+  border-radius: 16px 16px 0 0;
+}
+
+.mobile-password-modal .ant-modal-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: #2F4F4F;
+}
+
+.mobile-password-modal .ant-modal-body {
+  padding: 20px;
+}
+
+.mobile-password-modal .ant-input-password {
+  border-radius: 8px;
+  border: 2px solid rgba(184, 134, 11, 0.2);
+  font-size: 15px;
+}
+
+.mobile-password-modal .ant-input-password:focus,
+.mobile-password-modal .ant-input-password-focused {
+  border-color: #B8860B;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.1);
+}
+
+.mobile-password-modal .ant-btn-primary {
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border: none;
+  font-weight: 600;
+}
+
+/* ============== 使用说明卡片 ============== */
+.mobile-guide-card {
+  border-radius: 12px;
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  box-shadow: 0 2px 8px rgba(47, 79, 79, 0.08);
+  background: #fff;
+  animation: fadeInUp 0.5s ease-out 0.3s backwards;
+}
+
+.mobile-guide-card .ant-card-body {
+  padding: 20px;
+}
+
+/* ============== 流程步骤 ============== */
+.mobile-guide-steps {
+  margin: 16px 0;
+}
+
+.mobile-guide-step {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(245, 245, 220, 0.3);
+  transition: all 0.2s ease;
+}
+
+.mobile-guide-step:active {
+  background: rgba(245, 245, 220, 0.5);
+  transform: scale(0.98);
+}
+
+.mobile-guide-step:last-child {
+  margin-bottom: 0;
+}
+
+.mobile-step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 15px;
+  margin-right: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.3);
+}
+
+.mobile-step-content {
+  flex: 1;
+  padding-top: 4px;
+}
+
+/* ============== 注意事项 ============== */
+.mobile-tips-section {
+  margin-top: 16px;
+}
+
+.mobile-tips-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mobile-tips-list li {
+  padding: 8px 0 8px 20px;
+  position: relative;
+  color: #708090;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-tips-list li::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  color: #B8860B;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ============== 动画效果 ============== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mobile-create-grave-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============== 大屏幕限制 ============== */
+@media (min-width: 768px) {
+  .mobile-create-grave-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* ============== 小屏幕优化 ============== */
+@media (max-width: 360px) {
+  .mobile-page-content {
+    padding: 12px;
+  }
+
+  .mobile-form-card .ant-card-body,
+  .mobile-guide-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .mobile-submit-button {
+    height: 44px;
+    font-size: 15px;
+  }
+
+  .mobile-step-number {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+}
+
+/* ============== 触控优化 ============== */
+@media (hover: none) and (pointer: coarse) {
+  /* 移动端触控设备，禁用 hover 效果 */
+  .mobile-guide-step:hover {
+    background: rgba(245, 245, 220, 0.3);
+    transform: none;
+  }
+}
+
+/* ============== 通用样式 ============== */
+.ant-card {
+  border-radius: 12px;
+}
+
+.ant-divider {
+  border-color: rgba(184, 134, 11, 0.2);
+}
+
+.ant-form-item {
+  margin-bottom: 20px;
+}
+
+.ant-typography {
+  margin-bottom: 0;
+}
+
+/* ============== 滚动条样式（Webkit） ============== */
+.mobile-create-grave-page::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mobile-create-grave-page::-webkit-scrollbar-track {
+  background: rgba(245, 245, 220, 0.5);
+}
+
+.mobile-create-grave-page::-webkit-scrollbar-thumb {
+  background: rgba(184, 134, 11, 0.3);
+  border-radius: 3px;
+}
+
+.mobile-create-grave-page::-webkit-scrollbar-thumb:active {
+  background: rgba(184, 134, 11, 0.5);
+}

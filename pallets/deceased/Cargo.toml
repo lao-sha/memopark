@@ -17,6 +17,8 @@ log = { workspace = true, default-features = false }
 
 # 函数级中文注释：pallet-stardust-ipfs依赖用于IpfsPinner trait
 pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
+# 函数级中文注释：pallet-social依赖用于关注功能迁移
+pallet-social = { path = "../social", default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }
@@ -33,6 +35,7 @@ std = [
   "sp-core/std",
   "log/std",
   "pallet-stardust-ipfs/std",
+  "pallet-social/std",
 ]
 
 

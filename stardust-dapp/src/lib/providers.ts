@@ -17,8 +17,14 @@ export interface ProviderInfo {
 }
 
 export const providerRegistry: ProviderInfo[] = [
-  // 函数级中文注释：默认仅包含一个“本机”提供方，指向 AppConfig.backendUrl
-  { id: 'self', name: '自建做市商', apiBase: AppConfig.backendUrl, issuerAccount: '' }
+  // 函数级中文注释：默认自建做市商配置
+  // 注意：apiBase 应配置为实际的做市商API地址，或改为从链上查询
+  { 
+    id: 'self', 
+    name: '自建做市商', 
+    apiBase: AppConfig.sponsorApi || 'http://127.0.0.1:8787', // 使用代付API或默认地址
+    issuerAccount: '' 
+  }
 ]
 
 /**

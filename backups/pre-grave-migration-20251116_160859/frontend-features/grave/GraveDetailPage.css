@@ -1,0 +1,550 @@
+/**
+ * 函数级详细中文注释：纪念馆详情页面样式（移动端专用）
+ * - 专为移动端设计，固定宽度布局
+ * - 去除所有响应式自适应代码
+ * - 优化触控体验，按钮足够大
+ * - 保持与项目主题色系统一致
+ * - 主色：深金色 #B8860B
+ * - 辅色：墨绿色 #2F4F4F
+ * - 强调色：朱红色 #DC143C
+ * - 背景：米白色 #F5F5DC
+ */
+
+.grave-detail-page {
+  width: 100%;
+  min-height: 100vh;
+  background: #F5F5DC;
+  padding-bottom: 24px;
+}
+
+/* 顶部导航区域 */
+.grave-detail-header {
+  background: linear-gradient(135deg, #B8860B 0%, #2F4F4F 100%);
+  padding: 12px 16px;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.grave-detail-header-content {
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.grave-detail-back-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.grave-detail-back-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0.95);
+}
+
+.grave-detail-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+/* 音乐播放器区域 */
+.grave-detail-music {
+  background: white;
+  padding: 16px;
+  max-width: 480px;
+  margin: 16px auto 0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* 主图展示区域 */
+.grave-detail-main-image {
+  max-width: 480px;
+  margin: 16px auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.grave-detail-main-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.grave-detail-main-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.7) 100%);
+  padding: 24px 16px 16px;
+  color: white;
+}
+
+.deceased-name {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.deceased-dates {
+  font-size: 14px;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 内容标签页 */
+.grave-detail-tabs {
+  max-width: 480px;
+  margin: 16px auto;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+/* 自定义标签页样式 */
+.grave-detail-tabs .ant-tabs-nav {
+  background: #FAFAF9;
+  margin: 0;
+  padding: 8px 16px 0;
+}
+
+.grave-detail-tabs .ant-tabs-tab {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #8B7355;
+  transition: all 0.3s ease;
+}
+
+.grave-detail-tabs .ant-tabs-tab-active {
+  color: #B8860B;
+  font-weight: 600;
+}
+
+.grave-detail-tabs .ant-tabs-ink-bar {
+  background: linear-gradient(90deg, #B8860B 0%, #D4AF37 100%);
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+.grave-detail-tabs .ant-tabs-content {
+  padding: 16px;
+}
+
+/* 逝者信息卡片 */
+.deceased-info-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.deceased-info-card:active {
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.15);
+  transform: scale(0.98);
+}
+
+.deceased-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.deceased-info-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deceased-info-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.deceased-info-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 2px solid #D4AF37;
+  color: #B8860B;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.deceased-info-btn:active {
+  background: #B8860B;
+  color: white;
+  border-color: #B8860B;
+  transform: scale(0.95);
+}
+
+.deceased-info-body {
+  color: #666;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.deceased-info-row {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.deceased-info-label {
+  min-width: 80px;
+  color: #8B7355;
+  font-weight: 500;
+}
+
+.deceased-info-value {
+  flex: 1;
+  color: #4A4A4A;
+}
+
+/* 相册网格 */
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.album-item {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  background: #F5F5DC;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.album-item:active {
+  transform: scale(0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.album-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-item-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.6) 100%);
+  padding: 8px;
+  color: white;
+  font-size: 12px;
+}
+
+/* 视频列表 */
+.video-list-item {
+  background: #FAFAF9;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.video-list-item:active {
+  background: #F5F5DC;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.1);
+  transform: scale(0.98);
+}
+
+.video-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.video-info {
+  flex: 1;
+}
+
+.video-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #2F4F4F;
+  margin-bottom: 4px;
+}
+
+.video-meta {
+  font-size: 12px;
+  color: #8B7355;
+}
+
+/* 文章列表 */
+.article-list-item {
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border-left: 4px solid #B8860B;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.article-list-item:active {
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.15);
+  transform: scale(0.98);
+}
+
+.article-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 8px;
+}
+
+.article-summary {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.article-meta {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F0E6D2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #8B7355;
+}
+
+/* 留言列表 */
+.message-list {
+  margin-top: 16px;
+}
+
+.message-item {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border-left: 3px solid #2F4F4F;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.message-content {
+  color: #4A4A4A;
+  line-height: 1.6;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.message-author {
+  font-size: 12px;
+  color: #8B7355;
+  text-align: right;
+}
+
+/* 底部操作按钮 */
+.grave-detail-actions {
+  max-width: 480px;
+  margin: 24px auto 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.grave-action-btn {
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+}
+
+.grave-action-btn:active {
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.3);
+  transform: scale(0.95);
+}
+
+.grave-action-btn-secondary {
+  background: white;
+  color: #B8860B;
+  border: 2px solid #B8860B;
+}
+
+.grave-action-btn-secondary:active {
+  background: #F5F5DC;
+  border-color: #D4AF37;
+}
+
+/* 空状态提示 */
+.empty-state {
+  text-align: center;
+  padding: 48px 16px;
+  color: #8B7355;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  font-size: 14px;
+  color: #999;
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
+  .grave-detail-page {
+    padding-bottom: 20px;
+  }
+  
+  .album-grid {
+    gap: 6px;
+  }
+  
+  .grave-action-btn {
+    padding: 12px 14px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+}
+
+/* 大屏幕居中 */
+@media (min-width: 768px) {
+  .grave-detail-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loading-text {
+  color: #8B7355;
+  font-size: 14px;
+}
+
+/* 标签样式 */
+.grave-detail-tag {
+  background: #F5F5DC;
+  color: #B8860B;
+  border: 1px solid #D4AF37;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 输入框区域样式 */
+.grave-id-input-area {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.grave-id-input-area input {
+  background: white;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #2F4F4F;
+}
+
+.grave-id-input-area button {
+  background: rgba(255, 255, 255, 0.9);
+  color: #B8860B;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.grave-id-input-area button:active {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: scale(0.95);
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .album-item:hover,
+  .video-list-item:hover,
+  .article-list-item:hover,
+  .grave-action-btn:hover {
+    transform: none;
+  }
+}
+

@@ -387,13 +387,17 @@ export async function getCommitteeKeyShare(
   api: ApiPromise,
   memberAccount: string
 ): Promise<Uint8Array | null> {
-  const share = await api.query.trading.committeeKeyShares(memberAccount);
+  // 注意：这个功能可能需要专门的 pallet，暂时保留接口但标记为待实现
+  // TODO: 确认密钥分片应该存储在哪个 pallet
+  throw new Error('委员会密钥分片功能待实现：需确定正确的存储位置');
   
-  if (share.isNone) {
-    return null;
-  }
-  
-  return new Uint8Array(share.unwrap());
+  // const share = await api.query.maker.committeeKeyShares(memberAccount);
+  // 
+  // if (share.isNone) {
+  //   return null;
+  // }
+  // 
+  // return new Uint8Array(share.unwrap());
 }
 
 /**

@@ -1,0 +1,577 @@
+/**
+ * 函数级详细中文注释：做市商申请页面样式（统一青绿色UI风格）
+ *
+ * 设计目标：
+ * - 统一青绿色 #5DBAAA 主题风格，与底部导航栏保持一致
+ * - 移动端优先设计（max-width: 480px）
+ * - 简洁现代的卡片式布局
+ * - 清晰的视觉层次和良好的用户体验
+ * - 符合金融应用的严谨和专业感
+ */
+
+/* 主容器样式 */
+.create-market-maker-page {
+  position: relative;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #F0F9F8 0%, #FAFAFA 100%);
+  padding-bottom: 20px;
+}
+
+/* 顶部导航栏区域 */
+.mm-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+}
+
+.mm-header .back-button {
+  color: #5DBAAA;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.1);
+}
+
+.mm-header .back-button:hover {
+  color: #4AA896;
+  background: rgba(93, 186, 170, 0.1);
+}
+
+.mm-header .page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin: 0;
+}
+
+.mm-header .decrypt-button {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.4) !important;
+  font-weight: 600 !important;
+}
+
+.mm-header .decrypt-button:hover {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+/* 主内容区域 */
+.mm-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 主卡片样式 */
+.mm-main-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+  border: 2px solid rgba(93, 186, 170, 0.1);
+  overflow: hidden;
+}
+
+.mm-main-card .ant-card-head {
+  background: linear-gradient(135deg, #F0F9F8 0%, #FAFAFA 100%);
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+}
+
+.mm-main-card .ant-card-head-title {
+  color: #2F4F4F;
+  font-weight: 600;
+}
+
+.mm-main-card .ant-card-extra {
+  color: #5DBAAA;
+}
+
+/* 步骤指示器样式 */
+.mm-steps {
+  margin: 20px 0;
+}
+
+.mm-steps .ant-steps-item-process .ant-steps-item-icon {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  border-color: #5DBAAA !important;
+}
+
+.mm-steps .ant-steps-item-finish .ant-steps-item-icon {
+  background: #52C41A !important;
+  border-color: #52C41A !important;
+}
+
+.mm-steps .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: #fff !important;
+}
+
+.mm-steps .ant-steps-item-title {
+  color: #2F4F4F !important;
+  font-weight: 500;
+}
+
+/* 表单样式统一 */
+.mm-form {
+  margin-top: 20px;
+}
+
+.mm-form .ant-form-item-label > label {
+  color: #2F4F4F;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.mm-form .ant-form-item-label > label.ant-form-item-required::before {
+  color: #5DBAAA;
+}
+
+.mm-form .ant-input,
+.mm-form .ant-input-number,
+.mm-form .ant-select-selector,
+.mm-form .ant-input.ant-input-lg {
+  height: 48px !important;
+  border-radius: 8px !important;
+  border: 2px solid #e0e0e0 !important;
+  font-size: 15px !important;
+  transition: all 0.3s ease;
+}
+
+.mm-form .ant-input:focus,
+.mm-form .ant-input-number:focus,
+.mm-form .ant-select-focused .ant-select-selector,
+.mm-form .ant-input-focused {
+  border-color: #5DBAAA !important;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15) !important;
+}
+
+.mm-form .ant-input:hover,
+.mm-form .ant-input-number:hover,
+.mm-form .ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+  border-color: #5DBAAA !important;
+}
+
+/* 文本域特殊样式 */
+.mm-form .ant-input[type="textarea"] {
+  min-height: 60px !important;
+  border-radius: 8px !important;
+  resize: vertical;
+}
+
+/* 输入数字控件样式 */
+.mm-form .ant-input-number {
+  width: 100% !important;
+}
+
+.mm-form .ant-input-number-input {
+  height: 44px !important;
+}
+
+/* 单选框组样式 */
+.mm-radio-group {
+  width: 100%;
+}
+
+.mm-radio-option {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.mm-radio-option:hover {
+  border-color: #5DBAAA;
+  background: rgba(93, 186, 170, 0.05);
+}
+
+.mm-radio-option.selected {
+  border-color: #5DBAAA;
+  background: rgba(93, 186, 170, 0.1);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.2);
+}
+
+/* 按钮样式统一 */
+.mm-submit-button {
+  height: 52px !important;
+  border-radius: 26px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3) !important;
+  transition: all 0.3s ease;
+}
+
+.mm-submit-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
+  box-shadow: 0 6px 16px rgba(93, 186, 170, 0.4) !important;
+  transform: translateY(-2px);
+}
+
+.mm-submit-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.3) !important;
+}
+
+.mm-submit-button:disabled {
+  background: #e0e0e0 !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+.mm-secondary-button {
+  height: 48px !important;
+  border-radius: 24px !important;
+  border: 2px solid #5DBAAA !important;
+  color: #5DBAAA !important;
+  font-weight: 600 !important;
+  background: #fff !important;
+  transition: all 0.3s ease;
+}
+
+.mm-secondary-button:hover:not(:disabled) {
+  background: rgba(93, 186, 170, 0.1) !important;
+  border-color: #4AA896 !important;
+  color: #4AA896 !important;
+}
+
+/* 清除缓存按钮 */
+.mm-refresh-button {
+  color: #5DBAAA !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.mm-refresh-button:hover {
+  color: #4AA896 !important;
+  background: rgba(93, 186, 170, 0.1) !important;
+}
+
+/* 配置信息卡片 */
+.mm-config-card {
+  background: rgba(93, 186, 170, 0.08);
+  border: 2px solid rgba(93, 186, 170, 0.2);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.mm-config-card.user-application {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+}
+
+.mm-config-card .ant-card-head {
+  background: transparent;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+}
+
+.mm-config-card .ant-descriptions-item-label {
+  color: #2F4F4F;
+  font-weight: 600;
+}
+
+/* 做市商配置管理卡片 */
+.mm-management-card {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  border: none;
+  border-radius: 12px;
+  margin-top: 12px;
+}
+
+.mm-management-card .ant-card-body {
+  color: white;
+}
+
+.mm-management-title {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.mm-management-desc {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  margin: 8px 0 16px;
+}
+
+.mm-config-button {
+  background: white !important;
+  color: #5DBAAA !important;
+  border: none !important;
+  font-weight: 600 !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+}
+
+.mm-business-button {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  border: 1px solid white !important;
+  font-weight: 600 !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+}
+
+/* 折叠面板样式 */
+.mm-collapse {
+  margin-bottom: 16px;
+}
+
+.mm-collapse .ant-collapse-header {
+  background: rgba(93, 186, 170, 0.05);
+  border-radius: 8px 8px 0 0;
+  font-weight: 600;
+  color: #2F4F4F;
+}
+
+.mm-collapse .ant-collapse-content {
+  background: #fff;
+}
+
+/* 提示信息样式 */
+.mm-alert {
+  border-radius: 8px !important;
+  margin-bottom: 16px;
+}
+
+.mm-alert.info {
+  border: 2px solid rgba(93, 186, 170, 0.2) !important;
+  background: rgba(93, 186, 170, 0.05) !important;
+}
+
+.mm-alert.warning {
+  border: 2px solid rgba(250, 173, 20, 0.2) !important;
+  background: rgba(250, 173, 20, 0.05) !important;
+}
+
+.mm-alert.success {
+  border: 2px solid rgba(82, 196, 26, 0.2) !important;
+  background: rgba(82, 196, 26, 0.05) !important;
+}
+
+.mm-alert.error {
+  border: 2px solid rgba(255, 77, 79, 0.2) !important;
+  background: rgba(255, 77, 79, 0.05) !important;
+}
+
+/* 详情描述组件样式 */
+.mm-descriptions {
+  background: #fff;
+  border-radius: 8px;
+}
+
+.mm-descriptions .ant-descriptions-item-label {
+  color: #666;
+  font-weight: 500;
+  background: rgba(93, 186, 170, 0.05);
+}
+
+.mm-descriptions .ant-descriptions-item-content {
+  color: #333;
+  font-weight: 600;
+}
+
+/* 标签样式 */
+.mm-tag {
+  border-radius: 12px !important;
+  font-weight: 500 !important;
+  padding: 4px 12px !important;
+}
+
+.mm-tag.status-tag {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+/* 分割线样式 */
+.mm-divider {
+  border-color: rgba(93, 186, 170, 0.2) !important;
+  margin: 20px 0 !important;
+}
+
+.mm-divider.ant-divider-with-text::before,
+.mm-divider.ant-divider-with-text::after {
+  border-color: rgba(93, 186, 170, 0.2) !important;
+}
+
+.mm-divider .ant-divider-inner-text {
+  color: #2F4F4F;
+  font-weight: 600;
+}
+
+/* 加载状态样式 */
+.mm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #666;
+}
+
+.mm-loading .ant-spin-dot-item {
+  background-color: #5DBAAA !important;
+}
+
+/* 文件上传组件容器 */
+.mm-upload-container {
+  background: rgba(93, 186, 170, 0.05);
+  border: 2px dashed rgba(93, 186, 170, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+/* 空间组件样式 */
+.mm-space {
+  width: 100%;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+  .create-market-maker-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
+  .mm-content {
+    padding: 12px;
+  }
+
+  .mm-main-card {
+    padding: 16px;
+  }
+
+  .mm-submit-button {
+    height: 48px !important;
+    font-size: 15px !important;
+  }
+
+  .mm-radio-option {
+    padding: 10px;
+  }
+
+  .mm-management-card {
+    padding: 12px;
+  }
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .mm-submit-button:hover,
+  .mm-secondary-button:hover,
+  .mm-radio-option:hover {
+    transform: none;
+  }
+}
+
+/* 页面进入动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mm-main-card,
+.mm-config-card,
+.mm-collapse {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.mm-main-card {
+  animation-delay: 0.1s;
+}
+
+.mm-config-card {
+  animation-delay: 0.2s;
+}
+
+.mm-collapse {
+  animation-delay: 0.3s;
+}
+
+/* 特殊状态样式 */
+.mm-success-state {
+  background: rgba(82, 196, 26, 0.1);
+  border: 2px solid rgba(82, 196, 26, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.mm-pending-state {
+  background: rgba(24, 144, 255, 0.1);
+  border: 2px solid rgba(24, 144, 255, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.mm-warning-state {
+  background: rgba(250, 173, 20, 0.1);
+  border: 2px solid rgba(250, 173, 20, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* 文本样式 */
+.mm-text-primary {
+  color: #2F4F4F;
+  font-weight: 600;
+}
+
+.mm-text-secondary {
+  color: #666;
+  font-size: 13px;
+}
+
+.mm-text-accent {
+  color: #5DBAAA;
+  font-weight: 600;
+}
+
+.mm-text-success {
+  color: #52C41A;
+  font-weight: 600;
+}
+
+.mm-text-warning {
+  color: #FAAD14;
+  font-weight: 600;
+}
+
+.mm-text-error {
+  color: #FF4D4F;
+  font-weight: 600;
+}
+
+/* 复制按钮样式 */
+.mm-copy-button {
+  color: #5DBAAA !important;
+}
+
+.mm-copy-button:hover {
+  color: #4AA896 !important;
+}

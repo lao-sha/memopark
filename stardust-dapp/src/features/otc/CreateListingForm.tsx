@@ -197,7 +197,7 @@ const CreateListingForm: React.FC = () => {
               <Typography.Text strong>市场均价</Typography.Text>
               {marketPrice > 0 ? (
                 <Tag color="green">
-                  {(marketPrice / 1_000_000).toFixed(6)} USDT/MEMO
+                  {(marketPrice / 1_000_000).toFixed(6)} USDT/DUST
                 </Tag>
               ) : (
                 <Tag color="orange">冷启动状态</Tag>
@@ -271,7 +271,7 @@ const CreateListingForm: React.FC = () => {
             name="price_usdt" 
             label={
               <Space>
-                <span>挂单价格（USDT/MEMO）</span>
+                <span>挂单价格（USDT/DUST）</span>
                 {priceStatus === 'ok' && priceUsdt > 0 && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
                 {priceStatus === 'warning' && <WarningOutlined style={{ color: '#faad14' }} />}
                 {priceStatus === 'error' && <WarningOutlined style={{ color: '#ff4d4f' }} />}
@@ -390,18 +390,18 @@ const CreateListingForm: React.FC = () => {
 
           <Row gutter={8}>
             <Col span={12}>
-              <Form.Item name="min_qty" label="每笔最小数量 (MEMO)" rules={[{ required: true }]}>
+              <Form.Item name="min_qty" label="每笔最小数量 (DUST)" rules={[{ required: true }]}>
                 <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="1000" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="max_qty" label="每笔最大数量 (MEMO)" rules={[{ required: true }]}>
+              <Form.Item name="max_qty" label="每笔最大数量 (DUST)" rules={[{ required: true }]}>
                 <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="5000" />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="total" label="挂单总量 (MEMO)" rules={[{ required: true }]}>
+          <Form.Item name="total" label="挂单总量 (DUST)" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="10000" />
           </Form.Item>
 

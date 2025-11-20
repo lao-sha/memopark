@@ -32,7 +32,7 @@ pub mod types;
 
 // 导出常用类型，方便其他模块使用
 pub use types::{
-    BillingTask, ChargeLayer, ChargeResult, GraceStatus, GlobalHealthStats, HealthCheckTask,
+    BillingTask, ChargeLayer, ChargeResult, DomainStats, GraceStatus, GlobalHealthStats, HealthCheckTask,
     HealthStatus, LayeredOperatorSelection, LayeredPinAssignment, OperatorLayer,
     OperatorMetrics, OperatorPinHealth, PinTier, SimpleNodeStats, SimplePinStatus,
     StorageLayerConfig, SubjectInfo, SubjectType, TierConfig, UnpinReason,
@@ -107,9 +107,10 @@ pub type AuthorityId = sr25519_app::Public;
 /// 函数级详细中文注释：IPFS自动pin接口，供其他pallet调用实现内容自动固定
 /// 
 /// 设计目标：
-/// - 为各业务pallet（deceased/media/text/evidence/grave）提供统一的pin接口；
+/// - 为各业务pallet（deceased、evidence等）提供统一的pin接口；
+/// - deceased pallet内部整合了text、media、works等内容类型；
 /// - 自动使用triple-charge机制扣费（IpfsPoolAccount → SubjectFunding → Caller）；
-/// - 支持逝者维度和墓位维度的CID固定。
+/// - 支持逝者维度的CID固定。
 /// 
 /// 使用方式：
 /// ```rust
@@ -150,28 +151,6 @@ pub trait IpfsPinner<AccountId, Balance> {
     fn pin_cid_for_deceased(
         caller: AccountId,
         deceased_id: u64,
-        cid: Vec<u8>,
-        tier: Option<PinTier>,  // 新增参数
-    ) -> DispatchResult;
-
-    /// 函数级详细中文注释：为墓位关联的CID发起pin请求（优化版）
-    /// 
-    /// 参数：
-    /// - `caller`: 发起调用的账户
-    /// - `grave_id`: 墓位ID（用于派生特定的SubjectFunding账户）
-    /// - `cid`: IPFS CID
-    /// - `tier`: 分层等级（None则使用默认Standard）✅ 新增
-    /// 
-    /// 适用场景：
-    /// - 墓位封面图（pallet-stardust-grave::set_cover）
-    /// - 墓位背景音乐（pallet-stardust-grave::set_audio）
-    /// - 墓位播放列表（pallet-stardust-grave::set_audio_playlist）
-    /// 
-    /// 注意：墓位维度的SubjectFunding派生方式与逝者维度不同
-    /// （使用 `b"grave"` 作为domain前缀）
-    fn pin_cid_for_grave(
-        caller: AccountId,
-        grave_id: u64,
         cid: Vec<u8>,
         tier: Option<PinTier>,  // 新增参数
     ) -> DispatchResult;
@@ -297,7 +276,7 @@ pub mod pallet {
         #[pallet::constant]
         type MaxPeerIdLen: Get<u32>;
 
-        /// 最小运营者保证金（MEMO 最小单位）
+        /// 最小运营者保证金（DUST 最小单位）
         #[pallet::constant]
         type MinOperatorBond: Get<Self::Balance>;
 
@@ -702,7 +681,7 @@ pub mod pallet {
     /// - Value: ()（标记存在即可）
     /// 
     /// 使用场景：
-    /// - OCW巡检时，按域顺序扫描：Deceased → Grave → Offerings → Media...
+    /// - OCW巡检时，按域顺序扫描：Deceased（含text/media/works）→ Offerings → Evidence...
     /// - 统计各域的Pin数量和存储容量
     /// - 实现域级别的优先级队列
     #[pallet::storage]
@@ -849,6 +828,53 @@ pub mod pallet {
         _,
         GlobalHealthStats<BlockNumberFor<T>>,
         ValueQuery,
+    >;
+
+    /// 函数级详细中文注释：域级健康统计
+    /// 
+    /// 记录每个域的Pin数量、存储容量、健康状态等统计信息
+    /// 
+    /// 存储结构：
+    /// - Key: domain（如 b"deceased", b"offerings"）
+    /// - Value: DomainStats
+    /// 
+    /// 使用场景：
+    /// - Dashboard按域展示统计数据
+    /// - 域级别的监控告警
+    /// - 优先级调度决策参考
+    #[pallet::storage]
+    #[pallet::getter(fn domain_health_stats)]
+    pub type DomainHealthStats<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<32>>,  // domain
+        DomainStats,
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：域优先级配置
+    /// 
+    /// 定义各域的巡检优先级，数值越小优先级越高
+    /// 
+    /// 存储结构：
+    /// - Key: domain
+    /// - Value: priority（0-255，0为最高优先级）
+    /// 
+    /// 默认优先级：
+    /// - deceased: 0（最高优先级）
+    /// - offerings: 10
+    /// - evidence: 20
+    /// - otc: 100
+    /// 
+    /// 治理可调：通过 Root 权限调整优先级
+    #[pallet::storage]
+    #[pallet::getter(fn domain_priority)]
+    pub type DomainPriority<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<32>>,  // domain
+        u8,                             // priority
+        ValueQuery,                     // 默认返回255（最低优先级）
     >;
 
     /// 函数级详细中文注释：周期扣费队列，替代手动 charge_due 调用
@@ -1458,6 +1484,47 @@ pub mod pallet {
         DomainConfigUpdated {
             domain: BoundedVec<u8, ConstU32<32>>,
             auto_pin_enabled: bool,
+        },
+        
+        /// 函数级详细中文注释：域统计已更新
+        /// 
+        /// OCW按域扫描统计后触发，包含该域的完整统计信息
+        /// 
+        /// 字段说明：
+        /// - domain：域名
+        /// - total_pins：该域的总Pin数量
+        /// - total_size_bytes：该域的总存储容量（字节）
+        /// - healthy_count：健康CID数量
+        /// - degraded_count：降级CID数量
+        /// - critical_count：危险CID数量
+        /// 
+        /// 使用场景：
+        /// - Dashboard实时更新域级统计
+        /// - 监控系统告警
+        /// - 统计报表生成
+        DomainStatsUpdated {
+            domain: BoundedVec<u8, ConstU32<32>>,
+            total_pins: u64,
+            total_size_bytes: u64,
+            healthy_count: u64,
+            degraded_count: u64,
+            critical_count: u64,
+        },
+        
+        /// 函数级详细中文注释：域优先级已设置
+        /// 
+        /// 治理调用 set_domain_priority 后触发
+        /// 
+        /// 字段说明：
+        /// - domain：域名
+        /// - priority：新的优先级（0-255，0为最高）
+        /// 
+        /// 使用场景：
+        /// - 治理日志
+        /// - 优先级调整追踪
+        DomainPrioritySet {
+            domain: BoundedVec<u8, ConstU32<32>>,
+            priority: u8,
         },
     }
 
@@ -3820,6 +3887,56 @@ pub mod pallet {
             
             Ok(())
         }
+        
+        /// 函数级详细中文注释：设置域优先级
+        /// 
+        /// ### 功能
+        /// - 设置域的巡检优先级
+        /// - 优先级范围：0-255（0为最高优先级）
+        /// - 影响OCW按域扫描的顺序
+        /// 
+        /// ### 参数
+        /// - `domain`：域名（如 b"deceased", b"offerings"）
+        /// - `priority`：优先级（0-255）
+        /// 
+        /// ### 默认优先级
+        /// - deceased: 0（最高）
+        /// - offerings: 10
+        /// - evidence: 20
+        /// - otc: 100
+        /// - 其他：255（默认）
+        /// 
+        /// ### 权限
+        /// - Root权限
+        /// 
+        /// ### 使用场景
+        /// - 调整域的巡检优先级
+        /// - 确保关键域优先处理
+        #[pallet::call_index(27)]
+        #[pallet::weight(10_000)]
+        pub fn set_domain_priority(
+            origin: OriginFor<T>,
+            domain: Vec<u8>,
+            priority: u8,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            
+            // 1. 转换域名为BoundedVec
+            let bounded_domain: BoundedVec<u8, ConstU32<32>> = domain
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidDomain)?;
+            
+            // 2. 设置优先级
+            DomainPriority::<T>::insert(&bounded_domain, priority);
+            
+            // 3. 发送事件
+            Self::deposit_event(Event::DomainPrioritySet {
+                domain: bounded_domain,
+                priority,
+            });
+            
+            Ok(())
+        }
     }
 
     #[pallet::hooks]
@@ -4363,55 +4480,249 @@ pub mod pallet {
                 HealthCheckQueue::<T>::remove(check_block, &cid_hash);
             }
             
-            // ======== 任务3：统计更新（每24小时一次）========
+            // ======== 任务3：域统计更新（每24小时一次）========
+            // ⭐ 使用域级统计替代全局统计，自动汇总全局数据
             if current_block % 7200u32.into() == Zero::zero() {
-                Self::update_global_health_stats_impl();
+                Self::update_domain_health_stats_impl();
             }
         }
     }
     
-    /// 函数级详细中文注释：更新全局健康统计数据（内部实现）
+    /// 函数级详细中文注释：域级健康统计（替代全局统计）
     /// 
-    /// 统计内容：
-    /// - 总Pin数量
-    /// - 总存储量
-    /// - 健康/降级/危险CID数量
-    /// - 上次扫描时间
+    /// ⭐ 优化说明：
+    /// - 旧版本：update_global_health_stats_impl() 全量扫描所有Pin
+    /// - 新版本：update_domain_health_stats_impl() 按域扫描并自动汇总
+    /// 
+    /// 优势：
+    /// 1. 性能优化：使用 iter_prefix 减少扫描范围
+    /// 2. 可观测性：提供域级别的细粒度统计
+    /// 3. 优先级调度：按域优先级顺序处理
+    /// 4. 自动汇总：域统计完成后自动更新全局统计
     impl<T: Config> Pallet<T> {
-        fn update_global_health_stats_impl() {
-            let mut stats = GlobalHealthStats::<BlockNumberFor<T>>::default();
+        
+        /// 函数级详细中文注释：按域统计Pin健康状态（OCW调用）
+        /// 
+        /// ### 功能
+        /// - 按优先级顺序遍历各域
+        /// - 统计每个域的Pin数量、存储容量、健康状态
+        /// - 更新域级统计数据
+        /// - 发送域统计更新事件
+        /// 
+        /// ### 性能优化
+        /// - 使用 iter_prefix 只遍历特定域的CID
+        /// - 批量限制：每域最多处理1000个CID
+        /// - 自动跳过空域
+        /// 
+        /// ### 调用时机
+        /// - OCW中每24小时执行一次（与全局统计同步）
+        fn update_domain_health_stats_impl() {
+            use sp_std::collections::btree_set::BTreeSet;
+            
             let current_block = <frame_system::Pallet<T>>::block_number();
             
-            // 遍历所有Pin元信息
-            for (cid_hash, meta) in PinMeta::<T>::iter() {
-                stats.total_pins = stats.total_pins.saturating_add(1);
-                stats.total_size_bytes = stats.total_size_bytes.saturating_add(meta.size);
-                
-                // 检查健康状态
-                if let Some(task) = HealthCheckQueue::<T>::iter()
-                    .find(|(_, hash, _)| hash == &cid_hash)
-                    .map(|(_, _, task)| task)
-                {
-                    match task.last_status {
-                        HealthStatus::Healthy { .. } => {
-                            stats.healthy_count = stats.healthy_count.saturating_add(1);
-                        },
-                        HealthStatus::Degraded { .. } => {
-                            stats.degraded_count = stats.degraded_count.saturating_add(1);
-                        },
-                        HealthStatus::Critical { .. } => {
-                            stats.critical_count = stats.critical_count.saturating_add(1);
-                        },
-                        _ => {},
-                    }
-                } else {
-                    // 未找到巡检任务，默认为健康
-                    stats.healthy_count = stats.healthy_count.saturating_add(1);
+            // 1. 获取所有已注册的域
+            let mut domains_with_priority: Vec<(BoundedVec<u8, ConstU32<32>>, u8)> = Vec::new();
+            
+            // 遍历 DomainPins 获取所有域名
+            let mut seen_domains = BTreeSet::new();
+            for (domain, _, _) in DomainPins::<T>::iter() {
+                if seen_domains.insert(domain.clone()) {
+                    let priority = DomainPriority::<T>::get(&domain);
+                    domains_with_priority.push((domain, priority));
                 }
             }
             
-            stats.last_full_scan = current_block;
-            HealthCheckStats::<T>::put(stats);
+            // 2. 按优先级排序（数值越小优先级越高）
+            domains_with_priority.sort_by_key(|(_domain, priority)| *priority);
+            
+            // 3. 按域顺序统计
+            for (domain, _priority) in domains_with_priority.iter() {
+                let mut domain_stats = DomainStats {
+                    domain: domain.clone(),
+                    total_pins: 0,
+                    total_size_bytes: 0,
+                    healthy_count: 0,
+                    degraded_count: 0,
+                    critical_count: 0,
+                };
+                
+                let mut cid_count = 0u32;
+                const MAX_CIDS: u32 = 1000;  // 批量限制
+                
+                // ⭐ 使用前缀迭代器高效遍历该域的CID
+                for (cid_hash, _) in DomainPins::<T>::iter_prefix(domain) {
+                    if cid_count >= MAX_CIDS {
+                        break;  // 限制处理数量
+                    }
+                    
+                    domain_stats.total_pins += 1;
+                    
+                    // 获取Pin元信息
+                    if let Some(meta) = PinMeta::<T>::get(&cid_hash) {
+                        domain_stats.total_size_bytes += meta.size;
+                    }
+                    
+                    // 检查健康状态
+                    let mut found_health = false;
+                    for (_, hash, task) in HealthCheckQueue::<T>::iter() {
+                        if hash == cid_hash {
+                            match task.last_status {
+                                HealthStatus::Healthy { .. } => {
+                                    domain_stats.healthy_count += 1;
+                                },
+                                HealthStatus::Degraded { .. } => {
+                                    domain_stats.degraded_count += 1;
+                                },
+                                HealthStatus::Critical { .. } => {
+                                    domain_stats.critical_count += 1;
+                                },
+                                _ => {},
+                            }
+                            found_health = true;
+                            break;
+                        }
+                    }
+                    
+                    // 未找到健康检查记录，默认为健康
+                    if !found_health {
+                        domain_stats.healthy_count += 1;
+                    }
+                    
+                    cid_count += 1;
+                }
+                
+                // 4. 存储统计结果
+                DomainHealthStats::<T>::insert(domain, domain_stats.clone());
+                
+                // 5. 发送事件
+                Self::deposit_event(Event::DomainStatsUpdated {
+                    domain: domain.clone(),
+                    total_pins: domain_stats.total_pins,
+                    total_size_bytes: domain_stats.total_size_bytes,
+                    healthy_count: domain_stats.healthy_count,
+                    degraded_count: domain_stats.degraded_count,
+                    critical_count: domain_stats.critical_count,
+                });
+            }
+            
+            // 6. 更新全局统计（汇总所有域）
+            let mut global_stats = GlobalHealthStats::<BlockNumberFor<T>>::default();
+            for (_domain, stats) in DomainHealthStats::<T>::iter() {
+                global_stats.total_pins += stats.total_pins;
+                global_stats.total_size_bytes += stats.total_size_bytes;
+                global_stats.healthy_count += stats.healthy_count;
+                global_stats.degraded_count += stats.degraded_count;
+                global_stats.critical_count += stats.critical_count;
+            }
+            global_stats.last_full_scan = current_block;
+            HealthCheckStats::<T>::put(global_stats);
+        }
+        
+        /// 函数级详细中文注释：查询域统计（RPC接口）
+        /// 
+        /// ### 功能
+        /// - 查询指定域的统计信息
+        /// - 返回Pin数量、存储容量、健康状态
+        /// 
+        /// ### 参数
+        /// - `domain`：域名（如 b"deceased"）
+        /// 
+        /// ### 返回
+        /// - `Option<DomainStats>`：域统计信息，如果域不存在返回None
+        /// 
+        /// ### 使用场景
+        /// - Dashboard查询域统计
+        /// - 监控系统获取域状态
+        pub fn get_domain_stats(domain: Vec<u8>) -> Option<DomainStats> {
+            if let Ok(bounded_domain) = BoundedVec::try_from(domain) {
+                DomainHealthStats::<T>::get(&bounded_domain)
+            } else {
+                None
+            }
+        }
+        
+        /// 函数级详细中文注释：查询所有域统计（RPC接口）
+        /// 
+        /// ### 功能
+        /// - 查询所有已注册域的统计信息
+        /// - 按优先级排序返回
+        /// 
+        /// ### 返回
+        /// - `Vec<(Vec<u8>, DomainStats, u8)>`：域列表
+        ///   - 域名
+        ///   - 域统计
+        ///   - 优先级
+        /// 
+        /// ### 使用场景
+        /// - Dashboard展示所有域的统计
+        /// - 监控系统全局视图
+        pub fn get_all_domain_stats() -> Vec<(Vec<u8>, DomainStats, u8)> {
+            let mut result = Vec::new();
+            
+            for (domain, stats) in DomainHealthStats::<T>::iter() {
+                let priority = DomainPriority::<T>::get(&domain);
+                result.push((domain.to_vec(), stats, priority));
+            }
+            
+            // 按优先级排序（优先级越小越靠前）
+            result.sort_by_key(|(_, _, priority)| *priority);
+            
+            result
+        }
+        
+        /// 函数级详细中文注释：查询域的CID列表（RPC接口，分页）
+        /// 
+        /// ### 功能
+        /// - 查询指定域的CID列表（分页）
+        /// - 返回CID及其元数据
+        /// 
+        /// ### 参数
+        /// - `domain`：域名
+        /// - `offset`：分页偏移量
+        /// - `limit`：每页数量（最大100）
+        /// 
+        /// ### 返回
+        /// - `Vec<(T::Hash, PinMetadata<BlockNumberFor<T>>)>`：CID列表
+        ///   - CID的hash
+        ///   - Pin元数据
+        /// 
+        /// ### 使用场景
+        /// - Dashboard查看域的详细CID列表
+        /// - 调试和诊断
+        pub fn get_domain_cids(
+            domain: Vec<u8>,
+            offset: u32,
+            limit: u32,
+        ) -> Vec<(T::Hash, PinMetadata<BlockNumberFor<T>>)> {
+            let limit = limit.min(100);  // 限制最大100条
+            let mut result = Vec::new();
+            
+            if let Ok(bounded_domain) = BoundedVec::try_from(domain) {
+                let mut count = 0u32;
+                let mut skipped = 0u32;
+                
+                for (cid_hash, _) in DomainPins::<T>::iter_prefix(&bounded_domain) {
+                    // 跳过offset之前的记录
+                    if skipped < offset {
+                        skipped += 1;
+                        continue;
+                    }
+                    
+                    // 达到limit后停止
+                    if count >= limit {
+                        break;
+                    }
+                    
+                    // 获取元数据
+                    if let Some(meta) = PinMeta::<T>::get(&cid_hash) {
+                        result.push((cid_hash, meta));
+                        count += 1;
+                    }
+                }
+            }
+            
+            result
         }
     }
 
@@ -4618,36 +4929,6 @@ impl<T: Config> IpfsPinner<<T as frame_system::Config>::AccountId, BalanceOf<T>>
         Self::request_pin_for_deceased(
             OriginFor::<T>::from(Some(caller).into()),
             deceased_id,
-            cid,
-            tier,
-        )
-    }
-    
-    /// 函数级详细中文注释：为墓位关联的CID发起pin请求（复用deceased逻辑）
-    /// 
-    /// ### 设计思路
-    /// - 墓位与逝者都使用SubjectFunding机制
-    /// - 通过特殊的ID映射规则（u64::MAX - grave_id）避免冲突
-    /// - 完全复用deceased的pin逻辑
-    /// 
-    /// 这样可以：
-    /// 1. 复用现有的SubjectFunding机制
-    /// 2. 避免修改核心扣费逻辑
-    /// 3. 保持语义清晰（通过特殊ID区分墓位与逝者）
-    fn pin_cid_for_grave(
-        caller: <T as frame_system::Config>::AccountId,
-        grave_id: u64,
-        cid: Vec<u8>,
-        tier: Option<PinTier>,  // 改造：移除price和replicas，使用tier参数
-    ) -> DispatchResult {
-        // 使用特殊映射规则：deceased_id = u64::MAX - grave_id
-        // 确保不与真实deceased_id冲突（假设真实ID从0开始递增）
-        let pseudo_deceased_id = u64::MAX.saturating_sub(grave_id);
-
-        // 复用deceased的pin逻辑（同样破坏式修改）
-        Self::request_pin_for_deceased(
-            OriginFor::<T>::from(Some(caller).into()),
-            pseudo_deceased_id,
             cid,
             tier,
         )

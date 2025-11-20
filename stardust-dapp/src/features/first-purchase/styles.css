@@ -1,32 +1,66 @@
 /**
- * 首购功能样式
+ * 函数级详细中文注释：首购功能样式（移动端专用）
+ * - 专为移动端设计，固定宽度布局
+ * - 优化触控体验
+ * - 保持与项目主题色系统一致
  */
 
 .first-purchase-container {
-  max-width: 800px;
+  width: 100%;
+  max-width: 480px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 16px;
+  min-height: 100vh;
+  background: #F5F5DC;
 }
 
 .first-purchase-card {
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(47, 79, 79, 0.1);
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  background: #fff;
+  transition: all 0.2s ease;
+}
+
+.first-purchase-card:active {
+  transform: scale(0.98);
 }
 
 .payment-card {
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(47, 79, 79, 0.1);
+  border: 2px solid rgba(184, 134, 11, 0.15);
+  background: #fff;
+  transition: all 0.2s ease;
 }
 
-/* 移动端适配 */
-@media (max-width: 768px) {
+.payment-card:active {
+  transform: scale(0.98);
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
   .first-purchase-container {
-    padding: 16px;
+    padding: 12px;
   }
   
   .first-purchase-card,
   .payment-card {
-    border-radius: 8px;
+    border-radius: 10px;
   }
 }
 
+/* 大屏幕居中 */
+@media (min-width: 768px) {
+  .first-purchase-container {
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .first-purchase-card:hover,
+  .payment-card:hover {
+    transform: none;
+  }
+}

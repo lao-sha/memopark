@@ -13,17 +13,9 @@ import OfferingsTimeline from './features/offerings/OfferingsTimeline';
 import OfferingsByWho from './features/offerings/OfferingsByWho';
 import BottomNav from './components/nav/BottomNav';
 import TreasuryPage from './features/treasury/TreasuryPage';
-import GraveListPage from './features/grave/GraveListPage';
-import MyGravesPage from './features/grave/MyGravesPage';
 import DashboardPage from './features/dashboard/DashboardPage';
-import CreateGraveForm from './features/grave/CreateGraveForm';
-import GraveDetailPage from './features/grave/GraveDetailPage';
-import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';
+// import CreateDeceasedForm from './features/deceased/CreateDeceasedForm';  // 🗑️ 2025-11-17: 已删除，使用 CreateDeceasedPage
 import DeceasedListPage from './features/deceased/DeceasedListPage';
-import CoverOptionsPage from './features/grave/CoverOptionsPage';
-import CreateCoverOptionPage from './features/grave/CreateCoverOptionPage';
-import GraveAudioPicker from './features/grave/GraveAudioPicker';
-import CarouselEditorPage from './features/grave/CarouselEditorPage';
 import CreateCategoryPage from './features/offerings/CreateCategoryPage';
 import CreatePrimaryCategoryPage from './features/offerings/CreatePrimaryCategoryPage';
 import CreateSacrificePage from './features/offerings/CreateSacrificePage';
@@ -42,7 +34,6 @@ import { initAutoPinOnce } from './lib/auto-pin';
 import SettingsButton from './components/nav/SettingsButton';
 import SettingsDrawer from './components/nav/SettingsDrawer';
 import { GovernanceUiProvider } from './providers/GovernanceUiProvider';
-import LedgerCleanupPage from './features/ledger/LedgerCleanupPage';
 import EvidenceLinkerPage from './features/evidence/EvidenceLinkerPage';
 import IdentityViewerPage from './features/identity/IdentityViewerPage';
 import OriginRestrictionPage from './features/origin/OriginRestrictionPage';
@@ -93,7 +84,7 @@ const App: React.FC = () => {
                         </React.Suspense>
                       );
                     }
-                    if (hash === '#/graves') return <GraveListPage />; // 保持原有默认入口之一
+                    // 旧墓位相关路由已删除
                     if (hash === '#/evidence/linker') return <EvidenceLinkerPage />; // 仍保留直载页
                     if (hash === '#/otc/claim') return <ClaimMemoForm />;  // 首购领取（兼容路径）
                     return <AuthEntryPage />;

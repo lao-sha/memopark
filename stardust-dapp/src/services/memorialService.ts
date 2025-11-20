@@ -17,14 +17,15 @@ import { BN } from '@polkadot/util';
 // ==================== 枚举定义 ====================
 
 /**
- * 函数级详细中文注释：场景类型
+ * 函数级详细中文注释：场景类型（方案A - 简化版）
  * - 对应链上的 u8 编码
+ *
+ * ⚠️ 注意：链端正在重构纪念馆/园区场景，以下枚举仅供前端占位
  */
 export enum Scene {
-  Grave = 0,      // 墓地场景
-  Pet = 1,        // 宠物场景
-  Park = 2,       // 公园场景
-  Memorial = 3,   // 纪念馆场景
+  Memorial = 0,   // 纪念馆场景（默认）
+  Pet = 1,        // 宠物场景（未来扩展）
+  Park = 2,       // 公园场景（未来扩展）
 }
 
 /**
@@ -74,9 +75,9 @@ export interface SacrificeItem {
   status: SacrificeStatus;
   /** 是否VIP专属 */
   isVipExclusive: boolean;
-  /** 固定价格（MEMO，可选） */
+  /** 固定价格（DUST，可选） */
   fixedPrice: string | null;
-  /** 按周单价（MEMO，可选） */
+  /** 按周单价（DUST，可选） */
   unitPricePerWeek: string | null;
   /** 场景代码 */
   scene: Scene;
@@ -119,16 +120,18 @@ export interface MediaItem {
 }
 
 /**
- * 函数级详细中文注释：供奉记录接口
+ * 函数级详细中文注释：供奉记录接口（方案A - 简化版）
+ *
+ * 🔧 破坏式变更：target 保留用于兼容历史数据，但新记录 domain 应始终为 0
  */
 export interface OfferingRecord {
   /** 供奉人地址 */
   who: string;
-  /** 目标（域代码，对象ID） */
+  /** 目标（域代码，对象ID）- 例如 domain=0 表示纪念馆 */
   target: [number, number];
   /** 供奉类型代码 */
   kindCode: number;
-  /** 供奉金额（MEMO） */
+  /** 供奉金额（DUST） */
   amount: string;
   /** 媒体列表 */
   media: MediaItem[];
@@ -152,7 +155,7 @@ export interface SimpleRoute {
  * 函数级详细中文注释：供奉价格计算结果
  */
 export interface OfferingPriceInfo {
-  /** 原价（MEMO） */
+  /** 原价（DUST） */
   originalPrice: string;
   /** 实付价格（应用VIP折扣后） */
   finalPrice: string;
@@ -259,8 +262,11 @@ export class MemorialService {
   }
 
   /**
-   * 函数级详细中文注释：查询目标的供奉记录
-   * @param target 目标（域代码，对象ID）
+   * 函数级详细中文注释：查询目标的供奉记录（兼容方案A）
+   *
+   * 🔧 方案A适配：仍支持 target 参数以兼容查询历史数据
+   *
+   * @param target 目标（域代码，对象ID）- 新数据 domain 应为 0
    * @param limit 返回数量限制（默认50）
    * @returns 供奉记录列表
    */
@@ -375,35 +381,33 @@ export class MemorialService {
   buildOfferTx(params: {
     target: [number, number];
     kindCode: number;
-    amount: string;
     media: MediaItem[];
     duration: number | null;
   }) {
     return this.api.tx.memorial.offer(
       params.target,
       params.kindCode,
-      params.amount,
       params.media.map(m => ({ cid: m.cid })),
       params.duration
     );
   }
 
   /**
-   * 函数级详细中文注释：构建通过目录下单交易（智能定价）
+   * 函数级详细中文注释：构建通过目录下单交易
    * @param params 下单参数
    * @returns Polkadot.js 交易对象
    */
   buildOfferBySacrificeTx(params: {
     target: [number, number];
     sacrificeId: number;
+    media: MediaItem[];
     weeks: number | null;
-    memo: string;
   }) {
     return this.api.tx.memorial.offerBySacrifice(
       params.target,
       params.sacrificeId,
-      params.weeks,
-      params.memo
+      params.media.map(m => ({ cid: m.cid })),
+      params.weeks
     );
   }
 

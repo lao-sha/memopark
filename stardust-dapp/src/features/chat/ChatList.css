@@ -1,45 +1,56 @@
 /**
- * 聊天列表样式 - 优化版
+ * 函数级详细中文注释：聊天列表样式（移动端专用）
+ * - 专为移动端设计，全屏列表显示
+ * - 优化触控交互和滚动性能
+ * - 保持与项目主题色系统一致
  */
 
 .chat-list {
-  height: 100%;
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fafafa;
-  border-right: 1px solid #e8e8e8;
+  background: #fff;
   position: relative;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
+/* 搜索区域 */
 .chat-list-search {
-  padding: 16px;
-  background: #fff;
-  border-bottom: 1px solid #e8e8e8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #B8860B 0%, #2F4F4F 100%);
+  border-bottom: 1px solid rgba(184, 134, 11, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 5;
 }
 
 .chat-list-search .ant-input {
   border-radius: 20px;
-  padding: 8px 16px;
-  border: 1.5px solid #e8e8e8;
-  transition: all 0.3s ease;
+  padding: 10px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  transition: all 0.2s ease;
 }
 
 .chat-list-search .ant-input:focus,
 .chat-list-search .ant-input-focused {
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+  border-color: #fff;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
 }
 
+/* 列表内容区域 */
 .chat-list-content {
   flex: 1;
   overflow-y: auto;
   background: #fff;
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* 美化滚动条 */
+/* 优化滚动条 */
 .chat-list-content::-webkit-scrollbar {
   width: 4px;
 }
@@ -49,15 +60,15 @@
 }
 
 .chat-list-content::-webkit-scrollbar-thumb {
-  background: #d9d9d9;
+  background: rgba(184, 134, 11, 0.3);
   border-radius: 2px;
-  transition: background 0.3s ease;
 }
 
-.chat-list-content::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+.chat-list-content::-webkit-scrollbar-thumb:active {
+  background: rgba(184, 134, 11, 0.5);
 }
 
+/* 加载状态 */
 .chat-list-loading {
   display: flex;
   justify-content: center;
@@ -75,13 +86,15 @@
   }
 }
 
+/* 列表项 */
 .chat-list-item {
   cursor: pointer;
-  transition: all 0.3s ease;
-  padding: 14px 16px !important;
+  transition: all 0.2s ease;
+  padding: 16px !important;
   border-bottom: 1px solid #f0f0f0;
   position: relative;
   overflow: hidden;
+  min-height: 72px;
 }
 
 .chat-list-item::before {
@@ -90,31 +103,28 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 3px;
-  background: #1890ff;
+  width: 4px;
+  background: linear-gradient(180deg, #B8860B 0%, #D4AF37 100%);
   transform: scaleY(0);
-  transition: transform 0.3s ease;
-}
-
-.chat-list-item:hover {
-  background-color: #f5f5f5;
-  transform: translateX(2px);
+  transition: transform 0.2s ease;
 }
 
 .chat-list-item:active {
-  background-color: #f0f0f0;
+  background-color: #f5f5f5;
+  transform: scale(0.98);
 }
 
 .chat-list-item.active {
-  background: linear-gradient(90deg, #e6f7ff 0%, #f0f9ff 100%);
-  border-left: 3px solid #1890ff;
-  padding-left: 13px !important;
+  background: linear-gradient(90deg, rgba(184, 134, 11, 0.08) 0%, rgba(212, 175, 55, 0.05) 100%);
+  border-left: 4px solid #B8860B;
+  padding-left: 12px !important;
 }
 
 .chat-list-item.active::before {
   transform: scaleY(1);
 }
 
+/* 列表项标题 */
 .chat-list-item-title {
   display: flex;
   justify-content: space-between;
@@ -123,15 +133,17 @@
 }
 
 .chat-list-item-title .ant-typography {
-  font-weight: 500;
-  color: #262626;
-  transition: color 0.3s ease;
+  font-weight: 600;
+  color: #2F4F4F;
+  font-size: 15px;
+  transition: color 0.2s ease;
 }
 
-.chat-list-item:hover .chat-list-item-title .ant-typography {
-  color: #1890ff;
+.chat-list-item.active .chat-list-item-title .ant-typography {
+  color: #B8860B;
 }
 
+/* 时间戳 */
 .chat-list-item-time {
   font-size: 11px;
   margin-left: 8px;
@@ -139,17 +151,21 @@
   white-space: nowrap;
 }
 
+/* 描述文字 */
 .chat-list-item-desc {
   display: block;
-  max-width: 200px;
+  max-width: 100%;
   color: #595959;
   font-size: 13px;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 未读消息样式增强 */
+/* 未读消息徽章 */
 .chat-list-item .ant-badge-count {
-  box-shadow: 0 2px 8px rgba(245, 34, 45, 0.3);
+  box-shadow: 0 2px 8px rgba(220, 20, 60, 0.3);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -162,25 +178,76 @@
   }
 }
 
-/* 头像样式增强 */
+/* 头像 */
 .chat-list-item .ant-avatar {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.2s ease;
 }
 
-.chat-list-item:hover .ant-avatar {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+.chat-list-item:active .ant-avatar {
+  transform: scale(0.95);
 }
 
-/* 移动端适配 */
-@media (max-width: 768px) {
-  .chat-list {
-    border-right: none;
+/* 空状态 */
+.chat-list-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  color: #8c8c8c;
+  padding: 40px 20px;
+  text-align: center;
+  gap: 12px;
+}
+
+.chat-list-empty::before {
+  content: '📱';
+  font-size: 48px;
+  opacity: 0.3;
+}
+
+.chat-list-empty p {
+  font-size: 14px;
+  margin: 0;
+  color: #8c8c8c;
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
+  .chat-list-search {
+    padding: 10px 12px;
   }
-  
+
+  .chat-list-item {
+    padding: 14px 12px !important;
+    min-height: 68px;
+  }
+
+  .chat-list-item.active {
+    padding-left: 10px !important;
+  }
+
+  .chat-list-item-title .ant-typography {
+    font-size: 14px;
+  }
+
   .chat-list-item-desc {
-    max-width: 150px;
+    font-size: 12px;
   }
 }
 
+/* 大屏幕居中 */
+@media (min-width: 768px) {
+  .chat-list {
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .chat-list-item:hover {
+    background-color: transparent;
+    transform: none;
+  }
+}

@@ -167,7 +167,7 @@ const DeceasedPinWizard: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Typography.Title level={4} style={{ marginTop: 0 }}>逝者存储（Pin 向导）</Typography.Title>
       {/* 函数级中文注释：顶部提示——展示当前链上模块与接口，给用户快速确认路径 */}
       <Alert

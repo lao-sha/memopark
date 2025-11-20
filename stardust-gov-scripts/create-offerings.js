@@ -1,8 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * 创建供奉品脚本
- * 功能：使用指定账户创建50个随机参数的供奉品
+ * 创建祭祀品脚本
+ * 功能：使用指定账户创建50个随机参数的祭祀品（通过 pallet-memorial）
+ *
+ * pallet-memorial 的 create_sacrifice 参数：
+ * - name: Vec<u8>                // 祭祀品名称
+ * - description: Vec<u8>         // 描述
+ * - resource_url: Vec<u8>        // 资源URL（IPFS CID）
+ * - primary_category: u8         // 主分类（0-8）
+ * - sub_category: u8             // 子分类
+ * - price: u128                  // 价格
+ * - stock: i32                   // 库存（-1表示无限）
+ * - per_user_limit: Option<u32>  // 每用户限购
+ * - quality_level: u8            // 品质等级（0-4）
+ * - seasonal: bool               // 是否季节性商品
  */
 
 const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api');
@@ -20,25 +32,88 @@ const ADMIN_CONFIG = {
 
 // 创建配置
 const CREATE_CONFIG = {
-  offeringCount: 50,              // 创建供奉品数量
-  startKindCode: 1,               // 起始编码
+  sacrificeCount: 50,             // 创建祭祀品数量
   delayBetweenCreations: 500,     // 创建间延迟（毫秒）
-  defaultEnabled: true,           // 默认启用状态
 };
 
-// 供奉品名称库
-const OFFERING_NAMES = [
-  '鲜花祭祀', '香烛供奉', '水果贡品', '纸钱焚烧', '香炉上香',
-  '清茶敬献', '美酒祭拜', '糕点供奉', '素食供品', '莲花供奉',
-  '菊花祭祀', '百合献礼', '玫瑰敬献', '康乃馨祭祀', '郁金香供奉',
-  '兰花敬献', '梅花祭祀', '桃花供奉', '荷花献礼', '牡丹祭拜',
-  '檀香供奉', '沉香祭祀', '龙涎香献礼', '麝香敬献', '安息香供奉',
-  '烛台祭祀', '油灯供奉', '长明灯献礼', '莲花灯祭祀', '天灯敬献',
-  '素斋供奉', '斋饭祭祀', '糕点献礼', '茶水敬献', '清酒供奉',
-  '纸扎祭品', '金元宝供奉', '银元宝祭祀', '冥币献礼', '纸房敬献',
-  '经文诵读', '佛经供奉', '道经祭祀', '圣经献礼', '古兰经敬献',
-  '音乐祭祀', '梵音供奉', '钟声献礼', '磬声敬献', '诵经祭拜',
+// 祭祀品名称和描述库
+const SACRIFICE_DATA = [
+  { name: '白菊花束', desc: '素雅白菊，寄托哀思' },
+  { name: '黄菊花束', desc: '黄菊花束，追思悼念' },
+  { name: '百合花束', desc: '纯洁百合，象征高洁' },
+  { name: '康乃馨花束', desc: '康乃馨花束，表达思念' },
+  { name: '玫瑰花束', desc: '红玫瑰束，深情怀念' },
+  { name: '花圈', desc: '精美花圈，庄重祭祀' },
+  { name: '白蜡烛', desc: '白色蜡烛，照亮归途' },
+  { name: '红蜡烛', desc: '红色蜡烛，温暖供奉' },
+  { name: '檀香', desc: '清香檀香，净化心灵' },
+  { name: '沉香', desc: '珍贵沉香，诚心供奉' },
+  { name: '香炉', desc: '精美香炉，长久供奉' },
+  { name: '水果供品', desc: '新鲜水果，四季供奉' },
+  { name: '糕点供品', desc: '精美糕点，甜蜜祭祀' },
+  { name: '茶水', desc: '清香茶水，静心供奉' },
+  { name: '美酒', desc: '陈年美酒，敬献先人' },
+  { name: '纸钱', desc: '传统纸钱，焚化供奉' },
+  { name: '金元宝', desc: '金色元宝，寄托祝愿' },
+  { name: '银元宝', desc: '银色元宝，福佑安康' },
+  { name: '冥币', desc: '冥界货币，供奉使用' },
+  { name: '纸扎房屋', desc: '精美纸房，安居乐业' },
+  { name: '莲花灯', desc: '莲花灯盏，照亮前程' },
+  { name: '长明灯', desc: '长明灯火，永不熄灭' },
+  { name: '供桌', desc: '实木供桌，庄重供奉' },
+  { name: '花瓶', desc: '精美花瓶，插花用品' },
+  { name: '数字相册', desc: 'NFT数字相册，永久保存' },
+  { name: '音乐盒', desc: '纪念音乐盒，回忆旋律' },
+  { name: '照片墙', desc: '照片展示墙，记录时光' },
+  { name: '清洁服务', desc: '墓地清洁，保持整洁' },
+  { name: '维护服务', desc: '定期维护，长久保养' },
+  { name: '代祭服务', desc: '代为祭祀，传递思念' },
+  { name: '桃花供品', desc: '粉色桃花，春意盎然' },
+  { name: '梅花供品', desc: '傲雪梅花，高洁品格' },
+  { name: '兰花供品', desc: '幽香兰花，清雅脱俗' },
+  { name: '荷花供品', desc: '出淤泥而不染的荷花' },
+  { name: '牡丹供品', desc: '富贵牡丹，雍容华贵' },
+  { name: '菊花茶', desc: '清香菊花茶，静心养神' },
+  { name: '素斋饭', desc: '清淡素斋，表达虔诚' },
+  { name: '三牲供品', desc: '传统三牲，隆重祭祀' },
+  { name: '五果供品', desc: '五种水果，丰盛供奉' },
+  { name: '佛经', desc: '佛门经文，超度亡灵' },
+  { name: '道经', desc: '道家经典，祈福安宁' },
+  { name: '十字架', desc: '基督教十字架，神圣象征' },
+  { name: '念珠', desc: '佛教念珠，诚心祈祷' },
+  { name: '风铃', desc: '清脆风铃，随风而响' },
+  { name: '香包', desc: '香囊香包，芬芳四溢' },
+  { name: '丝带花', desc: '彩色丝带花，装饰用品' },
+  { name: '许愿灯', desc: '许愿灯笼，寄托心愿' },
+  { name: '纪念徽章', desc: '定制徽章，永久纪念' },
+  { name: '刻字石碑', desc: '刻字小石碑，留名纪念' },
+  { name: '环保祭品', desc: '环保材料祭品，绿色祭祀' },
 ];
+
+// 主分类（0-8）
+const PRIMARY_CATEGORIES = {
+  Flowers: 0,             // 鲜花类
+  Incense: 1,             // 香烛类
+  Foods: 2,               // 食品供品
+  PaperMoney: 3,          // 纸钱冥币
+  PersonalItems: 4,       // 个人用品
+  TraditionalOfferings: 5,// 传统祭品
+  ModernMemorials: 6,     // 现代纪念品
+  DigitalMemorials: 7,    // 数字纪念品
+  Services: 8,            // 服务类
+};
+
+// 子分类（根据主分类而定，这里简化为 0-9）
+const SUB_CATEGORIES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// 品质等级（0-4）
+const QUALITY_LEVELS = {
+  Basic: 0,      // 基础
+  Standard: 1,   // 标准
+  Premium: 2,    // 优质
+  Luxury: 3,     // 奢华
+  Ultimate: 4,   // 至尊
+};
 
 // 媒体Schema CID库（示例IPFS CID）
 const MEDIA_SCHEMA_CIDS = [
@@ -65,104 +140,122 @@ function formatBalance(raw, decimals, symbol) {
 }
 
 /**
- * 函数级详细中文注释：生成随机供奉品参数
- * 
- * @param {number} kindCode 供奉品编码
- * @returns {object} 供奉品参数
+ * 函数级详细中文注释：生成随机祭祀品参数
+ *
+ * @param {number} index 祭祀品索引
+ * @returns {object} 祭祀品参数
  */
-function generateRandomOffering(kindCode) {
-  // 随机选择名称
-  const name = OFFERING_NAMES[Math.floor(Math.random() * OFFERING_NAMES.length)];
-  
-  // 随机选择媒体Schema CID
-  const mediaSchemaCid = MEDIA_SCHEMA_CIDS[Math.floor(Math.random() * MEDIA_SCHEMA_CIDS.length)];
-  
-  // 随机决定类型：0=Instant（70%概率）, 1=Timed（30%概率）
-  const isInstant = Math.random() < 0.7;
-  const kindFlag = isInstant ? 0 : 1;
-  
-  let minDuration = null;
-  let maxDuration = null;
-  let canRenew = false;
-  let expireAction = 0;
-  
-  if (!isInstant) {
-    // Timed类型的参数
-    minDuration = Math.floor(Math.random() * 4) + 1; // 1-4周
-    maxDuration = minDuration + Math.floor(Math.random() * 48) + 4; // 最少比min多4周，最多52周
-    canRenew = Math.random() < 0.8; // 80%可续费
-    expireAction = Math.floor(Math.random() * 3); // 0=NoAction, 1=AutoArchive, 2=AutoDelete
-  }
-  
+function generateRandomSacrifice(index) {
+  // 循环使用祭祀品数据
+  const data = SACRIFICE_DATA[index % SACRIFICE_DATA.length];
+
+  // 随机选择主分类
+  const primaryCategoryKeys = Object.keys(PRIMARY_CATEGORIES);
+  const primaryCategoryKey = primaryCategoryKeys[Math.floor(Math.random() * primaryCategoryKeys.length)];
+  const primaryCategory = PRIMARY_CATEGORIES[primaryCategoryKey];
+
+  // 随机选择子分类
+  const subCategory = SUB_CATEGORIES[Math.floor(Math.random() * SUB_CATEGORIES.length)];
+
+  // 随机选择品质等级
+  const qualityLevelKeys = Object.keys(QUALITY_LEVELS);
+  const qualityLevelKey = qualityLevelKeys[Math.floor(Math.random() * qualityLevelKeys.length)];
+  const qualityLevel = QUALITY_LEVELS[qualityLevelKey];
+
+  // 随机选择资源URL（IPFS CID）
+  const resourceUrl = MEDIA_SCHEMA_CIDS[Math.floor(Math.random() * MEDIA_SCHEMA_CIDS.length)];
+
+  // 根据品质等级设置价格（1 DUST = 10^12）
+  const basePrices = {
+    0: 10_000_000_000_000,    // 10 DUST
+    1: 50_000_000_000_000,    // 50 DUST
+    2: 100_000_000_000_000,   // 100 DUST
+    3: 500_000_000_000_000,   // 500 DUST
+    4: 1_000_000_000_000_000, // 1000 DUST
+  };
+  const price = basePrices[qualityLevel] * (1 + Math.random() * 0.5); // ±50% 随机浮动
+
+  // 随机库存（70%无限库存，30%有限库存）
+  const stock = Math.random() < 0.7 ? -1 : Math.floor(Math.random() * 1000) + 10;
+
+  // 随机每用户限购（50%无限制，50%有限制）
+  const perUserLimit = Math.random() < 0.5 ? null : Math.floor(Math.random() * 10) + 1;
+
+  // 随机季节性（20%季节性商品）
+  const seasonal = Math.random() < 0.2;
+
   return {
-    kindCode,
-    name,
-    mediaSchemaCid,
-    kindFlag,
-    minDuration,
-    maxDuration,
-    canRenew,
-    expireAction,
-    enabled: CREATE_CONFIG.defaultEnabled,
-    type: isInstant ? 'Instant' : 'Timed',
+    name: data.name,
+    description: data.desc,
+    resourceUrl,
+    primaryCategory,
+    primaryCategoryName: primaryCategoryKey,
+    subCategory,
+    price: Math.floor(price),
+    stock,
+    perUserLimit,
+    qualityLevel,
+    qualityLevelName: qualityLevelKey,
+    seasonal,
   };
 }
 
 /**
- * 函数级详细中文注释：创建供奉品
+ * 函数级详细中文注释：创建祭祀品
  */
-async function createOffering(api, signer, params, index, total, decimals, symbol) {
-  console.log(`\n[${index}/${total}] 创建供奉品 #${params.kindCode}`);
+async function createSacrifice(api, signer, params, index, total, decimals, symbol) {
+  console.log(`\n[${index}/${total}] 创建祭祀品`);
   console.log(`   名称: ${params.name}`);
-  console.log(`   类型: ${params.type}`);
-  console.log(`   Media CID: ${params.mediaSchemaCid}`);
-  
-  if (params.type === 'Timed') {
-    console.log(`   时长范围: ${params.minDuration}-${params.maxDuration} 周`);
-    console.log(`   可续费: ${params.canRenew ? '是' : '否'}`);
-    console.log(`   过期动作: ${params.expireAction}`);
-  }
-  
+  console.log(`   描述: ${params.description}`);
+  console.log(`   主分类: ${params.primaryCategoryName} (${params.primaryCategory})`);
+  console.log(`   子分类: ${params.subCategory}`);
+  console.log(`   品质: ${params.qualityLevelName} (${params.qualityLevel})`);
+  console.log(`   价格: ${formatBalance(params.price, decimals, symbol)}`);
+  console.log(`   库存: ${params.stock === -1 ? '无限' : params.stock}`);
+  console.log(`   限购: ${params.perUserLimit || '无限制'}`);
+  console.log(`   季节性: ${params.seasonal ? '是' : '否'}`);
+
   try {
-    // 使用 sudo 权限调用
-    const innerTx = api.tx.memorialOfferings.createOffering(
-      params.kindCode,
+    // 使用 sudo 权限调用 pallet-memorial 的 create_sacrifice
+    const innerTx = api.tx.memorial.createSacrifice(
       params.name,
-      params.mediaSchemaCid,
-      params.kindFlag,
-      params.minDuration,
-      params.maxDuration,
-      params.canRenew,
-      params.expireAction,
-      params.enabled
+      params.description,
+      params.resourceUrl,
+      params.primaryCategory,
+      params.subCategory,
+      params.price,
+      params.stock,
+      params.perUserLimit,
+      params.qualityLevel,
+      params.seasonal
     );
-    
+
     const tx = api.tx.sudo.sudo(innerTx);
-    
+
     // 预估手续费
     const { partialFee } = await tx.paymentInfo(signer);
     console.log(`   预估手续费: ${formatBalance(partialFee, decimals, symbol)}`);
-    
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('交易超时（60秒）'));
       }, 60000);
-      
+
       tx.signAndSend(signer, result => {
         const { status, dispatchError, events } = result;
-        
+
         if (status.isReady) {
           console.log('   📦 状态: Ready');
         }
-        
+
         if (status.isBroadcast) {
           console.log('   📡 已广播');
         }
-        
+
         if (status.isInBlock) {
           console.log(`   ✅ 包含区块: ${status.asInBlock.toHex().slice(0, 10)}...`);
         }
-        
+
         if (dispatchError) {
           clearTimeout(timeout);
           if (dispatchError.isModule) {
@@ -176,22 +269,22 @@ async function createOffering(api, signer, params, index, total, decimals, symbo
           }
           return;
         }
-        
+
         if (status.isFinalized) {
           clearTimeout(timeout);
           console.log(`   🎉 最终确认: ${status.asFinalized.toHex().slice(0, 10)}...`);
-          
+
           // 查找创建事件
-          const offeringEvent = events.find(({ event }) => 
-            event.section === 'memorialOfferings' && event.method === 'OfferingCreated'
+          const sacrificeEvent = events.find(({ event }) =>
+            event.section === 'memorial' && event.method === 'SacrificeCreated'
           );
-          
-          if (offeringEvent) {
-            console.log('   ✅ 供奉品创建成功！');
+
+          if (sacrificeEvent) {
+            console.log('   ✅ 祭祀品创建成功！');
           }
-          
-          resolve({ 
-            success: true, 
+
+          resolve({
+            success: true,
             blockHash: status.asFinalized.toHex(),
             fee: partialFee.toString()
           });
@@ -212,11 +305,10 @@ async function createOffering(api, signer, params, index, total, decimals, symbo
  * 函数级详细中文注释：主函数
  */
 async function main() {
-  console.log('🚀 创建供奉品脚本启动\n');
+  console.log('🚀 创建祭祀品脚本启动\n');
   console.log('='.repeat(60));
   console.log('配置信息:');
-  console.log(`   供奉品数量: ${CREATE_CONFIG.offeringCount}`);
-  console.log(`   起始编码: ${CREATE_CONFIG.startKindCode}`);
+  console.log(`   祭祀品数量: ${CREATE_CONFIG.sacrificeCount}`);
   console.log(`   管理员地址: ${ADMIN_CONFIG.expectedAddress}`);
   console.log('='.repeat(60));
   
@@ -264,37 +356,45 @@ async function main() {
     const freeBalance = balanceData.free;
     console.log(`   可用余额: ${formatBalance(freeBalance, decimals, symbol)}`);
 
-    // 7. 生成供奉品列表
-    console.log('\n📋 生成供奉品列表...');
+    // 7. 生成祭祀品列表
+    console.log('\n📋 生成祭祀品列表...');
     console.log('='.repeat(60));
-    
-    const offerings = [];
-    for (let i = 0; i < CREATE_CONFIG.offeringCount; i++) {
-      const kindCode = CREATE_CONFIG.startKindCode + i;
-      const offering = generateRandomOffering(kindCode);
-      offerings.push(offering);
+
+    const sacrifices = [];
+    for (let i = 0; i < CREATE_CONFIG.sacrificeCount; i++) {
+      const sacrifice = generateRandomSacrifice(i);
+      sacrifices.push(sacrifice);
     }
-    
-    console.log(`✅ 生成 ${offerings.length} 个供奉品`);
-    console.log(`   Instant类型: ${offerings.filter(o => o.type === 'Instant').length} 个`);
-    console.log(`   Timed类型: ${offerings.filter(o => o.type === 'Timed').length} 个`);
-    
+
+    console.log(`✅ 生成 ${sacrifices.length} 个祭祀品`);
+
+    // 统计各分类数量
+    const categoryCounts = {};
+    sacrifices.forEach(s => {
+      categoryCounts[s.primaryCategoryName] = (categoryCounts[s.primaryCategoryName] || 0) + 1;
+    });
+    console.log('\n📊 分类统计:');
+    Object.entries(categoryCounts).forEach(([cat, count]) => {
+      console.log(`   ${cat}: ${count} 个`);
+    });
+
     // 8. 预估总手续费
-    const testInnerTx = api.tx.memorialOfferings.createOffering(
-      offerings[0].kindCode,
-      offerings[0].name,
-      offerings[0].mediaSchemaCid,
-      offerings[0].kindFlag,
-      offerings[0].minDuration,
-      offerings[0].maxDuration,
-      offerings[0].canRenew,
-      offerings[0].expireAction,
-      offerings[0].enabled
+    const testInnerTx = api.tx.memorial.createSacrifice(
+      sacrifices[0].name,
+      sacrifices[0].description,
+      sacrifices[0].resourceUrl,
+      sacrifices[0].primaryCategory,
+      sacrifices[0].subCategory,
+      sacrifices[0].price,
+      sacrifices[0].stock,
+      sacrifices[0].perUserLimit,
+      sacrifices[0].qualityLevel,
+      sacrifices[0].seasonal
     );
-    
+
     const testTx = api.tx.sudo.sudo(testInnerTx);
     const { partialFee } = await testTx.paymentInfo(adminPair);
-    const estimatedFees = partialFee.toBigInt() * BigInt(offerings.length);
+    const estimatedFees = partialFee.toBigInt() * BigInt(sacrifices.length);
     console.log(`\n预估总手续费: ${formatBalance(estimatedFees, decimals, symbol)}`);
     console.log(`单笔手续费: ${formatBalance(partialFee, decimals, symbol)}`);
     
@@ -310,57 +410,57 @@ async function main() {
     console.log('✅ 余额充足');
     
     // 10. 确认提示
-    console.log('\n⚠️  准备开始创建供奉品');
+    console.log('\n⚠️  准备开始创建祭祀品');
     console.log('   按 Ctrl+C 取消，或等待 3 秒自动开始...');
     await new Promise(resolve => setTimeout(resolve, 3000));
-    
+
     // 11. 开始批量创建
-    console.log('\n🎯 开始创建供奉品...');
+    console.log('\n🎯 开始创建祭祀品...');
     console.log('='.repeat(60));
-    
+
     const results = [];
     let successCount = 0;
     let failCount = 0;
     let totalFees = 0n;
-    
-    for (let i = 0; i < offerings.length; i++) {
-      const offering = offerings[i];
-      
+
+    for (let i = 0; i < sacrifices.length; i++) {
+      const sacrifice = sacrifices[i];
+
       try {
-        const result = await createOffering(
-          api, 
-          adminPair, 
-          offering, 
-          i + 1, 
-          offerings.length,
+        const result = await createSacrifice(
+          api,
+          adminPair,
+          sacrifice,
+          i + 1,
+          sacrifices.length,
           decimals,
           symbol
         );
-        
+
         results.push({
-          ...offering,
+          ...sacrifice,
           success: true,
           blockHash: result.blockHash,
           fee: result.fee,
         });
-        
+
         totalFees += BigInt(result.fee);
         successCount++;
-        
+
         // 创建间延迟
-        if (i < offerings.length - 1) {
+        if (i < sacrifices.length - 1) {
           await new Promise(resolve => setTimeout(resolve, CREATE_CONFIG.delayBetweenCreations));
         }
-        
+
       } catch (error) {
         console.error(`   ❌ 创建失败: ${error.message}`);
-        
+
         results.push({
-          ...offering,
+          ...sacrifice,
           success: false,
           error: error.message,
         });
-        
+
         failCount++;
       }
     }
@@ -371,21 +471,14 @@ async function main() {
     console.log('='.repeat(60));
     console.log(`✅ 成功: ${successCount} 个`);
     console.log(`❌ 失败: ${failCount} 个`);
-    console.log(`📝 总计: ${offerings.length} 个`);
-    console.log(`📈 成功率: ${((successCount / offerings.length) * 100).toFixed(2)}%`);
-    
-    // 13. 统计类型
-    const successInstant = results.filter(r => r.success && r.type === 'Instant').length;
-    const successTimed = results.filter(r => r.success && r.type === 'Timed').length;
-    console.log(`\n📊 类型统计:`);
-    console.log(`   Instant: ${successInstant} 个`);
-    console.log(`   Timed: ${successTimed} 个`);
-    
-    // 14. 显示失败的供奉品
+    console.log(`📝 总计: ${sacrifices.length} 个`);
+    console.log(`📈 成功率: ${((successCount / sacrifices.length) * 100).toFixed(2)}%`);
+
+    // 13. 显示失败的祭祀品
     if (failCount > 0) {
-      console.log(`\n❌ 失败的供奉品:`);
+      console.log(`\n❌ 失败的祭祀品:`);
       results.filter(r => !r.success).forEach(r => {
-        console.log(`   - 编码 ${r.kindCode}: ${r.name} (${r.error})`);
+        console.log(`   - ${r.name}: ${r.error}`);
       });
     }
     
@@ -403,21 +496,21 @@ async function main() {
     // 16. 保存结果到文件
     const fs = require('fs');
     const path = require('path');
-    const resultFile = path.join(__dirname, 'create-offerings-result.json');
-    
+    const resultFile = path.join(__dirname, 'create-sacrifices-result.json');
+
     fs.writeFileSync(resultFile, JSON.stringify({
       timestamp: new Date().toISOString(),
       summary: {
-        total: offerings.length,
+        total: sacrifices.length,
         success: successCount,
         failed: failCount,
-        successRate: ((successCount / offerings.length) * 100).toFixed(2) + '%',
+        successRate: ((successCount / sacrifices.length) * 100).toFixed(2) + '%',
         totalFees: totalFees.toString(),
         totalFeesFormatted: formatBalance(totalFees, decimals, symbol),
       },
       results,
     }, null, 2));
-    
+
     console.log(`\n💾 结果已保存到: ${resultFile}`);
     
     // 17. 断开连接

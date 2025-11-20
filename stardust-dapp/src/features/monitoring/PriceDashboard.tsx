@@ -145,7 +145,7 @@ const PriceDashboard: React.FC = () => {
   })
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px' }}>
       <Title level={3}>
         <LineChartOutlined /> 价格监控 Dashboard
       </Title>

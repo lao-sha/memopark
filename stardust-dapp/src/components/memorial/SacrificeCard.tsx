@@ -45,10 +45,10 @@ interface SacrificeCardProps {
  * 函数级详细中文注释：场景标签配置
  */
 const sceneConfig = {
-  0: { label: '墓地', color: 'blue', icon: <FireOutlined /> },      // Grave
-  1: { label: '宠物', color: 'green', icon: <HeartOutlined /> },     // Pet
-  2: { label: '公园', color: 'cyan', icon: <AppstoreOutlined /> },   // Park
-  3: { label: '纪念馆', color: 'purple', icon: <CrownOutlined /> },  // Memorial
+  0: { label: '纪念馆', color: 'blue', icon: <FireOutlined /> },
+  1: { label: '宠物', color: 'green', icon: <HeartOutlined /> },
+  2: { label: '公园', color: 'cyan', icon: <AppstoreOutlined /> },
+  3: { label: '纪念馆', color: 'purple', icon: <CrownOutlined /> },
 }
 
 /**

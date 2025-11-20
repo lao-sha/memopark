@@ -19,6 +19,72 @@ import type { SubmittableExtrinsic } from '@polkadot/api/types'
 // ========================================
 
 /**
+ * 函数级详细中文注释：逝者分类枚举（与链上保持一致）
+ */
+export enum DeceasedCategory {
+  Ordinary = 0,         // 普通民众
+  HistoricalFigure = 1, // 历史人物
+  Martyr = 2,           // 革命烈士
+  Hero = 3,             // 英雄模范
+  PublicFigure = 4,     // 公众人物
+  ReligiousFigure = 5,  // 宗教人物
+  EventHall = 6,        // 事件馆
+}
+
+/**
+ * 函数级详细中文注释：分类修改申请状态
+ */
+export enum RequestStatus {
+  Pending = 'Pending',
+  Approved = 'Approved',
+  Rejected = 'Rejected',
+  Expired = 'Expired',
+}
+
+/**
+ * 函数级详细中文注释：分类修改申请
+ */
+export interface CategoryChangeRequest {
+  id: number
+  applicant: string
+  deceasedId: number
+  currentCategory: DeceasedCategory
+  targetCategory: DeceasedCategory
+  reasonCid: string
+  evidenceCids: string[]
+  submittedAt: number
+  deadline: number
+  status: RequestStatus
+}
+
+/**
+ * 函数级详细中文注释：提交分类修改申请参数
+ */
+export interface SubmitCategoryChangeParams {
+  deceasedId: number
+  targetCategory: DeceasedCategory
+  reasonCid: string
+  evidenceCids: string[]
+}
+
+/**
+ * 函数级详细中文注释：批准/拒绝申请参数
+ */
+export interface ProcessCategoryChangeParams {
+  requestId: number
+  reasonCid?: string
+}
+
+/**
+ * 函数级详细中文注释：Root强制修改分类参数
+ */
+export interface ForceSetCategoryParams {
+  deceasedId: number
+  category: DeceasedCategory
+  noteCid?: string
+}
+
+/**
  * 函数级详细中文注释：逝者性别枚举
  */
 export enum Gender {
@@ -52,12 +118,13 @@ export interface DeceasedInfo {
   mainImageCid: string
   bio: string
   bioCid: string
-  
+  category: DeceasedCategory  // 🆕 分类系统
+
   // Pin状态
   fullNamePinStatus: PinStatus
   mainImagePinStatus: PinStatus
   bioPinStatus: PinStatus
-  
+
   // 生命周期
   lifeYears?: number
   createdAt: number
@@ -268,6 +335,11 @@ export class DeceasedService {
     if (result.isNone) return null
 
     const data = result.unwrap()
+
+    // 查询分类信息
+    const categoryResult = await this.api.query.deceased.categoryOf(id)
+    const category = this.decodeCategory(categoryResult)
+
     return {
       id,
       owner: data.owner.toString(),
@@ -280,6 +352,7 @@ export class DeceasedService {
       mainImageCid: this.decodeString(data.mainImageCid),
       bio: this.decodeString(data.bio),
       bioCid: this.decodeString(data.bioCid),
+      category,  // 🆕 添加分类字段
       fullNamePinStatus: this.decodePinStatus(data.fullNamePinStatus),
       mainImagePinStatus: this.decodePinStatus(data.mainImagePinStatus),
       bioPinStatus: this.decodePinStatus(data.bioPinStatus),
@@ -446,6 +519,56 @@ export class DeceasedService {
   }
 
   // ========================================
+  // 分类系统相关方法
+  // ========================================
+
+  /**
+   * 函数级详细中文注释：查询逝者分类
+   */
+  async getDeceasedCategory(deceasedId: number): Promise<DeceasedCategory> {
+    const result = await this.api.query.deceased.categoryOf(deceasedId)
+    return this.decodeCategory(result)
+  }
+
+  /**
+   * 函数级详细中文注释：查询分类修改申请
+   */
+  async getCategoryChangeRequest(requestId: number): Promise<CategoryChangeRequest | null> {
+    const result = await this.api.query.deceased.categoryChangeRequests(requestId)
+    if (result.isNone) return null
+
+    const data = result.unwrap()
+    return {
+      id: requestId,
+      applicant: data.applicant.toString(),
+      deceasedId: data.deceasedId.toNumber(),
+      currentCategory: this.decodeCategory(data.currentCategory),
+      targetCategory: this.decodeCategory(data.targetCategory),
+      reasonCid: this.decodeString(data.reasonCid),
+      evidenceCids: data.evidenceCids.map((cid: any) => this.decodeString(cid)),
+      submittedAt: data.submittedAt.toNumber(),
+      deadline: data.deadline.toNumber(),
+      status: this.decodeRequestStatus(data.status),
+    }
+  }
+
+  /**
+   * 函数级详细中文注释：查询用户的申请历史
+   */
+  async getUserCategoryRequests(account: string, deceasedId: number): Promise<number[]> {
+    const result = await this.api.query.deceased.requestsByUser([account, deceasedId])
+    return result.map((id: any) => id.toNumber())
+  }
+
+  /**
+   * 函数级详细中文注释：查询下一个申请ID
+   */
+  async getNextRequestId(): Promise<number> {
+    const result = await this.api.query.deceased.nextRequestId()
+    return result.toNumber()
+  }
+
+  // ========================================
   // 交易构建方法
   // ========================================
 
@@ -567,6 +690,113 @@ export class DeceasedService {
   }
 
   // ========================================
+  // 分类系统交易构建方法
+  // ========================================
+
+  /**
+   * 函数级详细中文注释：构建提交分类修改申请交易（普通用户）
+   *
+   * ### 功能说明
+   * - 构建普通用户提交分类修改申请的交易
+   * - 需要冻结10 DUST押金
+   * - 提交后等待委员会审核
+   *
+   * ### 参数说明
+   * - deceasedId: 逝者ID
+   * - targetCategory: 目标分类
+   * - reasonCid: 申请理由CID（IPFS）
+   * - evidenceCids: 证据列表CID（IPFS）
+   *
+   * ### 使用场景
+   * - 用户发现逝者分类不正确，申请修改
+   * - 逝者身份升级（如被评为英雄模范）
+   */
+  buildRequestCategoryChangeTx(params: SubmitCategoryChangeParams): SubmittableExtrinsic<'promise'> {
+    return this.api.tx.deceased.requestCategoryChange(
+      params.deceasedId,
+      params.targetCategory,
+      params.reasonCid,
+      params.evidenceCids
+    )
+  }
+
+  /**
+   * 函数级详细中文注释：构建批准分类修改申请交易（治理接口）
+   *
+   * ### 功能说明
+   * - 构建委员会批准分类修改申请的交易
+   * - 执行分类修改
+   * - 退还全额押金
+   *
+   * ### 权限要求
+   * - Root账户 或 GovernanceOrigin（内容委员会2/3多数）
+   *
+   * ### 参数说明
+   * - requestId: 申请ID
+   *
+   * ### 使用场景
+   * - 委员会审核通过申请
+   * - 确认分类修改合理
+   */
+  buildApproveCategoryChangeTx(requestId: number): SubmittableExtrinsic<'promise'> {
+    return this.api.tx.deceased.approveCategoryChange(requestId)
+  }
+
+  /**
+   * 函数级详细中文注释：构建拒绝分类修改申请交易（治理接口）
+   *
+   * ### 功能说明
+   * - 构建委员会拒绝分类修改申请的交易
+   * - 罚没50%押金至国库
+   * - 退还50%押金给申请人
+   *
+   * ### 权限要求
+   * - Root账户 或 GovernanceOrigin（内容委员会2/3多数）
+   *
+   * ### 参数说明
+   * - requestId: 申请ID
+   * - reasonCid: 拒绝理由CID（IPFS，可选）
+   *
+   * ### 使用场景
+   * - 委员会审核不通过申请
+   * - 证据不充分或分类修改不合理
+   */
+  buildRejectCategoryChangeTx(params: ProcessCategoryChangeParams): SubmittableExtrinsic<'promise'> {
+    return this.api.tx.deceased.rejectCategoryChange(
+      params.requestId,
+      params.reasonCid || ''
+    )
+  }
+
+  /**
+   * 函数级详细中文注释：构建强制设置分类交易（Root接口）
+   *
+   * ### 功能说明
+   * - 构建Root账户直接修改分类的交易
+   * - 绕过审核流程
+   * - 无需押金
+   *
+   * ### 权限要求
+   * - 仅Root账户
+   *
+   * ### 参数说明
+   * - deceasedId: 逝者ID
+   * - category: 新分类
+   * - noteCid: 修改备注CID（IPFS，可选）
+   *
+   * ### 使用场景
+   * - 紧急分类修改
+   * - 治理决策直接执行
+   */
+  buildForceSetCategoryTx(params: ForceSetCategoryParams): SubmittableExtrinsic<'promise'> {
+    return this.api.tx.deceased.forceSetCategory(
+      params.deceasedId,
+      params.category,
+      params.noteCid || null
+    )
+  }
+
+  // ========================================
   // 辅助方法
   // ========================================
 
@@ -599,6 +829,68 @@ export class DeceasedService {
     if (status.isPinned) return PinStatus.Pinned
     if (status.isPinFailed) return PinStatus.PinFailed
     return PinStatus.Unpinned
+  }
+
+  /**
+   * 函数级详细中文注释：解码逝者分类枚举
+   *
+   * ### 功能说明
+   * - 将链上分类枚举转换为TypeScript枚举
+   * - 支持7种分类类型
+   *
+   * ### 参数说明
+   * - category: 链上分类枚举对象
+   *
+   * ### 返回值
+   * - DeceasedCategory枚举值
+   *
+   * ### 分类映射
+   * - isOrdinary => Ordinary (0)
+   * - isHistoricalFigure => HistoricalFigure (1)
+   * - isMartyr => Martyr (2)
+   * - isHero => Hero (3)
+   * - isPublicFigure => PublicFigure (4)
+   * - isReligiousFigure => ReligiousFigure (5)
+   * - isEventHall => EventHall (6)
+   */
+  private decodeCategory(category: any): DeceasedCategory {
+    if (category.isOrdinary) return DeceasedCategory.Ordinary
+    if (category.isHistoricalFigure) return DeceasedCategory.HistoricalFigure
+    if (category.isMartyr) return DeceasedCategory.Martyr
+    if (category.isHero) return DeceasedCategory.Hero
+    if (category.isPublicFigure) return DeceasedCategory.PublicFigure
+    if (category.isReligiousFigure) return DeceasedCategory.ReligiousFigure
+    if (category.isEventHall) return DeceasedCategory.EventHall
+    // 默认为普通民众
+    return DeceasedCategory.Ordinary
+  }
+
+  /**
+   * 函数级详细中文注释：解码申请状态枚举
+   *
+   * ### 功能说明
+   * - 将链上申请状态枚举转换为TypeScript枚举
+   * - 支持4种状态类型
+   *
+   * ### 参数说明
+   * - status: 链上申请状态枚举对象
+   *
+   * ### 返回值
+   * - RequestStatus枚举值
+   *
+   * ### 状态映射
+   * - isPending => Pending (待审核)
+   * - isApproved => Approved (已批准)
+   * - isRejected => Rejected (已拒绝)
+   * - isExpired => Expired (已过期)
+   */
+  private decodeRequestStatus(status: any): RequestStatus {
+    if (status.isPending) return RequestStatus.Pending
+    if (status.isApproved) return RequestStatus.Approved
+    if (status.isRejected) return RequestStatus.Rejected
+    if (status.isExpired) return RequestStatus.Expired
+    // 默认为待审核
+    return RequestStatus.Pending
   }
 }
 

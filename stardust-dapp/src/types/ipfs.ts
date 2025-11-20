@@ -74,8 +74,8 @@ export enum CidType {
   EvidenceVideo = 'evidence_video',
   /** 证据文档 */
   EvidenceDocument = 'evidence_document',
-  /** 墓位音频 */
-  GraveAudio = 'grave_audio',
+  /** 纪念馆音频 */
+  MemorialAudio = 'memorial_audio',
 }
 
 /**
@@ -346,9 +346,9 @@ export interface AccountInfo {
  * 逝者专户（SubjectFunding）地址派生参数
  */
 export interface SubjectFundingDerivation {
-  /** 域标识（1=deceased, 2=grave, 3=park） */
+  /** 域标识（1=逝者，2=纪念馆/园区等） */
   domain: number;
-  /** 主体ID（deceased_id, grave_id等） */
+  /** 主体ID（deceased_id, memorial_id 等） */
   subjectId: number;
 }
 
@@ -413,7 +413,7 @@ export const CID_TYPE_NAMES: Record<CidType, string> = {
   [CidType.EvidenceImage]: '证据图片',
   [CidType.EvidenceVideo]: '证据视频',
   [CidType.EvidenceDocument]: '证据文档',
-  [CidType.GraveAudio]: '墓位音频',
+  [CidType.MemorialAudio]: '纪念馆音频',
 };
 
 /**

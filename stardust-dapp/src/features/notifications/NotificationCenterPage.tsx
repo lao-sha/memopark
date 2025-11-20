@@ -18,7 +18,7 @@ const NotificationCenterPage: React.FC = () => {
   }, [])
   
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto' }}>
       <Typography.Title level={4} style={{ margin: '8px 8px 0' }}>通知中心</Typography.Title>
       <div style={{ padding: 8 }}>
         <Alert 

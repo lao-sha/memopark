@@ -1,11 +1,11 @@
 /**
- * 函数级详细中文注释：会话管理器
+ * 函数级详细中文注释：会话管理器（纯前端版本）
  * - 功能：统一管理钱包会话状态，包括过期检测、自动刷新、状态持久化
  * - 安全：会话token安全存储，自动清理过期数据
  * - 便利：提供统一的会话操作接口，简化组件中的会话处理逻辑
+ * - 架构：纯前端实现，不依赖自定义后端服务器
  */
 
-import { handshakeWithBackend } from './backend'
 import { SecureStorage } from './secureStorage'
 
 export interface SessionData {
@@ -120,52 +120,30 @@ export class SessionManager {
   }
 
   /**
-   * 函数级详细中文注释：创建新会话 - 安全版本
-   * - 与后端完成握手获取会话信息
+   * 函数级详细中文注释：创建新会话 - 纯前端版本
+   * - 直接在本地创建会话，无需后端握手
    * - 添加设备指纹和活动时间
    * - 使用安全存储保存会话数据
    * - 启动监控机制
+   * - 授权信息可后续从链上查询
    */
   async createSession(address: string): Promise<SessionData | null> {
-    console.log('[session] createSession start', { address })
+    console.log('[session] 创建本地会话', { address })
     try {
-      const result = await handshakeWithBackend(address)
-      console.log('[session] handshake result', result)
-      if (!result?.sessionId) {
-        const allowDev = (import.meta as any)?.env?.DEV || (import.meta as any)?.env?.VITE_ALLOW_DEV_SESSION === '1'
-        if (allowDev) {
-          console.warn('[session] no sessionId, using dev fallback')
-          const now = Date.now()
-          const currentFingerprint = this.generateDeviceFingerprint()
-            const devSession: SessionData = {
-            sessionId: `dev-${address}-${now}`,
-            address,
-            allowances: { mock: true },
-            expiresAt: now + SESSION_DURATION,
-            refreshToken: `dev-${now}`,
-            deviceFingerprint: currentFingerprint,
-            lastActivity: now
-          }
-          this.currentSession = devSession
-          SecureStorage.setItem(SESSION_KEY, devSession, SESSION_DURATION)
-          this.saveToLegacyStorage()
-          this.scheduleRefresh()
-          this.startActivityMonitor()
-          return devSession
-        }
-        console.error('[session] handshake failed (no sessionId, non-dev)', { error: result?.error, detail: result?.detail })
-        return null
-      }
-
-      const currentFingerprint = this.generateDeviceFingerprint()
       const now = Date.now()
-
+      const currentFingerprint = this.generateDeviceFingerprint()
+      
+      // 直接创建本地会话，不依赖后端
       const sessionData: SessionData = {
-        sessionId: result.sessionId,
+        sessionId: `local-${address}-${now}`,
         address,
-        allowances: result.allowances,
+        allowances: { 
+          local: true,
+          maxTransactions: 1000,
+          note: '本地会话，授权从链上查询'
+        },
         expiresAt: now + SESSION_DURATION,
-        refreshToken: result.sessionId,
+        refreshToken: `refresh-${now}`,
         deviceFingerprint: currentFingerprint,
         lastActivity: now
       }
@@ -181,65 +159,64 @@ export class SessionManager {
       this.scheduleRefresh()
       this.startActivityMonitor()
       
-      console.log('[session] session created', { expiresAt: sessionData.expiresAt })
+      console.log('[session] ✅ 本地会话已创建', { 
+        sessionId: sessionData.sessionId,
+        expiresAt: new Date(sessionData.expiresAt).toLocaleString()
+      })
+      
       return sessionData
     } catch (error) {
-      console.error('创建会话失败:', error)
+      console.error('❌ 创建会话失败:', error)
       return null
     }
   }
 
   /**
-   * 函数级详细中文注释：强制创建本地开发会话（无后端）
-   * - 仅用于开发/调试环境，后端不可用时快速进入应用
-   * - 使用安全存储保存最小必要字段，过期时间与正式会话一致
-   * - 不包含真实授权额度；前端应对 allowances?.mock 进行保护处理
+   * 函数级详细中文注释：强制创建本地会话（已废弃）
+   * - 该方法已合并到 createSession，现在所有会话都是本地创建
+   * - 保留此方法仅为向后兼容，直接调用 createSession
    */
   forceCreateDevSession(address: string): SessionData {
+    console.warn('⚠️ forceCreateDevSession 已废弃，请使用 createSession')
+    // 同步调用创建会话（返回 Promise，但这里转为同步）
     const now = Date.now()
     const currentFingerprint = this.generateDeviceFingerprint()
-    const devSession: SessionData = {
-      sessionId: `dev-${address}-${now}`,
+    const session: SessionData = {
+      sessionId: `local-${address}-${now}`,
       address,
-      allowances: { mock: true },
+      allowances: { local: true },
       expiresAt: now + SESSION_DURATION,
-      refreshToken: `dev-${now}`,
+      refreshToken: `refresh-${now}`,
       deviceFingerprint: currentFingerprint,
       lastActivity: now
     }
-
-    this.currentSession = devSession
-    SecureStorage.setItem(SESSION_KEY, devSession, SESSION_DURATION)
+    this.currentSession = session
+    SecureStorage.setItem(SESSION_KEY, session, SESSION_DURATION)
     this.saveToLegacyStorage()
     this.scheduleRefresh()
     this.startActivityMonitor()
-    return devSession
+    return session
   }
 
   /**
-   * 函数级详细中文注释：刷新会话 - 安全版本
-   * - 使用现有会话信息重新握手
+   * 函数级详细中文注释：刷新会话 - 纯前端版本
    * - 更新过期时间和活动时间
    * - 验证设备指纹一致性
    * - 使用安全存储保存
+   * - 无需后端握手，直接延期
    */
   async refreshSession(): Promise<SessionData | null> {
     if (!this.currentSession) {
+      console.warn('[session] 无会话可刷新')
       return null
     }
 
     try {
-      const result = await handshakeWithBackend(this.currentSession.address)
-      if (!result?.sessionId) {
-        this.clearSession()
-        return null
-      }
-
       const now = Date.now()
+      
+      // 直接延长会话有效期
       this.currentSession = {
         ...this.currentSession,
-        sessionId: result.sessionId,
-        allowances: result.allowances,
         expiresAt: now + SESSION_DURATION,
         lastActivity: now
       }
@@ -251,9 +228,13 @@ export class SessionManager {
       this.scheduleRefresh()
       this.startActivityMonitor()
       
+      console.log('[session] ✅ 会话已刷新', { 
+        newExpiresAt: new Date(this.currentSession.expiresAt).toLocaleString()
+      })
+      
       return this.currentSession
     } catch (error) {
-      console.error('刷新会话失败:', error)
+      console.error('❌ 刷新会话失败:', error)
       return null
     }
   }

@@ -24,6 +24,7 @@ import {
 import { QRCodeCanvas } from 'qrcode.react';
 import { getCurrentAddress } from '../../lib/keystore';
 import { getApi, signAndSendLocalFromKeystore } from '../../lib/polkadot-safe';
+import './MyWalletPage.css';
 
 const { Text } = Typography;
 
@@ -374,7 +375,8 @@ const MyWalletPage: React.FC = () => {
       title: '钱包管理',
       onClick: () => {
         // 跳转到钱包管理页面
-        window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'wallet-manage' } }));
+        console.log('点击钱包管理，跳转到 #/wallet');
+        window.location.hash = '#/wallet';
       },
     },
     {
@@ -394,6 +396,31 @@ const MyWalletPage: React.FC = () => {
       },
     },
     {
+      icon: <DashboardOutlined style={{ fontSize: '20px' }} />,
+      title: '查上链网系统',
+      onClick: handleShowChainData,
+    },
+    {
+      icon: <BankOutlined style={{ fontSize: '20px' }} />,
+      title: '做市商管理中心',
+      onClick: () => {
+        window.location.hash = '#/market-maker/center';
+      },
+    },
+    {
+      icon: <GlobalOutlined style={{ fontSize: '20px' }} />,
+      title: 'Web运营平台',
+      onClick: handleOpenGovernance,
+    },
+    {
+      icon: <BankOutlined style={{ fontSize: '20px' }} />,
+      title: '联盟治理',
+      onClick: () => {
+        console.log('点击联盟治理，跳转到 #/gov/affiliate/dashboard');
+        window.location.hash = '#/gov/affiliate/dashboard';
+      },
+    },
+    {
       icon: <GlobalOutlined style={{ fontSize: '20px' }} />,
       title: '语言',
       badge: 0,
@@ -407,6 +434,7 @@ const MyWalletPage: React.FC = () => {
     {
       icon: <NotificationOutlined style={{ fontSize: '20px' }} />,
       title: '公告',
+      badge: 1,
       onClick: () => {
         message.info('跳转到公告');
         window.location.hash = '#/announcements';
@@ -415,7 +443,6 @@ const MyWalletPage: React.FC = () => {
     {
       icon: <MessageOutlined style={{ fontSize: '20px' }} />,
       title: '系统消息',
-      badge: 1,  // 有 1 条未读消息
       onClick: () => {
         message.info('跳转到系统消息');
         window.location.hash = '#/messages';
@@ -432,85 +459,37 @@ const MyWalletPage: React.FC = () => {
   ];
 
   return (
-    <div
-      style={{
-        maxWidth: '640px',
-        margin: '0 auto',
-        minHeight: '100vh',
-        background: '#f5f5f5',
-        paddingBottom: '60px', // 为底部导航留空间
-      }}
-    >
-      {/* 顶部头像区域 */}
-      <div
-        style={{
-          background: '#fff',
-          padding: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* 头像 */}
-          <div
-            style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-            }}
-          >
-            <UserOutlined style={{ fontSize: '28px', color: '#fff' }} />
+    <div className="wallet-page">
+      {/* 顶部用户信息区域 */}
+      <div className="wallet-header">
+        <div className="user-info">
+          {/* 用户头像 */}
+          <div className="user-avatar">
+            {nickname ? nickname.charAt(0) : '黄'}
           </div>
 
-          {/* 标题 */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <Text strong style={{ fontSize: '18px' }}>
+          {/* 用户详细信息 */}
+          <div className="user-details">
+            <div className="user-name">
+              <Text strong className="wallet-text-primary">
                 {nickname}
               </Text>
               <EditOutlined
                 onClick={handleEditNickname}
-                style={{
-                  fontSize: '14px',
-                  color: '#8c8c8c',
-                  cursor: 'pointer',
-                  transition: 'color 0.3s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#1890ff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = '#8c8c8c';
-                }}
+                className="edit-nickname-btn"
               />
-              <Text strong style={{ fontSize: '18px' }}>
+              <Text type="secondary" style={{ fontSize: '14px' }}>
                 当前钱包
               </Text>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+            <div className="user-address-info">
               <Text type="secondary" style={{ fontSize: '12px' }}>
-                {address ? `${address.slice(0, 8)}...${address.slice(-8)}` : '未连接'}
+                {address ? address : '未连接'}
               </Text>
-              {address && (
+              {refCode && (
                 <>
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {'    '}我的推荐码
-                  </Text>
-                  <Text
-                    type="secondary"
-                    style={{
-                      fontSize: '12px',
-                      color: refCode ? '#1890ff' : '#8c8c8c',
-                      fontFamily: refCode ? 'monospace' : 'inherit',
-                    }}
-                  >
-                    {refCode || '获取推荐码'}
+                    获取测试
                   </Text>
                 </>
               )}
@@ -521,7 +500,7 @@ const MyWalletPage: React.FC = () => {
         {/* 消息通知图标 */}
         <Badge count={1} offset={[-5, 5]}>
           <NotificationOutlined
-            style={{ fontSize: '24px', color: '#8c8c8c', cursor: 'pointer' }}
+            className="notification-badge"
             onClick={() => {
               message.info('查看通知');
               window.location.hash = '#/notifications';
@@ -530,61 +509,20 @@ const MyWalletPage: React.FC = () => {
         </Badge>
       </div>
 
-      {/* 快捷操作卡片区域 - 两行两列 */}
-      <div
-        style={{
-          marginTop: '16px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '12px',
-          padding: '0 16px',
-        }}
-      >
+      {/* 快捷操作卡片区域 */}
+      <div className="quick-actions">
         {/* 转账卡片 */}
         <div
           onClick={() => {
-            console.log('点击转账，触发 mp.nav 事件');
-            const event = new CustomEvent('mp.nav', { detail: { tab: 'transfer' } });
-            window.dispatchEvent(event);
-            console.log('mp.nav 事件已触发');
+            console.log('点击转账，跳转到转账页面');
+            window.location.hash = '#/transfer';
           }}
-          style={{
-            background: '#fff',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
+          className="action-card"
         >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '12px',
-              flexShrink: 0,
-            }}
-          >
-            <SendOutlined style={{ fontSize: '20px', color: '#fff' }} />
+          <div className="action-icon transfer">
+            <SendOutlined />
           </div>
-          <Text strong style={{ fontSize: '15px', color: '#262626' }}>
+          <Text className="action-title">
             转账
           </Text>
         </div>
@@ -592,340 +530,87 @@ const MyWalletPage: React.FC = () => {
         {/* 收款卡片 */}
         <div
           onClick={handleShowReceive}
-          style={{
-            background: '#fff',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
+          className="action-card"
         >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '12px',
-              flexShrink: 0,
-            }}
-          >
-            <QrcodeOutlined style={{ fontSize: '20px', color: '#fff' }} />
+          <div className="action-icon receive">
+            <QrcodeOutlined />
           </div>
-          <Text strong style={{ fontSize: '15px', color: '#262626' }}>
+          <Text className="action-title">
             收款
           </Text>
         </div>
 
-        {/* 购买MEMO卡片 */}
+        {/* 购买DUST卡片 */}
         <div
           onClick={() => {
             message.info('跳转到购买DUST');
             window.location.hash = '#/otc/order';
           }}
-          style={{
-            background: '#fff',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
+          className="action-card"
         >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #faad14 0%, #ffc53d 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '12px',
-              flexShrink: 0,
-            }}
-          >
-            <ShoppingCartOutlined style={{ fontSize: '20px', color: '#fff' }} />
+          <div className="action-icon buy">
+            <ShoppingCartOutlined />
           </div>
-          <Text strong style={{ fontSize: '15px', color: '#262626' }}>
-            购买MEMO
+          <Text className="action-title">
+            购买DUST
           </Text>
         </div>
 
-        {/* 兑换MEMO卡片 */}
+        {/* 兑换DUST卡片 */}
         <div
           onClick={() => {
             message.info('跳转到兑换DUST');
             window.location.hash = '#/bridge/simple';
           }}
-          style={{
-            background: '#fff',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
+          className="action-card"
         >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #13c2c2 0%, #36cfc9 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '12px',
-              flexShrink: 0,
-            }}
-          >
-            <RetweetOutlined style={{ fontSize: '20px', color: '#fff' }} />
+          <div className="action-icon exchange">
+            <RetweetOutlined />
           </div>
-          <Text strong style={{ fontSize: '15px', color: '#262626' }}>
-            兑换MEMO
-          </Text>
-        </div>
-
-      </div>
-
-      {/* 管理功能入口区域 - 链上数据面板、做市商管理中心、Web治理平台上下排列 */}
-      <div
-        style={{
-          marginTop: '16px',
-          padding: '0 16px',
-        }}
-      >
-        {/* 链上数据面板卡片 */}
-        <div
-          onClick={handleShowChainData}
-          style={{
-            background: '#fff',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-            marginBottom: '8px',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '6px',
-            }}
-          >
-            <DashboardOutlined style={{ fontSize: '16px', color: '#fff' }} />
-          </div>
-          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
-            链上数据面板
-          </Text>
-        </div>
-
-        {/* 做市商管理中心卡片 */}
-        <div
-          onClick={() => {
-            window.location.hash = '#/market-maker/center';
-          }}
-          style={{
-            background: '#fff',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-            marginBottom: '8px',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '6px',
-            }}
-          >
-            💼
-          </div>
-          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
-            做市商中心
-          </Text>
-        </div>
-
-        {/* Web治理平台卡片 */}
-        <div
-          onClick={handleOpenGovernance}
-          style={{
-            background: '#fff',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #f5222d 0%, #fa541c 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '6px',
-            }}
-          >
-            🏛️
-          </div>
-          <Text strong style={{ fontSize: '12px', color: '#262626', textAlign: 'center' }}>
-            Web治理平台
+          <Text className="action-title">
+            兑换DUST
           </Text>
         </div>
       </div>
 
       {/* 菜单列表 */}
-      <div style={{ marginTop: '16px' }}>
+      <div className="menu-list">
         {menuItems.map((item, index) => (
           <div key={index}>
             <div
               onClick={item.onClick}
-              style={{
-                background: '#fff',
-                padding: '16px 20px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-                transition: 'background 0.3s',
-                borderBottom: index === menuItems.length - 1 ? 'none' : '1px solid #f0f0f0',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#fafafa';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#fff';
-              }}
+              className="menu-item"
             >
               {/* 左侧：图标 + 标题 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ color: '#262626', display: 'flex', alignItems: 'center' }}>
+              <div className="menu-left">
+                <div className="menu-icon">
                   {item.icon}
                 </div>
-                <Text style={{ fontSize: '16px', color: '#262626' }}>
+                <Text className="menu-title">
                   {item.title}
                 </Text>
               </div>
 
               {/* 右侧：徽章 + 箭头 或 语言文本 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="menu-right">
                 {item.title === '语言' && (
-                  <Text type="secondary" style={{ fontSize: '14px' }}>
+                  <Text className="language-text">
                     {language}
                   </Text>
                 )}
                 {item.badge !== undefined && item.badge > 0 && item.title !== '语言' && (
                   <Badge
                     count={item.badge}
-                    style={{
-                      backgroundColor: '#ff4d4f',
-                      boxShadow: '0 0 0 1px #fff',
-                    }}
+                    className="menu-badge"
                   />
                 )}
-                <RightOutlined style={{ fontSize: '14px', color: '#bfbfbf' }} />
+                <RightOutlined className="menu-arrow" />
               </div>
             </div>
 
             {/* 分组间隔 */}
-            {(index === 2 || index === 3 || index === 4) && (
-              <div style={{ height: '8px', background: '#f5f5f5' }} />
+            {(index === 2 || index === 5) && (
+              <div className="menu-divider" />
             )}
           </div>
         ))}
@@ -933,90 +618,32 @@ const MyWalletPage: React.FC = () => {
 
 
       {/* 底部导航栏 */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          maxWidth: '640px',
-          margin: '0 auto',
-          background: '#fff',
-          borderTop: '1px solid #f0f0f0',
-          display: 'flex',
-          justifyContent: 'space-around',
-          padding: '8px 0',
-          zIndex: 1000,
-        }}
-      >
+      <div className="wallet-bottom-nav">
         {/* 首页按钮 */}
-        <div
-          onClick={() => {
-            window.location.hash = '#/home';
-          }}
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          <div
-            style={{
-              width: '24px',
-              height: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+        <div className="nav-item">
+          <div className="nav-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="#8c8c8c">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
           </div>
-          <Text style={{ fontSize: '10px', color: '#8c8c8c' }}>首页</Text>
+          <Text className="nav-text inactive">首页</Text>
         </div>
 
-        {/* 我的按钮（当前选中） */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '4px',
-          }}
-        >
-          <div
-            style={{
-              width: '24px',
-              height: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="#1890ff">
+        <div className="nav-item active">
+          <div className="nav-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="#5DBAAA">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
           </div>
-          <Text style={{ fontSize: '10px', color: '#1890ff' }}>我的</Text>
+          <Text className="nav-text active">我的</Text>
         </div>
       </div>
 
       {/* 水印 */}
-      <div
-        style={{
-          textAlign: 'center',
-          padding: '20px',
-          marginTop: '20px',
-        }}
-      >
-        <Text type="secondary" style={{ fontSize: '12px' }}>
-          https://www.memopark.com/wallet
+      <div className="wallet-watermark">
+        <Text className="watermark-text">
+          https://www.dustapps.net
         </Text>
       </div>
 
@@ -1031,12 +658,14 @@ const MyWalletPage: React.FC = () => {
         cancelText="取消"
         centered
         width={400}
+        className="wallet-modal"
+        okButtonProps={{ className: 'wallet-btn-primary' }}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={handleSaveNickname}
-          style={{ marginTop: '20px' }}
+          className="nickname-form"
         >
           <Form.Item
             name="nickname"
@@ -1048,15 +677,8 @@ const MyWalletPage: React.FC = () => {
           >
             <Input placeholder="例如：小明" maxLength={64} />
           </Form.Item>
-          <div
-            style={{
-              background: '#f0f7ff',
-              padding: '12px',
-              borderRadius: '6px',
-              marginBottom: '12px',
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: '12px' }}>
+          <div className="nickname-tips">
+            <Text className="wallet-text-secondary">
               💡 提示：修改昵称需要发起链上交易并签名确认。
             </Text>
           </div>
@@ -1067,7 +689,7 @@ const MyWalletPage: React.FC = () => {
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <QrcodeOutlined style={{ fontSize: '20px', color: '#667eea' }} />
+            <QrcodeOutlined style={{ fontSize: '20px', color: '#5DBAAA' }} />
             <span>收款二维码</span>
           </div>
         }
@@ -1076,25 +698,11 @@ const MyWalletPage: React.FC = () => {
         footer={null}
         centered
         width={420}
+        className="wallet-modal"
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '20px 0',
-          }}
-        >
+        <div className="receive-modal-content">
           {/* 二维码 */}
-          <div
-            style={{
-              padding: '20px',
-              background: '#fff',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-              marginBottom: '24px',
-            }}
-          >
+          <div className="qr-code-container">
             {address && (
               <QRCodeCanvas
                 value={address}
@@ -1112,29 +720,11 @@ const MyWalletPage: React.FC = () => {
           </div>
 
           {/* 地址信息 */}
-          <div style={{ width: '100%', marginBottom: '16px' }}>
-            <Text
-              type="secondary"
-              style={{
-                fontSize: '12px',
-                display: 'block',
-                marginBottom: '8px',
-                textAlign: 'center',
-              }}
-            >
+          <div className="address-info">
+            <Text className="address-label">
               我的钱包地址
             </Text>
-            <div
-              style={{
-                background: '#f5f5f5',
-                padding: '12px',
-                borderRadius: '8px',
-                wordBreak: 'break-all',
-                textAlign: 'center',
-                fontSize: '13px',
-                fontFamily: 'monospace',
-              }}
-            >
+            <div className="address-display">
               {address}
             </div>
           </div>
@@ -1146,29 +736,14 @@ const MyWalletPage: React.FC = () => {
             onClick={handleCopyAddress}
             block
             size="large"
-            style={{
-              height: '48px',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 500,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              border: 'none',
-            }}
+            className="copy-address-btn"
           >
             复制地址
           </Button>
 
           {/* 提示信息 */}
-          <div
-            style={{
-              marginTop: '16px',
-              padding: '12px',
-              background: '#f0f7ff',
-              borderRadius: '8px',
-              width: '100%',
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: '12px' }}>
+          <div className="receive-tips">
+            <Text className="wallet-text-secondary">
               💡 提示：请将此二维码或地址发送给付款方，对方扫码或输入地址即可向您转账。
             </Text>
           </div>
@@ -1180,7 +755,7 @@ const MyWalletPage: React.FC = () => {
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <DashboardOutlined style={{ fontSize: '20px', color: '#667eea' }} />
+              <DashboardOutlined style={{ fontSize: '20px', color: '#5DBAAA' }} />
               <span>链上数据面板</span>
             </div>
             {!chainDataLoading && (
@@ -1189,6 +764,7 @@ const MyWalletPage: React.FC = () => {
                 size="small"
                 icon={<ReloadOutlined />}
                 onClick={loadChainData}
+                className="refresh-btn"
               >
                 刷新
               </Button>
@@ -1200,9 +776,10 @@ const MyWalletPage: React.FC = () => {
         footer={null}
         centered
         width={680}
+        className="wallet-modal"
       >
         {chainDataLoading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <div className="chain-data-loading">
             <Spin size="large">
               <div style={{ padding: '20px' }}>
                 <Text type="secondary">加载链上数据中...</Text>
@@ -1212,19 +789,11 @@ const MyWalletPage: React.FC = () => {
         ) : chainData ? (
           <div style={{ padding: '20px 0' }}>
             {/* 链基本信息 */}
-            <div
-              style={{
-                marginBottom: '24px',
-                padding: '16px',
-                background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)',
-                borderRadius: '8px',
-                border: '1px solid #f0f0f0',
-              }}
-            >
-              <Text strong style={{ fontSize: '14px', marginBottom: '12px', display: 'block' }}>
+            <div className="chain-data-section primary">
+              <Text className="chain-data-title">
                 🔗 链信息
               </Text>
-              <Descriptions column={2} size="small">
+              <Descriptions column={2} size="small" className="wallet-descriptions">
                 <Descriptions.Item label="链名称">{chainData.chain.name}</Descriptions.Item>
                 <Descriptions.Item label="链版本">{chainData.chain.version}</Descriptions.Item>
                 <Descriptions.Item label="代币符号">{chainData.chain.token}</Descriptions.Item>
@@ -1233,19 +802,11 @@ const MyWalletPage: React.FC = () => {
             </div>
 
             {/* 区块信息 */}
-            <div
-              style={{
-                marginBottom: '24px',
-                padding: '16px',
-                background: '#f9f9f9',
-                borderRadius: '8px',
-                border: '1px solid #f0f0f0',
-              }}
-            >
-              <Text strong style={{ fontSize: '14px', marginBottom: '12px', display: 'block' }}>
+            <div className="chain-data-section secondary">
+              <Text className="chain-data-title">
                 📦 区块信息
               </Text>
-              <Descriptions column={1} size="small">
+              <Descriptions column={1} size="small" className="wallet-descriptions">
                 <Descriptions.Item label="当前区块高度">{chainData.block.number}</Descriptions.Item>
                 <Descriptions.Item label="当前区块哈希">
                   <Text style={{ fontSize: '12px', fontFamily: 'monospace', color: '#8c8c8c' }}>
@@ -1256,19 +817,11 @@ const MyWalletPage: React.FC = () => {
             </div>
 
             {/* 节点信息 */}
-            <div
-              style={{
-                marginBottom: '24px',
-                padding: '16px',
-                background: '#f9f9f9',
-                borderRadius: '8px',
-                border: '1px solid #f0f0f0',
-              }}
-            >
-              <Text strong style={{ fontSize: '14px', marginBottom: '12px', display: 'block' }}>
+            <div className="chain-data-section secondary">
+              <Text className="chain-data-title">
                 🖥️ 节点信息
               </Text>
-              <Descriptions column={2} size="small">
+              <Descriptions column={2} size="small" className="wallet-descriptions">
                 <Descriptions.Item label="节点名称">{chainData.node.name}</Descriptions.Item>
                 <Descriptions.Item label="节点版本">{chainData.node.version}</Descriptions.Item>
               </Descriptions>
@@ -1276,25 +829,18 @@ const MyWalletPage: React.FC = () => {
 
             {/* 账户信息 */}
             {chainData.account && (
-              <div
-                style={{
-                  padding: '16px',
-                  background: 'linear-gradient(135deg, #667eea10 0%, #764ba210 100%)',
-                  borderRadius: '8px',
-                  border: '1px solid #f0f0f0',
-                }}
-              >
-                <Text strong style={{ fontSize: '14px', marginBottom: '12px', display: 'block' }}>
+              <div className="chain-data-section primary">
+                <Text className="chain-data-title">
                   👤 当前账户信息
                 </Text>
-                <Descriptions column={1} size="small">
+                <Descriptions column={1} size="small" className="wallet-descriptions">
                   <Descriptions.Item label="账户地址">
                     <Text style={{ fontSize: '12px', fontFamily: 'monospace' }}>
                       {address}
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label="可用余额">
-                    <Text strong style={{ fontSize: '14px', color: '#667eea' }}>
+                    <Text className="balance-highlight">
                       {chainData.account.free} {chainData.chain.token}
                     </Text>
                   </Descriptions.Item>
@@ -1309,15 +855,8 @@ const MyWalletPage: React.FC = () => {
             )}
 
             {/* 提示信息 */}
-            <div
-              style={{
-                marginTop: '16px',
-                padding: '12px',
-                background: '#f0f7ff',
-                borderRadius: '8px',
-              }}
-            >
-              <Text type="secondary" style={{ fontSize: '12px' }}>
+            <div className="chain-data-tips">
+              <Text className="wallet-text-secondary">
                 💡 提示：此面板显示的是实时链上数据，点击右上角"刷新"按钮可更新数据。
               </Text>
             </div>
@@ -1334,7 +873,7 @@ const MyWalletPage: React.FC = () => {
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BankOutlined style={{ fontSize: '20px', color: '#667eea' }} />
+            <BankOutlined style={{ fontSize: '20px', color: '#5DBAAA' }} />
             <span>Web治理平台</span>
           </div>
         }
@@ -1343,61 +882,27 @@ const MyWalletPage: React.FC = () => {
         footer={null}
         centered
         width={420}
+        className="wallet-modal"
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '20px 0',
-          }}
-        >
+        <div className="governance-modal-content">
           {/* 图标 */}
-          <div
-            style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '40px',
-              marginBottom: '24px',
-            }}
-          >
+          <div className="governance-icon">
             💻
           </div>
 
           {/* 提示文字 */}
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: '12px' }}>
+          <div className="governance-description">
+            <Text className="governance-title">
               请在电脑登录
             </Text>
-            <Text type="secondary" style={{ fontSize: '14px' }}>
+            <Text className="governance-subtitle">
               治理平台需要在桌面端浏览器访问
             </Text>
           </div>
 
           {/* 链接地址 */}
-          <div
-            style={{
-              width: '100%',
-              marginBottom: '16px',
-              padding: '16px',
-              background: '#f5f5f5',
-              borderRadius: '8px',
-              textAlign: 'center',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: '14px',
-                fontFamily: 'monospace',
-                color: '#1890ff',
-                wordBreak: 'break-all',
-              }}
-            >
+          <div className="governance-link">
+            <Text className="governance-link-text">
               https://governance.memopark.net/
             </Text>
           </div>
@@ -1409,29 +914,14 @@ const MyWalletPage: React.FC = () => {
             onClick={handleCopyGovernanceLink}
             block
             size="large"
-            style={{
-              height: '48px',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 500,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              border: 'none',
-              marginBottom: '16px',
-            }}
+            className="governance-copy-btn"
           >
             复制链接
           </Button>
 
           {/* 使用说明 */}
-          <div
-            style={{
-              width: '100%',
-              padding: '12px',
-              background: '#f0f7ff',
-              borderRadius: '8px',
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: '12px' }}>
+          <div className="governance-tips">
+            <Text className="wallet-text-secondary">
               💡 提示：治理平台提供提案投票、财政管理、理事会等高级功能，建议在桌面端使用以获得最佳体验。
             </Text>
           </div>

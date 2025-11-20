@@ -33,7 +33,7 @@ const SettingsDrawer: React.FC = () => {
         <div>
           <Typography.Text>墓位背景音乐设置</Typography.Text>
           <div style={{ marginTop: 6 }}>
-            <Button size="small" onClick={()=> { try { window.location.hash = '#/grave/audio' } catch {} }}>打开音频设置面板</Button>
+            {/* 该音频设置功能已下线 */}
           </div>
         </div>
       </Space>

@@ -34,7 +34,7 @@ export default function EndowmentAdminPage() {
   }, [ensureApi, account])
 
   return (
-    <Card title='基金会治理/风控（演示）' style={{ maxWidth: 640, margin: '0 auto' }}>
+    <Card title='基金会治理/风控（演示）' style={{ maxWidth: 480, margin: '0 auto' }}>
       <Input placeholder='Root 签名账户地址' value={account} onChange={e => setAccount(e.target.value)} style={{ marginBottom: 12 }} />
       <Tabs
         items={[

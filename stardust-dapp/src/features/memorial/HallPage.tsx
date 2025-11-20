@@ -39,22 +39,22 @@ const HallPage: React.FC<{ id: number }> = ({ id }) => {
   const onAttachDeceased = async () => {
     try {
       if (!owner) throw new Error('请输入你的地址(owner)')
-      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'attachDeceased', [id, Number(bindDeceased)])
-      message.success(`已上链：${txHash}`)
-      setBindDeceased(''); refetch()
+      // TODO: 需要替换为新的关联逝者接口
+      // 旧墓位功能已删除，关联逝者需要新的实现
+      message.error('关联逝者功能已迁移，请使用新的接口')
     } catch (e:any) { message.error(e?.message||'失败') }
   }
   const onSetPark = async () => {
     try {
       if (!owner) throw new Error('请输入你的地址(owner)')
-      const txHash = await signAndSendLocalFromKeystore('memoGrave', 'setPark', [id, Number(setParkId)])
-      message.success(`已上链：${txHash}`)
-      setSetParkId(''); refetch()
+      // TODO: 需要替换为新的设置园区接口
+      // 旧墓位功能已删除，设置园区需要新的实现
+      message.error('设置园区功能已迁移，请使用新的接口')
     } catch (e:any) { message.error(e?.message||'失败') }
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 8 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 8 }}>
       <Typography.Title level={4}>纪念馆 #{id}</Typography.Title>
       {hall && (
         <Card style={{ marginBottom: 8 }}>

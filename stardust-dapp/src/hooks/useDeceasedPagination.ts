@@ -59,10 +59,10 @@ export interface DeceasedPaginationResult {
   totalPages: number
   // 每页大小
   pageSize: number
-  // 是否大墓位（>200人）
-  isLargeGrave: boolean
-  // 是否超大墓位（>1000人）
-  isVeryLargeGrave: boolean
+  // 是否大集合（>200人）
+  isLargeCollection: boolean
+  // 是否超大集合（>1000人）
+  isVeryLargeCollection: boolean
   // 加载时间（ms）
   loadTime: number
   // 性能等级
@@ -114,11 +114,11 @@ export function useDeceasedPagination(
     return allDeceased.slice(startIndex, endIndex)
   }, [allDeceased, currentPage, pageSize, total])
 
-  // 是否大墓位
-  const isLargeGrave = total > 200
+  // 是否大集合
+  const isLargeCollection = total > 200
 
-  // 是否超大墓位
-  const isVeryLargeGrave = total > 1000
+  // 是否超大集合
+  const isVeryLargeCollection = total > 1000
 
   // 加载时间
   const loadTime = Date.now() - loadStartTime
@@ -154,8 +154,8 @@ export function useDeceasedPagination(
     current: currentPage,
     pageSize: pageSize,
     total: total,
-    showSizeChanger: config?.showSizeChanger ?? isLargeGrave, // 大墓位显示
-    showQuickJumper: config?.showQuickJumper ?? isLargeGrave, // 大墓位显示
+    showSizeChanger: config?.showSizeChanger ?? isLargeCollection, // 大集合显示
+    showQuickJumper: config?.showQuickJumper ?? isLargeCollection, // 大集合显示
     pageSizeOptions: ['10', '20', '50', '100'],
     showTotal: (total: number, range: [number, number]) => 
       `第 ${range[0]}-${range[1]} 位，共 ${total} 位逝者`,
@@ -166,7 +166,7 @@ export function useDeceasedPagination(
         goToPage(page)
       }
     },
-  }), [currentPage, pageSize, total, isLargeGrave, config, goToPage, changePageSize])
+  }), [currentPage, pageSize, total, isLargeCollection, config, goToPage, changePageSize])
 
   return {
     currentPageData,
@@ -174,8 +174,8 @@ export function useDeceasedPagination(
     currentPage,
     totalPages,
     pageSize,
-    isLargeGrave,
-    isVeryLargeGrave,
+    isLargeCollection,
+    isVeryLargeCollection,
     loadTime,
     performanceLevel,
     paginationConfig,

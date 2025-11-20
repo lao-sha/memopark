@@ -49,7 +49,7 @@ const BridgeParamsPage: React.FC = () => {
   React.useEffect(()=> { loadParams(); loadFreshness() }, [])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Space direction="vertical" style={{ width:'100%' }} size={12}>
         {error && <Alert type="error" showIcon message={error} />}
         <Typography.Title level={4} style={{ margin: 0 }}>Bridge 参数</Typography.Title>

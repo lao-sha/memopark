@@ -12,22 +12,14 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec};
     use frame_system::pallet_prelude::*;
 
-    /// 函数级中文注释：最小“宠物主体”Pallet，占位结构与只读接口，便于 TargetControl 与前端整合展示。
     #[pallet::config]
     pub trait Config: frame_system::Config {
         #[allow(deprecated)]
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         #[pallet::constant]
         type StringLimit: Get<u32>;
-        /// 函数级中文注释：墓位检查与权限接口（低耦合）。
-        type GraveProvider: GraveInspector<Self::AccountId, u64>;
     }
 
-    /// 函数级中文注释：墓位访问接口，供运行时适配实现。
-    pub trait GraveInspector<AccountId, GraveId> {
-        fn grave_exists(grave_id: GraveId) -> bool;
-        fn can_attach(who: &AccountId, grave_id: GraveId) -> bool;
-    }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
@@ -113,21 +105,14 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 函数级中文注释：将宠物附着到墓位（仅宠物 owner，且需具备墓位管理权限）。
+        /// 函数级中文注释：将宠物附着到墓位（仅宠物 owner）。
         #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
         pub fn attach_to_grave(origin: OriginFor<T>, pet_id: u64, grave_id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let pet = PetOf::<T>::get(pet_id).ok_or(Error::<T>::NotFound)?;
             ensure!(pet.owner == who, Error::<T>::NotOwner);
-            ensure!(
-                T::GraveProvider::grave_exists(grave_id),
-                Error::<T>::GraveNotFound
-            );
-            ensure!(
-                T::GraveProvider::can_attach(&who, grave_id),
-                Error::<T>::NotAllowed
-            );
+
             PetInGrave::<T>::insert(pet_id, grave_id);
             Self::deposit_event(Event::PetAttached(pet_id, grave_id));
             Ok(())

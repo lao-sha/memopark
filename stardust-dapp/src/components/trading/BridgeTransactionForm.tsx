@@ -203,7 +203,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
         }
       )
     } catch (error: any) {
-      console.error('MEMO→TRON 失败:', error)
+      console.error('DUST→TRON 失败:', error)
       message.error(error.message || '交易失败')
       setLoading(false)
     }
@@ -289,7 +289,7 @@ export const BridgeTransactionForm: React.FC<BridgeTransactionFormProps> = ({
 
         {/* DUST数量 */}
         <Form.Item
-          label="兑换数量（MEMO）"
+          label="兑换数量（DUST）"
           name="dustAmount"
           rules={[
             { required: true, message: '请输入兑换数量' },

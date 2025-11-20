@@ -1,0 +1,550 @@
+/**
+ * 函数级详细中文注释：创建逝者档案页面样式（云上思念UI风格）
+ *
+ * 设计参考: https://m.yssn.cn/wap/index/pc_index.html
+ *
+ * 样式特点：
+ * - 移动端优先设计（max-width: 480px）
+ * - 统一配色：主色调青绿色 #5DBAAA（与底部导航栏一致）
+ * - 辅助色：深青色 #2F4F4F、米白 #F5F5DC
+ * - 简洁优雅的卡片式布局
+ * - 圆角、阴影、渐变等细节处理
+ */
+
+/* 主容器 */
+.create-deceased-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #F0F9F8 0%, #FAFAFA 100%);
+  padding-bottom: 20px;
+}
+
+/* 顶部导航栏（统一青绿色风格） */
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+}
+
+.back-button {
+  color: #5DBAAA;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.back-button:hover {
+  color: #4AA896;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin: 0;
+}
+
+/* 主要内容区域 */
+.page-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 警告提示 */
+.warning-banner {
+  background: linear-gradient(135deg, rgba(220, 20, 60, 0.05) 0%, rgba(240, 128, 128, 0.05) 100%);
+  border: 2px solid rgba(220, 20, 60, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.warning-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.warning-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #DC143C;
+  margin-bottom: 4px;
+}
+
+.warning-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+/* Pin 状态卡片 */
+.pin-status-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(93, 186, 170, 0.2);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.12);
+}
+
+/* 表单容器（云上思念风格） */
+.form-container {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+}
+
+.deceased-form {
+  width: 100%;
+}
+
+/* 照片上传区域（云上思念风格） */
+.avatar-section {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.avatar-upload-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.avatar-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  border: 3px solid #5DBAAA;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3);
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-size: 12px;
+}
+
+.avatar-preview:active .avatar-overlay {
+  opacity: 1;
+}
+
+.avatar-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(93, 186, 170, 0.08);
+  border: 2px dashed rgba(93, 186, 170, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.avatar-placeholder:active {
+  border-color: rgba(93, 186, 170, 0.5);
+  background: rgba(93, 186, 170, 0.15);
+  transform: scale(0.98);
+}
+
+.section-hint {
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* 表单区域 */
+.form-section {
+  margin-bottom: 24px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+/* 表单输入框（统一青绿色风格） */
+.form-input {
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  font-size: 15px;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  border-color: #5DBAAA;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15);
+}
+
+/* 性别选择（统一青绿色风格，仅男女两个选项） */
+.gender-section {
+  margin-bottom: 20px;
+}
+
+.gender-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.gender-btn {
+  height: 52px;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
+  background: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.gender-btn:hover {
+  border-color: #5DBAAA;
+  color: #5DBAAA;
+}
+
+.gender-btn.active {
+  border-color: #5DBAAA;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3);
+}
+
+.gender-btn.active.male {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%);
+  border-color: #4AA896;
+}
+
+.gender-btn.active.female {
+  background: linear-gradient(135deg, #F08080 0%, #FFB6C1 100%);
+  border-color: #F08080;
+}
+
+/* 日期选择器（统一青绿色风格） */
+.form-date-picker {
+  width: 100%;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  font-size: 15px;
+  transition: all 0.3s ease;
+}
+
+.form-date-picker:hover {
+  border-color: #5DBAAA;
+}
+
+.form-date-picker.ant-picker-focused {
+  border-color: #5DBAAA;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15);
+}
+
+/* Ant Design 表单样式覆盖 */
+.deceased-form .ant-form-item-label > label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.deceased-form .ant-form-item {
+  margin-bottom: 20px;
+}
+
+/* 表单底部 */
+.form-footer {
+  margin-top: 32px;
+}
+
+/* 提交按钮（统一青绿色风格） */
+.submit-button {
+  height: 52px;
+  border-radius: 26px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3);
+  transition: all 0.3s ease;
+}
+
+.submit-button:hover {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%);
+  box-shadow: 0 6px 16px rgba(93, 186, 170, 0.4);
+  transform: translateY(-2px);
+}
+
+.submit-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.3);
+}
+
+.footer-hint {
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+/* 密码弹窗（统一青绿色风格） */
+.password-modal .ant-modal-content {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.password-modal .ant-modal-header {
+  background: linear-gradient(135deg, #F0F9F8 0%, #FAFAFA 100%);
+  border-bottom: 2px solid rgba(93, 186, 170, 0.15);
+  padding: 16px 20px;
+}
+
+.password-modal .ant-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  text-align: center;
+}
+
+.password-modal .ant-modal-body {
+  padding: 20px;
+}
+
+.password-input {
+  border-radius: 8px;
+  border: 2px solid rgba(93, 186, 170, 0.2);
+  font-size: 15px;
+}
+
+.password-input:focus {
+  border-color: #5DBAAA;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15);
+}
+
+/* 重要提示弹窗样式（与密码弹窗保持一致） */
+.ant-modal-confirm .ant-modal-content {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ant-modal-confirm .ant-modal-body {
+  padding: 24px;
+}
+
+.ant-modal-confirm .ant-modal-confirm-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+}
+
+.ant-modal-confirm .ant-modal-confirm-content {
+  margin-top: 12px;
+}
+
+/* 使用说明（云上思念风格） */
+.guide-section {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.guide-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+}
+
+.guide-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: rgba(93, 186, 170, 0.06);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.guide-item:active {
+  background: rgba(93, 186, 170, 0.12);
+  transform: scale(0.98);
+}
+
+.guide-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(93, 186, 170, 0.15);
+  border-radius: 50%;
+}
+
+.guide-text {
+  flex: 1;
+}
+
+.guide-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.guide-item-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+  .create-deceased-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
+  .page-content {
+    padding: 12px;
+  }
+
+  .form-container {
+    padding: 16px;
+  }
+
+  .avatar-preview,
+  .avatar-placeholder {
+    width: 100px;
+    height: 100px;
+  }
+
+  .submit-button {
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .gender-btn {
+    height: 48px;
+    font-size: 15px;
+  }
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .avatar-preview:hover .avatar-overlay,
+  .avatar-placeholder:hover,
+  .gender-btn:hover,
+  .submit-button:hover {
+    transform: none;
+  }
+}
+
+/* 页面进入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.create-deceased-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.form-container,
+.guide-section {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.warning-banner {
+  animation: fadeInUp 0.5s ease-out;
+  animation-delay: 0.1s;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+.form-container {
+  animation-delay: 0.15s;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+.guide-section {
+  animation-delay: 0.2s;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}

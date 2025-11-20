@@ -458,7 +458,7 @@ export const OTCOrderCard: React.FC<OTCOrderCardProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">单价：</Text>
                 <Text strong style={{ fontSize: 16 }}>
-                  {order.price.toFixed(4)} USDT/MEMO
+                  {order.price.toFixed(4)} USDT/DUST
                 </Text>
               </div>
               <div 

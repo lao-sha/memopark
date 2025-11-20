@@ -1,0 +1,72 @@
+[package]
+name = "pallet-otc-order"
+version = "0.1.0"
+description = "OTC 订单管理模块 - OTC Order Management Pallet"
+authors = ["StarDust Team"]
+edition = "2021"
+license = "Unlicense"
+publish = false
+repository = "https://github.com/memoio/stardust"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.3", default-features = false, features = ["derive"] }
+
+# Substrate 核心依赖
+frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+frame-support = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+frame-system = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-runtime = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-std = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-core = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+
+# KYC认证相关依赖
+pallet-identity = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+pallet-collective = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+
+# 项目内部依赖
+pallet-escrow = { path = "../escrow", default-features = false }
+pallet-arbitration = { path = "../arbitration", default-features = false }
+pallet-credit = { path = "../credit", default-features = false }
+pallet-pricing = { path = "../pricing", default-features = false }
+pallet-maker = { path = "../maker", default-features = false }
+pallet-trading-common = { path = "../trading-common", default-features = false }
+pallet-timestamp = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+
+[dev-dependencies]
+sp-io = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "scale-info/std",
+    "frame-benchmarking?/std",
+    "frame-support/std",
+    "frame-system/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "sp-core/std",
+    "pallet-identity/std",
+    "pallet-collective/std",
+    "pallet-escrow/std",
+    "pallet-arbitration/std",
+    "pallet-credit/std",
+    "pallet-pricing/std",
+    "pallet-maker/std",
+    "pallet-trading-common/std",
+    "pallet-timestamp/std",
+]
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+]
+try-runtime = [
+    "frame-support/try-runtime",
+    "frame-system/try-runtime",
+]
+

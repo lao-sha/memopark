@@ -288,12 +288,12 @@ interface DeceasedNode {
 
 ## 🚀 集成到现有页面
 
-### 集成到 GraveDetailPage
+### 集成到 MemorialHallDetailPage
 
-**在墓位详情页添加"家族关系"标签页**：
+**在纪念馆详情页添加"家族关系"标签页**：
 
 ```tsx
-// GraveDetailPage.tsx
+// MemorialHallDetailPage.tsx
 import RelationshipList from '../../components/deceased/RelationshipList'
 import RelationshipGraph from '../../components/deceased/RelationshipGraph'
 

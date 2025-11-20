@@ -223,7 +223,7 @@ export default function PayCreateTestPage() {
   }
 
   return (
-    <Card style={{ maxWidth: 640, margin: '0 auto' }}>
+    <Card style={{ maxWidth: 480, margin: '0 auto' }}>
       <Typography.Title level={5}>支付创建与查询测试（免签 Header 鉴权）</Typography.Title>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
 

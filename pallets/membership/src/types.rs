@@ -33,7 +33,25 @@ impl MembershipLevel {
 		}
 	}
 
+	/// 🆕 2025-11-10：获取会员等级的 USDT 价格（单位：USDT，精度 10^6）
+	///
+	/// 函数级中文注释：返回固定 USDT 价格，用于动态计算所需 DUST 数量
+	///
+	/// # 返回
+	/// - USDT 价格（精度 10^6，例如：50_000_000 = 50 USDT）
+	pub fn price_in_usdt(&self) -> u64 {
+		match self {
+			Self::Year1 => 50_000_000,    // $50 USD
+			Self::Year3 => 100_000_000,   // $100 USD
+			Self::Year5 => 200_000_000,   // $200 USD
+			Self::Year10 => 300_000_000,  // $300 USD
+		}
+	}
+
 	/// 获取会员价格（单位：DUST，需乘以 UNITS）
+	///
+	/// ⚠️ 已废弃：保留用于向后兼容，新代码应使用 `price_in_usdt()` + 动态计算
+	#[deprecated(note = "Use price_in_usdt() and calculate_dust_amount() instead")]
 	pub fn price_in_units(&self) -> u128 {
 		match self {
 			Self::Year1 => 400,
@@ -65,6 +83,9 @@ impl MembershipLevel {
 
 	/// 补升级到10年会员所需费用（单位：DUST，需乘以 UNITS）
 	/// 如果已经是10年会员，返回 None
+	///
+	/// ⚠️ 已废弃：保留用于向后兼容，新代码应基于 USDT 价格差计算
+	#[deprecated(note = "Use USDT-based price calculation instead")]
 	pub fn upgrade_to_year10_price(&self) -> Option<u128> {
 		match self {
 			Self::Year1 => Some(1800),   // 400 + 1800 = 2200 > 2000 (含补差费)

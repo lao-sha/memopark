@@ -307,7 +307,7 @@ const OperatorRewardsDashboard: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <h1>
         <TrophyOutlined style={{ marginRight: '12px', color: '#faad14' }} />
         运营者奖励分配
@@ -401,7 +401,7 @@ const OperatorRewardsDashboard: React.FC = () => {
         
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '8px' }}>
-            分配金额（MEMO）：
+            分配金额（DUST）：
           </label>
           <InputNumber
             style={{ width: '100%' }}

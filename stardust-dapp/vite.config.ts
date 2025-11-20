@@ -22,7 +22,9 @@ export default defineConfig({
   // - 目标：在本地开发环境通过 Vite 代理转发 /api/** 请求到远端 111.170.145.41，规避浏览器同源策略的 CORS 限制
   // - 使用：前端代码改为请求相对路径 /api/...，Vite dev server 将在开发时转发；生产部署请在网关或后端配置反向代理
   server: {
-    host: '127.0.0.1',
+    host: true, // 监听所有地址（0.0.0.0），允许 localhost 和 127.0.0.1 访问
+    port: 5173,
+    strictPort: false,
     proxy: {
       // 函数级详细中文注释：为被代理的后端请求自动注入鉴权与防重放头部
       // - 设计：优先读取 VITE_EPAY_API_TOKEN；若未设置则尝试读取 ../epay/.api_token 文件；

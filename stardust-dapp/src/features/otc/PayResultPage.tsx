@@ -51,7 +51,7 @@ export default function PayResultPage() {
   }
 
   return (
-    <Card style={{ maxWidth: 640, margin: '0 auto' }}>
+    <Card style={{ maxWidth: 480, margin: '0 auto' }}>
       <Typography.Title level={5}>支付结果</Typography.Title>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       {data && (

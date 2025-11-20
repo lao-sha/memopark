@@ -65,7 +65,7 @@ export default function ClaimMemoForm() {
   return (
     <Card 
       style={{ 
-        maxWidth: 640, 
+        maxWidth: 480, 
         margin: '0 auto',
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'

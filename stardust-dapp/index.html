@@ -8,7 +8,7 @@
     <!-- 开发模式下移除 CSP 等强限制，避免 Vite HMR/React Refresh 被拦截导致白屏。
          线上部署再由网关/服务器注入严格安全头。 -->
     
-    <title>Memopark DApp - 纪念公园</title>
+    <title>星尘纪 数字永生纪念馆</title>
   </head>
   <body>
     <div id="root">
@@ -31,19 +31,40 @@
     </script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // 后备加载：若 /src/main.tsx 未执行，则尝试动态导入并回显错误
-      (async () => {
-        if (!(window).__memopark_main_loaded__) {
+      // 后备加载：若 /src/main.tsx 未执行，则带重试地尝试动态导入并回显状态
+      (function setupFallbackLoader() {
+        const MAX_RETRY = 4
+        const BASE_DELAY = 200
+
+        function tryImport(attempt) {
+          if ((window).__memopark_main_loaded__) return
+
           const root = document.getElementById('root')
-          try {
-            root && root.firstElementChild && (root.firstElementChild.textContent = '尝试后备加载 main.tsx …')
-            await import('/src/main.tsx')
-            console.log('[memopark] Fallback dynamic import succeeded')
-          } catch (e) {
-            console.error('[memopark] Fallback dynamic import failed', e)
-            root && root.firstElementChild && (root.firstElementChild.textContent = '加载失败：' + (e && (e.message || e)))
+          if (root && root.firstElementChild) {
+            root.firstElementChild.textContent = `尝试后备加载 main.tsx … (第 ${attempt} 次)`
           }
-        }
+
+          import('/src/main.tsx')
+            .then(() => {
+            console.log('[memopark] Fallback dynamic import succeeded')
+            })
+            .catch((err) => {
+              console.error('[memopark] Fallback dynamic import failed', err)
+              if ((window).__memopark_main_loaded__) return
+
+              if (attempt < MAX_RETRY) {
+                const delay = Math.min(1500, BASE_DELAY * Math.pow(2, attempt - 1))
+                setTimeout(() => tryImport(attempt + 1), delay)
+              } else if (root && root.firstElementChild) {
+                root.firstElementChild.textContent = '加载失败：' + (err && (err.message || err))
+              }
+            })
+          }
+
+        window.addEventListener('load', () => {
+          if ((window).__memopark_main_loaded__) return
+          setTimeout(() => tryImport(1), BASE_DELAY)
+        })
       })()
     </script>
   </body>

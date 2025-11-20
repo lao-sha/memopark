@@ -112,7 +112,7 @@ npx tsc --noEmit
 - Update corresponding `README.md` files when modifying pallets
 - Use **Chinese for chat dialogue**, not English
 - Prioritize **official pallets** over custom implementations to avoid duplication
-- Ensure **privacy security** and **MEMO token fund safety**
+- Ensure **privacy security** and **DUST token fund safety**
 - Check for **redundant code** and provide optimization suggestions
 - Design for **future migration compatibility**
 
@@ -139,7 +139,7 @@ npx tsc --noEmit
 - **Consensus**: AURA (block authoring) + GRANDPA (finality)
 - **Development accounts**: Alice, Bob (pre-funded validators with Alice as sudo)
 - **Block time**: 6 seconds (6000ms)
-- **Token**: MEMO (12 decimals, ss58Format: 42)
+- **Token**: DUST (12 decimals, ss58Format: 42)
 - **Runtime version**: spec_version 101
 
 ## Project Structure

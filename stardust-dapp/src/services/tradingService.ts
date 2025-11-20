@@ -71,7 +71,7 @@ export interface MakerApplication {
   id: number;
   /** 所有者地址 */
   owner: string;
-  /** 押金金额（MEMO） */
+  /** 押金金额（DUST） */
   deposit: string;
   /** 申请状态 */
   status: ApplicationStatus;
@@ -111,7 +111,7 @@ export interface Order {
   taker: string;
   /** 价格（USDT，精度6） */
   price: number;
-  /** 数量（MEMO） */
+  /** 数量（DUST） */
   qty: string;
   /** 总金额（USDT） */
   amount: number;
@@ -212,7 +212,7 @@ export class TradingService {
    * @returns 做市商信息，不存在则返回null
    */
   async getMaker(makerId: number): Promise<MakerApplication | null> {
-    const result = await this.api.query.trading.makers(makerId);
+    const result = await this.api.query.maker.makerApplications(makerId);
     const option = result as Option<any>;
 
     if (option.isNone) {
@@ -228,7 +228,7 @@ export class TradingService {
    * @returns 下一个可用的做市商ID
    */
   async getNextMakerId(): Promise<number> {
-    const result = await this.api.query.trading.nextMakerId();
+    const result = await this.api.query.maker.nextMakerId();
     return (result as u64).toNumber();
   }
 
@@ -269,7 +269,7 @@ export class TradingService {
    * @returns 做市商ID，不存在则返回null
    */
   async getMakerIdByAccount(account: string): Promise<number | null> {
-    const result = await this.api.query.trading.makerIdOf(account);
+    const result = await this.api.query.maker.accountToMaker(account);
     const option = result as Option<u64>;
     return option.isSome ? option.unwrap().toNumber() : null;
   }
@@ -282,7 +282,7 @@ export class TradingService {
    * @returns 订单信息，不存在则返回null
    */
   async getOrder(orderId: number): Promise<Order | null> {
-    const result = await this.api.query.trading.orders(orderId);
+    const result = await this.api.query.otcOrder.orders(orderId);
     const option = result as Option<any>;
 
     if (option.isNone) {
@@ -298,7 +298,7 @@ export class TradingService {
    * @returns 下一个可用的订单ID
    */
   async getNextOrderId(): Promise<number> {
-    const result = await this.api.query.trading.nextOrderId();
+    const result = await this.api.query.otcOrder.nextOrderId();
     return (result as u64).toNumber();
   }
 
@@ -343,7 +343,7 @@ export class TradingService {
    * @returns 桥接请求，不存在则返回null
    */
   async getSwapRequest(requestId: number): Promise<SwapRequest | null> {
-    const result = await this.api.query.trading.swapRequests(requestId);
+    const result = await this.api.query.bridge.swapRequests(requestId);
     const option = result as Option<any>;
 
     if (option.isNone) {
@@ -360,7 +360,7 @@ export class TradingService {
    * @returns 桥接记录，不存在则返回null
    */
   async getMakerSwapRecord(recordId: number): Promise<MakerSwapRecord | null> {
-    const result = await this.api.query.trading.makerSwapRecords(recordId);
+    const result = await this.api.query.bridge.makerSwaps(recordId);
     const option = result as Option<any>;
 
     if (option.isNone) {
@@ -375,11 +375,11 @@ export class TradingService {
 
   /**
    * 函数级详细中文注释：构建锁定押金交易
-   * @param deposit 押金金额（MEMO）
+   * @param deposit 押金金额（DUST）
    * @returns Polkadot.js 交易对象
    */
   buildLockDepositTx(deposit: string) {
-    return this.api.tx.trading.lockDeposit(deposit);
+    return this.api.tx.maker.lockDeposit(deposit);
   }
 
   /**
@@ -399,7 +399,7 @@ export class TradingService {
     epayMerchantId?: string;
     epayApiKey?: string;
   }) {
-    return this.api.tx.trading.submitInfo(
+    return this.api.tx.maker.submitInfo(
       params.direction,
       params.tronAddress,
       params.buyPremiumBps,
@@ -419,7 +419,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildApproveMakerTx(makerId: number) {
-    return this.api.tx.trading.approveMaker(makerId);
+    return this.api.tx.maker.approveMaker(makerId);
   }
 
   /**
@@ -428,7 +428,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildRejectMakerTx(makerId: number) {
-    return this.api.tx.trading.rejectMaker(makerId);
+    return this.api.tx.maker.rejectMaker(makerId);
   }
 
   /**
@@ -436,7 +436,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildRequestWithdrawalTx() {
-    return this.api.tx.trading.requestWithdrawal();
+    return this.api.tx.maker.requestWithdrawal();
   }
 
   /**
@@ -444,7 +444,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildExecuteWithdrawalTx() {
-    return this.api.tx.trading.executeWithdrawal();
+    return this.api.tx.maker.executeWithdrawal();
   }
 
   /**
@@ -452,7 +452,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildPauseServiceTx() {
-    return this.api.tx.trading.pauseService();
+    return this.api.tx.maker.cancelMaker();
   }
 
   /**
@@ -460,7 +460,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildResumeServiceTx() {
-    return this.api.tx.trading.resumeService();
+    return this.api.tx.maker.cancelMaker();
   }
 
   // ==================== OTC交易构建 ====================
@@ -475,7 +475,7 @@ export class TradingService {
     qty: string;
     contactCommit: string;
   }) {
-    return this.api.tx.trading.createOrder(
+    return this.api.tx.otcOrder.createOrder(
       params.makerId,
       params.qty,
       params.contactCommit
@@ -491,7 +491,7 @@ export class TradingService {
     orderId: number;
     paymentCommit: string;
   }) {
-    return this.api.tx.trading.markPaid(
+    return this.api.tx.otcOrder.markPaid(
       params.orderId,
       params.paymentCommit
     );
@@ -503,7 +503,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildReleaseMemoTx(orderId: number) {
-    return this.api.tx.trading.releaseMemo(orderId);
+    return this.api.tx.otcOrder.releaseDust(orderId);
   }
 
   /**
@@ -512,7 +512,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildCancelOrderTx(orderId: number) {
-    return this.api.tx.trading.cancelOrder(orderId);
+    return this.api.tx.otcOrder.cancelOrder(orderId);
   }
 
   /**
@@ -521,7 +521,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildDisputeOrderTx(orderId: number) {
-    return this.api.tx.trading.disputeOrder(orderId);
+    return this.api.tx.otcOrder.disputeOrder(orderId);
   }
 
   // ==================== Bridge交易构建 ====================
@@ -535,7 +535,7 @@ export class TradingService {
     dustAmount: string;
     tronAddress: string;
   }) {
-    return this.api.tx.trading.swap(
+    return this.api.tx.bridge.swap(
       params.dustAmount,
       params.tronAddress
     );
@@ -547,7 +547,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildCompleteSwapTx(requestId: number) {
-    return this.api.tx.trading.completeSwap(requestId);
+    return this.api.tx.bridge.completeSwap(requestId);
   }
 
   /**
@@ -560,7 +560,7 @@ export class TradingService {
     dustAmount: string;
     tronAddress: string;
   }) {
-    return this.api.tx.trading.makerSwap(
+    return this.api.tx.bridge.makerSwap(
       params.makerId,
       params.dustAmount,
       params.tronAddress
@@ -576,7 +576,7 @@ export class TradingService {
     recordId: number;
     trc20TxHash: string;
   }) {
-    return this.api.tx.trading.markSwapComplete(
+    return this.api.tx.bridge.markSwapComplete(
       params.recordId,
       params.trc20TxHash
     );
@@ -588,7 +588,7 @@ export class TradingService {
    * @returns Polkadot.js 交易对象
    */
   buildReportSwapTx(recordId: number) {
-    return this.api.tx.trading.reportSwap(recordId);
+    return this.api.tx.bridge.reportSwap(recordId);
   }
 
   // ==================== 辅助解析方法 ====================

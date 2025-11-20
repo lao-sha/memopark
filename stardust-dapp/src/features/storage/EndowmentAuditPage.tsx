@@ -29,7 +29,7 @@ export default function EndowmentAuditPage() {
   }, [])
 
   return (
-    <Card style={{ maxWidth: 640, margin: '0 auto' }}>
+    <Card style={{ maxWidth: 480, margin: '0 auto' }}>
       <Typography.Title level={4}>基金年度审计报告</Typography.Title>
       <List
         dataSource={items}

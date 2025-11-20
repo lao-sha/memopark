@@ -75,10 +75,8 @@ const DashboardPage: React.FC = () => {
         const ed: any = (api.consts as any)?.balances?.existentialDeposit
         setExistentialDeposit(ed ? ed.toString() : '0')
       } catch { setExistentialDeposit('0') }
-      try {
-        const cf: any = (api.consts as any)?.memoGrave?.createFee
-        setCreateFee(cf ? cf.toString() : '0')
-      } catch { setCreateFee('0') }
+      // 旧墓位功能已删除，createFee 不再可用
+      setCreateFee('0')
     } catch (e: any) {
       setError(e?.message || '加载失败')
     } finally { setLoading(false) }
@@ -107,7 +105,7 @@ const DashboardPage: React.FC = () => {
   }, [decimals, symbol])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>数据面板</Typography.Title>
         <Space>

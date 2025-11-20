@@ -371,7 +371,7 @@ export const FirstPurchasePage: React.FC = () => {
             <Form.Item
               label={
                 <Text strong>
-                  <DollarOutlined /> 购买金额（MEMO）
+                  <DollarOutlined /> 购买金额（DUST）
                 </Text>
               }
             >

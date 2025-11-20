@@ -10,27 +10,35 @@ export interface RouteItem {
 const lazy = (factory: () => Promise<any>) => React.lazy(factory);
 
 export const routes: RouteItem[] = [
+  { match: h => h === '#/home' || h === '#/', component: lazy(() => import('./features/memorial/HomePage')) },  // 🆕 默认首页（纪念馆风格）
+  { match: h => h === '#/memorial-browser', component: lazy(() => import('./features/memorial/MemorialEmbeddedPage')) },  // 🆕 纪念馆内嵌浏览器页
   { match: h => h === '#/admin/pause', component: lazy(() => import('./features/offerings/AdminPause')) },
   { match: h => h === '#/admin/category', component: lazy(() => import('./features/offerings/AdminCategory')) },
   { match: h => h === '#/admin/effect', component: lazy(() => import('./features/offerings/AdminEffect')) },
-  { match: h => h.startsWith('#/browse/category'), component: lazy(() => import('./features/offerings/CategoryBrowse')) },
+  { match: h => h.startsWith('#/browse/category'), component: lazy(() => import('./features/offerings/OfferingsCatalog')) },
   { match: h => h === '#/orders', component: lazy(() => import('./features/offerings/MyOrders')) },
   { match: h => h === '#/timeline', component: lazy(() => import('./features/offerings/OfferingsTimeline')) },
   { match: h => h === '#/offerings/by-who', component: lazy(() => import('./features/offerings/OfferingsByWho')) },
-  { match: h => h === '#/grave/create', component: lazy(() => import('./features/grave/CreateGraveForm')) },
-  { match: h => h === '#/deceased/create', component: lazy(() => import('./features/deceased/CreateDeceasedForm')) },
-  { match: h => h.startsWith('#/grave/detail'), component: lazy(() => import('./features/grave/GraveDetailPage')) },
+  { match: h => h === '#/deceased/create', component: lazy(() => import('./features/deceased/CreateDeceasedPage')) },
   { match: h => h === '#/deceased/list', component: lazy(() => import('./features/deceased/DeceasedListPage')) },
   { match: h => h.startsWith('#/deceased/relationships'), component: lazy(() => import('./features/deceased/RelationshipPage')) },
+  { match: h => h === '#/memorial', component: lazy(() => import('./features/memorial/HomePage')) },  // 🆕 纪念馆首页（云上思念风格）
+  { match: h => h === '#/memorial/celebrity', component: lazy(() => import('./features/memorial/CelebrityHallPage')) },  // 🆕 名人馆页面
+  { match: h => h === '#/memorial/great-person', component: lazy(() => import('./features/memorial/GreatPersonHallPage')) },  // 🆕 伟人馆页面
+  { match: h => h === '#/memorial/hero', component: lazy(() => import('./features/memorial/HeroHallPage')) },  // 🆕 英雄馆页面
+  { match: h => h === '#/memorial/event', component: lazy(() => import('./features/memorial/EventHallPage')) },  // 🆕 事件馆页面
+  { match: h => h === '#/memorial/academician', component: lazy(() => import('./features/memorial/AcademicianHallPage')) },  // 🆕 院士馆页面
+  { match: h => h === '#/memorial/my', component: lazy(() => import('./features/memorial/MyMemorialPage')) },  // 🆕 我的纪念馆页面
+  { match: h => h === '#/transfer', component: lazy(() => import('./features/ledger/TransferPage')) },  // 🆕 转账页面
+  { match: h => h.startsWith('#/memorial/comprehensive'), component: lazy(() => import('./features/memorial/MemorialComprehensive')) },  // 🆕 纪念馆综合页面（云上思念风格）
   { match: h => h.startsWith('#/memorial/'), component: lazy(() => import('./features/memorial/MemorialHallDetailPage')) },  // 🆕 纪念馆详情页
-  { match: h => h === '#/grave/my', component: lazy(() => import('./features/grave/MyGravesPage')) },
   { match: h => h === '#/treasury', component: lazy(() => import('./features/treasury/TreasuryPage')) },
   { match: h => h === '#/dashboard', component: lazy(() => import('./features/dashboard/DashboardPage')) },
   { match: h => h === '#/gov/appeal', component: lazy(() => import('./features/governance/SubmitAppealPage')) },
-  { match: h => h === '#/covers', component: lazy(() => import('./features/grave/CoverOptionsPage')) },
-  { match: h => h === '#/covers/create', component: lazy(() => import('./features/grave/CreateCoverOptionPage')) },
-  { match: h => h === '#/grave/audio', component: lazy(() => import('./features/grave/GraveAudioPicker')) },
-  { match: h => h === '#/carousel/editor', component: lazy(() => import('./features/grave/CarouselEditorPage')) },
+  { match: h => h === '#/gov/affiliate/dashboard', component: lazy(() => import('./features/governance/AffiliateGovernanceDashboard')) },  // 🆕 联盟治理仪表板
+  { match: h => h === '#/gov/affiliate/create-proposal', component: lazy(() => import('./features/governance/CreateAffiliateProposal')) },  // 🆕 创建联盟治理提案
+  { match: h => h.startsWith('#/gov/affiliate/vote/'), component: lazy(() => import('./features/governance/VoteAffiliateProposal')) },  // 🆕 联盟治理投票
+  { match: h => h.startsWith('#/gov/affiliate/proposal/'), component: lazy(() => import('./features/governance/VoteAffiliateProposal')) },  // 🆕 联盟治理提案详情（复用投票页面）
   { match: h => h === '#/category/create', component: lazy(() => import('./features/offerings/CreateCategoryPage')) },
   { match: h => h === '#/identity', component: lazy(() => import('./features/identity/IdentityViewerPage')) },
   { match: h => h === '#/origin', component: lazy(() => import('./features/origin/OriginRestrictionPage')) },
@@ -42,7 +50,6 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/sacrifice/create', component: lazy(() => import('./features/offerings/CreateSacrificePage')) },
   { match: h => h === '#/scene/create', component: lazy(() => import('./features/offerings/CreateScenePage')) },
   { match: h => h === '#/bridge/lock', component: lazy(() => import('./features/bridge/BridgeLockPage')) },
-  { match: h => h === '#/ledger/cleanup', component: lazy(() => import('./features/ledger/LedgerCleanupPage')) },
   { match: h => h === '#/admin/otc', component: lazy(() => import('./features/otc/AdminOtcSettingsPage')) },
   { match: h => h === '#/otc/order', component: lazy(() => import('./features/otc/CreateOrderPage')) },
   { match: h => h === '#/otc/mm-apply', component: lazy(() => import('./features/otc/CreateMarketMakerPage')) },
@@ -69,6 +76,13 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
   { match: h => h === '#/storage-treasury', component: lazy(() => import('./features/storage-treasury/StorageTreasuryDashboard')) },
   { match: h => h === '#/chat', component: lazy(() => import('./features/chat/ChatPage')) },
+  { match: h => h === '#/chat/blocked', component: lazy(() => import('./features/chat/BlockedUsersPage')) },  // 🆕 聊天黑名单管理
+  { match: h => h === '#/chat/cache', component: lazy(() => import('./features/chat/CacheManagement')) },  // 🆕 聊天缓存管理
+  { match: h => h === '#/smart-chat', component: lazy(() => import('./features/smart-chat/SmartChatApp')) },  // 🆕 Stardust智能群聊系统
+  { match: h => h === '#/smart-chat/demo', component: lazy(() => import('./features/smart-chat/SmartGroupChatPage')) },  // 🆕 智能聊天演示页面
+  { match: h => h === '#/ai-trader', component: lazy(() => import('./features/ai-trader/AIStrategyDemo')) },  // 🆕 AI 交易策略
+  { match: h => h === '#/profile', component: lazy(() => import('./features/profile/MyWalletPage')) },  // 🆕 我的钱包（个人中心）
+  { match: h => h === '#/wallet', component: lazy(() => import('./features/wallet/WalletManagePage')) },  // 🆕 钱包管理
 ];
 
 // UI 组件展示页仅在开发模式暴露

@@ -32,10 +32,10 @@ const DeceasedListPage: React.FC = () => {
           let name: string | undefined = undefined
           try { const u8 = d.name?.toU8a ? d.name.toU8a() : (d.name?.toJSON ? new Uint8Array(d.name.toJSON()) : undefined); if (u8) name = new TextDecoder().decode(u8) } catch {}
           const owner = d.owner?.toString?.() || String(d.owner)
-          const graveId = (d.graveId?.toNumber?.() ?? d.graveId) as number | undefined
+          // 旧墓位功能已删除，不再读取相关字段
           let token: string | undefined = undefined
           try { const u8 = d.deceasedToken?.toU8a ? d.deceasedToken.toU8a() : (d.deceasedToken?.toJSON ? new Uint8Array(d.deceasedToken.toJSON()) : undefined); if (u8) token = new TextDecoder().decode(u8) } catch {}
-          return { id, name, owner, graveId, token }
+          return { id, name, owner, token }
         } catch { return null }
       }))
       setItems(arr.filter(Boolean) as any[])
@@ -50,7 +50,7 @@ const DeceasedListPage: React.FC = () => {
   React.useEffect(()=> { load() }, [load])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Card title="逝者列表" extra={<Button size="small" onClick={load} loading={loading}>刷新</Button>}>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <Space style={{ marginBottom: 8 }}>
@@ -65,14 +65,13 @@ const DeceasedListPage: React.FC = () => {
                 <Button key="pin" size="small" onClick={()=> { try { window.location.hash = `#/ipfs/pin?subjectId=${it.id}` } catch {} }}>去存储(Pin)</Button>,
                 <AppealEntry key="appeal" domain={1} targetId={it.id} actionHint="restore_profile" referrer="deceased_list" />
               ]}
-              onClick={()=> { if (it.graveId!=null) { try { localStorage.setItem('mp.grave.detailId', String(it.graveId)) } catch {}; window.location.hash = `#/grave/detail?gid=${it.graveId}`; window.dispatchEvent(new HashChangeEvent('hashchange')) } }}
-              style={{ cursor: it.graveId!=null ? 'pointer' : 'default' }}
+              style={{ cursor: 'default' }}
             >
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Space>
                   <Typography.Text strong>#{it.id}</Typography.Text>
                   {it.name && <Tag color="green">{it.name}</Tag>}
-                  {it.graveId!=null && <Tag>grave {String(it.graveId)}</Tag>}
+                  {/* 旧墓位功能已删除，不再显示相关字段 */}
                 </Space>
                 <div style={{ fontSize: 12, color: '#666' }}>
                   <span>Owner：</span><Typography.Text code>{it.owner}</Typography.Text>

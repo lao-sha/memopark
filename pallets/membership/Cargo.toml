@@ -12,24 +12,27 @@ scale-info = { version = "2.0.0", default-features = false, features = ["derive"
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
 
 # Substrate
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false, optional = true }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
-sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9", default-features = false }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false, optional = true }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+sp-std = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506", default-features = false }
+log = { version = "0.4.22", default-features = false }
 
 # Local pallets
 # 🗑️ 2025-10-29: pallet-stardust-referrals 已删除（已整合到 pallet-affiliate），且实际未使用
 # 🆕 2025-10-28 更新：使用统一 pallet-affiliate 替代 pallet-affiliate-config
 pallet-affiliate = { path = "../affiliate", default-features = false }
+# 🆕 2025-11-10：添加 pallet-pricing 用于查询 DUST 市场价格
+pallet-pricing = { path = "../pricing", default-features = false }
 # pallet-affiliate-config = { path = "../affiliate-config", default-features = false }  # 已整合到 pallet-affiliate
 
 [dev-dependencies]
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.18.9" }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506" }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506" }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2506" }
 
 [features]
 default = ["std"]
@@ -43,8 +46,10 @@ std = [
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"log/std",
 	# "pallet-stardust-referrals/std",  # 🗑️ 2025-10-29: 已删除
 	"pallet-affiliate/std",  # 🆕 2025-10-28 更新
+	"pallet-pricing/std",  # 🆕 2025-11-10
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

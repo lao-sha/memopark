@@ -168,8 +168,8 @@ export const MarketMakerPoolPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // 查询做市商（🆕 pallet-trading）
-      const entries = await api.query.trading.makerApplications.entries();
+      // 查询做市商（🆕 pallet-maker）
+      const entries = await api.query.maker.makerApplications.entries();
       
       let foundMmId: number | null = null;
       let foundApp: any = null;
@@ -216,8 +216,8 @@ export const MarketMakerPoolPage: React.FC = () => {
       
       setPoolInfo(pool);
 
-      // 查询提取请求（🆕 pallet-trading）
-      const withdrawal = await api.query.trading.withdrawalRequests(foundMmId);
+      // 查询提取请求（🆕 pallet-maker）
+      const withdrawal = await api.query.maker.withdrawalRequests(foundMmId);
       if (withdrawal && !withdrawal.isEmpty) {
         const req = withdrawal.toJSON();
         setWithdrawalRequest({
@@ -442,7 +442,7 @@ export const MarketMakerPoolPage: React.FC = () => {
   const availableRate = totalBalance > 0 ? (availableBalance / totalBalance) * 100 : 0;
 
   return (
-    <div className="first-purchase-container" style={{ padding: '24px' }}>
+    <div className="first-purchase-container" style={{ padding: '16px' }}>
       {/* 返回按钮 */}
       <div style={{ marginBottom: 16 }}>
         <Button 
@@ -754,7 +754,7 @@ export const MarketMakerPoolPage: React.FC = () => {
           </div>
 
           <div>
-            <Text strong>提取金额（MEMO）：</Text>
+            <Text strong>提取金额（DUST）：</Text>
             <InputNumber
               style={{ width: '100%', marginTop: 8 }}
               min={0}

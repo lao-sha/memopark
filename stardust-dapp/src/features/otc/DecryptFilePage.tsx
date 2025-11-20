@@ -249,7 +249,7 @@ export default function DecryptFilePage() {
       </div>
 
       {/* 主内容 */}
-      <div style={{ maxWidth: 800, margin: '60px auto 0', padding: '0 20px' }}>
+      <div style={{ maxWidth: 480, margin: '60px auto 0', padding: '0 20px' }}>
         <Card
           style={{
             borderRadius: '12px',

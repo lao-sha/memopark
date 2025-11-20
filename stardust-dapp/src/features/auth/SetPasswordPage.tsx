@@ -114,7 +114,7 @@ const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
     <div
       style={{
         padding: '20px',
-        maxWidth: '640px',
+        maxWidth: '480px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
@@ -161,7 +161,7 @@ const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
       <div
         style={{
           background: '#fff',
-          padding: '24px',
+          padding: '16px',
           borderRadius: '12px',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
         }}

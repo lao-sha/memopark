@@ -55,7 +55,6 @@ export interface DeceasedEvent {
  */
 export interface DeceasedCreatedData {
   deceasedId: number;
-  graveId: number;
   owner: string;
 }
 
@@ -161,10 +160,9 @@ export function useDeceasedEvents(enabled: boolean = true): UseDeceasedEventsRes
     try {
       switch (eventName) {
         case 'DeceasedCreated': {
-          const [deceasedId, graveId, owner] = eventData;
+          const [deceasedId, owner] = eventData;
           return {
             deceasedId: deceasedId.toNumber(),
-            graveId: graveId.toNumber(),
             owner: owner.toString(),
           } as DeceasedCreatedData;
         }

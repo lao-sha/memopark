@@ -1,16 +1,26 @@
 // Copyright (C) Stardust Team
 // SPDX-License-Identifier: Apache-2.0
 
-//! # 年费会员系统 Pallet (pallet-membership)
+//! # 年费会员系统 + 统一治理 Pallet (pallet-membership)
+//!
+//! **🔥 2025-11-13 架构重构：成为统一治理中心**
 //!
 //! ## 功能概述
 //!
-//! 本模块实现了完整的年费会员系统，包括：
+//! 本模块实现了完整的年费会员系统 + 统一治理机制：
+//!
+//! ### 会员管理
 //! - 多等级会员购买（1年/3年/5年/10年）
 //! - 推荐码生成与验证
 //! - 动态代数增长机制（推荐越多拿越多，最多15代）
 //! - 会员折扣管理（默认2折优惠）
 //! - 补升级到10年会员
+//!
+//! ### 统一治理（新增）
+//! - **年费价格治理**：全民投票调整4个等级的USDT价格
+//! - **分成比例治理**：为 pallet-affiliate 提供跨模块治理服务
+//! - **投票机制**：加权投票 + 信念投票
+//! - **技术委员会无否决权**：所有提案都必须通过全民投票
 //!
 //! ## 核心特性
 //!
@@ -20,29 +30,22 @@
 //!    - 5年会员：1600 DUST，基础12代，有效期5年
 //!    - 10年会员：2000 DUST，基础15代，有效期10年
 //!
-//! 2. **动态代数增长**
-//!    - 每推荐一个会员，奖励代数+1
-//!    - 总代数 = 基础代数 + 奖励代数（最多15代）
-//!    - 10年会员初始即为15代，无增长空间
-//!
-//! 3. **推荐关系管理**
-//!    - 基于 pallet-memo-referrals 的推荐关系
-//!    - 自动生成唯一推荐码
-//!    - 推荐人必须是有效会员
-//!
-//! 4. **会员折扣**
-//!    - 默认享受2折优惠（20%）
-//!    - 可通过治理调整折扣比例
-//!    - 在供奉等消费场景立即生效
+//! 2. **治理权限**
+//!    - 持币权重（70%）+ 参与权重（20%）+ 贡献权重（10%）
+//!    - 信念投票：锁定时间换取投票权重倍数
+//!    - 自适应阈值：参与率越高，通过门槛越低
 //!
 //! ## 接口说明
 //!
-//! ### 用户接口
+//! ### 会员接口
 //! - `purchase_membership`: 购买会员（需提供推荐码）
 //! - `upgrade_to_year10`: 补升级到10年会员
 //!
-//! ### 治理接口
-//! - `set_member_discount`: 设置会员折扣比例（Root）
+//! ### 治理接口（新增）
+//! - `propose_membership_price_adjustment`: 发起年费价格调整提案
+//! - `vote_on_membership_price_proposal`: 对年费价格提案投票
+//! - `propose_percentage_adjustment`: 发起分成比例调整提案（为affiliate服务）
+//! - `vote_on_percentage_proposal`: 对分成比例提案投票
 //!
 //! ### 查询接口
 //! - `is_member_valid`: 检查账户是否为有效会员
@@ -55,6 +58,15 @@ pub use pallet::*;
 
 mod types;
 pub use types::*;
+
+// 🔥 2025-11-13：新增统一治理模块
+pub mod governance;
+pub use governance::{
+    Vote, Conviction, ProposalStatus, VoteRecord, VoteTally,
+    MembershipPriceProposal, PercentageAdjustmentProposal,
+    MembershipPriceChangeRecord, PercentageChangeRecord,
+    LevelPercents, // 从这里导出给affiliate使用
+};
 
 #[cfg(test)]
 mod mock;
@@ -84,6 +96,10 @@ pub mod pallet {
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+	/// Affiliate pallet 的余额类型
+	pub type AffiliateBalanceOf<T> =
+		<<<T as Config>::AffiliateConfig as pallet_affiliate::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 	// 🆕 2025-10-28 已移除：旧的 trait 导入
 	// 现在直接依赖 pallet-affiliate（统一联盟计酬系统）
 	// - 推荐关系管理：pallet_affiliate::Pallet 提供
@@ -93,9 +109,9 @@ pub mod pallet {
 	pub struct Pallet<T>(_);
 
     #[pallet::config]
-	pub trait Config: frame_system::Config {
-		/// 事件类型
-		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+	/// 函数级中文注释：Membership Pallet 配置 trait
+	/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式声明
+	pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
 
 		/// 货币系统（MEMO代币）
 		type Currency: Currency<Self::AccountId>;
@@ -109,15 +125,19 @@ pub mod pallet {
 		#[pallet::constant]
 		type BlocksPerYear: Get<BlockNumberFor<Self>>;
 
-		/// MEMO 代币单位（1 DUST = 10^12）
+		/// DUST 代币单位（1 DUST = 10^12）
 		#[pallet::constant]
 		type Units: Get<BalanceOf<Self>>;
 
 		// 🆕 2025-10-28 更新：使用关联类型连接 pallet-affiliate
 		// 这样可以避免 Currency 类型冲突，同时支持跨 pallet 调用
-		
+
 		/// 联盟计酬系统类型（指向 Runtime，实现了 pallet_affiliate::Config）
-		type AffiliateConfig: pallet_affiliate::Config<AccountId = Self::AccountId>;
+		/// 约束：两者必须使用相同的 Currency Balance 类型
+		type AffiliateConfig: pallet_affiliate::Config<
+			AccountId = Self::AccountId,
+			Currency = Self::Currency,
+		>;
 
 		/// 治理起源（Root 或委员会 2/3 多数）
 		/// 
@@ -135,6 +155,16 @@ pub mod pallet {
 	/// 函数级中文注释：联盟计酬 PalletId
 	#[pallet::constant]
 	type AffiliatePalletId: Get<PalletId>;
+
+	/// 🆕 2025-11-10：价格查询系统（指向 Runtime，实现了 pallet_pricing::Config）
+	/// 用于查询 DUST 市场价格，计算持币门槛
+	type PricingConfig: pallet_pricing::Config;
+
+	/// 🆕 2025-11-10：最低持币价值（美元，单位：美分）
+	/// 默认值：10000（即 100.00 美元）
+	/// 精度：100 = 1 美元
+	#[pallet::constant]
+	type MinHoldingValueCents: Get<u64>;
 
 	/// 权重信息
     type WeightInfo: WeightInfo;
@@ -253,6 +283,20 @@ pub mod pallet {
 		who: T::AccountId,
 		level_id: u8,
 	},
+	/// 🆕 2025-11-10：动态价格计算完成
+	/// [会员等级ID, USDT价格(精度10^6), DUST市场价格(精度10^6), 计算出的DUST数量]
+	DynamicPriceCalculated {
+		level_id: u8,
+		usdt_price: u64,
+		dust_market_price: u64,
+		dust_amount: BalanceOf<T>,
+	},
+	/// 🆕 2025-11-10：价格计算失败，使用回退价格
+	/// [会员等级ID, 回退价格]
+	PriceCalculationFallback {
+		level_id: u8,
+		fallback_price: BalanceOf<T>,
+	},
 }
 
     #[pallet::error]
@@ -281,6 +325,42 @@ pub mod pallet {
 		PriceOutOfRange,
 		/// 价格未设置（治理需要初始化）
 		PriceNotSet,
+		/// 🆕 2025-11-10：市场价格不可用（pallet-pricing 未初始化或为0）
+		MarketPriceNotAvailable,
+		/// 🆕 2025-11-10：价格计算失败（溢出或计算错误）
+		PriceCalculationFailed,
+
+		// 🔥 2025-11-13：统一治理模块错误
+		/// 比例数组长度必须为15
+		InvalidPercentageLength,
+		/// 单层比例超过100%
+		PercentageTooHigh,
+		/// 🔥 2025-11-13 更新：前2层比例不能为0（第3层可以为0）
+		CriticalLayerZero,
+		/// 总比例低于50%
+		TotalPercentageTooLow,
+		/// 总比例超过99%
+		TotalPercentageTooHigh,
+		/// 比例不是递减的
+		NonDecreasingPercentage,
+		/// 第一层比例过高（超过50%）
+		FirstLayerTooHigh,
+		/// 提案不存在
+		ProposalNotFound,
+		/// 已经投票
+		AlreadyVoted,
+		/// 投票未激活
+		VotingNotActive,
+		/// 治理已暂停
+		GovernancePausedError,
+		/// 年费价格提案不存在
+		MembershipPriceProposalNotFound,
+		/// 已对年费价格提案投票
+		MembershipPriceAlreadyVoted,
+		/// 无效的百分比
+		InvalidPercents,
+		/// 活跃提案过多
+		TooManyActiveProposals,
     }
 
     #[pallet::call]
@@ -379,13 +459,21 @@ pub mod pallet {
 		Self::increase_referrer_generation(referrer_account)?;
 	}
 
-	// 8. ✅ 触发联盟计酬分配（100%推荐链）
-	// 🆕 2025-10-28 更新：调用 pallet-affiliate 的会员专用分配
-	// TODO: pallet-affiliate 需要实现 distribute_membership_rewards 公开方法
-	// 暂时跳过，后续补充实现
-	let price_u128: u128 = price.saturated_into();
-	let _ = price_u128; // 避免未使用警告
-	// pallet_affiliate::Pallet::<T>::do_distribute_membership_rewards(&who, price.into())?;
+	// 8. ✅ 触发联盟计酬分配（100%推荐链，15层）
+	// 🆕 2025-11-18 启用：会员费100%分配到推荐链，无系统扣费
+	// - 使用即时分成模式（快速到账）
+	// - 分配15层推荐链
+	// - 激励推荐行为，促进会员增长
+	let distributed = pallet_affiliate::Pallet::<T::AffiliateConfig>::distribute_membership_rewards(&who, price)?;
+	
+	// 发射分配事件（可选，用于追踪）
+	log::info!(
+		target: "membership",
+		"Membership fee distributed: buyer={:?}, amount={:?}, distributed={:?}",
+		who,
+		price,
+		distributed
+	);
 
 	// 9. 发出事件
 	Self::deposit_event(Event::MembershipPurchased {
@@ -429,22 +517,62 @@ pub mod pallet {
 			// 2. 验证不是已经是10年会员
 			ensure!(membership.level != MembershipLevel::Year10, Error::<T>::AlreadyYear10);
 
-			// 3. 计算升级费用
-			let units: u128 = T::Units::get().saturated_into();
-			let upgrade_price_u128 = membership
-				.level
-				.upgrade_to_year10_price()
-				.ok_or(Error::<T>::CannotUpgrade)?
-				.saturating_mul(units);
-			let upgrade_price: BalanceOf<T> = upgrade_price_u128.saturated_into();
+			// 3. 🆕 2025-11-10：基于 USDT 价格差计算升级费用
+			// 升级价格 = Year10价格 - 当前等级价格 + 服务费(20%)
+			let current_usdt = membership.level.price_in_usdt();
+			let year10_usdt = MembershipLevel::Year10.price_in_usdt();
+			let price_diff = year10_usdt.saturating_sub(current_usdt);
 
-			// 4. 扣费
+			// 添加 20% 服务费
+			let service_fee = price_diff.saturating_mul(20).saturating_div(100);
+			let total_usdt_price = price_diff.saturating_add(service_fee);
+
+			// 动态计算所需 DUST
+			let dust_market_price = pallet_pricing::Pallet::<T::PricingConfig>::get_dust_market_price_weighted();
+			let units: u128 = T::Units::get().saturated_into();
+
+			let upgrade_price: BalanceOf<T> = if dust_market_price > 0 {
+				// 使用市场价格计算
+				let upgrade_dust_u128 = (total_usdt_price as u128)
+					.saturating_mul(units)
+					.checked_div(dust_market_price as u128)
+					.unwrap_or_else(|| {
+						// 回退到固定价格
+						#[allow(deprecated)]
+						membership.level.upgrade_to_year10_price()
+							.unwrap_or(0)
+							.saturating_mul(units)
+					});
+				upgrade_dust_u128.saturated_into()
+			} else {
+				// 市场价格不可用，使用默认固定价格
+				#[allow(deprecated)]
+				let upgrade_price_u128 = membership.level
+					.upgrade_to_year10_price()
+					.ok_or(Error::<T>::CannotUpgrade)?
+					.saturating_mul(units);
+				upgrade_price_u128.saturated_into()
+			};
+
+			// 4. ✅ 扣费到联盟托管账户（支持推荐链分配）
+			let affiliate_account = T::AffiliatePalletId::get().into_account_truncating();
 			T::Currency::transfer(
 				&who,
-				&Self::treasury_account(),
+				&affiliate_account,
 				upgrade_price,
 				ExistenceRequirement::KeepAlive,
 			)?;
+
+			// 4.1 ✅ 触发联盟计酬分配（100%推荐链，15层）
+			// 🆕 2025-11-18 启用：升级费用100%分配到推荐链
+			let distributed = pallet_affiliate::Pallet::<T::AffiliateConfig>::distribute_membership_rewards(&who, upgrade_price)?;
+			log::info!(
+				target: "membership",
+				"Upgrade fee distributed: buyer={:?}, amount={:?}, distributed={:?}",
+				who,
+				upgrade_price,
+				distributed
+			);
 
 			// 5. 更新会员信息
 			let old_level = membership.level;
@@ -537,10 +665,16 @@ pub mod pallet {
 		#[pallet::call_index(3)]
 		#[pallet::weight(T::WeightInfo::set_member_discount())]
 		pub fn set_membership_price(
-			origin: OriginFor<T>,
-			level_id: u8,
-			price_units: u128,
+			_origin: OriginFor<T>,
+			_level_id: u8,
+			_price_units: u128,
 		) -> DispatchResult {
+			// 🔒 此函数已被禁用：年费价格只能通过 pallet-affiliate 全民投票治理修改
+			// 使用者应该通过 pallet-affiliate::propose_membership_price_adjustment 发起治理提案
+			return Err(DispatchError::Other("Function disabled - use governance proposal in pallet-affiliate"));
+
+			// 以下代码已被禁用
+			/*
 			// 治理权限验证
 			T::GovernanceOrigin::ensure_origin(origin)?;
 
@@ -571,16 +705,17 @@ pub mod pallet {
 			Self::deposit_event(Event::MembershipPriceUpdated { level_id, price });
 
 			Ok(())
+			*/
 		}
 
 		/// 批量设置所有会员等级价格
 		///
 		/// # 参数
 		/// - `origin`: 治理起源（Root 或委员会 2/3 多数）
-		/// - `year1_units`: Year1 会员价格（MEMO 单位数）
-		/// - `year3_units`: Year3 会员价格（MEMO 单位数）
-		/// - `year5_units`: Year5 会员价格（MEMO 单位数）
-		/// - `year10_units`: Year10 会员价格（MEMO 单位数）
+		/// - `year1_units`: Year1 会员价格（DUST 单位数）
+		/// - `year3_units`: Year3 会员价格（DUST 单位数）
+		/// - `year5_units`: Year5 会员价格（DUST 单位数）
+		/// - `year10_units`: Year10 会员价格（DUST 单位数）
 		///
 		/// # 说明
 		/// - 只有治理可调用
@@ -601,12 +736,18 @@ pub mod pallet {
 		#[pallet::call_index(4)]
 		#[pallet::weight(T::WeightInfo::set_member_discount().saturating_mul(4))]
 		pub fn set_all_membership_prices(
-			origin: OriginFor<T>,
-			year1_units: u128,
-			year3_units: u128,
-			year5_units: u128,
-			year10_units: u128,
+			_origin: OriginFor<T>,
+			_year1_units: u128,
+			_year3_units: u128,
+			_year5_units: u128,
+			_year10_units: u128,
 		) -> DispatchResult {
+			// 🔒 此函数已被禁用：年费价格只能通过 pallet-affiliate 全民投票治理修改
+			// 使用者应该通过 pallet-affiliate::propose_membership_price_adjustment 发起治理提案
+			return Err(DispatchError::Other("Function disabled - use governance proposal in pallet-affiliate"));
+
+			// 以下代码已被禁用
+			/*
 			// 治理权限验证
 			T::GovernanceOrigin::ensure_origin(origin)?;
 
@@ -634,6 +775,7 @@ pub mod pallet {
 		Self::deposit_event(Event::BatchPricesUpdated { count: 4 });
 
 		Ok(())
+		*/
 	}
 
 	/// 函数级中文注释：治理添加种子会员（仅 Root）
@@ -699,15 +841,103 @@ impl<T: Config> Pallet<T> {
 		/// - `who`: 要检查的账户
 		///
 		/// # 返回
-		/// - `true`: 是有效会员（已购买且未过期）
-		/// - `false`: 不是会员或已过期
+		/// - `true`: 是有效会员（已购买且未过期且持币价值≥100美元）
+		/// - `false`: 不是会员、已过期或持币价值不足
+		///
+		/// # 🆕 2025-11-10 变更：增加持币门槛验证
+		/// - 验证1：会员存在性和时效性（原有逻辑）
+		/// - 验证2：持币价值 ≥ 100美元（新增逻辑）
+		/// - 价格来源：pallet-pricing 的加权平均价格
+		/// - 计算公式：持币价值(美元) = 余额(DUST) × DUST价格(USDT/DUST)
 		pub fn is_member_valid(who: &T::AccountId) -> bool {
 			if let Some(membership) = Memberships::<T>::get(who) {
+				// 验证1：会员未过期
 				let current_block = <frame_system::Pallet<T>>::block_number();
-				current_block <= membership.valid_until
+				if current_block > membership.valid_until {
+					return false;
+				}
+
+				// 验证2：持币价值 ≥ 100美元
+				Self::check_holding_value(who)
 			} else {
 				false
 			}
+		}
+
+		/// 🆕 2025-11-10：检查持币价值是否满足门槛
+		///
+		/// # 参数
+		/// - `who`: 要检查的账户
+		///
+		/// # 返回
+		/// - `true`: 持币价值 ≥ 100美元
+		/// - `false`: 持币价值 < 100美元
+		///
+		/// # 计算逻辑
+		/// 1. 获取账户 DUST 余额（精度 10^12）
+		/// 2. 获取 DUST 市场价格（精度 10^6，即 USDT/DUST）
+		/// 3. 计算持币价值（美元）= 余额 × 价格 / 10^12 / 10^6
+		/// 4. 与门槛（100美元 = 10000美分）比较
+		///
+		/// # 示例
+		/// - 余额：1,000,000 DUST（= 1,000,000 × 10^12）
+		/// - DUST价格：0.0001 USDT（= 100 × 10^6 精度）
+		/// - 持币价值：1,000,000 × 100 / 10^12 = 100 美元 ✅
+		fn check_holding_value(who: &T::AccountId) -> bool {
+			// 1. 获取账户余额（精度 10^12）
+			let balance = T::Currency::free_balance(who);
+			let balance_u128: u128 = balance.saturated_into();
+
+			// 2. 获取 DUST 市场价格（USDT/DUST，精度 10^6）
+			// 使用加权平均价格，更准确反映市场情况
+			let dust_price_usdt = pallet_pricing::Pallet::<T::PricingConfig>::get_dust_market_price_weighted();
+
+			// 3. 计算持币价值（美分）
+			// 持币价值 = (余额 × 价格) / (10^12 × 10^6) × 100
+			//          = (余额 × 价格 × 100) / (10^12 × 10^6)
+			//          = (余额 × 价格) / 10^16
+			// 注意：USDT精度是10^6，1 USDT = 1,000,000，所以需要除以10^6
+			//      DUST精度是10^12，1 DUST = 1,000,000,000,000，所以需要除以10^12
+			//      美元转美分需要乘以100
+			let holding_value_cents = balance_u128
+				.saturating_mul(dust_price_usdt as u128)
+				.saturating_mul(100) // 转换为美分
+				.checked_div(1_000_000_000_000_000_000) // 除以 10^18 (10^12 × 10^6)
+				.unwrap_or(0);
+
+			// 4. 与门槛比较（100美元 = 10000美分）
+			let min_value_cents = T::MinHoldingValueCents::get();
+			holding_value_cents >= min_value_cents as u128
+		}
+
+		/// 🆕 2025-11-10：获取账户持币价值（美元）
+		///
+		/// # 参数
+		/// - `who`: 要查询的账户
+		///
+		/// # 返回
+		/// - 持币价值（美元，两位小数，例如：100.50 美元）
+		///
+		/// # 用途
+		/// - 前端显示用户持币价值
+		/// - 监控持币门槛状态
+		pub fn get_holding_value_usd(who: &T::AccountId) -> (u64, u32) {
+			let balance = T::Currency::free_balance(who);
+			let balance_u128: u128 = balance.saturated_into();
+			let dust_price_usdt = pallet_pricing::Pallet::<T::PricingConfig>::get_dust_market_price_weighted();
+
+			// 计算持币价值（美分）
+			let holding_value_cents = balance_u128
+				.saturating_mul(dust_price_usdt as u128)
+				.saturating_mul(100)
+				.checked_div(1_000_000_000_000_000_000)
+				.unwrap_or(0);
+
+			// 转换为美元和美分
+			let dollars = (holding_value_cents / 100) as u64;
+			let cents = (holding_value_cents % 100) as u32;
+
+			(dollars, cents)
 		}
 
 		/// 获取会员可拿代数
@@ -735,20 +965,102 @@ impl<T: Config> Pallet<T> {
 			MemberDiscount::<T>::get()
 		}
 
-		/// 获取会员等级价格（最小单位）
+		/// 🆕 2025-11-10：根据当前市场价格动态计算所需 DUST 数量
+		///
+		/// 函数级中文注释：基于 USDT 固定定价 + pallet-pricing 市场价格动态计算
 		///
 		/// # 参数
 		/// - `level`: 会员等级
 		///
 		/// # 返回
-		/// 价格（最小单位），如果存储中有设置则返回存储价格，否则返回默认价格
+		/// - `Ok(DUST数量)`: 成功，返回当前市场价格下所需的 DUST 数量
+		/// - `Err`: 市场价格不可用或计算失败
+		///
+		/// # 计算公式
+		/// ```text
+		/// 需要DUST = (USDT价格 × UNITS) / DUST市场价格
+		/// ```
+		///
+		/// # 示例
+		/// - Year1: 50 USDT
+		/// - DUST市场价格: 0.0001 USDT/DUST (100, 精度10^6)
+		/// - 所需DUST: (50 × 10^6 × UNITS) / 100 = 500,000 DUST
+		pub fn calculate_dust_amount_from_usdt(level: MembershipLevel) -> Result<BalanceOf<T>, Error<T>> {
+			// 1. 获取 USDT 价格（精度 10^6）
+			let usdt_price = level.price_in_usdt();
+
+			// 2. 获取 DUST 市场价格（精度 10^6）
+			let dust_market_price = pallet_pricing::Pallet::<T::PricingConfig>::get_dust_market_price_weighted();
+
+			// 3. 验证市场价格有效性
+			if dust_market_price == 0 {
+				return Err(Error::<T>::MarketPriceNotAvailable);
+			}
+
+			// 4. 计算所需 DUST 数量
+			// 需要DUST = (USDT价格 × UNITS) / DUST市场价格
+			let units: u128 = T::Units::get().saturated_into();
+			let dust_amount_u128 = (usdt_price as u128)
+				.saturating_mul(units)
+				.checked_div(dust_market_price as u128)
+				.ok_or(Error::<T>::PriceCalculationFailed)?;
+
+			Ok(dust_amount_u128.saturated_into())
+		}
+
+		/// 获取会员等级价格（最小单位）
+		///
+		/// 函数级中文注释：优先使用 USDT 动态定价，失败时回退到存储价格或默认价格
+		///
+		/// # 参数
+		/// - `level`: 会员等级
+		///
+		/// # 返回
+		/// 价格（最小单位）
+		///
+		/// # 定价策略（按优先级）
+		/// 1. **动态 USDT 定价**：基于 pallet-pricing 市场价格实时计算
+		/// 2. **存储价格**：治理设置的固定价格
+		/// 3. **默认价格**：硬编码的回退价格
 		pub fn get_membership_price(level: MembershipLevel) -> BalanceOf<T> {
-			MembershipPrices::<T>::get(level).unwrap_or_else(|| {
-				// 如果存储中没有设置，使用默认价格
-				let units: u128 = T::Units::get().saturated_into();
-				let price_u128 = level.price_in_units().saturating_mul(units);
-				price_u128.saturated_into()
-			})
+			// 策略1：尝试使用动态 USDT 定价
+			match Self::calculate_dust_amount_from_usdt(level) {
+				Ok(dynamic_price) => {
+					// 成功：记录动态价格计算事件
+					let dust_market_price = pallet_pricing::Pallet::<T::PricingConfig>::get_dust_market_price_weighted();
+					Self::deposit_event(Event::DynamicPriceCalculated {
+						level_id: level.to_id(),
+						usdt_price: level.price_in_usdt(),
+						dust_market_price,
+						dust_amount: dynamic_price,
+					});
+					return dynamic_price;
+				},
+				Err(_) => {
+					// 失败：尝试回退策略
+					// 策略2：使用存储价格
+					if let Some(stored_price) = MembershipPrices::<T>::get(level) {
+						Self::deposit_event(Event::PriceCalculationFallback {
+							level_id: level.to_id(),
+							fallback_price: stored_price,
+						});
+						return stored_price;
+					}
+
+					// 策略3：使用默认价格
+					#[allow(deprecated)]
+					let units: u128 = T::Units::get().saturated_into();
+					#[allow(deprecated)]
+					let default_price_u128 = level.price_in_units().saturating_mul(units);
+					let default_price: BalanceOf<T> = default_price_u128.saturated_into();
+
+					Self::deposit_event(Event::PriceCalculationFallback {
+						level_id: level.to_id(),
+						fallback_price: default_price,
+					});
+					return default_price;
+				}
+			}
 		}
 
 	/// 内部函数：创建会员信息

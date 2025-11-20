@@ -1,0 +1,410 @@
+/**
+ * 函数级详细中文注释：转账页面样式（统一青绿色UI风格）
+ *
+ * 设计目标：
+ * - 统一青绿色 #5DBAAA 主题风格，与底部导航栏保持一致
+ * - 移动端优先设计（max-width: 480px）
+ * - 简洁现代的卡片式布局
+ * - 清晰的视觉层次和良好的用户体验
+ * - 符合金融应用的严谨和专业感
+ */
+
+/* 主容器 */
+.transfer-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #F0F9F8 0%, #FAFAFA 100%);
+  padding-bottom: 20px;
+}
+
+/* 顶部导航栏（统一青绿色风格） */
+.transfer-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+}
+
+.transfer-header .back-button {
+  color: #5DBAAA;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.transfer-header .back-button:hover {
+  color: #4AA896;
+}
+
+.transfer-header .page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin: 0;
+}
+
+/* 主要内容区域 */
+.transfer-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 余额卡片（青绿色主题） */
+.balance-card {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(93, 186, 170, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.balance-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  opacity: 0.6;
+}
+
+.balance-label {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.balance-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.balance-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.balance-symbol {
+  font-size: 18px;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.balance-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.balance-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 转账表单卡片 */
+.transfer-form-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+}
+
+.form-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(93, 186, 170, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 表单输入框样式 */
+.form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2F4F4F;
+  margin-bottom: 8px;
+}
+
+.address-input,
+.amount-input {
+  height: 48px !important;
+  border-radius: 8px !important;
+  border: 2px solid #e0e0e0 !important;
+  font-size: 15px !important;
+  transition: all 0.3s ease;
+}
+
+.address-input:focus,
+.amount-input:focus {
+  border-color: #5DBAAA !important;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15) !important;
+}
+
+.from-input {
+  background: rgba(93, 186, 170, 0.06) !important;
+  border-color: rgba(93, 186, 170, 0.2) !important;
+  cursor: not-allowed;
+}
+
+/* 金额输入区域 */
+.amount-input-group {
+  display: flex;
+  width: 100%;
+}
+
+.amount-input {
+  flex: 1;
+  border-radius: 8px 0 0 8px !important;
+  border-right: none !important;
+}
+
+.max-button {
+  height: 48px !important;
+  border-radius: 0 8px 8px 0 !important;
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  color: #fff !important;
+  border: 2px solid #5DBAAA !important;
+  border-left: none !important;
+  font-weight: 600 !important;
+  min-width: 60px;
+  transition: all 0.3s ease;
+}
+
+.max-button:hover {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
+  border-color: #4AA896 !important;
+  transform: translateY(-1px);
+}
+
+/* 提交按钮 */
+.submit-button {
+  height: 52px !important;
+  border-radius: 26px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3) !important;
+  margin-top: 16px;
+  transition: all 0.3s ease;
+}
+
+.submit-button:hover {
+  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
+  box-shadow: 0 6px 16px rgba(93, 186, 170, 0.4) !important;
+  transform: translateY(-2px);
+}
+
+.submit-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.3) !important;
+}
+
+.submit-button:disabled {
+  background: #e0e0e0 !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+/* 提示信息卡片 */
+.tips-card {
+  background: rgba(93, 186, 170, 0.08);
+  border: 2px solid rgba(93, 186, 170, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.tips-item {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tips-item:last-child {
+  margin-bottom: 0;
+}
+
+.tips-icon {
+  font-size: 14px;
+  color: #5DBAAA;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+/* 错误和成功提示 */
+.alert-error {
+  border-radius: 8px !important;
+  border: 2px solid #ff4d4f !important;
+  background: rgba(255, 77, 79, 0.05) !important;
+  margin-bottom: 16px;
+}
+
+.alert-success {
+  border-radius: 8px !important;
+  border: 2px solid #52c41a !important;
+  background: rgba(82, 196, 26, 0.05) !important;
+  margin-bottom: 16px;
+}
+
+.success-hash {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* 密码输入弹窗 */
+.password-modal .ant-modal-content {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.password-modal .ant-modal-header {
+  background: linear-gradient(135deg, #F0F9F8 0%, #FAFAFA 100%);
+  border-bottom: 2px solid rgba(93, 186, 170, 0.15);
+  padding: 16px 20px;
+}
+
+.password-modal .ant-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2F4F4F;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-modal .ant-modal-body {
+  padding: 20px;
+}
+
+.password-input {
+  height: 48px !important;
+  border-radius: 8px !important;
+  border: 2px solid rgba(93, 186, 170, 0.2) !important;
+  font-size: 15px !important;
+}
+
+.password-input:focus {
+  border-color: #5DBAAA !important;
+  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15) !important;
+}
+
+.password-ok-btn {
+  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  border: none !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+}
+
+/* 费用显示 */
+.fee-display {
+  background: rgba(93, 186, 170, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fee-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.fee-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5DBAAA;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+  .transfer-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 小屏幕优化 */
+@media (max-width: 360px) {
+  .transfer-content {
+    padding: 12px;
+  }
+
+  .balance-card,
+  .transfer-form-card {
+    padding: 16px;
+  }
+
+  .balance-value {
+    font-size: 28px;
+  }
+
+  .submit-button {
+    height: 48px !important;
+    font-size: 15px !important;
+  }
+}
+
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .submit-button:hover,
+  .max-button:hover {
+    transform: none;
+  }
+}
+
+/* 页面进入动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.balance-card,
+.transfer-form-card {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.balance-card {
+  animation-delay: 0.1s;
+}
+
+.transfer-form-card {
+  animation-delay: 0.2s;
+}

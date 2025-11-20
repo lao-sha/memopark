@@ -1,0 +1,44 @@
+# AI推理服务依赖包
+# 基于Python 3.10+
+
+# Web框架
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# 深度学习
+torch==2.1.0
+transformers==4.35.2
+scikit-learn==1.3.2
+
+# 数据处理
+pandas==2.1.3
+numpy==1.26.2
+
+# 技术指标
+ta==0.11.0
+
+# 交易所API
+ccxt==4.5.15
+
+# HTTP客户端
+aiohttp>=3.10.11
+httpx==0.25.2
+
+# AI模型API
+openai==1.14.0  # 支持DeepSeek和其他OpenAI兼容API
+
+# 缓存
+redis==5.0.1
+# redis[hiredis]==5.0.1  # 可选：使用hiredis提升性能
+
+# 加密和安全
+cryptography==42.0.0
+
+# 日志和监控
+prometheus-client==0.19.0
+
+# 工具
+python-dotenv==1.0.0
+

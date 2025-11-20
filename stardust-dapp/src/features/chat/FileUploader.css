@@ -1,5 +1,7 @@
 /**
- * 文件上传组件样式 - 优化版
+ * 函数级详细中文注释：文件上传组件样式（移动端优化）
+ * - 优化触控反馈
+ * - 保持主题色统一
  */
 
 .file-uploader {
@@ -27,25 +29,20 @@
 
 .file-uploader-buttons .ant-btn {
   border-radius: 16px;
-  border: 1.5px solid #e8e8e8;
-  padding: 4px 12px;
+  border: 2px solid rgba(184, 134, 11, 0.2);
+  padding: 6px 14px;
   height: auto;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   background: #fff;
-}
-
-.file-uploader-buttons .ant-btn:hover:not(:disabled) {
-  border-color: #1890ff;
-  color: #1890ff;
-  background: #f0f9ff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  color: #B8860B;
 }
 
 .file-uploader-buttons .ant-btn:active {
-  transform: translateY(0);
+  border-color: #B8860B;
+  background: rgba(184, 134, 11, 0.1);
+  transform: scale(0.95);
 }
 
 .file-uploader-buttons .ant-btn .anticon {
@@ -66,3 +63,9 @@
   }
 }
 
+/* 触控优化 */
+@media (hover: none) and (pointer: coarse) {
+  .file-uploader-buttons .ant-btn:hover {
+    transform: none;
+  }
+}

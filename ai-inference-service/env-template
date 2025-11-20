@@ -1,0 +1,24 @@
+# AI推理服务环境变量配置模板
+# 复制此文件为 .env 并填入真实配置
+
+# 服务配置
+ENVIRONMENT=development
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=info
+
+# 模型配置
+MODEL_PATH=./models
+DATA_PATH=./data/historical
+
+# Redis配置（缓存）
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# API密钥（可选）
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+
+# 监控
+ENABLE_METRICS=true
+

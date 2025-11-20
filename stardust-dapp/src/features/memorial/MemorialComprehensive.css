@@ -1,0 +1,275 @@
+/**
+ * 函数级详细中文注释：纪念馆综合页面样式（严格按照云上思念UI设计）
+ * 
+ * 设计参考: https://m.yssn.cn/wap/index/pc_index.html
+ * 
+ * 样式特点：
+ * - 移动端优先设计
+ * - 云上思念风格配色
+ * - 圆角、阴影、间距等细节完全匹配
+ */
+
+/* 主容器 */
+.memorial-comprehensive {
+  min-height: 100vh;
+  background: #F5F5DC;
+  padding-bottom: 80px;
+}
+
+/* 顶部导航栏 */
+.memorial-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  padding: 10px 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.memorial-header .search-input {
+  flex: 1;
+  border-radius: 20px;
+  background: #f5f5f5;
+  border: none;
+}
+
+/* 逝者信息区 */
+.deceased-info-section {
+  background: #fff;
+  padding: 20px 16px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.deceased-name {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.deceased-years {
+  color: #999;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.stats-info {
+  margin: 16px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 2;
+}
+
+/* 点亮蜡烛按钮 */
+.light-candle-btn {
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+  border: none;
+  border-radius: 20px;
+  height: 44px;
+  padding: 0 32px;
+  margin-top: 12px;
+}
+
+.candle-count {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* 最近动态 */
+.recent-activities {
+  background: #fff;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.activity-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-user {
+  font-weight: 500;
+  color: #333;
+}
+
+.activity-action {
+  margin: 0 8px;
+  color: #666;
+}
+
+.activity-time {
+  color: #999;
+  float: right;
+}
+
+/* 快捷操作 */
+.quick-actions {
+  background: #fff;
+  padding: 12px 16px;
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+}
+
+.quick-action-btn {
+  flex: 1;
+  border-radius: 8px;
+  height: 40px;
+  border-color: #d9d9d9;
+}
+
+/* 分类标签（横向滚动） */
+.category-tags {
+  background: #fff;
+  padding: 12px 0;
+  margin-top: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
+.category-tags-container {
+  display: inline-flex;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.category-tag {
+  cursor: pointer;
+  padding: 6px 16px;
+  font-size: 14px;
+  border-radius: 20px;
+  border: 1px solid #d9d9d9;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.category-tag.active {
+  background: #B8860B;
+  color: #fff;
+  border: none;
+}
+
+/* 供奉品网格 */
+.offerings-grid {
+  background: #fff;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.offerings-grid-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.offering-card {
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  overflow: hidden;
+}
+
+.offering-image {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.offering-name {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #333;
+  text-align: center;
+}
+
+.offering-price {
+  font-size: 14px;
+  font-weight: bold;
+  color: #B8860B;
+  text-align: center;
+}
+
+/* 底部操作栏 */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-top: 1px solid #eee;
+  display: flex;
+  padding: 8px 0;
+  z-index: 100;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+}
+
+.bottom-nav-btn {
+  flex: 1;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+}
+
+.bottom-nav-icon {
+  font-size: 24px;
+}
+
+.bottom-nav-label {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.bottom-nav-btn.candle {
+  color: #DC143C;
+}
+
+.bottom-nav-btn.offering {
+  color: #B8860B;
+}
+
+.bottom-nav-btn.message {
+  color: #2F4F4F;
+}
+
+.bottom-nav-btn.profile {
+  color: #2F4F4F;
+}
+
+/* 底部留白 */
+.bottom-spacer {
+  height: 80px;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+  .offerings-grid-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .offerings-grid-container {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+

@@ -1,0 +1,368 @@
+/* MakerContactCard.css - 联系做市商交易卡片样式 */
+
+.maker-contact-card {
+  margin-bottom: 16px;
+  border: 1px solid #e8f4f8;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f6fbfd 0%, #e8f4f8 100%);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.1);
+}
+
+.maker-contact-card .ant-card-head {
+  border-bottom: 1px solid #e8f4f8;
+  background: #fff;
+  border-radius: 12px 12px 0 0;
+}
+
+.maker-contact-card .card-title {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* 做市商信息区域 */
+.maker-info-section {
+  margin-bottom: 20px;
+}
+
+.maker-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.maker-details {
+  flex: 1;
+}
+
+.maker-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.maker-address {
+  margin-bottom: 8px;
+}
+
+.maker-stats .ant-typography {
+  font-size: 12px;
+}
+
+/* 价格信息展示 */
+.price-info-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e8f4f8;
+}
+
+.price-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 联系方式区域 */
+.contact-section {
+  margin-bottom: 20px;
+}
+
+.contact-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  color: #2c3e50;
+}
+
+.contact-buttons {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
+.chat-button {
+  background: #5DBAAA;
+  border-color: #5DBAAA;
+  height: 40px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chat-button:hover {
+  background: #4a9d91;
+  border-color: #4a9d91;
+}
+
+.contact-button {
+  border-color: #5DBAAA;
+  color: #5DBAAA;
+  height: 40px;
+  font-weight: 500;
+}
+
+.contact-button:hover {
+  border-color: #4a9d91;
+  color: #4a9d91;
+}
+
+/* 交易流程区域 */
+.trade-flow-section {
+  margin-bottom: 20px;
+}
+
+.flow-title {
+  margin-bottom: 12px;
+  color: #2c3e50;
+}
+
+.flow-steps {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e8f4f8;
+  overflow-x: auto;
+  gap: 8px;
+}
+
+.flow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+  text-align: center;
+}
+
+.step-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  border: 2px solid #d9d9d9;
+  color: #999;
+  background: #fff;
+  transition: all 0.3s ease;
+}
+
+.step-text {
+  font-size: 11px;
+  color: #666;
+  line-height: 1.2;
+  max-width: 50px;
+}
+
+/* 流程步骤状态样式 */
+.flow-step.finish .step-number {
+  background: #52c41a;
+  border-color: #52c41a;
+  color: #fff;
+}
+
+.flow-step.finish .step-text {
+  color: #52c41a;
+  font-weight: 500;
+}
+
+.flow-step.process .step-number {
+  background: #5DBAAA;
+  border-color: #5DBAAA;
+  color: #fff;
+  animation: pulse 1.5s infinite;
+}
+
+.flow-step.process .step-text {
+  color: #5DBAAA;
+  font-weight: 600;
+}
+
+.flow-step.wait .step-number {
+  background: #f5f5f5;
+  border-color: #d9d9d9;
+  color: #bfbfbf;
+}
+
+.flow-step.wait .step-text {
+  color: #bfbfbf;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(93, 186, 170, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(93, 186, 170, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(93, 186, 170, 0);
+  }
+}
+
+/* 安全提示 */
+.security-tip {
+  border: 1px solid #e6f7ff;
+  background: #f6ffed;
+}
+
+.security-tip .ant-alert-icon {
+  color: #52c41a;
+}
+
+/* 联系方式模态框 */
+.contact-modal-content {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.contact-methods {
+  space-y: 12px;
+}
+
+.contact-method {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+.contact-method span:first-child {
+  margin-right: 8px;
+}
+
+.contact-method span:nth-child(2) {
+  flex: 1;
+  font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 640px) {
+  .maker-contact-card {
+    margin: 0 -8px 16px;
+    border-radius: 8px;
+  }
+
+  .maker-header {
+    gap: 8px;
+  }
+
+  .price-info-compact {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .contact-buttons {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .flow-steps {
+    gap: 4px;
+    padding: 12px 8px;
+  }
+
+  .flow-step {
+    min-width: 50px;
+  }
+
+  .step-number {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+
+  .step-text {
+    font-size: 10px;
+    max-width: 45px;
+  }
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .maker-contact-card {
+    background: linear-gradient(135deg, #1f1f1f 0%, #2a2a2a 100%);
+    border-color: #434343;
+  }
+
+  .maker-contact-card .ant-card-head {
+    background: #141414;
+    border-bottom-color: #434343;
+  }
+
+  .card-title {
+    color: #ffffff;
+  }
+
+  .price-info-compact {
+    background: #262626;
+    border-color: #434343;
+  }
+
+  .flow-steps {
+    background: #262626;
+    border-color: #434343;
+  }
+
+  .contact-method {
+    background: #262626;
+    border-color: #434343;
+  }
+}
+
+/* 加载动画 */
+.chat-button .ant-btn-loading-icon {
+  margin-right: 8px;
+}
+
+/* 徽章样式调整 */
+.maker-contact-card .ant-card-head .ant-card-extra .ant-badge {
+  line-height: 1;
+}
+
+/* 状态标签样式 */
+.maker-id .ant-tag {
+  margin-left: 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* 确保卡片在移动端的可读性 */
+@media (max-width: 480px) {
+  .maker-contact-card .ant-card-body {
+    padding: 16px 12px;
+  }
+
+  .maker-header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .maker-details {
+    width: 100%;
+  }
+
+  .maker-id {
+    justify-content: center;
+  }
+
+  .maker-stats {
+    justify-content: center;
+  }
+}

@@ -35,7 +35,7 @@ pub mod pallet {
         pub timestamp: u64,
         /// USDT 单价（精度 10^6，即 1,000,000 = 1 USDT）
         pub price_usdt: u64,
-        /// MEMO 数量（精度 10^12，即 1,000,000,000,000 = 1 DUST）
+        /// DUST 数量（精度 10^12，即 1,000,000,000,000 = 1 DUST）
         pub dust_qty: u128,
     }
 

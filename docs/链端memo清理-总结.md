@@ -1,4 +1,4 @@
-# 链端代码 MEMO 字样清理 - 总结报告
+# 链端代码 DUST 字样清理 - 总结报告
 
 **生成时间**: 2025-10-29  
 **任务**: 全面扫描并清理链端代码中的 `memo` 字样
@@ -28,11 +28,11 @@
 |------|--------|--------|------|
 | `node/src/chain_spec.rs:25` | `"MEMOPARK"` | `"STARDUST"` | 链显示名称 |
 | `node/src/chain_spec.rs:26` | `"memopark-dev"` | `"stardust-dev"` | 链ID |
-| `node/src/chain_spec.rs:39` | `"MEMO"` | `"DUST"` | 代币符号 |
+| `node/src/chain_spec.rs:39` | `"DUST"` | `"DUST"` | 代币符号 |
 | `runtime/src/lib.rs:69-70` | `"memopark-runtime"` | `"stardust-runtime"` | Runtime标识 |
 
 **影响**:
-- ❌ 前端显示代币符号为 "MEMO"（与前端 `formatDUST` 不一致）
+- ❌ 前端显示代币符号为 "DUST"（与前端 `formatDUST` 不一致）
 - ❌ Polkadot.js Apps 显示错误的代币符号
 - ❌ 钱包集成时使用错误的链名称
 
@@ -125,7 +125,7 @@ pub struct PriceAggregate {
 
 ### 5. 注释和文档（低优先级）⭐️⭐️
 
-- 约 200+ 处注释中的 `MEMO` 单位
+- 约 200+ 处注释中的 `DUST` 单位
 - 约 50+ 处旧pallet名称引用（如 `pallet-memo-appeals`）
 
 ---
@@ -277,9 +277,9 @@ cd /home/xiaodong/文档/memopark
 |------|------|------|----------|
 | **变量名** | `dustAmount` ✅ | `memo_amount` ❌ | **不一致** |
 | **函数名** | `formatDUST` ✅ | `release_memo` ❌ | **不一致** |
-| **代币符号** | 显示 "DUST" ✅ | 返回 "MEMO" ❌ | **不一致** |
+| **代币符号** | 显示 "DUST" ✅ | 返回 "DUST" ❌ | **不一致** |
 | **API路径** | `stardustAppeals` ✅ | - | 一致 |
-| **注释** | "DUST" ✅ | "MEMO" ❌ | **不一致** |
+| **注释** | "DUST" ✅ | "DUST" ❌ | **不一致** |
 
 **结论**: 链端和前端存在严重不一致，强烈建议立即清理。
 

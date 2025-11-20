@@ -14,7 +14,8 @@
 #![allow(unused_imports)]
 
 use super::*;
-use super::pallet::BalanceOf;  // 函数级中文注释：导入Balance类型别名
+// 函数级中文注释：从pallet模块导入Config trait和BalanceOf类型别名
+use crate::pallet::{Config, BalanceOf};
 use alloc::vec::Vec;
 use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
@@ -41,7 +42,7 @@ pub enum Visibility {
 #[scale_info(skip_type_params(T))]
 pub struct Album<T: Config> {
     pub deceased_id: T::DeceasedId,
-    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+    pub deceased_token: BoundedVec<u8, T::TokenLimit>,
     pub owner: T::AccountId,
     pub title: BoundedVec<u8, T::StringLimit>,
     pub desc: BoundedVec<u8, T::StringLimit>,
@@ -59,7 +60,7 @@ pub struct Album<T: Config> {
 #[scale_info(skip_type_params(T))]
 pub struct VideoCollection<T: Config> {
     pub deceased_id: T::DeceasedId,
-    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+    pub deceased_token: BoundedVec<u8, T::TokenLimit>,
     pub owner: T::AccountId,
     pub title: BoundedVec<u8, T::StringLimit>,
     pub desc: BoundedVec<u8, T::StringLimit>,
@@ -79,7 +80,7 @@ pub struct Media<T: Config> {
     pub album_id: Option<T::AlbumId>,
     pub video_collection_id: Option<T::VideoCollectionId>,
     pub deceased_id: T::DeceasedId,
-    pub deceased_token: BoundedVec<u8, T::MaxTokenLen>,
+    pub deceased_token: BoundedVec<u8, T::TokenLimit>,
     pub owner: T::AccountId,
     pub kind: MediaKind,
     pub uri: BoundedVec<u8, T::StringLimit>,

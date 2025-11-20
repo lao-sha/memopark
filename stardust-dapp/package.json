@@ -1,5 +1,5 @@
 {
-  "name": "stardust-dapp",
+  "name": "Stardust",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -22,6 +22,7 @@
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.14",
     "ethers": "^6.15.0",
+    "idb": "^8.0.3",
     "ipfs-http-client": "^60.0.1",
     "moment": "^2.30.1",
     "qrcode.react": "^4.2.0",
@@ -29,6 +30,7 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.4",
+    "react-window": "^2.2.3",
     "tweetnacl": "^1.0.3",
     "zustand": "^5.0.8"
   },

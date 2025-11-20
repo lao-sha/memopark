@@ -1,4 +1,4 @@
-# 链端代码 MEMO 字样清理方案
+# 链端代码 DUST 字样清理方案
 
 **生成时间**: 2025-10-29  
 **任务**: 清理链端代码中所有 `memo` 相关字样，改为 `dust`
@@ -26,7 +26,7 @@
 |------|--------|------|------|
 | `node/src/chain_spec.rs` | `"MEMOPARK"` | `"STARDUST"` | 链显示名称 |
 | `node/src/chain_spec.rs` | `"memopark-dev"` | `"stardust-dev"` | 链ID |
-| `node/src/chain_spec.rs` | `"MEMO"` | `"DUST"` | 代币符号 |
+| `node/src/chain_spec.rs` | `"DUST"` | `"DUST"` | 代币符号 |
 | `runtime/src/lib.rs` | `"memopark-runtime"` | `"stardust-runtime"` | Runtime名称 (2处) |
 
 **影响**: 
@@ -98,24 +98,24 @@
 
 ### 类别 3：注释中的代币单位（中优先级）⭐️⭐️⭐️
 
-所有注释中的 `MEMO` 改为 `DUST`（约 200+ 处）。
+所有注释中的 `DUST` 改为 `DUST`（约 200+ 处）。
 
 **示例**：
 ```rust
-// 旧: /// - 100 MEMO 作为基准
+// 旧: /// - 100 DUST 作为基准
 // 新: /// - 100 DUST 作为基准
 
-// 旧: pub const CreditMinimumBalance: Balance = 100 * UNIT; // 100 MEMO
+// 旧: pub const CreditMinimumBalance: Balance = 100 * UNIT; // 100 DUST
 // 新: pub const CreditMinimumBalance: Balance = 100 * UNIT; // 100 DUST
 ```
 
 **批量修改命令**:
 ```bash
-# 注释中的代币单位（格式：数字 + MEMO）
-find pallets runtime node -type f -name "*.rs" -exec sed -i 's/\([0-9,_]\+\) MEMO/\1 DUST/g' {} +
+# 注释中的代币单位（格式：数字 + DUST）
+find pallets runtime node -type f -name "*.rs" -exec sed -i 's/\([0-9,_]\+\) DUST/\1 DUST/g' {} +
 
-# 注释中的 MEMO/USDT
-find pallets runtime node -type f -name "*.rs" -exec sed -i 's/MEMO\/USDT/DUST\/USDT/g' {} +
+# 注释中的 DUST/USDT
+find pallets runtime node -type f -name "*.rs" -exec sed -i 's/DUST\/USDT/DUST\/USDT/g' {} +
 ```
 
 ---
@@ -155,7 +155,7 @@ find pallets runtime node -type f -name "*.rs" -exec sed -i 's/memo-pet/stardust
 | 文件类型 | 示例 | 修改策略 |
 |---------|------|----------|
 | `src/tests.rs` | `memo_amount`, `release_memo_works()` | 随主代码一起修改 |
-| `src/mock.rs` | `MEMO` 单位 | 批量替换 |
+| `src/mock.rs` | `DUST` 单位 | 批量替换 |
 | `src/benchmarking.rs` | `bridge_memo_to_tron` | 跟随主函数改名 |
 
 ---
@@ -174,7 +174,7 @@ find pallets runtime node -type f -name "*.rs" -exec sed -i 's/memo-pet/stardust
    // Line 26: .with_id("memopark-dev")
    .with_id("stardust-dev")
    
-   // Line 39: p.insert("tokenSymbol".into(), "MEMO".into());
+   // Line 39: p.insert("tokenSymbol".into(), "DUST".into());
    p.insert("tokenSymbol".into(), "DUST".into());
    ```
 
@@ -343,10 +343,10 @@ cargo check -p stardust-runtime
 cd /home/xiaodong/文档/memopark
 
 # 1. 注释中的代币单位
-find pallets runtime node -type f -name "*.rs" -exec sed -i 's/\([0-9,_]\+\) MEMO\b/\1 DUST/g' {} +
+find pallets runtime node -type f -name "*.rs" -exec sed -i 's/\([0-9,_]\+\) DUST\b/\1 DUST/g' {} +
 
-# 2. 注释中的 MEMO/USDT
-find pallets runtime node -type f -name "*.rs" -exec sed -i 's/MEMO\/USDT/DUST\/USDT/g' {} +
+# 2. 注释中的 DUST/USDT
+find pallets runtime node -type f -name "*.rs" -exec sed -i 's/DUST\/USDT/DUST\/USDT/g' {} +
 
 # 3. 注释中的旧pallet名称
 find pallets runtime node -type f -name "*.rs" -exec sed -i 's/pallet-memo-appeals/pallet-stardust-appeals/g' {} +
@@ -364,7 +364,7 @@ find pallets -type f -name "README.md" -exec sed -i 's/\bMEMO\b/DUST/g' {} +
 
 **验证**:
 ```bash
-git diff | grep -E "MEMO|memo" | head -50
+git diff | grep -E "DUST|memo" | head -50
 ```
 
 ---
@@ -519,7 +519,7 @@ git reset --hard before-chain-memo-cleanup
 
 ## 🎉 完成标准
 
-- ✅ 所有代币符号 `MEMO` → `DUST`
+- ✅ 所有代币符号 `DUST` → `DUST`
 - ✅ 所有链名称 `memopark` → `stardust`
 - ✅ 所有关键变量/函数名已更新
 - ✅ 编译通过（零警告）

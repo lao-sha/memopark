@@ -175,7 +175,7 @@ const MakerCreditDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ padding: 16, maxWidth: 1200, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ padding: 16, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
         <Spin size="large" />
         <Paragraph style={{ marginTop: 16 }}>加载中...</Paragraph>
       </div>
@@ -184,7 +184,7 @@ const MakerCreditDashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div style={{ padding: 16, maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
         <Card>
           <Space>
             <Button onClick={() => window.location.hash = '#/market-maker/center'}>
@@ -204,7 +204,7 @@ const MakerCreditDashboard: React.FC = () => {
 
   if (!creditRecord || !breakdown) {
     return (
-      <div style={{ padding: 16, maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
         <Card>
           <Space>
             <Button onClick={() => window.location.hash = '#/market-maker/center'}>
@@ -228,7 +228,7 @@ const MakerCreditDashboard: React.FC = () => {
   const decayProgress = getDecayProgress(creditRecord.lastDecay, currentTime)
 
   return (
-    <div style={{ padding: 16, maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
       {/* 页面标题 */}
       <Card>
         <div style={{ marginBottom: 24 }}>

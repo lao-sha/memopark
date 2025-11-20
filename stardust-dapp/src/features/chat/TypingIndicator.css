@@ -1,9 +1,11 @@
 /**
- * 打字指示器样式
+ * 函数级详细中文注释：打字指示器样式（移动端优化）
+ * - 使用主题色替换蓝色
+ * - 保持动画效果
  */
 
 .typing-indicator {
-  padding: 12px 20px;
+  padding: 12px 16px;
   animation: fadeIn 0.3s ease;
 }
 
@@ -41,7 +43,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #1890ff;
+  background: #B8860B;
   animation: bounce 1.4s infinite ease-in-out both;
 }
 
@@ -63,4 +65,3 @@
     opacity: 1;
   }
 }
-

@@ -1,0 +1,70 @@
+[package]
+name = "pallet-ai-chat"
+version = "0.1.0"
+description = "AI Chat Integration Layer - Real-time conversation with deceased digital agents"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license = "MIT-0"
+publish = false
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { features = ["derive"], workspace = true }
+scale-info = { features = ["derive"], workspace = true }
+
+# Substrate Dependencies
+frame-benchmarking = { optional = true, workspace = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+sp-runtime = { workspace = true }
+sp-std = { workspace = true }
+sp-core = { workspace = true }
+sp-io = { workspace = true }
+
+# Local dependencies
+pallet-deceased = { path = "../deceased", default-features = false }
+pallet-deceased-ai = { path = "../deceased-ai", default-features = false }
+
+# For JSON handling (will be used in future OCW implementation)
+# serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+# serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+# sp-io已在dependencies中声明，无需重复
+# sp-io = { workspace = true, default-features = true }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "scale-info/std",
+    "frame-benchmarking?/std",
+    "frame-support/std",
+    "frame-system/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "sp-core/std",
+    "sp-io/std",
+    "pallet-deceased/std",
+    "pallet-deceased-ai/std",
+]
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "sp-runtime/runtime-benchmarks",
+    "pallet-deceased-ai/runtime-benchmarks",
+]
+try-runtime = [
+    "frame-support/try-runtime",
+    "frame-system/try-runtime",
+    "sp-runtime/try-runtime",
+    "pallet-deceased-ai/try-runtime",
+]

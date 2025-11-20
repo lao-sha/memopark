@@ -35,6 +35,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   FilterOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot-safe'
 import { 
@@ -46,6 +47,7 @@ import { OTCOrderCard } from './OTCOrderCard'
 import { CreateOTCOrderModal } from './CreateOTCOrderModal'
 import { MarketMakerList } from './MarketMakerList'
 import { BridgeTransactionForm } from './BridgeTransactionForm'
+import { AITradingPanel } from '../../features/ai-trader/AITradingPanel'
 
 const { Title, Text } = Typography
 
@@ -86,12 +88,14 @@ export const TradingDashboard: React.FC<TradingDashboardProps> = ({ account }) =
       let allOrders: Order[] = []
       
       if (filterRole === 'buyer' || filterRole === 'all') {
-        const buyerOrders = await service.getOrdersByTaker(account)
+        // 获取买家订单
+        const buyerOrders = await service.listOrders({ taker: account })
         allOrders = [...allOrders, ...buyerOrders]
       }
       
       if (filterRole === 'maker' || filterRole === 'all') {
-        const makerOrders = await service.getOrdersByMaker(account)
+        // 获取做市商订单
+        const makerOrders = await service.listOrders({ maker: account })
         allOrders = [...allOrders, ...makerOrders]
       }
 
@@ -100,11 +104,14 @@ export const TradingDashboard: React.FC<TradingDashboardProps> = ({ account }) =
         allOrders = allOrders.filter(order => order.state === filterState)
       }
 
-      // 按创建时间倒序排序
-      allOrders.sort((a, b) => b.createdAt - a.createdAt)
+      // 去重（可能同时是买家和卖家）
+      const uniqueOrders = Array.from(new Map(allOrders.map(o => [o.id, o])).values())
       
-      setOrders(allOrders)
-      calculateStats(allOrders)
+      // 按创建时间倒序排序
+      uniqueOrders.sort((a, b) => b.createdAt - a.createdAt)
+      
+      setOrders(uniqueOrders)
+      calculateStats(uniqueOrders)
     } catch (error) {
       console.error('加载订单失败:', error)
       message.error('加载订单列表失败')
@@ -353,6 +360,52 @@ export const TradingDashboard: React.FC<TradingDashboardProps> = ({ account }) =
   }
 
   /**
+   * 函数级详细中文注释：渲染AI助手Tab
+   */
+  const renderAITab = () => {
+    const handleExecuteTrade = async (signal: any) => {
+      try {
+        // 根据 AI 信号执行交易
+        if (signal.signal === 'BUY' && signal.confidence >= 70) {
+          message.info('AI 建议买入，置信度 ' + signal.confidence + '%')
+          // 打开创建订单弹窗
+          setShowCreateModal(true)
+        } else if (signal.signal === 'SELL' && signal.confidence >= 70) {
+          message.info('AI 建议卖出，置信度 ' + signal.confidence + '%')
+          // 可以实现卖出逻辑或提示用户
+          message.warning('卖出功能请前往做市商管理页面')
+        } else {
+          message.info('AI 建议持有观望')
+        }
+      } catch (error) {
+        console.error('执行 AI 交易建议失败:', error)
+        message.error('执行失败，请稍后重试')
+      }
+    }
+
+    return (
+      <div>
+        <Card style={{ marginBottom: 16 }}>
+          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            <Title level={5} style={{ margin: 0 }}>
+              <ThunderboltOutlined /> AI 交易助手
+            </Title>
+            <Text type="secondary">
+              基于深度学习的智能交易信号，帮助你做出更明智的交易决策
+            </Text>
+          </Space>
+        </Card>
+
+        <AITradingPanel
+          symbol="DUST-USDT"
+          currentPrice={0.1}
+          onExecuteTrade={handleExecuteTrade}
+        />
+      </div>
+    )
+  }
+
+  /**
    * 函数级详细中文注释：计算Tab徽章
    */
   const getTabBadge = (key: string): number | undefined => {
@@ -385,6 +438,16 @@ export const TradingDashboard: React.FC<TradingDashboardProps> = ({ account }) =
                 </Badge>
               ),
               children: renderOrdersTab(),
+            },
+            {
+              key: 'ai-assistant',
+              label: (
+                <Space>
+                  <ThunderboltOutlined />
+                  <span>AI 助手</span>
+                </Space>
+              ),
+              children: renderAITab(),
             },
             {
               key: 'makers',

@@ -418,7 +418,7 @@ export const SellerReleasePage: React.FC = () => {
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       padding: '40px 20px'
     }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto' }}>
         {/* 页面标题 */}
         <Card
           style={{

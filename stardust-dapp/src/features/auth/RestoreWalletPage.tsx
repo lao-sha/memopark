@@ -147,11 +147,22 @@ const RestoreWalletPage: React.FC<RestoreWalletPageProps> = ({
     password.length >= 8 && 
     password === confirmPassword;
 
+  // 调试日志：打印表单状态
+  React.useEffect(() => {
+    console.log('🔍 表单状态:', {
+      mnemonicWords: mnemonic.trim().split(/\s+/).length,
+      passwordLength: password.length,
+      confirmPasswordLength: confirmPassword.length,
+      passwordMatch: password === confirmPassword,
+      canSubmit
+    });
+  }, [mnemonic, password, confirmPassword, canSubmit]);
+
   return (
     <div
       style={{
         padding: '20px',
-        maxWidth: '640px',
+        maxWidth: '480px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
@@ -198,7 +209,7 @@ const RestoreWalletPage: React.FC<RestoreWalletPageProps> = ({
       <div
         style={{
           background: '#fff',
-          padding: '24px',
+          padding: '16px',
           borderRadius: '12px',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
         }}

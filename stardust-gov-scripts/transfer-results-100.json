@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-02T08:40:49.674Z",
+  "timestamp": "2025-11-19T06:25:55.463Z",
   "summary": {
     "total": 100,
     "success": 100,
@@ -9,902 +9,902 @@
     {
       "index": 1,
       "recipient": "5G9qDi9vLichVESzE2yNxYvpNKEsazEhumMQ4yhDPTHBn7D9",
-      "amount": "48730541161304342528",
-      "amountFormatted": "48730541.161304 DUST",
+      "amount": "27293859159191373824",
+      "amountFormatted": "27293859.159191 DUST",
       "success": true,
-      "blockHash": "0x5a1007c71bfa5e7a42275947dd2831e1f4cba7888951fe211890f07001a998bd",
-      "timestamp": "2025-11-02T08:11:07.423Z"
+      "blockHash": "0x3af2402160c5e23fc56ad03598b650b4166aa3430a461330c09c175f556ce5a5",
+      "timestamp": "2025-11-19T05:56:13.001Z"
     },
     {
       "index": 2,
-      "recipient": "5EJF7ewr9g5ugSV9xrtH9sKiGEEWVgX4PPJHfoJYHbCPXgkc",
-      "amount": "46000794897853067264",
-      "amountFormatted": "46000794.897853 DUST",
+      "recipient": "5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4",
+      "amount": "48722450590507368448",
+      "amountFormatted": "48722450.590507 DUST",
       "success": true,
-      "blockHash": "0x7f1a19b32f2ad8fe501e75a49fb85cc012a921af9994c4ef38b3054a1009b394",
-      "timestamp": "2025-11-02T08:11:24.808Z"
+      "blockHash": "0x1964541bb0ff5598ec0c52f01146b04bd591489d98cd1e288e1bdd34c35edfb8",
+      "timestamp": "2025-11-19T05:56:31.714Z"
     },
     {
       "index": 3,
-      "recipient": "5CAKKYjPPLjbLvY1yTG7MVDvfjrBbY9xEJ6kGpCgCYyyUcGE",
-      "amount": "48844736350933868544",
-      "amountFormatted": "48844736.350933 DUST",
+      "recipient": "5CSepuULuCiDSBjeRqr9ZburDSdTwTk5ro9BgV5u1SbHiQh9",
+      "amount": "33434922902483181568",
+      "amountFormatted": "33434922.902483 DUST",
       "success": true,
-      "blockHash": "0xa6f9cbf11acf534e31f4a179184380c00f06df0959fd9c18780cdd825f475102",
-      "timestamp": "2025-11-02T08:11:43.523Z"
+      "blockHash": "0xc99d27c3446d3d4c35d89a63c0c26b5e7f1e581a391b40cab643f7ba639f0ebc",
+      "timestamp": "2025-11-19T05:56:49.099Z"
     },
     {
       "index": 4,
-      "recipient": "5Che9VgSJ9bPSxd1wQwKroESUdhCbpMTd9gafy8f8GQYyzqo",
-      "amount": "32199284786609735680",
-      "amountFormatted": "32199284.786609 DUST",
+      "recipient": "5CotZ9gD2mLLBQ6sqL2b8gRS1Vxo6HfmRcQ2iu3T825DFgSq",
+      "amount": "47742936913920802816",
+      "amountFormatted": "47742936.913920 DUST",
       "success": true,
-      "blockHash": "0x6943c20440d5e7d4bd3166f0a8372e30512e3337ab74477d71842b5d13e6b65c",
-      "timestamp": "2025-11-02T08:12:00.904Z"
+      "blockHash": "0x98bb836ffb78a48c5a8e6fd547bd0916367f1fa5c21e1a02bc5488e2758d7ff8",
+      "timestamp": "2025-11-19T05:57:07.821Z"
     },
     {
       "index": 5,
-      "recipient": "5Hag3gL3YTkNwcpZp4mdPVh4aApqiQVbGfRHhLTKUfe4AQ3w",
-      "amount": "40514186115778801664",
-      "amountFormatted": "40514186.115778 DUST",
+      "recipient": "5FYdPA3MgwUREp6hCwEQmzESV1cKTEpdyYLmAPK6F9Dd2Hm3",
+      "amount": "48622594170543517696",
+      "amountFormatted": "48622594.170543 DUST",
       "success": true,
-      "blockHash": "0x01e591759102a6d7641bd9337f2833a195ae0d35c0bc5787b551f5f9849bffdf",
-      "timestamp": "2025-11-02T08:12:19.623Z"
+      "blockHash": "0x436bf616b8425c3e6d2e6e32944a7e6ddc4978c0f7d8216254f3b1c211c01651",
+      "timestamp": "2025-11-19T05:57:25.204Z"
     },
     {
       "index": 6,
-      "recipient": "5CUwAzB2uu5mK4o9t2X26DVL7E9YS5E1Y3w5L7z7D87YvK9R",
-      "amount": "28952800791385082880",
-      "amountFormatted": "28952800.791385 DUST",
+      "recipient": "5C7RjMrgfCJYyscR5Du1BLP99vFGgRDXjAt3ronftJZe39Qo",
+      "amount": "38325665661432588288",
+      "amountFormatted": "38325665.661432 DUST",
       "success": true,
-      "blockHash": "0x257cc1b478eb97a0718f1bc18927f2503bfde150d70d2d7e97fb70d3af2199ca",
-      "timestamp": "2025-11-02T08:12:37.005Z"
+      "blockHash": "0x89a2bd0429d82f49aebe1d3ff89e9bf93d6af9f0fd4023ace3d380e9fa02742f",
+      "timestamp": "2025-11-19T05:57:43.926Z"
     },
     {
       "index": 7,
-      "recipient": "5CSp9GudcbNTpJHxxRZULiuErs5rZwnWFH8J7y2tkck4ARPD",
-      "amount": "47827328640719622144",
-      "amountFormatted": "47827328.640719 DUST",
+      "recipient": "5CRubhWmwNmJ3z2Ffqs3nf71XQGHBkfKSc1edNvuHZErqvdL",
+      "amount": "45766904480911568896",
+      "amountFormatted": "45766904.480911 DUST",
       "success": true,
-      "blockHash": "0xbc3e9281d62e550bc7ee77efe4d44e5b80bb33ac6137ab17f4068962a2b4cbeb",
-      "timestamp": "2025-11-02T08:12:55.723Z"
+      "blockHash": "0xbcd314af2804be8190d92afcb12af004e1b621de93eb3ae671098d166be6a7c4",
+      "timestamp": "2025-11-19T05:58:01.306Z"
     },
     {
       "index": 8,
       "recipient": "5DHpgNztddEDfqgq6DQSj2V9NhoqALaJCyCpSc4226CHRLZo",
-      "amount": "39629743190974910464",
-      "amountFormatted": "39629743.190974 DUST",
+      "amount": "48092014755301756928",
+      "amountFormatted": "48092014.755301 DUST",
       "success": true,
-      "blockHash": "0x93dd9028982792673b49e0f927640993e897fec4e98779399b0421b29aee0420",
-      "timestamp": "2025-11-02T08:13:13.107Z"
+      "blockHash": "0x4bb9f1c609e68bf582887127db92546ca7d37afddc1c5d9c1de80783296861e6",
+      "timestamp": "2025-11-19T05:58:18.692Z"
     },
     {
       "index": 9,
       "recipient": "5F6QUVCSSyn6Ngp8KT3wPNhGwdnLfnFnNCqe8R9z3XBKwNAT",
-      "amount": "29072175132361752576",
-      "amountFormatted": "29072175.132361 DUST",
+      "amount": "46757920310055460864",
+      "amountFormatted": "46757920.310055 DUST",
       "success": true,
-      "blockHash": "0x35f4e409466e1aceb41b288e2b661bf73e0dede6008343a1d7f40267cc1b8bb9",
-      "timestamp": "2025-11-02T08:13:31.827Z"
+      "blockHash": "0x22876d2de121eb514007448f86f333e4bd0a884136672ded85653b39d47abf04",
+      "timestamp": "2025-11-19T05:58:37.408Z"
     },
     {
       "index": 10,
       "recipient": "5G6dK2wYqxAGcBsFmXJ75oAnCCyF7xqDmBkN1TZZDFgWtBxc",
-      "amount": "25838868104233401344",
-      "amountFormatted": "25838868.104233 DUST",
+      "amount": "24193670118729231360",
+      "amountFormatted": "24193670.118729 DUST",
       "success": true,
-      "blockHash": "0x0481f0e2c2277be29f8b3cd197cfab1a502d298ca4f2bcb2d9254509831cd339",
-      "timestamp": "2025-11-02T08:13:49.208Z"
+      "blockHash": "0x2cd73bc1c99aa5f0aa3fcc97f5d89bc01802b2164a210b4f3bc4e47dddd96c5d",
+      "timestamp": "2025-11-19T05:58:54.795Z"
     },
     {
       "index": 11,
       "recipient": "5GgoUbpmvqF7DK194j2EhBzNUkj92zUdQQ9jEYVvZdnoeCMK",
-      "amount": "29017229754846354432",
-      "amountFormatted": "29017229.754846 DUST",
+      "amount": "22601327249053801984",
+      "amountFormatted": "22601327.249053 DUST",
       "success": true,
-      "blockHash": "0x933f31f15562810fa86d5b4ab51f27e88da1319dc3891f00f318ad8166237a6e",
-      "timestamp": "2025-11-02T08:14:07.929Z"
+      "blockHash": "0xeb5eb3df1ec35f4f88cc4d258572e6f79fa04aa921c09a8838d46640dc913040",
+      "timestamp": "2025-11-19T05:59:13.519Z"
     },
     {
       "index": 12,
       "recipient": "5CQ72czSnByzVDj5rGGVaEbVrt5winYxNHAKuNaUD68j4Bp5",
-      "amount": "44463479563721371648",
-      "amountFormatted": "44463479.563721 DUST",
+      "amount": "30813259171469520896",
+      "amountFormatted": "30813259.171469 DUST",
       "success": true,
-      "blockHash": "0xf495934cd0950bf07a79a2d15d6f2c973a54cdf86aa4a1701ebf44ae81d282bf",
-      "timestamp": "2025-11-02T08:14:25.309Z"
+      "blockHash": "0x3abb15d6d45c2688e74a71fc8138cf8b747cec0016a0f0cc8cee41d81295300e",
+      "timestamp": "2025-11-19T05:59:30.906Z"
     },
     {
       "index": 13,
       "recipient": "5EhHXxJDUEXzuUKtrvMs4CfM8QKnuU29kBGjpsyP7qaw2BpG",
-      "amount": "38112295960178761728",
-      "amountFormatted": "38112295.960178 DUST",
+      "amount": "23702408083741830656",
+      "amountFormatted": "23702408.083741 DUST",
       "success": true,
-      "blockHash": "0xb4cf50de4faf34f4de973c94b2147765bb54bd8f3506a50de14f7460744f88fc",
-      "timestamp": "2025-11-02T08:14:42.691Z"
+      "blockHash": "0xd6e69177b7c597a9001cd85bf0f57d15c90f5f31290ad9d3a60bb65920a8bebe",
+      "timestamp": "2025-11-19T05:59:49.624Z"
     },
     {
       "index": 14,
       "recipient": "5HK98BXxANUDsHCKkBviauQ6wHHHyHz2kQwpANwdnQZHkCyj",
-      "amount": "40689158366492737536",
-      "amountFormatted": "40689158.366492 DUST",
+      "amount": "39084113403449475072",
+      "amountFormatted": "39084113.403449 DUST",
       "success": true,
-      "blockHash": "0x7dd30dab383877dbbd7545a94e991a806611b1229a5a6c6b71c76d37b7636509",
-      "timestamp": "2025-11-02T08:15:01.408Z"
+      "blockHash": "0x463227368f6fe4bd5e57b260c803ae9b81aa94ac88be391b797f486342dfab0b",
+      "timestamp": "2025-11-19T06:00:07.007Z"
     },
     {
       "index": 15,
       "recipient": "5H9DALoBhZ1RVDUcxQS1Zd11cyosN1VrQpmf4sNsGPvRBL86",
-      "amount": "44974366414219804672",
-      "amountFormatted": "44974366.414219 DUST",
+      "amount": "26169840831838429184",
+      "amountFormatted": "26169840.831838 DUST",
       "success": true,
-      "blockHash": "0x98637a2962c3bed7f5003a7260a39e976c6bbfca515dc0d7b453026c6c2243a2",
-      "timestamp": "2025-11-02T08:15:18.791Z"
+      "blockHash": "0x3a04bf988d60745a479ca552973b80f24aa14670429428169c69d2588ceee87e",
+      "timestamp": "2025-11-19T06:00:25.730Z"
     },
     {
       "index": 16,
       "recipient": "5GEfGdxQdvbDaqD1SCCQqE6MipQuXokN2HxuUxfGgfAY2jsF",
-      "amount": "44182616487977586688",
-      "amountFormatted": "44182616.487977 DUST",
+      "amount": "42833607187312726016",
+      "amountFormatted": "42833607.187312 DUST",
       "success": true,
-      "blockHash": "0x57c256b04608e2c6d6632e665634782efae239a21b9ebd0315ceaa40eb7f9474",
-      "timestamp": "2025-11-02T08:15:37.516Z"
+      "blockHash": "0xc2f9c9e0d4dde71c5928f0e86c775fac3aa1f77c8b31f9e4372e5b0b7f83f54e",
+      "timestamp": "2025-11-19T06:00:43.112Z"
     },
     {
       "index": 17,
       "recipient": "5HYyCBcYvpesV8L9qr3bw9GRWAsZWano55QjgSy5s2BWZX6c",
-      "amount": "31020167842165098496",
-      "amountFormatted": "31020167.842165 DUST",
+      "amount": "41198997235956834304",
+      "amountFormatted": "41198997.235956 DUST",
       "success": true,
-      "blockHash": "0x5fe70a18f5be3fc157175e95f4b2d2f9019fea57d5347b58a63d54418ee0505d",
-      "timestamp": "2025-11-02T08:15:54.901Z"
+      "blockHash": "0x670f7887087d20a0cc1f6ebcf790cb2e0479659c29e02e09c11b151abee01307",
+      "timestamp": "2025-11-19T06:01:01.832Z"
     },
     {
       "index": 18,
       "recipient": "5EqAB7idsHnH8dSPtrLRdztNiGhyRWeVcduVfxAXPj18JBig",
-      "amount": "44488608548391833600",
-      "amountFormatted": "44488608.548391 DUST",
+      "amount": "22555277551746650624",
+      "amountFormatted": "22555277.551746 DUST",
       "success": true,
-      "blockHash": "0x7db12c529aa4b51b173c3e09fb3b07129710d0194df98acbd156f0d7eb0fc2d6",
-      "timestamp": "2025-11-02T08:16:13.622Z"
+      "blockHash": "0x617dbdf53943628d4f5f7fa32df7bae369d3e270ce835909359a3dc5cd9dd973",
+      "timestamp": "2025-11-19T06:01:19.214Z"
     },
     {
       "index": 19,
       "recipient": "5FyGk1tYtt9e2QxqwY4cyDX6vzUSMGTPjyH1Rn8Uzyge4gVv",
-      "amount": "28806428096672814080",
-      "amountFormatted": "28806428.096672 DUST",
+      "amount": "23632335958537635840",
+      "amountFormatted": "23632335.958537 DUST",
       "success": true,
-      "blockHash": "0x30c1ac1a40333e57f0902cec914a577f5ad01e3842591242cf29825f513c5ff6",
-      "timestamp": "2025-11-02T08:16:31.004Z"
+      "blockHash": "0x0eb3583d94197fdf594f66b20f03b70655ab033c9371cb63f8146cbaccef4863",
+      "timestamp": "2025-11-19T06:01:37.935Z"
     },
     {
       "index": 20,
       "recipient": "5CSe8xmzN6fjciD7E1Ct4ziffUHWJDVs1BN3ifaxGm6CftLV",
-      "amount": "22027934341364501248",
-      "amountFormatted": "22027934.341364 DUST",
+      "amount": "35695874301062365184",
+      "amountFormatted": "35695874.301062 DUST",
       "success": true,
-      "blockHash": "0x3d9b2b2b825c1ed8e7229f6bf4842b35737859023e0198c0f95690fb4cd3a3c1",
-      "timestamp": "2025-11-02T08:16:49.722Z"
+      "blockHash": "0xce68fa2e1fd07aa4dde81b5287f160f71528f4c2afae1631f951a8f0de4c8aed",
+      "timestamp": "2025-11-19T06:01:55.317Z"
     },
     {
       "index": 21,
       "recipient": "5F7b3FCZy29YnNfctqPTBkGXCzbpgrFnCt7MRj2xpNNm4eJY",
-      "amount": "36619363460613953536",
-      "amountFormatted": "36619363.460613 DUST",
+      "amount": "23844734668985556480",
+      "amountFormatted": "23844734.668985 DUST",
       "success": true,
-      "blockHash": "0x7868d3e69453d4eb1985222250ee68e2257e4ee24404b72021047f4058aed2fc",
-      "timestamp": "2025-11-02T08:17:07.103Z"
+      "blockHash": "0x652da0692935c53153fc03726ec5aa8ac90fa9fe9f9b75edaafbec6e5e5cc8b9",
+      "timestamp": "2025-11-19T06:02:12.699Z"
     },
     {
       "index": 22,
       "recipient": "5DCtNFg7HkZaWi92K88hxPkAjc4bPDdcVWKTQvva7Q4BPsug",
-      "amount": "20639415745410447616",
-      "amountFormatted": "20639415.745410 DUST",
+      "amount": "35806358361681287168",
+      "amountFormatted": "35806358.361681 DUST",
       "success": true,
-      "blockHash": "0x6edf7b3223e7241cedf2e0a633a604112cbb130ee6e38a0bc316759748c8c88b",
-      "timestamp": "2025-11-02T08:17:25.826Z"
+      "blockHash": "0x4072d6febccd88573172f946441cd383d5f7cef9656d334f80fc9eafbe40025c",
+      "timestamp": "2025-11-19T06:02:31.417Z"
     },
     {
       "index": 23,
       "recipient": "5FL8PtEq8Va2iG6MWCWQr2RH39f8ZjXxPg8bscLCnjXEHkkx",
-      "amount": "42595408975037333504",
-      "amountFormatted": "42595408.975037 DUST",
+      "amount": "24615507740106536960",
+      "amountFormatted": "24615507.740106 DUST",
       "success": true,
-      "blockHash": "0xed79d8283d5df64604ec56b7c6ea64c80733b569a5f68df238d7c0bec9945ee7",
-      "timestamp": "2025-11-02T08:17:43.206Z"
+      "blockHash": "0x9967c64b277af149f863f45c622d0cce6981c61b7d9958b10456652b76b6236f",
+      "timestamp": "2025-11-19T06:02:48.800Z"
     },
     {
       "index": 24,
       "recipient": "5CSDz6CL1Tvh7Szaa8rdkKB3wHuuzwzQo4GJVaEFGc8tQesY",
-      "amount": "30966045598729957376",
-      "amountFormatted": "30966045.598729 DUST",
+      "amount": "38913664830410440704",
+      "amountFormatted": "38913664.830410 DUST",
       "success": true,
-      "blockHash": "0x0b0db1194ed509256f224ab170798cfc05be40c0208766abb925845508649a01",
-      "timestamp": "2025-11-02T08:18:01.922Z"
+      "blockHash": "0x4148c5fc15ecb0341f18a53d0979ff0b814f2cea083d1df5d57858a1150eb08d",
+      "timestamp": "2025-11-19T06:03:07.517Z"
     },
     {
       "index": 25,
       "recipient": "5E5HpQn1AbF6W3VrtF2KZKputF21yURJr7MXUH2rZut2fJpr",
-      "amount": "45219106522003791872",
-      "amountFormatted": "45219106.522003 DUST",
+      "amount": "27582718525578319872",
+      "amountFormatted": "27582718.525578 DUST",
       "success": true,
-      "blockHash": "0x21510f7c88ba3b1fb6e2af31ced87c6c94db5b8719756b81fff2a8c43a6ea4c8",
-      "timestamp": "2025-11-02T08:18:19.303Z"
+      "blockHash": "0xda69d0936f6c821d1ccd71c1c72bf1f4c536848f0507f5acd4d9eb2e0777e9c5",
+      "timestamp": "2025-11-19T06:03:24.903Z"
     },
     {
       "index": 26,
       "recipient": "5Hb7K9Q6EsHYf7E1JMLnE5qrqWHoF2e31YCkwBrZ6nyGaZ8A",
-      "amount": "37123458731155154944",
-      "amountFormatted": "37123458.731155 DUST",
+      "amount": "48582027212934090752",
+      "amountFormatted": "48582027.212934 DUST",
       "success": true,
-      "blockHash": "0x9f26b4963f7c1f8e7370687bbb7cedf70268e9861441cf1beded47d8fcdc45b0",
-      "timestamp": "2025-11-02T08:18:38.021Z"
+      "blockHash": "0x325e38a307892ab7aa09b6dab96ff46cb0628c95ea89f9bfacde716dd9212552",
+      "timestamp": "2025-11-19T06:03:43.624Z"
     },
     {
       "index": 27,
       "recipient": "5Fvr5bvGkte1NFRyDtkUk6zAbxMbLkpuWeE1F8KLg6C11qfv",
-      "amount": "28214057729073416192",
-      "amountFormatted": "28214057.729073 DUST",
+      "amount": "20400259572394221504",
+      "amountFormatted": "20400259.572394 DUST",
       "success": true,
-      "blockHash": "0x3c4d7dafa342b9c3fab3ac3359f17dd8bc5378e7f6afaa28a253ecd2edb514ff",
-      "timestamp": "2025-11-02T08:18:55.403Z"
+      "blockHash": "0x879786c6b66b1eeafe6fdd7ff46fee736f12ce8637db8694054dde98f081b763",
+      "timestamp": "2025-11-19T06:04:01.008Z"
     },
     {
       "index": 28,
       "recipient": "5GrpzGhLD5imibc4RXmcpSP6LvuBByZp7xuotJHaySpCFkxW",
-      "amount": "44480879375660183552",
-      "amountFormatted": "44480879.375660 DUST",
+      "amount": "27353833219502076928",
+      "amountFormatted": "27353833.219502 DUST",
       "success": true,
-      "blockHash": "0xb67816d30c6d19a2edbfd4b6f0708dd1af9ae5843aed64b0a6310921b8e7df99",
-      "timestamp": "2025-11-02T08:19:12.781Z"
+      "blockHash": "0x0302230388c15c788c8891b556ff1b167145b72c0d16749f89b5912d2bae65d9",
+      "timestamp": "2025-11-19T06:04:19.728Z"
     },
     {
       "index": 29,
       "recipient": "5Gj1Dn3rSAgz8864dSii34fedNixCZoAmFYsdQWys5tL8Cmw",
-      "amount": "37669166329471135744",
-      "amountFormatted": "37669166.329471 DUST",
+      "amount": "22080854798013362944",
+      "amountFormatted": "22080854.798013 DUST",
       "success": true,
-      "blockHash": "0x85b4dca730e6da3f25841957d0832e8699c5d0ba1fabdb3e7c19d1c1ab0b363b",
-      "timestamp": "2025-11-02T08:19:31.503Z"
+      "blockHash": "0x4bf2116a18bacd0aae4defbf3da49cdb7f06dc627e131d8c343798c1b3a4f3ed",
+      "timestamp": "2025-11-19T06:04:37.111Z"
     },
     {
       "index": 30,
       "recipient": "5GWeSLYVQhAhAnukBibqiNVeKk5fhdrTsRMwassTydeXz5CC",
-      "amount": "44915778302647332864",
-      "amountFormatted": "44915778.302647 DUST",
+      "amount": "28931203082443311104",
+      "amountFormatted": "28931203.082443 DUST",
       "success": true,
-      "blockHash": "0xb1ea2e7f6cdfb3ff8fd78d90c7db1587e86cb312767ea4eba8539525d1eec2e2",
-      "timestamp": "2025-11-02T08:19:48.884Z"
+      "blockHash": "0x0001e3c115d215cb320e823e4b41a461f98ccecddf61cb02289f30100e2d802a",
+      "timestamp": "2025-11-19T06:04:55.830Z"
     },
     {
       "index": 31,
       "recipient": "5GdeGM5EHpc1JZ9qyK2PecPHABXRteWu79ppZ6YxaueQaU7Z",
-      "amount": "45791401690387730432",
-      "amountFormatted": "45791401.690387 DUST",
+      "amount": "48357760925468188672",
+      "amountFormatted": "48357760.925468 DUST",
       "success": true,
-      "blockHash": "0xcfb2df3ae4c4140187d4c4bb89cba07dda060bfe8b60322aa819a466f7bfcada",
-      "timestamp": "2025-11-02T08:20:07.603Z"
+      "blockHash": "0x83eee36c859b264243abe24397eea3ec85ea00e5cfc681ea0f3e3d760aa4155c",
+      "timestamp": "2025-11-19T06:05:13.215Z"
     },
     {
       "index": 32,
       "recipient": "5DvWAYq4AUYLg8ndMnVBeQnNRiP3M7YX8chUmUmHZVWqvW5b",
-      "amount": "21105635192592815360",
-      "amountFormatted": "21105635.192592 DUST",
+      "amount": "41219080810302410752",
+      "amountFormatted": "41219080.810302 DUST",
       "success": true,
-      "blockHash": "0xcfb20df699af9744da099dc17d4ee5d4b194a9751a05dad094b68cfad7ba7792",
-      "timestamp": "2025-11-02T08:20:24.984Z"
+      "blockHash": "0xdd9b69fbee212e57a81e6696c5d9ce942d049aaac4b9aea035bf16c2ab59bb59",
+      "timestamp": "2025-11-19T06:05:31.934Z"
     },
     {
       "index": 33,
       "recipient": "5CcTKLUJh5SPHJVU8sGa88LAaAeXEnm6gbHHnhZCaNRjPW4y",
-      "amount": "29474923093399042048",
-      "amountFormatted": "29474923.093399 DUST",
+      "amount": "22473019314491087360",
+      "amountFormatted": "22473019.314491 DUST",
       "success": true,
-      "blockHash": "0x9699c7330e640a4bd14dc30e7a78ef99c4e6aacc254aac024a59710ad98b4f3f",
-      "timestamp": "2025-11-02T08:20:43.703Z"
+      "blockHash": "0xb9d3ad444af2f68a1f7248f30c0ada33b2b5a8d956b335d4cd732d5fabbf223f",
+      "timestamp": "2025-11-19T06:05:49.315Z"
     },
     {
       "index": 34,
       "recipient": "5FZAFdLQAG636N64czztx6aZUoXmaJhP4kRJzRwZkj3tgBbC",
-      "amount": "38592957655661367296",
-      "amountFormatted": "38592957.655661 DUST",
+      "amount": "38374184026669152256",
+      "amountFormatted": "38374184.026669 DUST",
       "success": true,
-      "blockHash": "0x03239f612de096d6ce553036a4f13a57513713ecb8691ccfd673dd84d5bfd97a",
-      "timestamp": "2025-11-02T08:21:01.083Z"
+      "blockHash": "0xcc458e3e8493d45117b0de3fe036c605d75070c2681f95270a3fbaa74bd5319a",
+      "timestamp": "2025-11-19T06:06:06.698Z"
     },
     {
       "index": 35,
       "recipient": "5Ca9x8kuoHmMu2visiZvgNWarRAUv6higecRv1QzeWknVdzA",
-      "amount": "47756611593031233536",
-      "amountFormatted": "47756611.593031 DUST",
+      "amount": "42517306645727293440",
+      "amountFormatted": "42517306.645727 DUST",
       "success": true,
-      "blockHash": "0x7c068a461c30d9c8c49d0eea041a584ffb0a15565a7972c06ad5e2bf8579cab0",
-      "timestamp": "2025-11-02T08:21:19.800Z"
+      "blockHash": "0x4af4bc28dc946f87396340ded06396685f71fcae7d984bead30a5049ccf7543e",
+      "timestamp": "2025-11-19T06:06:25.416Z"
     },
     {
       "index": 36,
       "recipient": "5FZEtDHP53f2vHbr6oZjFDYqBcCgQvwGTBY2VN1NWqsKz2tN",
-      "amount": "21501931529069549056",
-      "amountFormatted": "21501931.529069 DUST",
+      "amount": "32140991326260215808",
+      "amountFormatted": "32140991.326260 DUST",
       "success": true,
-      "blockHash": "0x5481a297eb9f973c90cf9cf79e53ad72f49552276388d1ed6cbafa32ab8216d0",
-      "timestamp": "2025-11-02T08:21:37.189Z"
+      "blockHash": "0x39d1f6a13e2cbc1be98df8b910dba21c0606d4f35ba5a630317268c682b76523",
+      "timestamp": "2025-11-19T06:06:42.805Z"
     },
     {
       "index": 37,
       "recipient": "5GBUdW37pm7pd9JLmZ8DLDjC32JP7THBb3HFkEAeFnV7qXcr",
-      "amount": "43114816470189711360",
-      "amountFormatted": "43114816.470189 DUST",
+      "amount": "23373302455961844224",
+      "amountFormatted": "23373302.455961 DUST",
       "success": true,
-      "blockHash": "0xb2e812b2af49b6c02d2083f215f54b42899e0fd98d7d18e9af644f3b0332fbbf",
-      "timestamp": "2025-11-02T08:21:55.904Z"
+      "blockHash": "0x9059d6cc8bb701f1794d594937f5fd8b285fbf83c30850ae39d5138eeeaf939f",
+      "timestamp": "2025-11-19T06:07:01.527Z"
     },
     {
       "index": 38,
       "recipient": "5FjeYayBoFfeEHENyVY4gT1BKsKnEdJLqack6FUcFuLTyvgG",
-      "amount": "46114487972457357312",
-      "amountFormatted": "46114487.972457 DUST",
+      "amount": "44189225582744543232",
+      "amountFormatted": "44189225.582744 DUST",
       "success": true,
-      "blockHash": "0x33a3d103a9a88d52aca2812821dd701b004f856ba2290d2cd49d92407c3b3a2f",
-      "timestamp": "2025-11-02T08:22:13.285Z"
+      "blockHash": "0x59f16b9b4bd649f5c50d7a7adad62ff06dc0befbf483d2773eaf7d74e72a1974",
+      "timestamp": "2025-11-19T06:07:18.909Z"
     },
     {
       "index": 39,
       "recipient": "5H1Y6R6MNJAJHkQc4yvEhVGkCoZBZ8DcibYQQUZ4fn39Fxa1",
-      "amount": "46829829203466960896",
-      "amountFormatted": "46829829.203466 DUST",
+      "amount": "43231284906441084928",
+      "amountFormatted": "43231284.906441 DUST",
       "success": true,
-      "blockHash": "0x6bfacf0f38840fb86f8425453dff23df629136e19e20a6ba766bc927cfb491df",
-      "timestamp": "2025-11-02T08:22:32.003Z"
+      "blockHash": "0xa36f6c4c614560407bdec708ec30d42827503bae1159324fc2617055e263e6c1",
+      "timestamp": "2025-11-19T06:07:37.627Z"
     },
     {
       "index": 40,
       "recipient": "5DUWuoReeA6JPaZY5RHcGWiGXCYsvA1yqQTkAJJDtvYTFaho",
-      "amount": "27501779116935274496",
-      "amountFormatted": "27501779.116935 DUST",
+      "amount": "36554098796331184128",
+      "amountFormatted": "36554098.796331 DUST",
       "success": true,
-      "blockHash": "0x99b5211a140a7086991f655b4e2fc0fc8eb124bcf4064bbe98ae456ee791a8ab",
-      "timestamp": "2025-11-02T08:22:49.386Z"
+      "blockHash": "0x2b49e50a54a5a1852b20d2cfefe3f52249e4c0df8cffe49e796701b3b9b0d923",
+      "timestamp": "2025-11-19T06:07:55.012Z"
     },
     {
       "index": 41,
       "recipient": "5HTh2fyidGT4K4B8UqBKmW2zjKT29M5kygAWu2AduexvWXif",
-      "amount": "29332699486831335424",
-      "amountFormatted": "29332699.486831 DUST",
+      "amount": "45679703583452123136",
+      "amountFormatted": "45679703.583452 DUST",
       "success": true,
-      "blockHash": "0xadbf5be589c1e0085bb09e612e8b97dc16fa8478b949e7c9caf0d1d024c45ce7",
-      "timestamp": "2025-11-02T08:23:06.769Z"
+      "blockHash": "0xe83c7f6cb40ced1d2ded251fb8ed5ccd3222fb2c4fdaceceaf7376fe71424aff",
+      "timestamp": "2025-11-19T06:08:13.731Z"
     },
     {
       "index": 42,
       "recipient": "5GTTgiSGkWKX5vFYwFTvxCKqo9raRxtSLe9vf3xbHPXSBHby",
-      "amount": "34126631494241202176",
-      "amountFormatted": "34126631.494241 DUST",
+      "amount": "21980093510652443136",
+      "amountFormatted": "21980093.510652 DUST",
       "success": true,
-      "blockHash": "0xadf53164cc03a9ea0443479722aaaffa7fd5381c0cca1e6f9793a26ea3c09c8b",
-      "timestamp": "2025-11-02T08:23:25.484Z"
+      "blockHash": "0x05cc1b975b65c5e1d5106c5aa740fd629050143bef8bdcf1ee95588a5d429e7f",
+      "timestamp": "2025-11-19T06:08:31.114Z"
     },
     {
       "index": 43,
       "recipient": "5GaxQcPcDx2FURTgW1SEkw5eZmnzMJ2DvjcVGJUXy6kRxafR",
-      "amount": "38549644929322655744",
-      "amountFormatted": "38549644.929322 DUST",
+      "amount": "48779209530784624640",
+      "amountFormatted": "48779209.530784 DUST",
       "success": true,
-      "blockHash": "0x41576408da399c8b25c94db3d322601c8052de38c62bdcbf7ba1df5783949af3",
-      "timestamp": "2025-11-02T08:23:42.868Z"
+      "blockHash": "0x05b9dc36c0d5e198f03b788c9dabe18c800d014441a311205dc6f70162a78f9c",
+      "timestamp": "2025-11-19T06:08:49.833Z"
     },
     {
       "index": 44,
       "recipient": "5H9AeBz62yLUHVtKLYhRRFeFQZBb3LM2Cx3jKjKXWSdXA1UC",
-      "amount": "34317533777817974784",
-      "amountFormatted": "34317533.777817 DUST",
+      "amount": "43255385649549152256",
+      "amountFormatted": "43255385.649549 DUST",
       "success": true,
-      "blockHash": "0x653cd06ac887d18454a77eb2f648d48250baf821f3712d637a53947061f9a6ca",
-      "timestamp": "2025-11-02T08:24:01.582Z"
+      "blockHash": "0xbeb66054adf4ec1287c4147a39122dbe4ec1c6a72404fdcd44a071baaf0af2d0",
+      "timestamp": "2025-11-19T06:09:07.216Z"
     },
     {
       "index": 45,
       "recipient": "5ES1egPpPAoFFJPMkGXh9Gnv16MAy3i1b8aXtVTGXpEqTGvz",
-      "amount": "20821073847837574528",
-      "amountFormatted": "20821073.847837 DUST",
+      "amount": "34882917286404913152",
+      "amountFormatted": "34882917.286404 DUST",
       "success": true,
-      "blockHash": "0x61e4ab99862780b3a936badf0e76815cc980d5a574790808f9ef0d4d2eb5540b",
-      "timestamp": "2025-11-02T08:24:18.957Z"
+      "blockHash": "0x9a90f52d3632282c0b0309896ab2da2f8aaebeed220d76e8404914e16b94aa49",
+      "timestamp": "2025-11-19T06:09:25.936Z"
     },
     {
       "index": 46,
       "recipient": "5G9pY7Lo7Zy5a4Qygh9N3J7uCegc8xkjfdmcBRrJUzL6DdyF",
-      "amount": "46901700244804804608",
-      "amountFormatted": "46901700.244804 DUST",
+      "amount": "38766737338238844928",
+      "amountFormatted": "38766737.338238 DUST",
       "success": true,
-      "blockHash": "0xdedf29ca57b49b0278d4f85288045557e1b475632794234adea960ffe1d1e15f",
-      "timestamp": "2025-11-02T08:24:37.676Z"
+      "blockHash": "0xa7b3cf88d77ebc23b6320b6ab8992e4c921b05fe21c7011ebb44f42b850a6739",
+      "timestamp": "2025-11-19T06:09:43.320Z"
     },
     {
       "index": 47,
       "recipient": "5HTCk5BWwGPigtYuCHZsdGurAKHyL2BAzu7y6iR7CDZjCqAx",
-      "amount": "46713517924957458432",
-      "amountFormatted": "46713517.924957 DUST",
+      "amount": "46366905866070044672",
+      "amountFormatted": "46366905.866070 DUST",
       "success": true,
-      "blockHash": "0x9029f102582b25d1a9f8dd0b971bda6e78850918b0cb2f9a26ec6f76a2cc7086",
-      "timestamp": "2025-11-02T08:24:55.059Z"
+      "blockHash": "0x25d037121a5e8cb2fdcd6901a5149260f14e68b191b0a4e8108a1a999fa082a6",
+      "timestamp": "2025-11-19T06:10:00.703Z"
     },
     {
       "index": 48,
       "recipient": "5ECK7C2rkhZisu2bzpugWVhsbF6A4s1qjyeAhh5RLoiH7fnx",
-      "amount": "36649828671023198208",
-      "amountFormatted": "36649828.671023 DUST",
+      "amount": "46292692281198530560",
+      "amountFormatted": "46292692.281198 DUST",
       "success": true,
-      "blockHash": "0xa7d6db9118a9d20899db54c187fc157a84834d26838910f6f0a33151f9f679c4",
-      "timestamp": "2025-11-02T08:25:13.781Z"
+      "blockHash": "0x27f06aed5169ab47fd3e4c0ba9065d1a2476b57cefab4b1b831f46381f9d6503",
+      "timestamp": "2025-11-19T06:10:19.423Z"
     },
     {
       "index": 49,
       "recipient": "5EpkAS5vEzoqrtx2g2e5LWWzuX9fGJCFhUeyPWEQ4ndedfN9",
-      "amount": "29923194255236116480",
-      "amountFormatted": "29923194.255236 DUST",
+      "amount": "33521385617994145792",
+      "amountFormatted": "33521385.617994 DUST",
       "success": true,
-      "blockHash": "0xf790f8ddf845c199a5a513e84315c4d006d79c5bab893c2083bf6ab825404d8f",
-      "timestamp": "2025-11-02T08:25:31.164Z"
+      "blockHash": "0xa4db7b509b24e26e037bec8a7294ff8153f1f8b1b73416229cf249143f2a6741",
+      "timestamp": "2025-11-19T06:10:36.812Z"
     },
     {
       "index": 50,
       "recipient": "5EHXRa92eSthC4UCHQj1GRNkeuhYNFb7DbMvkuz3sKNvagcn",
-      "amount": "25698388508990597120",
-      "amountFormatted": "25698388.508990 DUST",
+      "amount": "46244418501983952896",
+      "amountFormatted": "46244418.501983 DUST",
       "success": true,
-      "blockHash": "0xb14341167afdb96d2adfe243e8cba6ca124dc588c48da9b3a2fbbbce393fe14a",
-      "timestamp": "2025-11-02T08:25:49.882Z"
+      "blockHash": "0x889ed466306ce60588c3f02bf07fe2bd572d4b98fd4907bd96110830661cdc6d",
+      "timestamp": "2025-11-19T06:10:55.530Z"
     },
     {
       "index": 51,
       "recipient": "5HR9ZHZoqAp5FFjwq3mgzBrEibNxy4DkaMMd8TQyztqTVbGs",
-      "amount": "20914995871893056256",
-      "amountFormatted": "20914995.871893 DUST",
+      "amount": "45328033408638271488",
+      "amountFormatted": "45328033.408638 DUST",
       "success": true,
-      "blockHash": "0x41f57039e03a443a6cdcc6e9a2a9b9eb8a0ab4bc8d4e8b69f4e5f3ebb59f033b",
-      "timestamp": "2025-11-02T08:26:07.267Z"
+      "blockHash": "0xf25d798101343b3d9c791da719252bcb631038dadfbb570e31ba6f87e84a6cf5",
+      "timestamp": "2025-11-19T06:11:12.923Z"
     },
     {
       "index": 52,
       "recipient": "5DkDN7VH6bocaXGKMXYLFZZdXXZTgffMB8kUjzSv5zBPns3L",
-      "amount": "46558642989946511360",
-      "amountFormatted": "46558642.989946 DUST",
+      "amount": "47267508276102979584",
+      "amountFormatted": "47267508.276102 DUST",
       "success": true,
-      "blockHash": "0x98895b6fb0e3d86440f3e052bce0aaa5dca4cc57732458fb2d0ce9553508cd00",
-      "timestamp": "2025-11-02T08:26:25.985Z"
+      "blockHash": "0x292e3f4d3be443cf52cd4902f91302b744ea2a3660e2b9b207ea3f74892de9af",
+      "timestamp": "2025-11-19T06:11:31.641Z"
     },
     {
       "index": 53,
       "recipient": "5FuwJwVxKoBLRUER9aaK7S11eJPnDrqNxW3Ap8QK9Z9s4LvH",
-      "amount": "39153744961808330752",
-      "amountFormatted": "39153744.961808 DUST",
+      "amount": "46438490689012662272",
+      "amountFormatted": "46438490.689012 DUST",
       "success": true,
-      "blockHash": "0xea7dd9db9125f06d8e30152b99c54fef8219a80ceadd954816412842f67b8100",
-      "timestamp": "2025-11-02T08:26:43.366Z"
+      "blockHash": "0xc3ae28f8e46fd131b5bb16e8b6ad83d809259d9bff1dea130f5079cd60b4fddc",
+      "timestamp": "2025-11-19T06:11:49.026Z"
     },
     {
       "index": 54,
       "recipient": "5H9MV3ybCwSMWZqDUMjmaqvd778ggWN4MNhqJqG9xRng6imb",
-      "amount": "42001674097364242432",
-      "amountFormatted": "42001674.097364 DUST",
+      "amount": "45116623184354418688",
+      "amountFormatted": "45116623.184354 DUST",
       "success": true,
-      "blockHash": "0x5336d18452201490f898eefec724b51b723c1a89df677ae81bba39f9ab8dee4b",
-      "timestamp": "2025-11-02T08:27:00.751Z"
+      "blockHash": "0x5040f78a6872107d20d4c974ffe5fff76eb4f6771ebbab798373ee7140f2df7c",
+      "timestamp": "2025-11-19T06:12:07.746Z"
     },
     {
       "index": 55,
       "recipient": "5Dc6gzHXnMPM8sXKcxsXm2sZgxFUvjANcdG6BnbKDkM198uh",
-      "amount": "24919969530889569280",
-      "amountFormatted": "24919969.530889 DUST",
+      "amount": "30877542800022956032",
+      "amountFormatted": "30877542.800022 DUST",
       "success": true,
-      "blockHash": "0x697c70c88c58fa5dd056405fc5cb0d0e1341f9542d5c100f53d063c6c6e5a7f8",
-      "timestamp": "2025-11-02T08:27:19.467Z"
+      "blockHash": "0x3da8f9b142b6c2c0967ef0aacb2c7c659c47f2076342df77d88fc7404b57a32d",
+      "timestamp": "2025-11-19T06:12:25.133Z"
     },
     {
       "index": 56,
       "recipient": "5FLEsyr1GdybBbTP26U5TFhUAxJQxqbkXnt2gKm9FuB36cgr",
-      "amount": "46002776543413571584",
-      "amountFormatted": "46002776.543413 DUST",
+      "amount": "38337784134647717888",
+      "amountFormatted": "38337784.134647 DUST",
       "success": true,
-      "blockHash": "0x04f2e0a4e38c0a6157c09646a636924867135b2c77776659bcccada75f6748a2",
-      "timestamp": "2025-11-02T08:27:36.849Z"
+      "blockHash": "0x9f4374245a66321e419c2cfe76706144569f1604fdd953e4e344e2e19125fa4e",
+      "timestamp": "2025-11-19T06:12:43.852Z"
     },
     {
       "index": 57,
       "recipient": "5HbdC2uWah7CxugdyrwikzmoxAQ3JUVfm6efYJf7VAHr54rG",
-      "amount": "20951168481566047104",
-      "amountFormatted": "20951168.481566 DUST",
+      "amount": "20327968928930679744",
+      "amountFormatted": "20327968.928930 DUST",
       "success": true,
-      "blockHash": "0xc6913eaae419f8c152a031670a98ebbaa5cefa44187e4c0fcfe39a37f39077f0",
-      "timestamp": "2025-11-02T08:27:55.566Z"
+      "blockHash": "0x30e2d0b99aeff65e26435fa0b65cb10ac797adbd4061eb00ce523c6e700deabb",
+      "timestamp": "2025-11-19T06:13:01.236Z"
     },
     {
       "index": 58,
       "recipient": "5GbZLxqEzFgznCQ5prcj55V5XijDhGkVhyWDrriCGsWUB32H",
-      "amount": "31861589040254679040",
-      "amountFormatted": "31861589.040254 DUST",
+      "amount": "34408686965688393728",
+      "amountFormatted": "34408686.965688 DUST",
       "success": true,
-      "blockHash": "0xad7b475ccd229ed43c33acbec708ec6602b69727e49a17916d8d862e850816fb",
-      "timestamp": "2025-11-02T08:28:12.943Z"
+      "blockHash": "0xc120666a2acc15a70db3d5e69b2fb9d4769295451e6dd13be5a607ecfa534601",
+      "timestamp": "2025-11-19T06:13:19.956Z"
     },
     {
       "index": 59,
       "recipient": "5CngRKZrbYS3jetVsDku6Rr24PtposdaYk51zLEfGKc1mMQS",
-      "amount": "30265776739472523264",
-      "amountFormatted": "30265776.739472 DUST",
+      "amount": "35751490569474459648",
+      "amountFormatted": "35751490.569474 DUST",
       "success": true,
-      "blockHash": "0x79552160beacfd63cbd09a2e9e15e104b43a63e84a44e72a14aca9718162a97a",
-      "timestamp": "2025-11-02T08:28:31.662Z"
+      "blockHash": "0xe9c6a8107ea293b9f486a55e571b302425cd9733f51cde6a708928a18f63238a",
+      "timestamp": "2025-11-19T06:13:37.335Z"
     },
     {
       "index": 60,
       "recipient": "5D4STEzreC2q8z77Kq6GyA9ZiuAAHya6nXiS2LoDANRzm4tS",
-      "amount": "36748906620348368896",
-      "amountFormatted": "36748906.620348 DUST",
+      "amount": "35580871595236939776",
+      "amountFormatted": "35580871.595236 DUST",
       "success": true,
-      "blockHash": "0x3c3d5dd1997c28211462e00e693ab1d865164bd6995046956789f3a60d84d6aa",
-      "timestamp": "2025-11-02T08:28:49.048Z"
+      "blockHash": "0xc543cef5680c7eb29368055d50dcd37b89af69320554af342098718ff77234bc",
+      "timestamp": "2025-11-19T06:13:54.717Z"
     },
     {
       "index": 61,
       "recipient": "5HpkhkaHmbHKoa4wTCCBeFBSUrLuzrdJQpbwEAwJx76BtXfQ",
-      "amount": "37831959445586647040",
-      "amountFormatted": "37831959.445586 DUST",
+      "amount": "25335729779909901312",
+      "amountFormatted": "25335729.779909 DUST",
       "success": true,
-      "blockHash": "0x899b8424db4dcc3f5deeb62f9e4c5a1d1bad9f3939093964e2dbae6422724860",
-      "timestamp": "2025-11-02T08:29:07.763Z"
+      "blockHash": "0xd6acf75859109595f3488508bf5ddbe017973737c749570e1231589c738e1710",
+      "timestamp": "2025-11-19T06:14:13.437Z"
     },
     {
       "index": 62,
       "recipient": "5CB4rZY4U6yj53mKBYqrnq9ENpSFAieAK5KmdX6v9Er5wLbi",
-      "amount": "38186040715700420608",
-      "amountFormatted": "38186040.715700 DUST",
+      "amount": "44830018802823356416",
+      "amountFormatted": "44830018.802823 DUST",
       "success": true,
-      "blockHash": "0xabc9a80f4e37fdc7e09207db8da409f8ad8a4022cd5e640c233c2e228f72505a",
-      "timestamp": "2025-11-02T08:29:25.143Z"
+      "blockHash": "0x3d97b533456b52ddc7f6dc4c52ca47d51cc04f5294496a401ce8d4c5bec6f3b8",
+      "timestamp": "2025-11-19T06:14:30.821Z"
     },
     {
       "index": 63,
       "recipient": "5HDqHN9fdqtv4PjBFvJHbxEteG6KQnWh8omeZ3hpKB7MBvHw",
-      "amount": "24860660429736976384",
-      "amountFormatted": "24860660.429736 DUST",
+      "amount": "22649514353048048128",
+      "amountFormatted": "22649514.353048 DUST",
       "success": true,
-      "blockHash": "0x42665ff93257551cfc35e0698cfc8ccde522dbdcd5a81b81b832c218a2c37bad",
-      "timestamp": "2025-11-02T08:29:43.859Z"
+      "blockHash": "0x812305728913d66075b5a7eff8ae7e52567948a7a8c80455fb2ba7cee9336473",
+      "timestamp": "2025-11-19T06:14:49.542Z"
     },
     {
       "index": 64,
       "recipient": "5CD1BYtHL7eTAeCWA9dVSck4UinHhakqqkEFeh4hk6xEz7Mg",
-      "amount": "21165944576119186688",
-      "amountFormatted": "21165944.576119 DUST",
+      "amount": "43708836052020281344",
+      "amountFormatted": "43708836.052020 DUST",
       "success": true,
-      "blockHash": "0x2625f6fe29f964a53749004cdc7488588efa43ebfff50bccdb85399425faf982",
-      "timestamp": "2025-11-02T08:30:01.241Z"
+      "blockHash": "0x1b9ba3c5147bac27d786ccd84a0e439d7c500256f9a7bf3ead346c73aee77504",
+      "timestamp": "2025-11-19T06:15:06.928Z"
     },
     {
       "index": 65,
       "recipient": "5FpXrwW69QqEYvmV3GBVhB7ufgiXQcmsYdfaqTUhY2kto6Y8",
-      "amount": "34650374289790699520",
-      "amountFormatted": "34650374.289790 DUST",
+      "amount": "47737451320742768640",
+      "amountFormatted": "47737451.320742 DUST",
       "success": true,
-      "blockHash": "0x5e4096b4ed739fc38261f01f7dbd79bd6bedfdb4638d4e3fdd25e6ea26008166",
-      "timestamp": "2025-11-02T08:30:19.958Z"
+      "blockHash": "0xa6aec25ee30e62da11285ee6ebff3162631470551104945f517e96087ed3a476",
+      "timestamp": "2025-11-19T06:15:25.647Z"
     },
     {
       "index": 66,
       "recipient": "5FERWLxMdSAu6wAhYmf2xroUsA7iFZ9m1NzhH1jaV9gMPLa9",
-      "amount": "35553075708132341760",
-      "amountFormatted": "35553075.708132 DUST",
+      "amount": "44444868615433797632",
+      "amountFormatted": "44444868.615433 DUST",
       "success": true,
-      "blockHash": "0x0e2e6ea2c0323c47533882ba6635d16f2d634be78030dca3201e8d940a112420",
-      "timestamp": "2025-11-02T08:30:37.339Z"
+      "blockHash": "0xa498f5371e1b2aaabe6f393ab5ce3c184bc2931f89dbb841d1f54109026fd281",
+      "timestamp": "2025-11-19T06:15:43.023Z"
     },
     {
       "index": 67,
       "recipient": "5EvSaUuzkbg4zhgsaWe2hPej3zc1iqQwfGWTa679F3wPeWwR",
-      "amount": "23049678407538376704",
-      "amountFormatted": "23049678.407538 DUST",
+      "amount": "42285918621648494592",
+      "amountFormatted": "42285918.621648 DUST",
       "success": true,
-      "blockHash": "0x3cce794f88d639a7896e5f2c4611350f7669e8f82af5774f951a3c630678954f",
-      "timestamp": "2025-11-02T08:30:54.722Z"
+      "blockHash": "0xbb21f71d264623f21f6c5c7c51ad27067503f90a5be92f6e7cb718687195641f",
+      "timestamp": "2025-11-19T06:16:01.748Z"
     },
     {
       "index": 68,
       "recipient": "5GNXojjo7epKLHKX1ydD7bFJXJRFLWKfSz7KvA21LHN9wUCs",
-      "amount": "35513013976678764544",
-      "amountFormatted": "35513013.976678 DUST",
+      "amount": "28129000085181446144",
+      "amountFormatted": "28129000.085181 DUST",
       "success": true,
-      "blockHash": "0x11bef47e029ecca4d5b55c3257ea5a0f1f0d0434df49921fd1265632c0cf7c64",
-      "timestamp": "2025-11-02T08:31:13.436Z"
+      "blockHash": "0xb15f50aa1dc5a9580b6344da494b250463ae5d81264694f3ae9aa4739b37dcf1",
+      "timestamp": "2025-11-19T06:16:19.132Z"
     },
     {
       "index": 69,
       "recipient": "5CqtWUrxw5LGghvr4z4vST71qx21rf7fjGEhxxMj79EUrLph",
-      "amount": "35024129575885932544",
-      "amountFormatted": "35024129.575885 DUST",
+      "amount": "45402619145546493952",
+      "amountFormatted": "45402619.145546 DUST",
       "success": true,
-      "blockHash": "0x95fbbc406cce58c1308f58250f01e75b8b58cf6ee58ac5c0443fc38b5d19b069",
-      "timestamp": "2025-11-02T08:31:30.815Z"
+      "blockHash": "0x1673fe3d98133b8c0292aa97a56f0d03d1dad6329b30c922dc6a6d361e08300e",
+      "timestamp": "2025-11-19T06:16:37.852Z"
     },
     {
       "index": 70,
       "recipient": "5Fn46HEiZHHn1U2VnFWnz6VcieALSAnGfzQ9b8KBBxkY5qFa",
-      "amount": "22109518363086129152",
-      "amountFormatted": "22109518.363086 DUST",
+      "amount": "37595330640856367104",
+      "amountFormatted": "37595330.640856 DUST",
       "success": true,
-      "blockHash": "0x518d9ba24a14cbecbaf00e88667f4dbb55bb31a64e54a0828cb83cc1ac6a8843",
-      "timestamp": "2025-11-02T08:31:49.538Z"
+      "blockHash": "0x0f631998af18ecab9e5cf2665fad168f0f23d3904470179c22fc055cdfe8e4ed",
+      "timestamp": "2025-11-19T06:16:55.235Z"
     },
     {
       "index": 71,
       "recipient": "5Fdwz1dwKZHmERUBUiwx5jPXVyJF6hdvyHNSxhV9cb9ZAWbh",
-      "amount": "41238697120427458560",
-      "amountFormatted": "41238697.120427 DUST",
+      "amount": "24749378204338323456",
+      "amountFormatted": "24749378.204338 DUST",
       "success": true,
-      "blockHash": "0x53a507cca371d69c8114eed16fd9d5417915e6f4604fbe354ff3aefcbca43298",
-      "timestamp": "2025-11-02T08:32:06.917Z"
+      "blockHash": "0xbe3618668479222a3a59ec31f0b4f6b099278604e58dbb9b1c545fd926265772",
+      "timestamp": "2025-11-19T06:17:13.957Z"
     },
     {
       "index": 72,
       "recipient": "5ChrNJkFGQMKjjGKRWrKRNgyaX44mV8ioQtTNiZPXJCuNor8",
-      "amount": "35964440764282173440",
-      "amountFormatted": "35964440.764282 DUST",
+      "amount": "26153128884797616128",
+      "amountFormatted": "26153128.884797 DUST",
       "success": true,
-      "blockHash": "0x23c25d80eac97b44cdb5295b18d7faecb353237bc1a19317c19a3841c7179523",
-      "timestamp": "2025-11-02T08:32:25.640Z"
+      "blockHash": "0xe407554b38a151bae37ad723da4b5255a424545430321c0493f8f5d98b548045",
+      "timestamp": "2025-11-19T06:17:31.338Z"
     },
     {
       "index": 73,
       "recipient": "5HNAD22tdJXKvycXXzSRWJos2BvMcdb9jzZZsWsYDktdorqt",
-      "amount": "35413077154662840320",
-      "amountFormatted": "35413077.154662 DUST",
+      "amount": "48654760986309357568",
+      "amountFormatted": "48654760.986309 DUST",
       "success": true,
-      "blockHash": "0x27147191dc74a897051d4044bf5c1d9b5c54997c97a2014d98548dd6c67cd4e2",
-      "timestamp": "2025-11-02T08:32:43.023Z"
+      "blockHash": "0x514d9e3807cc7edbbcf54a3dff79c35562440e6d92784c3cabbdbade2b2f33e9",
+      "timestamp": "2025-11-19T06:17:48.718Z"
     },
     {
       "index": 74,
       "recipient": "5GdcYuojgUf2m1cEYpH3YNa7tZHZyZV3MDqXWmyFV6YEB7nW",
-      "amount": "46858471388269789184",
-      "amountFormatted": "46858471.388269 DUST",
+      "amount": "43981906352082989056",
+      "amountFormatted": "43981906.352082 DUST",
       "success": true,
-      "blockHash": "0xc102858d69143691e9a645ec45a65ef80dac9c856c72c40116d321612cb8440a",
-      "timestamp": "2025-11-02T08:33:01.737Z"
+      "blockHash": "0x13583afe6f0a94afc8647c0bdb420bb1393c0f4bab3f84152840303327823255",
+      "timestamp": "2025-11-19T06:18:07.441Z"
     },
     {
       "index": 75,
       "recipient": "5FmynCHt7J1XY9hkPjUgm1HeyMr38Au3GPQSDKGmMpTqde9h",
-      "amount": "23752965722582348800",
-      "amountFormatted": "23752965.722582 DUST",
+      "amount": "40884114048717840384",
+      "amountFormatted": "40884114.048717 DUST",
       "success": true,
-      "blockHash": "0xbc38754d8b675aaa9959615a3eda72046b1709e50327902170bd6501e0f23632",
-      "timestamp": "2025-11-02T08:33:19.118Z"
+      "blockHash": "0x91502c3802da382234f029c6b861bb9d1cf987baf9e1f0f14229ffd32d5ffd6a",
+      "timestamp": "2025-11-19T06:18:24.825Z"
     },
     {
       "index": 76,
       "recipient": "5GxLM3BzqoD2XcjidjetnRxTVR7PPrhDWMLdMjUrQ9BGYAv4",
-      "amount": "45141997613063553024",
-      "amountFormatted": "45141997.613063 DUST",
+      "amount": "49828297497348489216",
+      "amountFormatted": "49828297.497348 DUST",
       "success": true,
-      "blockHash": "0x2ef74bd050a481193d998e7c6869d6ba097bbf8c37d2e38be22df4a274402a41",
-      "timestamp": "2025-11-02T08:33:37.837Z"
+      "blockHash": "0x3de9d80da3c78a7608d9cece34d66b2720822bffbaede20f68e43da87ed43298",
+      "timestamp": "2025-11-19T06:18:43.544Z"
     },
     {
       "index": 77,
       "recipient": "5GjBkzxX3yREAoQqiDS9MYUfd956Xo3Thq4CCRaj233DmgNj",
-      "amount": "46530019337274085376",
-      "amountFormatted": "46530019.337274 DUST",
+      "amount": "41343935652783480832",
+      "amountFormatted": "41343935.652783 DUST",
       "success": true,
-      "blockHash": "0x0f49aa3e16342b5369d76ea50cae0ef5c6c4bc0ec4b851d3edab7da52722d28f",
-      "timestamp": "2025-11-02T08:33:55.215Z"
+      "blockHash": "0x6ac84c3a4304790fdd1ba7c50efd27aed60f8f7df0218684f7e2b85eba704b93",
+      "timestamp": "2025-11-19T06:19:00.927Z"
     },
     {
       "index": 78,
       "recipient": "5DjkX9iksZFW2SEffPWdSKd8Mx3QoZXmbYkTjXfzjyqaGh3G",
-      "amount": "26623876268469148672",
-      "amountFormatted": "26623876.268469 DUST",
+      "amount": "29524059657991170048",
+      "amountFormatted": "29524059.657991 DUST",
       "success": true,
-      "blockHash": "0x9d443837af12d6fe9c1f9f39fdb925ce03002cf6139299fac6bbddd735894038",
-      "timestamp": "2025-11-02T08:34:13.933Z"
+      "blockHash": "0x3d6e050e18e464491cc0e1958aec6b455aa8b57a677eb08c0cc0f5c1a9d9fd38",
+      "timestamp": "2025-11-19T06:19:19.646Z"
     },
     {
       "index": 79,
       "recipient": "5EHGRazELCQsudd74bMaofx3MvDTGTf5XMDks1LsZ4AaBcHv",
-      "amount": "29421607998671890432",
-      "amountFormatted": "29421607.998671 DUST",
+      "amount": "32243746134200848384",
+      "amountFormatted": "32243746.134200 DUST",
       "success": true,
-      "blockHash": "0x309a74fb0ffc3dc172f637434b47a11d16561b584d0e40d8e61a0fd639f2f94f",
-      "timestamp": "2025-11-02T08:34:31.313Z"
+      "blockHash": "0x4950dd717a24ad0f79683a7276f979b0f993e063da1b84c4693bb6529aa0a9f2",
+      "timestamp": "2025-11-19T06:19:37.029Z"
     },
     {
       "index": 80,
       "recipient": "5GQr7Ywkuzgu1vrzjctiaHmmmqD7T6Pb2ejE8rEDzveZv9YL",
-      "amount": "43791121149964345344",
-      "amountFormatted": "43791121.149964 DUST",
+      "amount": "48725792636927320064",
+      "amountFormatted": "48725792.636927 DUST",
       "success": true,
-      "blockHash": "0x1ee84ea11d368393df1c2aab1a048666d95e7b7941538bb1523edbc22068e44b",
-      "timestamp": "2025-11-02T08:34:48.691Z"
+      "blockHash": "0x4bb93fe329558c4115d241c8d3c63668d0b795a95ce89bd32a1aac92654963e5",
+      "timestamp": "2025-11-19T06:19:55.750Z"
     },
     {
       "index": 81,
       "recipient": "5FTfu8oeHtPbyVsF6paUYX5Ts4uqXhfnt2wFkrJVeRwMjUs1",
-      "amount": "39102607561126408192",
-      "amountFormatted": "39102607.561126 DUST",
+      "amount": "44365152083662172160",
+      "amountFormatted": "44365152.083662 DUST",
       "success": true,
-      "blockHash": "0xa70fd28235bb96184c30c8b59c9359b0e607cd0e0430119b27eb0b882eeadd52",
-      "timestamp": "2025-11-02T08:35:07.410Z"
+      "blockHash": "0x3d276e3d2e2d61e1dcbd1415a630b6c28047a7bef1126257fccaa007b633fd4b",
+      "timestamp": "2025-11-19T06:20:13.132Z"
     },
     {
       "index": 82,
       "recipient": "5Fj8hG5AFKbyHJ3btzppvETUdCBZV5KBkW5HzjnHwo1PpC7N",
-      "amount": "27456585201244014592",
-      "amountFormatted": "27456585.201244 DUST",
+      "amount": "48275506955261841408",
+      "amountFormatted": "48275506.955261 DUST",
       "success": true,
-      "blockHash": "0x587ed4b1d6ec66cdfdff9ce55eb8b0220214a08d82733a34396b06f11aaf48bc",
-      "timestamp": "2025-11-02T08:35:24.791Z"
+      "blockHash": "0x81fa2dbc4732018786006784908e664c4a3e10550cc86c8defa4d427d79b879d",
+      "timestamp": "2025-11-19T06:20:31.857Z"
     },
     {
       "index": 83,
       "recipient": "5CK334AfS1uNwcfzsLn3EBECyJN79t1yNedPbxDdXBCQHmCk",
-      "amount": "31448862511675799552",
-      "amountFormatted": "31448862.511675 DUST",
+      "amount": "42959541044472393728",
+      "amountFormatted": "42959541.044472 DUST",
       "success": true,
-      "blockHash": "0xb0f3dafd10771304e6a423d2c31301295ed94a9a9e08f4a1b4617a2fbaa81c3b",
-      "timestamp": "2025-11-02T08:35:43.510Z"
+      "blockHash": "0x531b3e00885cea535c7268f3f90be22cfc8df2ee5bb7858de2c87617dd132a79",
+      "timestamp": "2025-11-19T06:20:49.240Z"
     },
     {
       "index": 84,
       "recipient": "5CqYauFTcFM7ivTf4LJzAVjveax6pf9YszYMTRuDwYsVW9BD",
-      "amount": "25749109151462887424",
-      "amountFormatted": "25749109.151462 DUST",
+      "amount": "22984330074346959360",
+      "amountFormatted": "22984330.074346 DUST",
       "success": true,
-      "blockHash": "0x34f7e3cb0b74e160338615bd4c7a74ec7a236df1f5a5b541deec846dc1664984",
-      "timestamp": "2025-11-02T08:36:00.888Z"
+      "blockHash": "0x3a1c7e89639e25a24ef18a3023f1d8e360df7a18dc56228fa9bae3c2ef63ea1f",
+      "timestamp": "2025-11-19T06:21:07.960Z"
     },
     {
       "index": 85,
       "recipient": "5H4AdLx2fGyLuBQvdf6DuonWhB4M91wjQKtrXUifEGnCwHED",
-      "amount": "24736060400134398976",
-      "amountFormatted": "24736060.400134 DUST",
+      "amount": "37334087921238059008",
+      "amountFormatted": "37334087.921238 DUST",
       "success": true,
-      "blockHash": "0x110ab829b4b38dc5be7dfd94637afc427bbf7f49895e15375f8413a286faa27d",
-      "timestamp": "2025-11-02T08:36:19.606Z"
+      "blockHash": "0x854bebde4776cbf99349fd9eac1bd837d9330030be5f6a4b9efde65e555eebeb",
+      "timestamp": "2025-11-19T06:21:25.343Z"
     },
     {
       "index": 86,
       "recipient": "5DD3kcysZfcAiDryrJAzYixrgDmGYFgit9i6dM3FehyDQ4ZP",
-      "amount": "33464021992491890688",
-      "amountFormatted": "33464021.992491 DUST",
+      "amount": "32476723951959572480",
+      "amountFormatted": "32476723.951959 DUST",
       "success": true,
-      "blockHash": "0x7301e32f16dac491b9507e1e9922d2c1875c444098f3c4dbf89bb5fdde9d509f",
-      "timestamp": "2025-11-02T08:36:36.988Z"
+      "blockHash": "0xca167ec99c47897374d5eecf8ab03de19aff84d4557813670ed62c86d6176f25",
+      "timestamp": "2025-11-19T06:21:42.728Z"
     },
     {
       "index": 87,
       "recipient": "5GEx4EHQL3s15P4Yu3vfZ3ahHnnHSLJn5j8W3dJHpJsgGG4i",
-      "amount": "20271444370065221376",
-      "amountFormatted": "20271444.370065 DUST",
+      "amount": "43743190286105264128",
+      "amountFormatted": "43743190.286105 DUST",
       "success": true,
-      "blockHash": "0x5ca4ca1b99c4f12bc355fd34ec3fbdc38d396ca9ab475fda17e1afc768417623",
-      "timestamp": "2025-11-02T08:36:55.701Z"
+      "blockHash": "0x8db1c29da1ad55e7788d0e3604f1c3418db86a4a9cde705a8bb384c333547b13",
+      "timestamp": "2025-11-19T06:22:01.448Z"
     },
     {
       "index": 88,
       "recipient": "5Gq6gytguQu11w2nWyMQuhGGUGgYi7MFj68T3yrq36SqTJbY",
-      "amount": "35367837970980071424",
-      "amountFormatted": "35367837.970980 DUST",
+      "amount": "30740237170221305856",
+      "amountFormatted": "30740237.170221 DUST",
       "success": true,
-      "blockHash": "0x564d496796b2d959b656fe581306d3f5a07c2d1f73e5bd536f1afd2dff1504f3",
-      "timestamp": "2025-11-02T08:37:13.080Z"
+      "blockHash": "0x5d3fbc58d5bf8e7618c7060cd1510d741b89006e132614318e8e20150aab65ac",
+      "timestamp": "2025-11-19T06:22:18.828Z"
     },
     {
       "index": 89,
       "recipient": "5DvaDof4J7NeJAc8u7MENnZYfo1wRxVGxGfSMAQSkuGoTqcb",
-      "amount": "28793971982898585600",
-      "amountFormatted": "28793971.982898 DUST",
+      "amount": "35965767255992166400",
+      "amountFormatted": "35965767.255992 DUST",
       "success": true,
-      "blockHash": "0x0466bb2daa1107686819faabf8349733f1ae459deffbc30b41d58a3cc5899e5c",
-      "timestamp": "2025-11-02T08:37:31.801Z"
+      "blockHash": "0x5681c688e587f9d4c2a4065476c21b285ca1c7b6d66a8a19d65dc9fffa9fcd6d",
+      "timestamp": "2025-11-19T06:22:37.552Z"
     },
     {
       "index": 90,
       "recipient": "5F1eF5hgLkWBWmntocBANtbK64G2pqA8bNqmHzkWLYg5ZYC6",
-      "amount": "23451769948468774912",
-      "amountFormatted": "23451769.948468 DUST",
+      "amount": "26231633071528479744",
+      "amountFormatted": "26231633.071528 DUST",
       "success": true,
-      "blockHash": "0x2ae2e09725f0020658393447c656ec8b32444b7bca0ab8c09cfa69ac9c6800ac",
-      "timestamp": "2025-11-02T08:37:49.182Z"
+      "blockHash": "0xb19652bd0fb0f80ef2446f76768c6a02e7fec62fd28b5d9961991d02767d4932",
+      "timestamp": "2025-11-19T06:22:54.935Z"
     },
     {
       "index": 91,
       "recipient": "5CoL44tvcJqo8UVmEd5JJzPqr2G5uVGDBomsxMrrgnAD8AoP",
-      "amount": "44173292856065314816",
-      "amountFormatted": "44173292.856065 DUST",
+      "amount": "33696084457577961472",
+      "amountFormatted": "33696084.457577 DUST",
       "success": true,
-      "blockHash": "0x37e0afc249c2b67736a510e811c7779c9f74ddee30671de26e3f8993a327742e",
-      "timestamp": "2025-11-02T08:38:07.898Z"
+      "blockHash": "0x62e21c7feeec124077ae8233e6c3591a58a9a6dae09e002c82d732de29b24b94",
+      "timestamp": "2025-11-19T06:23:13.658Z"
     },
     {
       "index": 92,
       "recipient": "5G6tpXaMZ3xRa6XSQaKxMFcLTHhvAWX7cHycesx3UbPjciJN",
-      "amount": "34594445299247327232",
-      "amountFormatted": "34594445.299247 DUST",
+      "amount": "22278566321056578816",
+      "amountFormatted": "22278566.321056 DUST",
       "success": true,
-      "blockHash": "0x763adfa9b45d046a07724ac80165e4ff05900deec3b09b476346e39599e4a1eb",
-      "timestamp": "2025-11-02T08:38:25.278Z"
+      "blockHash": "0xf11015a21e41608a12c250211edfc3a0b26ff121497ecb0cc8ff474f56a4f60a",
+      "timestamp": "2025-11-19T06:23:31.044Z"
     },
     {
       "index": 93,
       "recipient": "5EBytfx8XZU6B2EoNGggfUsLgr8kkJEzdLjwBNDquyUHGNHj",
-      "amount": "22385283651657845760",
-      "amountFormatted": "22385283.651657 DUST",
+      "amount": "32970866090696292352",
+      "amountFormatted": "32970866.090696 DUST",
       "success": true,
-      "blockHash": "0x406f4a87c176f44df52713c5d2ccdbe07b4054ca4617cbebda0cb223528c530b",
-      "timestamp": "2025-11-02T08:38:43.997Z"
+      "blockHash": "0x7e35ddbf5a476412fda502dc77ed29d3878ed0fa1fbd8e498f8e348bfb995e74",
+      "timestamp": "2025-11-19T06:23:49.765Z"
     },
     {
       "index": 94,
       "recipient": "5D5h2bAyEqzPEq6gaLZqjaoNrWaCszVvL11kA97Xr5UCPZzW",
-      "amount": "22905770914254033408",
-      "amountFormatted": "22905770.914254 DUST",
+      "amount": "48415671209445466112",
+      "amountFormatted": "48415671.209445 DUST",
       "success": true,
-      "blockHash": "0xff45d09c7502f1a84dc174bc5751f7556b5c0cfa38dfcb0052bc75d48189e039",
-      "timestamp": "2025-11-02T08:39:01.376Z"
+      "blockHash": "0x9b1e4bcaaa4aec749c586fd8a9227d0b97e51f2a56f17df12058a156e63d3753",
+      "timestamp": "2025-11-19T06:24:07.144Z"
     },
     {
       "index": 95,
       "recipient": "5CzRzAHbwMjjsLZFirH6LbM1CgBLPyjnzWvgiEVC6eEbMTKq",
-      "amount": "46688562396708495360",
-      "amountFormatted": "46688562.396708 DUST",
+      "amount": "25644364389574292480",
+      "amountFormatted": "25644364.389574 DUST",
       "success": true,
-      "blockHash": "0x84f0114e4a390eb0f2c1da3eb718cd4f24dbfdc087cb31f61cddec83d2d98fb2",
-      "timestamp": "2025-11-02T08:39:18.756Z"
+      "blockHash": "0xcb8b1e4225b1ba40b6e6613cd7d58465aee7f6fed50cf060c6e097fe0c3bb967",
+      "timestamp": "2025-11-19T06:24:25.864Z"
     },
     {
       "index": 96,
       "recipient": "5H3uQDooArgkEzHNGD1DFtpUTbGwjkjhb3Tk2rMcrUQoMBY9",
-      "amount": "39008029754374156288",
-      "amountFormatted": "39008029.754374 DUST",
+      "amount": "29761297345715060736",
+      "amountFormatted": "29761297.345715 DUST",
       "success": true,
-      "blockHash": "0x8590c41835c869ee7b9c8cac5e94419b943a11e0846fdcab6810bcda7198a4a3",
-      "timestamp": "2025-11-02T08:39:37.476Z"
+      "blockHash": "0x09538b038f241fedc8aca0d8309ec2eeda13c731dd9518244e001abe724a81fb",
+      "timestamp": "2025-11-19T06:24:43.249Z"
     },
     {
       "index": 97,
       "recipient": "5E6iQBYVvXeJk76uGVx97KvMQGWWprwfqtH5h2nR3mqDmVcU",
-      "amount": "20201517048429522560",
-      "amountFormatted": "20201517.048429 DUST",
+      "amount": "28094095528666591232",
+      "amountFormatted": "28094095.528666 DUST",
       "success": true,
-      "blockHash": "0xba133cddbdd3c2bd2c8d5fc3d118891a3d4acc25177aeb079dcdc80908b99a57",
-      "timestamp": "2025-11-02T08:39:54.851Z"
+      "blockHash": "0x3e2f4a069cb197622dee519cc57b73246a22921cdaccf4013197eca974c23246",
+      "timestamp": "2025-11-19T06:25:01.971Z"
     },
     {
       "index": 98,
       "recipient": "5GTGqHtK2PLzY4D3fUTPxpByYwp7Ps53T7JureeMcQKmaddF",
-      "amount": "41956338037396054016",
-      "amountFormatted": "41956338.037396 DUST",
+      "amount": "39209793960381321216",
+      "amountFormatted": "39209793.960381 DUST",
       "success": true,
-      "blockHash": "0x42e1e23c305a8261e0e8544cb354c634ef450c87f0ae0eed60adb59b7a20c5c1",
-      "timestamp": "2025-11-02T08:40:13.570Z"
+      "blockHash": "0x92f0f1726045300a9f73d68289805559fc210f52efd5628d66c191acd7813e22",
+      "timestamp": "2025-11-19T06:25:19.355Z"
     },
     {
       "index": 99,
       "recipient": "5HNYcN2rfKYeCtLQSPHZF2cNdW1LqzuBNjHUhK9dE2kKip5V",
-      "amount": "25268704603454654464",
-      "amountFormatted": "25268704.603454 DUST",
+      "amount": "29365171172064163840",
+      "amountFormatted": "29365171.172064 DUST",
       "success": true,
-      "blockHash": "0x12782ac440659246d621e8e51705e4a538a764ee7539ae8cb7a5d38ba61bfc58",
-      "timestamp": "2025-11-02T08:40:30.950Z"
+      "blockHash": "0x667acff0ea9476ff98f4ec63b9b18a5d52352945781f6aeb8c97bde135dcd090",
+      "timestamp": "2025-11-19T06:25:36.733Z"
     },
     {
       "index": 100,
       "recipient": "5EhXRiBX4tsL3ALxTfYYZMonRMhjdj6jJCqYKVtzM5Nnm9dm",
-      "amount": "39927233126475567104",
-      "amountFormatted": "39927233.126475 DUST",
+      "amount": "42266015960245624832",
+      "amountFormatted": "42266015.960245 DUST",
       "success": true,
-      "blockHash": "0x2bf8d20caf6080816e64eb9cc58f78c56f2f8443963044ef759c7d16f98a379e",
-      "timestamp": "2025-11-02T08:40:49.666Z"
+      "blockHash": "0x305039f78500a54c5545c48ef061699e33eecc6da2c13d52942c4192837fde85",
+      "timestamp": "2025-11-19T06:25:55.453Z"
     }
   ]
 }

@@ -169,7 +169,7 @@ const WalletManagePage: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '640px',
+        maxWidth: '480px',
         margin: '0 auto',
         minHeight: '100vh',
         background: '#f5f5f5',
@@ -242,7 +242,7 @@ const WalletManagePage: React.FC = () => {
           style={{
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             borderRadius: '16px',
-            padding: '24px',
+            padding: '16px',
             color: '#fff',
             position: 'relative',
             boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
@@ -531,7 +531,7 @@ const WalletManagePage: React.FC = () => {
           bottom: 0,
           left: 0,
           right: 0,
-          maxWidth: '640px',
+          maxWidth: '480px',
           margin: '0 auto',
           background: '#fff',
           borderTop: '1px solid #f0f0f0',
@@ -562,7 +562,8 @@ const WalletManagePage: React.FC = () => {
         {/* 我的按钮 */}
         <div
           onClick={() => {
-            window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'my-wallet' } }));
+            console.log('点击我的，跳转到个人中心');
+            window.location.hash = '#/profile';
           }}
           style={{
             flex: 1,
@@ -584,15 +585,21 @@ const WalletManagePage: React.FC = () => {
         onClose={() => setSwitcherVisible(false)}
         onSwitch={(addr) => {
           console.log('切换到钱包:', addr);
-          // 切换钱包后跳转到我的钱包页面
-          window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'my-wallet' } }));
+          // 切换钱包后跳转到个人中心页面
+          window.location.hash = '#/profile';
         }}
         onCreateNew={() => {
           message.info('跳转到创建钱包页面');
+          // 创建钱包功能在 AuthEntryPage 的 tab 中
+          // 这里保持使用 mp.nav 事件（如果在 AuthEntryPage 内则有效）
+          // 或者提示用户返回欢迎页面
           window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } }));
         }}
         onImport={() => {
           message.info('跳转到恢复钱包页面');
+          // 恢复钱包功能在 AuthEntryPage 的 tab 中
+          // 这里保持使用 mp.nav 事件（如果在 AuthEntryPage 内则有效）
+          // 或者提示用户返回欢迎页面
           window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'restore' } }));
         }}
       />

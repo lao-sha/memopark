@@ -158,7 +158,7 @@ export const ComplaintButton: React.FC<ComplaintButtonProps> = ({
     const typeNames: Record<ComplaintType, string> = {
       [ComplaintType.DeceasedText]: '逝者文本',
       [ComplaintType.DeceasedMedia]: '逝者媒体',
-      [ComplaintType.Grave]: '墓地',
+      // 该投诉类型已删除
       [ComplaintType.OtcOrder]: 'OTC订单',
       [ComplaintType.SimpleBridge]: '跨链桥接',
     };
@@ -172,7 +172,7 @@ export const ComplaintButton: React.FC<ComplaintButtonProps> = ({
     const descriptions: Record<ComplaintType, string> = {
       [ComplaintType.DeceasedText]: '如果您发现该文本内容存在违规、不当或侵权行为，请提供相关证据进行投诉。',
       [ComplaintType.DeceasedMedia]: '如果您发现该媒体内容存在违规、不当或侵权行为，请提供相关证据进行投诉。',
-      [ComplaintType.Grave]: '如果您发现该墓地存在违规行为，请提供相关证据进行投诉。',
+      // 该投诉类型已删除
       [ComplaintType.OtcOrder]: '如果您认为该订单存在欺诈或违约行为，请提供相关证据发起争议。',
       [ComplaintType.SimpleBridge]: '如果您认为该桥接记录存在问题，请提供相关证据发起争议。',
     };

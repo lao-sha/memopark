@@ -24,7 +24,7 @@ use sp_runtime::RuntimeDebug;
 /// 3. 费用统计和分析
 /// 
 /// 类型说明：
-/// - Deceased：逝者档案（照片、视频、文档等）
+/// - Deceased：逝者档案（整合text文本、media媒体、works作品等内容类型）
 /// - Grave：墓位相关（封面图、背景音乐等）
 /// - Offerings：供奉品（图片、视频、音频等）
 /// - OtcOrder：OTC订单（聊天记录、文件等）
@@ -336,6 +336,36 @@ pub struct GlobalHealthStats<BlockNumber> {
     pub last_full_scan: BlockNumber,
     /// 累计修复次数
     pub total_repairs: u64,
+}
+
+/// 函数级详细中文注释：域级别健康统计
+/// 
+/// 记录单个域的Pin数量、存储容量、健康状态等统计信息，用于：
+/// 1. 域级别的监控和告警
+/// 2. Dashboard按域展示统计数据
+/// 3. 域级别的优先级调度决策
+/// 
+/// 字段说明：
+/// - domain：域名（如 b"deceased", b"offerings"）
+/// - total_pins：该域的总Pin数量
+/// - total_size_bytes：该域的总存储量（字节）
+/// - healthy_count：健康CID数量
+/// - degraded_count：降级CID数量
+/// - critical_count：危险CID数量
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct DomainStats {
+    /// 域名
+    pub domain: BoundedVec<u8, ConstU32<32>>,
+    /// 总Pin数量
+    pub total_pins: u64,
+    /// 总存储量（字节）
+    pub total_size_bytes: u64,
+    /// 健康CID数量
+    pub healthy_count: u64,
+    /// 降级CID数量
+    pub degraded_count: u64,
+    /// 危险CID数量
+    pub critical_count: u64,
 }
 
 // ============================================================================

@@ -11,7 +11,7 @@
  * 创建日期：2025-10-28
  */
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { 
   Form, 
   Input, 
@@ -44,7 +44,9 @@ const { TextArea } = Input
 interface OfferingFormProps {
   /** 当前账户地址 */
   account: string
-  /** 默认目标（域代码，对象ID） */
+  /**
+   * 默认供奉目标：[domain, id]
+   */
   defaultTarget?: [number, number]
   /** 提交成功回调 */
   onSuccess?: () => void
@@ -55,7 +57,7 @@ interface OfferingFormProps {
 /**
  * 函数级详细中文注释：自定义供奉表单组件
  */
-export const OfferingForm: React.FC<OfferingFormProps> = ({ 
+export const OfferingForm: React.FC<OfferingFormProps> = ({
   account,
   defaultTarget,
   onSuccess,
@@ -65,6 +67,7 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
   const [loading, setLoading] = useState(false)
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [uploading, setUploading] = useState(false)
+  const fallbackTarget = useMemo<[number, number]>(() => defaultTarget ?? [0, 0], [defaultTarget])
 
   /**
    * 函数级详细中文注释：处理IPFS上传
@@ -106,16 +109,17 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
       setUploading(false)
 
       // 2. 构建交易
+      const target = values.target as [number, number] | undefined
+      if (!target || target.length !== 2) {
+        throw new Error('请选择供奉目标')
+      }
       const api = await getApi()
       const service = createMemorialService(api)
-      
-      // 转换金额（DUST -> 最小单位）
-      const amount = (BigInt(values.amount) * BigInt(1_000_000)).toString()
-      
+
+      // 🔧 方案A适配：构建供奉交易
       const tx = service.buildOfferTx({
-        target: values.target,
+        target,
         kindCode: values.kindCode,
-        amount,
         media,
         duration: values.duration || null,
       })
@@ -156,7 +160,7 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
       layout="vertical"
       onFinish={handleSubmit}
       initialValues={{
-        target: defaultTarget || [1, 0],
+        target: fallbackTarget,
         kindCode: 0,
         amount: '0.001',
       }}
@@ -200,7 +204,7 @@ export const OfferingForm: React.FC<OfferingFormProps> = ({
 
       {/* 供奉金额 */}
       <Form.Item
-        label="供奉金额（MEMO）"
+        label="供奉金额（DUST）"
         name="amount"
         rules={[
           { required: true, message: '请输入供奉金额' },

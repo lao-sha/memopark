@@ -368,7 +368,7 @@ const StorageTreasuryDashboard: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       {/* 标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2}>

@@ -39,8 +39,9 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_transaction_payment::{ConstFeeMultiplier, Multiplier};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::Get;
-use sp_runtime::{traits::AccountIdConversion, traits::One, Perbill};
+use sp_runtime::{traits::AccountIdConversion, traits::One, traits::SaturatedConversion, Perbill};
 use sp_version::RuntimeVersion;
+use alloc::string::ToString;
 // ===== stardust-appeals 运行时配置（占位骨架） =====
 impl pallet_stardust_appeals::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -53,19 +54,30 @@ impl pallet_stardust_appeals::Config for Runtime {
     /// Phase 1.5优化：RuntimeHoldReason绑定
     /// - 连接pallet级HoldReason和Runtime级RuntimeHoldReason
     type RuntimeHoldReason = RuntimeHoldReason;
-    
-    /// 申诉押金（示例：0.01 UNIT）
-    type AppealDeposit = frame_support::traits::ConstU128<10_000_000_000>;
-    /// 驳回罚没 30% 入国库
-    type RejectedSlashBps = frame_support::traits::ConstU16<3000>;
-    /// 撤回罚没 10% 入国库（示例）
-    type WithdrawSlashBps = frame_support::traits::ConstU16<1000>;
+
+    // ========== Phase 2治理优化：以下参数已迁移到pallet-governance-params ==========
+    // ❌ 已移除：type AppealDeposit = frame_support::traits::ConstU128<10_000_000_000>;
+    //    → 改为通过 pallet_governance_params 动态查询
+    //
+    // ❌ 已移除：type RejectedSlashBps = frame_support::traits::ConstU16<3000>;
+    //    → 改为通过 pallet_governance_params 动态查询
+    //
+    // ❌ 已移除：type WithdrawSlashBps = frame_support::traits::ConstU16<1000>;
+    //    → 改为通过 pallet_governance_params 动态查询
+    //
+    // ❌ 已移除：type NoticeDefaultBlocks = frame_support::traits::ConstU32<{ 30 * DAYS as u32 }>;
+    //    → 改为通过 pallet_governance_params 动态查询
+    //
+    // ✅ 优势：
+    // - 参数可通过治理投票动态调整，无需升级runtime
+    // - 统一参数管理，避免重复定义
+    // - 符合去中心化治理原则
+
     /// 限频窗口（块）
     type WindowBlocks = frame_support::traits::ConstU32<600>;
     /// 窗口内最多提交次数
     type MaxPerWindow = frame_support::traits::ConstU32<5>;
-    /// 默认公示期（块）≈ 30 天
-    type NoticeDefaultBlocks = frame_support::traits::ConstU32<{ 30 * DAYS as u32 }>;
+
     /// 国库账户（罚没接收）
     type TreasuryAccount = TreasuryAccount;
     /// 执行路由占位实现
@@ -93,6 +105,35 @@ impl pallet_stardust_appeals::Config for Runtime {
     type MinEvidenceCidLen = frame_support::traits::ConstU32<10>;
     /// 函数级中文注释：理由 CID 最小长度默认值（示例：8字节）。
     type MinReasonCidLen = frame_support::traits::ConstU32<8>;
+    /// 函数级中文注释：作品信息提供者（Phase 4：阶段4接口补充）。
+    /// - 从deceased pallet读取作品信息和统计数据
+    /// - 供押金计算使用（Phase 2差异化押金机制）
+    /// - 供影响力评分使用（Phase 3高级影响力评估）
+    type WorksProvider = DeceasedWorksProvider;
+
+    /// 函数级中文注释：作品投诉基础押金（Phase 2：差异化押金机制）
+    /// - 用于作品投诉的基础押金金额
+    /// - 实际押金 = 基础押金 × 各种系数
+    /// - 示例：10 DUST（10,000,000,000,000最小单位）
+    type BaseWorkComplaintDeposit = frame_support::traits::ConstU128<10_000_000_000_000>;
+
+    /// 函数级中文注释：作品投诉最小押金限制（Phase 2：保护机制）
+    /// - 防止高信誉+低影响力导致押金过低
+    /// - 保证投诉的基本严肃性
+    /// - 示例：5 DUST
+    type MinWorkComplaintDeposit = frame_support::traits::ConstU128<5_000_000_000_000>;
+
+    /// 函数级中文注释：作品投诉最大押金限制（Phase 2：保护机制）
+    /// - 防止低信誉+高影响力导致押金过高
+    /// - 即使极端情况下押金也不会过高
+    /// - 示例：1000 DUST
+    type MaxWorkComplaintDeposit = frame_support::traits::ConstU128<1_000_000_000_000_000>;
+
+    /// 函数级中文注释：用户信誉提供者（Phase 2：差异化押金机制）
+    /// - 返回用户信誉值（0-100）
+    /// - 用于押金系数计算（高信誉=低系数）
+    /// - 占位实现：默认返回50（标准押金1.0x）
+    type ReputationProvider = DefaultReputationProvider;
 }
 
 /// 函数级中文注释：内容治理申诉的动态押金策略实现（USD锚定版本）
@@ -135,14 +176,14 @@ impl pallet_stardust_appeals::AppealDepositPolicy for ContentAppealDepositPolicy
             dust_price_usdt
         };
         
-        // 3. 计算$10 USD等价的DUST数量
-        // $10 USD = 10,000,000（精度 10^6）
-        // MEMO数量 = $10 / (DUST价格 in USDT) = 10,000,000 / safe_price
+        // 3. 计算$1 USD等价的DUST数量
+        // $1 USD = 1,000,000（精度 10^6）
+        // MEMO数量 = $1 / (DUST价格 in USDT) = 1,000,000 / safe_price
         // 结果需要转换为DUST精度（10^12）
-        const TEN_USD: u128 = 10_000_000u128; // $10 in USDT (precision 10^6)
+        const ONE_USD: u128 = 1_000_000u128; // $1 in USDT (precision 10^6)
         const DUST_PRECISION: u128 = 1_000_000_000_000u128; // 10^12
-        
-        let base_deposit_dust = TEN_USD
+
+        let base_deposit_dust = ONE_USD
             .saturating_mul(DUST_PRECISION)
             .checked_div(safe_price as u128)
             .unwrap_or(1 * DUST_PRECISION); // 默认1 DUST
@@ -182,6 +223,112 @@ impl pallet_stardust_appeals::LastActiveProvider for ContentLastActiveProvider {
             2 => pallet_deceased::pallet::LastActiveOf::<Runtime>::get(target),
             _ => None,
         }
+    }
+}
+
+/// 函数级详细中文注释：逝者作品信息提供者实现（Phase 4：阶段4接口补充）
+///
+/// ## 功能说明
+/// - 从deceased pallet读取作品的基本信息和统计数据
+/// - 将DeceasedWork和WorkEngagementStats组合为WorkInfo结构
+/// - 供stardust-appeals pallet的押金计算使用
+///
+/// ## 数据来源
+/// - DeceasedWorks<Runtime>: 作品基本信息（work_id, deceased_id, work_type, uploader等）
+/// - WorkEngagementStats<Runtime>: 作品统计数据（view_count, share_count等）
+///
+/// ## 设计理念
+/// - Runtime层adapter，避免pallets之间的直接依赖
+/// - 读取多个存储项并组合数据
+/// - 为Phase 3高级影响力评估提供统计数据
+pub struct DeceasedWorksProvider;
+impl pallet_stardust_appeals::WorksProvider for DeceasedWorksProvider {
+    type AccountId = AccountId;
+
+    /// 获取作品完整信息（包含Phase 3统计数据）
+    fn get_work_info(work_id: u64) -> Option<pallet_stardust_appeals::WorkInfo<Self::AccountId>> {
+        // 1. 读取作品基本信息
+        let work = pallet_deceased::pallet::DeceasedWorks::<Runtime>::get(work_id)?;
+
+        // 2. 读取作品统计数据（如果不存在则返回默认值全0）
+        let engagement = pallet_deceased::pallet::WorkEngagementStats::<Runtime>::get(work_id);
+
+        // 3. 转换work_type为字符串
+        let work_type_str = work.work_type.as_str().to_string();
+
+        // 4. 转换privacy_level为u8代码
+        let privacy_level_code: u8 = match work.privacy_level {
+            pallet_deceased::works::PrivacyLevel::Public => 0,
+            pallet_deceased::works::PrivacyLevel::Family => 1,
+            pallet_deceased::works::PrivacyLevel::Descendants => 2,
+            pallet_deceased::works::PrivacyLevel::Private => 3,
+        };
+
+        // 5. 计算上传时间（将BlockNumber转换为Unix时间戳）
+        // 假设6秒一个区块，创世区块对应时间戳0
+        let uploaded_at_timestamp = work.uploaded_at.saturated_into::<u64>() * 6u64;
+
+        // 6. 构建WorkInfo结构
+        Some(pallet_stardust_appeals::WorkInfo {
+            work_id,
+            deceased_id: work.deceased_id,
+            work_type: work_type_str,
+            uploader: work.uploader,
+            privacy_level: privacy_level_code,
+            ai_training_enabled: work.ai_training_enabled,
+            is_verified: work.verified,
+            ipfs_cid: Some(work.ipfs_cid.into_inner()),
+
+            // Phase 3 统计数据（从WorkEngagementStats读取）
+            view_count: engagement.view_count,
+            share_count: engagement.share_count,
+            favorite_count: engagement.favorite_count,
+            comment_count: engagement.comment_count,
+            ai_training_usage: engagement.ai_training_usage,
+            file_size: work.file_size,
+            uploaded_at: uploaded_at_timestamp as u32,
+        })
+    }
+
+    /// 检查作品是否存在
+    fn work_exists(work_id: u64) -> bool {
+        pallet_deceased::pallet::DeceasedWorks::<Runtime>::contains_key(work_id)
+    }
+
+    /// 获取作品所有者（逝者的owner）
+    fn get_work_owner(work_id: u64) -> Option<Self::AccountId> {
+        let work = pallet_deceased::pallet::DeceasedWorks::<Runtime>::get(work_id)?;
+        // 将u64转换为T::DeceasedId类型
+        use codec::{Encode, Decode};
+        let deceased_id_bytes = work.deceased_id.encode();
+        let deceased_id: u64 = Decode::decode(&mut &deceased_id_bytes[..]).ok()?;
+        let deceased = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id)?;
+        Some(deceased.owner)
+    }
+}
+
+/// 函数级详细中文注释：默认信誉提供者（Phase 2占位实现）
+///
+/// ## 功能说明
+/// - 为作品投诉押金计算提供用户信誉值
+/// - 当前为占位实现，总是返回50（中等信誉）
+///
+/// ## 未来实现
+/// - 集成pallet-reputation或类似信誉管理pallet
+/// - 根据用户历史行为计算信誉值
+/// - 支持动态信誉更新
+///
+/// ## 信誉值范围
+/// - 0-100: 数字越大信誉越高
+/// - 50: 中等信誉（默认值）
+/// - 押金系数：信誉越高，押金系数越低
+pub struct DefaultReputationProvider;
+impl pallet_stardust_appeals::ReputationProvider for DefaultReputationProvider {
+    type AccountId = AccountId;
+
+    /// 获取用户信誉值（占位实现：总是返回50）
+    fn get_reputation(_who: &Self::AccountId) -> Option<u8> {
+        Some(50) // 默认中等信誉
     }
 }
 // ====== 委员会（Council）运行时配置 ======
@@ -458,9 +605,9 @@ parameter_types! {
 /// - 整合了买家信用和做市商信用两个子系统
 /// - 买家信用：多维度信任评估、新用户分层冷启动、信用等级体系、快速学习机制
 /// - 做市商信用：信用评分体系（800-1000分）、履约率追踪、违约惩罚、动态保证金
+/// 函数级中文注释：Credit Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
 impl pallet_credit::Config for Runtime {
-    /// 函数级中文注释：事件类型绑定到运行时事件
-    type RuntimeEvent = RuntimeEvent;
     /// 函数级中文注释：使用原生币（Balances）作为 Currency
     type Currency = Balances;
     
@@ -536,7 +683,7 @@ parameter_types! {
     pub const ParkMaxRegionLen: u32 = 64;
     pub const ParkMaxCidLen: u32 = 64;
     pub const ParkMaxPerCountry: u32 = 100_000;
-    pub const GraveMaxFollowers: u32 = 100_000;
+    // pub const GraveMaxFollowers: u32 = 100_000;  // 🗑️ 2025-11-16: 已删除 - pallet-stardust-grave 已移除
 }
 pub struct RootOnlyParkAdmin;
 impl pallet_stardust_park::Config for Runtime {
@@ -552,6 +699,8 @@ impl pallet_stardust_park::Config for Runtime {
     >;
 }
 
+// 🗑️ 2025-11-16: 已删除 pallet-stardust-grave 参数定义
+/*
 parameter_types! {
     pub const GraveMaxCidLen: u32 = 64;
     pub const GraveMaxPerPark: u32 = 4096;
@@ -559,19 +708,21 @@ parameter_types! {
     pub const GraveMaxIdsPerName: u32 = 1024;
     pub const GraveMaxComplaints: u32 = 100;
     pub const GraveMaxAdmins: u32 = 16;
-    /// 函数级中文注释：人类可读 ID（Slug）长度（固定为 10 位数字），与 `pallet-stardust-grave` 中的约束一致
     pub const GraveSlugLen: u32 = 10;
     pub const GraveFollowCooldownBlocks: u32 = 30;
     pub const GraveFollowDeposit: Balance = 0;
-    /// 函数级中文注释：创建墓地的一次性协议费（默认 0，便于灰度开启）。
     pub const GraveCreateFee: Balance = 0;
-    /// 函数级中文注释：公共封面目录容量上限（避免状态膨胀）。
     pub const GraveMaxCoverOptions: u32 = 256;
 }
 pub struct NoopIntermentHook;
+*/
+
+// 🗑️ 2025-11-16: 已删除 pallet-stardust-grave Config 实现
+/*
 // 重命名 crate：从 pallet_grave → pallet_stardust_grave
+/// 函数级中文注释：Stardust Grave Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
 impl pallet_stardust_grave::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_stardust_grave::weights::TestWeights;
     type MaxCidLen = GraveMaxCidLen;
     type MaxPerPark = GraveMaxPerPark;
@@ -613,200 +764,60 @@ impl pallet_stardust_grave::Config for Runtime {
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
 }
+*/
 
 // ===== deceased 配置 =====
 parameter_types! {
     pub const DeceasedStringLimit: u32 = 256;
     pub const DeceasedMaxLinks: u32 = 8;
-    
+
     // ✅ 墓位容量无限制说明
     // - **已删除**：DeceasedMaxPerGrave（原6人硬上限）
     // - **改为**：Vec 无容量限制，支持家族墓、纪念墓
     // - **保护**：经济成本（每人约10 DUST）天然防止恶意填充
     // - **性能**：前端分页加载，1000人墓位仅8KB Storage
-}
 
-/// 函数级中文注释：墓位适配器，实现 `GraveInspector`，用于校验墓位存在与权限。
-pub struct GraveProviderAdapter;
-impl pallet_deceased::GraveInspector<AccountId, u64> for GraveProviderAdapter {
-    /// 检查墓位是否存在：读取 `pallet-stardust-grave` 的存储 `Graves`
-    fn grave_exists(grave_id: u64) -> bool {
-        pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
-    }
-    /// 校验 `who` 是否可在该墓位下管理逝者：当前仅墓主可管理（后续可扩展授权）
-    fn can_attach(who: &AccountId, grave_id: u64) -> bool {
-        if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(grave_id) {
-            // 1) 墓主放行
-            if grave.owner == *who {
-                return true;
-            }
-            // 2) 墓位管理员放行
-            let admins = pallet_stardust_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
-            if admins.iter().any(|a| a == who) {
-                return true;
-            }
-            // 3) 园区管理员放行（通过 ParkAdminOrigin 适配器校验 Signed 起源）
-            let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
-            if let Some(pid) = grave.park_id {
-                <RootOnlyParkAdmin as pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-    
-    /// 函数级详细中文注释：记录安葬操作（Phase 1.5新增）
-    /// 
-    /// ### 功能
-    /// - 调用grave pallet的内部函数同步Interments
-    /// - 解决P0问题：Interments与DeceasedByGrave不同步
-    /// 
-    /// ### 调用链
-    /// deceased::create_deceased → GraveInspector::record_interment → grave::do_inter_internal
-    /// deceased::transfer_deceased → GraveInspector::record_interment → grave::do_inter_internal
-    /// 
-    /// ### 参数
-    /// - `grave_id`: 墓位ID
-    /// - `deceased_id`: 逝者ID（u64）
-    /// - `slot`: 槽位（可选）
-    /// - `note_cid`: 备注CID（可选）
-    fn record_interment(
-        grave_id: u64,
-        deceased_id: u64,
-        slot: Option<u16>,
-        note_cid: Option<Vec<u8>>,
-    ) -> Result<(), sp_runtime::DispatchError> {
-        // 转换note_cid为BoundedVec
-        use frame_support::BoundedVec;
-        let note_cid_bounded: Option<BoundedVec<u8, GraveMaxCidLen>> = 
-            match note_cid {
-                Some(v) => Some(
-                    BoundedVec::try_from(v)
-                        .map_err(|_| sp_runtime::DispatchError::Other("CID too long"))?
-                ),
-                None => None,
-            };
-        
-        // 调用grave pallet的内部函数
-        pallet_stardust_grave::pallet::Pallet::<Runtime>::do_inter_internal(
-            grave_id,
-            deceased_id,
-            slot,
-            note_cid_bounded,
-        )
-    }
-    
-    /// 函数级详细中文注释：记录起掘操作（Phase 1.5新增）
-    /// 
-    /// ### 功能
-    /// - 调用grave pallet的内部函数同步Interments
-    /// - 解决P0问题：Interments与DeceasedByGrave不同步
-    /// 
-    /// ### 调用链
-    /// deceased::transfer_deceased → GraveInspector::record_exhumation → grave::do_exhume_internal
-    /// 
-    /// ### 参数
-    /// - `grave_id`: 墓位ID
-    /// - `deceased_id`: 逝者ID（u64）
-    fn record_exhumation(
-        grave_id: u64,
-        deceased_id: u64,
-    ) -> Result<(), sp_runtime::DispatchError> {
-        // 调用grave pallet的内部函数
-        pallet_stardust_grave::pallet::Pallet::<Runtime>::do_exhume_internal(
-            grave_id,
-            deceased_id,
-        )
-    }
-    
-    /// 函数级详细中文注释：检查墓位准入策略（Phase 1.5新增 - 解决P0问题2）
-    /// 
-    /// ### 功能
-    /// - 检查调用者是否有权限将逝者迁入目标墓位
-    /// - 调用grave pallet的check_admission_policy方法
-    /// - 解决P0问题：逝者强行挤入私人墓位
-    /// 
-    /// ### 调用链
-    /// deceased::transfer_deceased → GraveInspector::check_admission_policy → grave::check_admission_policy
-    /// 
-    /// ### 参数
-    /// - `who`: 调用者账户（逝者owner）
-    /// - `grave_id`: 目标墓位ID
-    /// 
-    /// ### 策略逻辑
-    /// - **OwnerOnly（默认）**：仅墓主可以迁入
-    /// - **Public**：任何人都可以迁入
-    /// - **Whitelist**：仅白名单可以迁入
-    /// 
-    /// ### 返回值
-    /// - `Ok(())`: 允许迁入
-    /// - `Err(AdmissionDenied)`: 拒绝迁入
-    /// - `Err(NotFound)`: 墓位不存在
-    /// 
-    /// ### 设计理念
-    /// - 平衡需求3（逝者自由迁移）与墓主控制权
-    /// - 墓主可以设置准入策略保护墓位
-    /// - 逝者owner在策略允许范围内自由迁移
-    fn check_admission_policy(
-        who: &AccountId,
-        grave_id: u64,
-    ) -> Result<(), sp_runtime::DispatchError> {
-        // 调用grave pallet的公共方法
-        pallet_stardust_grave::pallet::Pallet::<Runtime>::check_admission_policy(who, grave_id)
-            .map_err(|e| e.into())
-    }
-    
-    // 删除cached_deceased_tokens_len：无需冗余缓存检查，直接由BoundedVec管理容量
-}
-
-// 为 stardust-pet 复用同一墓位适配逻辑
-impl pallet_stardust_pet::pallet::GraveInspector<AccountId, u64> for GraveProviderAdapter {
-    fn grave_exists(grave_id: u64) -> bool {
-        pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(grave_id)
-    }
-    fn can_attach(who: &AccountId, grave_id: u64) -> bool {
-        if let Some(grave) = pallet_stardust_grave::pallet::Graves::<Runtime>::get(grave_id) {
-            if grave.owner == *who {
-                return true;
-            }
-            let admins = pallet_stardust_grave::pallet::GraveAdmins::<Runtime>::get(grave_id);
-            if admins.iter().any(|a| a == who) {
-                return true;
-            }
-            let origin = RuntimeOrigin::from(frame_system::RawOrigin::Signed(who.clone()));
-            if let Some(pid) = grave.park_id {
-                <RootOnlyParkAdmin as pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin>>::ensure(pid, origin).is_ok()
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
+    /// 函数级中文注释：每个逝者最大关注者数量
+    /// - 建议值：10000（防止状态膨胀）
+    /// - 可根据实际需求调整
+    pub const DeceasedMaxFollowers: u32 = 10000;
 }
 
 impl pallet_deceased::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DeceasedId = u64;
-    type GraveId = u64;
-    // ✅ 已删除 MaxDeceasedPerGrave：墓位容量无限制
-    type StringLimit = DeceasedStringLimit;
-    type MaxLinks = DeceasedMaxLinks;
-    type TokenLimit = GraveMaxCidLen;
-    type GraveProvider = GraveProviderAdapter;
+    type StringLimit = ConstU32<256>;  // DeceasedStringLimit
+    type MaxLinks = ConstU32<8>;  // DeceasedMaxLinks
+    type TokenLimit = ConstU32<64>;  // GraveMaxCidLen
     type WeightInfo = ();
+    /// 函数级中文注释：绑定 pallet-social 提供关注功能
+    type Social = crate::Social;
     /// 函数级中文注释：绑定治理起源为 Root | 内容委员会阈值(2/3) 双通道，用于 gov* 接口。
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
+
+    // ============= Token修改治理配置 =============
+    /// 函数级中文注释：Token修改治理委员会起源
+    /// 使用内容委员会（Instance3）的多数决议(3/5)来批准Token修改提案
+    type CommitteeOrigin = pallet_collective::EnsureProportionAtLeast<
+        AccountId,
+        pallet_collective::Instance3,
+        3,
+        5
+    >;
+
+    /// 函数级中文注释：Token修改提案批准阈值
+    /// 需要3票赞成即可通过提案（对应上述3/5的多数要求）
+    type ApprovalThreshold = ConstU32<3>;
+
     // ============= IPFS自动Pin配置 =============
     /// 函数级中文注释：使用MemoIpfs提供实际的自动pin功能
     type IpfsPinner = StardustIpfs;
     type Balance = Balance;
     type DefaultStoragePrice = ConstU128<{ 1 * crate::UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
 
     // ========== 🆕 2025-10-28: Text 模块配置（整合自 deceased-text）==========
     type TextId = u64;
@@ -834,7 +845,48 @@ impl pallet_deceased::Config for Runtime {
 
     // ========== 共享配置 ==========
     type Currency = Balances;
-    type MaxTokenLen = GraveMaxCidLen;
+    type MaxTokenLen = ConstU32<64>;  // GraveMaxCidLen
+
+    // ========== 🆕 方案D：治理机制配置 ==========
+    /// 函数级中文注释：Pricing Provider - 提供DUST/USDT汇率
+    /// 已连接到 pallet-pricing 获取实时市场价格
+    type PricingProvider = RealPricingProvider;
+
+    /// 函数级中文注释：Fungible接口 - 支持hold机制的资产管理
+    /// 使用Balances pallet提供hold功能
+    type Fungible = Balances;
+
+    /// 函数级中文注释：RuntimeHoldReason - hold机制的原因类型
+    type RuntimeHoldReason = RuntimeHoldReason;
+}
+
+/// 函数级详细中文注释：Real Pricing Provider 实现（连接 pallet-pricing）
+///
+/// ## 功能说明
+/// - 从 pallet-pricing 获取 DUST/USDT 市场加权平均价格
+/// - 用于 deceased 治理模块的押金计算
+///
+/// ## 价格来源
+/// - 使用 `pallet_pricing::get_dust_market_price_weighted()`
+/// - 综合 OTC 和 Bridge 两个市场的交易数据
+/// - 精度：10^6（即 1,000,000 = 1 USDT）
+///
+/// ## 安全机制
+/// - 如果市场价格为 0，返回错误（不使用默认价格）
+/// - 价格异常时由调用方处理
+pub struct RealPricingProvider;
+impl pallet_deceased::governance::PricingProvider for RealPricingProvider {
+    fn get_current_exchange_rate() -> Result<u64, &'static str> {
+        // 从 pallet-pricing 获取 DUST 市场加权平均价格
+        let price = pallet_pricing::Pallet::<Runtime>::get_dust_market_price_weighted();
+
+        // 价格为 0 表示市场无数据，返回错误
+        if price == 0 {
+            return Err("Market price unavailable");
+        }
+
+        Ok(price)
+    }
 }
 
 // ===== deceased-data 配置 =====
@@ -854,6 +906,8 @@ parameter_types! {
 /// 函数级中文注释：逝者访问适配器，实现 `DeceasedAccess`，以 `pallet-deceased` 为后端。
 pub struct DeceasedProviderAdapter;
 
+// 🗑️ 2025-11-16: 已删除 DeceasedTokenProviderAdapter for pallet-stardust-grave
+/*
 /// 函数级中文注释：Deceased token 适配器，将 `pallet-deceased` 的 `deceased_token` 转换为 `BoundedVec<u8, GraveMaxCidLen>`。
 pub struct DeceasedTokenProviderAdapter;
 impl pallet_stardust_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen>
@@ -873,6 +927,7 @@ impl pallet_stardust_grave::pallet::DeceasedTokenAccess<GraveMaxCidLen>
         }
     }
 }
+*/
 
 // （已移除对 pallet-deceased-data 的适配实现）
 
@@ -964,7 +1019,7 @@ impl pallet_deceased_media::Config for Runtime {
     type StringLimit = MediaStringLimit;
     type MaxTags = MediaMaxTags;
     type MaxReorderBatch = MediaMaxReorderBatch;
-    type MaxTokenLen = GraveMaxCidLen;
+    type MaxTokenLen = ConstU32<64>;  // GraveMaxCidLen
     type DeceasedProvider = DeceasedProviderAdapter;
     type DeceasedTokenProvider = DeceasedTokenProviderAdapter;
     type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
@@ -996,7 +1051,7 @@ impl pallet_deceased_text::Config for Runtime {
     type DeceasedId = u64;
     type TextId = u64;
     type StringLimit = DataStringLimit;
-    type MaxTokenLen = GraveMaxCidLen;
+    type MaxTokenLen = ConstU32<64>;  // GraveMaxCidLen
     type MaxMessagesPerDeceased = DataMaxMessagesPerDeceased;
     type MaxEulogiesPerDeceased = DataMaxEulogiesPerDeceased;
     type DeceasedProvider = DeceasedProviderAdapter;
@@ -1057,7 +1112,7 @@ parameter_types! {
     pub const MemorialStringLimit: u32 = 64;
     pub const MemorialUriLimit: u32 = 128;
     pub const MemorialDescLimit: u32 = 256;
-    
+
     // Offerings（供奉业务）参数
     pub const MemorialMaxCidLen: u32 = 64;
     pub const MemorialMaxNameLen: u32 = 64;
@@ -1066,18 +1121,18 @@ parameter_types! {
     pub const MemorialOfferWindow: BlockNumber = 600;           // 限频窗口：600块（约1小时）
     pub const MemorialOfferMaxInWindow: u32 = 100;              // 窗口内最多供奉100次
     pub const MemorialMinOfferAmount: Balance = 1_000_000_000;  // 最低供奉金额：0.001 DUST
-}
 
-/// 函数级中文注释：Memorial TargetControl占位实现（允许所有目标）
-pub struct MemorialTargetControl;
-impl pallet_memorial::TargetControl<RuntimeOrigin, AccountId> for MemorialTargetControl {
-    fn exists(_target: (u8, u64)) -> bool {
-        true  // 暂时允许所有目标
-    }
-    
-    fn ensure_allowed(_origin: RuntimeOrigin, _target: (u8, u64)) -> frame_support::dispatch::DispatchResult {
-        Ok(())  // 暂时允许所有操作
-    }
+    // P3新增：续费检查频率配置
+    /// 函数级中文注释：续费检查频率（多少块检查一次）
+    /// - 默认值：100（约10分钟）
+    /// - 可通过治理调整以适应链上负载
+    pub const MemorialRenewalCheckInterval: u32 = 100;
+
+    // P0修复：供奉平台账户配置
+    /// 函数级中文注释：Memorial平台托管账户PalletId
+    /// - 用于接收供奉品交易的平台分成
+    /// - 示例：b"memoripl" = Memorial Platform
+    pub const MemorialPalletId: frame_support::PalletId = frame_support::PalletId(*b"memoripl");
 }
 
 /// 函数级中文注释：Memorial会员信息提供者适配器
@@ -1086,49 +1141,192 @@ impl pallet_memorial::MembershipProvider<AccountId> for MemorialMembershipProvid
     fn is_valid_member(who: &AccountId) -> bool {
         pallet_membership::Pallet::<Runtime>::is_member_valid(who)
     }
-    
+
     fn get_discount() -> u8 {
         30  // VIP折扣：30%（用户支付70%）
     }
 }
 
-/// 函数级中文注释：Memorial供奉回调占位实现
+/// 函数级详细中文注释：Deceased 目标适配器（通用供奉系统 - P0）
+///
+/// ## 功能说明
+/// - 实现 OfferingTarget trait，支持直接向逝者供奉
+/// - 解耦供奉系统与 grave pallet 的强依赖
+/// - 从 pallet-deceased 读取逝者信息
+///
+/// ## 权限逻辑
+/// - 公开逝者：所有人可供奉
+/// - 私人逝者：仅家属和授权用户可供奉
+///
+/// ## 设计理念
+/// - 逝者是供奉的真正目标（而非墓位）
+/// - 墓位只是物理位置，不应成为供奉的必要条件
+/// - 支持无墓位逝者（如失踪人员、虚拟纪念）
+pub struct DeceasedTargetAdapter;
+
+impl pallet_memorial::OfferingTarget<AccountId> for DeceasedTargetAdapter {
+    /// 检查逝者是否存在
+    fn exists(target_id: u64) -> bool {
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(target_id)
+    }
+
+    /// 获取逝者所有者（用于分账）
+    fn get_owner(target_id: u64) -> Option<AccountId> {
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::get(target_id).map(|d| d.owner)
+    }
+
+    /// 检查用户是否可访问该逝者（供奉权限判定）
+    fn is_accessible(who: &AccountId, target_id: u64) -> bool {
+        if let Some(deceased) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(target_id) {
+            // 如果是所有者，直接允许
+            if deceased.owner == *who {
+                return true;
+            }
+
+            // TODO: 检查可见性和亲友关系
+            // 当前简化版本：公开逝者所有人可访问
+            // 未来扩展：根据 deceased.visibility 和 FriendsOf 判断
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 获取逝者显示名称
+    fn get_display_name(target_id: u64) -> Option<frame_support::BoundedVec<u8, frame_support::traits::ConstU32<256>>> {
+        use frame_support::BoundedVec;
+
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::get(target_id).and_then(|d| {
+            // 从 deceased.name 转换为 BoundedVec<u8, ConstU32<256>>
+            let name_vec: Vec<u8> = d.name.into_inner();
+            BoundedVec::try_from(name_vec).ok()
+        })
+    }
+}
+
+/// 函数级详细中文注释：Pet 目标适配器（通用供奉系统 - P0）
+///
+/// ## 功能说明
+/// - 实现 OfferingTarget trait，支持直接向宠物供奉
+/// - 宠物纪念是独立的供奉目标类型
+/// - 从 pallet-stardust-pet 读取宠物信息
+///
+/// ## 权限逻辑
+/// - 公开宠物：所有人可供奉
+/// - 私人宠物：仅所有者可供奉
+///
+/// ## 设计理念
+/// - 宠物与人类逝者具有同等纪念价值
+/// - 独立的宠物管理系统，不依赖人类逝者架构
+/// - 支持宠物主人为爱宠建立纪念空间
+pub struct PetTargetAdapter;
+
+impl pallet_memorial::OfferingTarget<AccountId> for PetTargetAdapter {
+    /// 检查宠物是否存在
+    fn exists(target_id: u64) -> bool {
+        pallet_stardust_pet::pallet::PetOf::<Runtime>::contains_key(target_id)
+    }
+
+    /// 获取宠物所有者（用于分账）
+    fn get_owner(target_id: u64) -> Option<AccountId> {
+        pallet_stardust_pet::pallet::PetOf::<Runtime>::get(target_id).map(|p| p.owner)
+    }
+
+    /// 检查用户是否可访问该宠物（供奉权限判定）
+    fn is_accessible(who: &AccountId, target_id: u64) -> bool {
+        if let Some(pet) = pallet_stardust_pet::pallet::PetOf::<Runtime>::get(target_id) {
+            // 如果是所有者，直接允许
+            if pet.owner == *who {
+                return true;
+            }
+
+            // TODO: 检查可见性设置
+            // 当前简化版本：所有宠物都公开可访问
+            // 未来扩展：根据 pet.visibility 判断
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 获取宠物显示名称
+    fn get_display_name(target_id: u64) -> Option<frame_support::BoundedVec<u8, frame_support::traits::ConstU32<256>>> {
+        use frame_support::BoundedVec;
+
+        pallet_stardust_pet::pallet::PetOf::<Runtime>::get(target_id).and_then(|p| {
+            // 从 pet.name 转换为 BoundedVec<u8, ConstU32<256>>
+            let name_vec: Vec<u8> = p.name.into_inner();
+            BoundedVec::try_from(name_vec).ok()
+        })
+    }
+}
+
+/// 函数级详细中文注释：Memorial供奉回调实现（集成affiliate分账）
+///
+/// ### 核心功能：Affiliate分账处理
+/// - 触发affiliate联盟分账系统
+/// - 支持15层推荐链分账
+/// - 100%资金进入推荐链分账
+/// - 统一购买和续费的分账逻辑
+///
+/// ### 接口说明
+/// - 接口从 `on_offering(target: (u8, u64), kind_code, ...)` 改为 `on_offering(grave_id: u64, sacrifice_id, ...)`
+/// - 移除 domain 概念，仅支持墓地
+/// - 参数 kind_code 改为 sacrifice_id
 pub struct MemorialOfferingHook;
 impl pallet_memorial::OnOfferingCommitted<AccountId> for MemorialOfferingHook {
     fn on_offering(
-        _target: (u8, u64),
-        _kind_code: u8,
-        _who: &AccountId,
-        _amount: u128,
-        _duration_weeks: Option<u32>,
+        _grave_id: u64,
+        _sacrifice_id: u64,
+        who: &AccountId,
+        amount: u128,
+        duration_weeks: Option<u32>,
     ) {
-        // Noop：暂时不做任何处理
+        // ===== Affiliate分账处理 =====
+
+        // 调用affiliate分账系统进行联盟奖励分配
+        // 这确保了购买和续费都走相同的分账逻辑
+        let _ = pallet_affiliate::Pallet::<Runtime>::do_distribute_rewards(
+            who,
+            amount,  // amount 已经是 Balance (u128) 类型
+            duration_weeks,
+        );
+
+        // 🎯 完成统一分账：
+        // 1. Affiliate分账系统执行15层推荐链分账（100%资金）
+        // 2. 不再有墓地所有者和平台直接分成
+        // 3. 保证购买和续费使用完全相同的分账机制
     }
 }
 
 impl pallet_memorial::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
-    
-    // === Sacrifice（祭祀品目录）配置 ===
+
+    // === 基础配置 ===
     type StringLimit = MemorialStringLimit;
     type UriLimit = MemorialUriLimit;
     type DescriptionLimit = MemorialDescLimit;
-    
-    // === Offerings（供奉业务）配置 ===
+
+    // === 供奉业务配置 ===
     type MaxCidLen = MemorialMaxCidLen;
-    type MaxNameLen = MemorialMaxNameLen;
     type MaxOfferingsPerTarget = MemorialMaxOfferingsPerTarget;
     type MaxMediaPerOffering = MemorialMaxMediaPerOffering;
     type OfferWindow = MemorialOfferWindow;
     type OfferMaxInWindow = MemorialOfferMaxInWindow;
     type MinOfferAmount = MemorialMinOfferAmount;
-    
+
+    // P3新增：续费检查频率配置
+    type RenewalCheckInterval = MemorialRenewalCheckInterval;
+
     // === Trait 接口 ===
-    type TargetControl = MemorialTargetControl;
     type MembershipProvider = MemorialMembershipProvider;
     type OnOfferingCommitted = MemorialOfferingHook;
-    
+
+    // === P0修复：资金管理配置 ===
+    /// 函数级中文注释：平台托管账户PalletId
+    type PalletId = MemorialPalletId;
+
     // === 管理员权限 ===
     /// 函数级中文注释：管理员 Origin：Root | 内容委员会(Instance3，2/3)
     type AdminOrigin = frame_support::traits::EitherOfDiverse<
@@ -1286,6 +1484,8 @@ impl pallet_stardust_park::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyPa
     }
 }
 
+// 🗑️ 2025-11-16: 已删除 ParkAdminOrigin for pallet-stardust-grave
+/*
 impl pallet_stardust_grave::pallet::ParkAdminOrigin<RuntimeOrigin> for RootOnlyParkAdmin {
     /// 函数级中文注释：管理员校验：允许 Root 或委员会阈值(2/3)。
     fn ensure(_park_id: u64, origin: RuntimeOrigin) -> frame_support::dispatch::DispatchResult {
@@ -1302,6 +1502,7 @@ impl pallet_stardust_grave::pallet::OnIntermentCommitted for NoopIntermentHook {
     /// 函数级中文注释：安葬回调空实现，占位方便后续接入统计/KPI。
     fn on_interment(_grave_id: u64, _deceased_id: u64) {}
 }
+*/
 
 parameter_types! {
     pub const EvidenceMaxCidLen: u32 = 64;
@@ -1409,7 +1610,7 @@ impl sp_core::Get<AccountId> for PlatformAccount {
 /// bytes[28] = 0x00; bytes[29] = 0x00; bytes[30] = 0xde; bytes[31] = 0xad;
 /// const burnAddress = encodeAddress(bytes, 42);
 /// const accountInfo = await api.query.system.account(burnAddress);
-/// console.log('累计销毁:', accountInfo.data.free.toString(), 'MEMO');
+/// console.log('累计销毁:', accountInfo.data.free.toString(), 'DUST');
 /// 
 /// // 方法2: 直接查询（地址需要先计算）
 /// const burnAddress = 'CALCULATED_ADDRESS'; // 从链端获取
@@ -1562,8 +1763,6 @@ parameter_types! { pub const PetStringLimit: u32 = 64; }
 impl pallet_stardust_pet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type StringLimit = PetStringLimit;
-    // 复用墓位适配器，沿用人类主体相同的权限判断
-    type GraveProvider = GraveProviderAdapter;
 }
 // 函数级中文注释：2025-10-20 已删除 pallet-otc-listing 配置
 // 原因：OTC订单重构已完成，挂单机制已由直接选择做市商替代
@@ -1577,21 +1776,112 @@ parameter_types! {
     pub const MinFirstPurchaseDustAmount: Balance = 100_000_000_000_000_000_000; // 100 DUST
     pub const MaxFirstPurchaseDustAmount: Balance = 10_000_000_000_000_000_000_000; // 10,000 DUST
     
-    // 🆕 做市商首购订单配额（最多同时5个）
-    pub const MaxFirstPurchaseOrdersPerMaker: u32 = 5;
+    // 🆕 做市商首购订单配额（最多同时10个）- 2025-11-03 优化（原5个太少）
+    pub const MaxFirstPurchaseOrdersPerMaker: u32 = 10;
 }
 
 // 🆕 函数级详细中文注释：价格提供者实现（从pallet-pricing获取DUST/USD汇率）
+// 🆕 2025-11-03：Pricing Provider 实现（用于 OTC Order 和 Bridge）
+// ✅ 2025-11-03：已接入真实的 pallet-pricing，使用加权市场价格
 pub struct PricingProviderImpl;
-impl pallet_trading::PricingProvider for PricingProviderImpl {
-    fn get_dust_to_usd_rate() -> Option<u128> {
-        // 从 pallet-pricing 获取 DUST/USD 汇率
-        // TODO: 实际集成 pallet-pricing，目前返回测试值
-        // 格式：1 DUST = X USD（精度10^6）
-        // 示例：返回 10_000 表示 1 DUST = 0.01 USD
-        Some(10_000) // 临时测试值：1 DUST = 0.01 USD
+
+impl PricingProviderImpl {
+    /// 函数级中文注释：获取 DUST/USD 汇率（内部实现）
+    /// 
+    /// ## 价格来源
+    /// - 使用 `pallet_pricing::Pallet::<Runtime>::get_dust_market_price_weighted()`
+    /// - 这是加权平均价格，综合 OTC 和 Bridge 两个市场的交易数据
+    /// - 精度：10^6（即 1,000,000 = 1 USD）
+    /// 
+    /// ## 冷启动保护
+    /// - 如果市场数据不足，pallet-pricing 会返回默认价格（0.000001 USD）
+    /// - 当交易量达到阈值后，会使用真实市场价格
+    /// 
+    /// ## 返回值
+    /// - Some(price): 价格（精度 10^6）
+    /// - None: 价格为 0 或获取失败（极少发生）
+    fn get_price_internal() -> Option<Balance> {
+        let price = pallet_pricing::Pallet::<Runtime>::get_dust_market_price_weighted();
+        
+        // 如果价格为 0，返回 None（表示价格不可用）
+        if price == 0 {
+            None
+        } else {
+            Some(price as Balance)
+        }
     }
 }
+
+// 为 pallet-otc-order 实现 PricingProvider
+impl pallet_otc_order::PricingProvider<Balance> for PricingProviderImpl {
+    fn get_dust_to_usd_rate() -> Option<Balance> {
+        Self::get_price_internal()
+    }
+}
+
+// 为 pallet-bridge 实现 PricingProvider
+impl pallet_bridge::PricingProvider<Balance> for PricingProviderImpl {
+    fn get_dust_to_usd_rate() -> Option<Balance> {
+        Self::get_price_internal()
+    }
+}
+
+// 🆕 2025-11-03：临时的 Credit 接口 wrapper（待 pallet-credit 实现完整接口）
+pub struct CreditWrapper;
+impl pallet_credit::BuyerCreditInterface<AccountId> for CreditWrapper {
+    fn get_buyer_credit_score(_buyer: &AccountId) -> Result<u16, sp_runtime::DispatchError> {
+        Ok(100)  // 默认满分
+    }
+    fn check_buyer_daily_limit(_buyer: &AccountId, _amount_usd_cents: u64) -> Result<(), sp_runtime::DispatchError> {
+        Ok(())  // 默认通过
+    }
+    fn check_buyer_single_limit(_buyer: &AccountId, _amount_usd_cents: u64) -> Result<(), sp_runtime::DispatchError> {
+        Ok(())  // 默认通过
+    }
+}
+
+// 🆕 2025-11-10：临时实现 BuyerQuotaInterface（实际使用 pallet-credit 实现）
+impl pallet_credit::quota::BuyerQuotaInterface<AccountId> for CreditWrapper {
+    fn get_available_quota(_buyer: &AccountId) -> Result<u64, sp_runtime::DispatchError> {
+        Ok(200_000_000)  // 默认200 USD额度
+    }
+
+    fn occupy_quota(_buyer: &AccountId, _amount_usd: u64) -> sp_runtime::DispatchResult {
+        Ok(())  // 默认通过
+    }
+
+    fn release_quota(_buyer: &AccountId, _amount_usd: u64) -> sp_runtime::DispatchResult {
+        Ok(())  // 默认通过
+    }
+
+    fn check_concurrent_limit(_buyer: &AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        Ok(true)  // 默认允许
+    }
+
+    fn record_order_completed(_buyer: &AccountId, _order_id: u64) -> sp_runtime::DispatchResult {
+        Ok(())  // 默认通过
+    }
+
+    fn record_order_cancelled(_buyer: &AccountId, _order_id: u64) -> sp_runtime::DispatchResult {
+        Ok(())  // 默认通过
+    }
+
+    fn record_violation(
+        _buyer: &AccountId,
+        _violation_type: pallet_credit::quota::ViolationType,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())  // 默认通过
+    }
+
+    fn is_suspended(_buyer: &AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        Ok(false)  // 默认不暂停
+    }
+
+    fn is_blacklisted(_buyer: &AccountId) -> Result<bool, sp_runtime::DispatchError> {
+        Ok(false)  // 默认不拉黑
+    }
+}
+
 
 // 函数级中文注释：法币网关授权账户（用于调用首购接口）
 // 这是一个特殊的账户，由链下服务控制，用于触发首购交易
@@ -1627,12 +1917,34 @@ impl Get<AccountId> for FiatGatewayTreasuryAccount {
 parameter_types! {
     /// Trading pallet账户（用于做市商押金和托管）
     pub const TradingPalletId: frame_support::PalletId = frame_support::PalletId(*b"trdg/plt");
-    
-    // 做市商配置
-    pub const MakerDepositAmount: Balance = 1_000_000_000_000_000_000; // 1000 DUST
+
+    // 做市商配置 - 2025-11-10 更新：动态押金管理
+    /// 做市商押金目标USD价值（1000 USD，精度10^6）
+    pub const TargetDepositUsd: u64 = 1_000_000_000;
+    /// 押金补充触发阈值（950 USD，精度10^6）
+    pub const DepositReplenishThreshold: u64 = 950_000_000;
+    /// 押金补充目标（1050 USD，精度10^6）
+    pub const DepositReplenishTarget: u64 = 1_050_000_000;
+    /// 价格检查间隔（区块数，每小时检查一次）
+    pub const PriceCheckInterval: BlockNumber = 600; // 假设6s/block，600块=1小时
+    /// 申诉时限（区块数，7天）
+    pub const AppealDeadline: BlockNumber = 100800; // 7天 * 24小时 * 600块/小时
+
+    // 传统配置保持兼容
+    pub const MakerDepositAmount: Balance = 1_000_000_000_000_000_000; // 1000 DUST (兼容性)
     pub const MakerApplicationTimeout: BlockNumber = 3 * DAYS;
-    pub const WithdrawalCooldown: BlockNumber = 7 * DAYS;
-    
+    pub const WithdrawalCooldown: BlockNumber = 5 * DAYS; // 7天→5天 - 2025-11-03 优化
+
+    // OTC订单配置 - 2025-11-10 新增：金额限制
+    /// OTC订单最大USD金额（200 USD，精度10^6）
+    pub const MaxOrderUsdAmount: u64 = 200_000_000;
+    /// OTC订单最小USD金额（20 USD，精度10^6，首购除外）
+    pub const MinOrderUsdAmount: u64 = 20_000_000;
+    /// 首购订单固定USD金额（10 USD，精度10^6）
+    pub const FirstPurchaseUsdAmount: u64 = 10_000_000;
+    /// 金额验证容差（1%，用于处理价格微小波动）
+    pub const AmountValidationTolerance: u16 = 100; // 100 bps = 1%
+
     // OTC订单清理配置
     pub const OrderArchiveThresholdDays: u32 = 150; // 5个月
     pub const MaxOrderCleanupPerBlock: u32 = 50;
@@ -1645,26 +1957,23 @@ parameter_types! {
     pub const MaxOrdersPerBlock: u32 = 100;
     
     // OCW配置
-    pub const OcwSwapTimeoutBlocks: BlockNumber = 10; // ~2分钟
+    pub const OcwSwapTimeoutBlocks: BlockNumber = 100; // ~10分钟 - 2025-11-03 优化（原10区块太短）
     pub const OcwMinSwapAmount: Balance = 10_000_000_000_000_000; // 10 DUST
     pub const UnsignedPriorityTrading: sp_runtime::transaction_validity::TransactionPriority = sp_runtime::transaction_validity::TransactionPriority::MAX / 2;
 }
 
-// 🆕 2025-10-29：Trading Pallet 统一配置
+// 🔴 2025-11-03：已注释（pallet-trading 重构为模块化）
+// Trading Pallet 已拆分为 pallet-maker, pallet-otc-order, pallet-bridge
+// 详见下方的独立配置
+/*
 impl pallet_trading::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
-    
-    // ===== Pallet基础配置 =====
     type PalletId = TradingPalletId;
-    
-    // ===== 做市商配置 =====
     type MakerDepositAmount = MakerDepositAmount;
     type MakerApplicationTimeout = MakerApplicationTimeout;
     type WithdrawalCooldown = WithdrawalCooldown;
     type MakerCredit = pallet_credit::Pallet<Runtime>;
-    
-    // ===== OTC订单配置 =====
     type ConfirmTTL = OtcOrderConfirmTTL;
     type CancelWindow = ConstU64<{ 5 * 60 * 1000 }>;
     type MaxExpiringPerBlock = frame_support::traits::ConstU32<200>;
@@ -1674,25 +1983,16 @@ impl pallet_trading::Config for Runtime {
     type PaidMaxInWindow = ConstU32<100>;
     type FiatGatewayAccount = FiatGatewayAccount;
     type FiatGatewayTreasuryAccount = FiatGatewayTreasuryAccount;
-    
-    // 🆕 首购配置（去首购池版本）
     type FirstPurchaseUsdValue = FirstPurchaseUsdValue;
     type MinFirstPurchaseDustAmount = MinFirstPurchaseDustAmount;
     type MaxFirstPurchaseDustAmount = MaxFirstPurchaseDustAmount;
     type MaxFirstPurchaseOrdersPerMaker = MaxFirstPurchaseOrdersPerMaker;
     type Pricing = PricingProviderImpl;
-    // 🔴 2025-11-02：已移除（pallet-stardust-referrals 已移除）
-    //         type MembershipProvider = ();
-        type OrderArchiveThresholdDays = OrderArchiveThresholdDays;
-        type MaxOrderCleanupPerBlock = MaxOrderCleanupPerBlock;
-        type TronTxHashRetentionPeriod = ConstU32<2592000>;
-        
-    // ===== 托管和联盟配置 =====
+    type OrderArchiveThresholdDays = OrderArchiveThresholdDays;
+    type MaxOrderCleanupPerBlock = MaxOrderCleanupPerBlock;
+    type TronTxHashRetentionPeriod = ConstU32<2592000>;
     type Escrow = pallet_escrow::Pallet<Runtime>;
-    // 🔴 2025-11-02：暂时使用空实现
     type AffiliateDistributor = EmptyAffiliateDistributor;
-    
-    // ===== Bridge配置 =====
     type SwapTimeout = SwapTimeout;
     type SwapArchiveThresholdDays = SwapArchiveThresholdDays;
     type MaxSwapCleanupPerBlock = MaxSwapCleanupPerBlock;
@@ -1701,12 +2001,251 @@ impl pallet_trading::Config for Runtime {
     type OcwSwapTimeoutBlocks = OcwSwapTimeoutBlocks;
     type OcwMinSwapAmount = OcwMinSwapAmount;
     type UnsignedPriority = UnsignedPriorityTrading;
+    type WeightInfo = ();
+    type GovernanceOrigin = frame_system::EnsureSigned<AccountId>;
+}
+*/
+
+// ===== 🆕 2025-11-03：pallet-trading 模块化重构配置 =====
+
+// 1️⃣ Maker 模块配置（做市商管理）
+/// 函数级中文注释：Maker Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+impl pallet_maker::Config for Runtime {
+    type Currency = Balances;
+    type MakerCredit = pallet_credit::Pallet<Runtime>;
+    type GovernanceOrigin = frame_system::EnsureSigned<AccountId>;
+    type Timestamp = pallet_timestamp::Pallet<Runtime>;
+    type MakerDepositAmount = MakerDepositAmount;
+    type TargetDepositUsd = TargetDepositUsd;
+    type DepositReplenishThreshold = DepositReplenishThreshold;
+    type DepositReplenishTarget = DepositReplenishTarget;
+    type PriceCheckInterval = PriceCheckInterval;
+    type AppealDeadline = AppealDeadline;
+    type Pricing = PricingImpl; // 需要实现
+    type MakerApplicationTimeout = MakerApplicationTimeout;
+    type WithdrawalCooldown = WithdrawalCooldown;
+    type WeightInfo = ();
+}
+
+/// 函数级详细中文注释：定价服务实现
+/// 调用 pallet-pricing 获取市场加权平均价格
+pub struct PricingImpl;
+
+impl pallet_maker::PricingProvider<Balance> for PricingImpl {
+    fn get_dust_to_usd_rate() -> Option<Balance> {
+        // 调用 pallet-pricing 获取 DUST 市场加权平均价格
+        // 返回值：u64，精度 10^6 (USDT/DUST)
+        let price = pallet_pricing::Pallet::<Runtime>::get_dust_market_price_weighted();
+
+        // 价格为 0 表示市场无数据或冷启动未完成，返回 None
+        if price > 0 {
+            Some(price as Balance)
+        } else {
+            None
+        }
+    }
+}
+
+/// 函数级详细中文注释：Maker Pallet 接口实现（同时实现 OTC 和 Bridge）
+pub struct MakerPalletImpl;
+
+// 为 OTC Order 实现 MakerInterface
+impl pallet_otc_order::MakerInterface<AccountId, Balance> for MakerPalletImpl {
+    fn get_maker_application(maker_id: u64) -> Option<pallet_otc_order::MakerApplicationInfo<AccountId, Balance>> {
+        use pallet_maker::ApplicationStatus;
+        
+        let app = pallet_maker::Pallet::<Runtime>::maker_applications(maker_id)?;
+        
+        Some(pallet_otc_order::MakerApplicationInfo {
+            account: app.owner,
+            tron_address: app.tron_address,
+            is_active: matches!(app.status, ApplicationStatus::Active),
+            _phantom: core::marker::PhantomData,
+        })
+    }
     
-    // ===== 权重配置 =====
+    fn is_maker_active(maker_id: u64) -> bool {
+        pallet_maker::Pallet::<Runtime>::is_maker_active(maker_id)
+    }
+}
+
+// 为 Bridge 实现 MakerInterface
+impl pallet_bridge::MakerInterface<AccountId, Balance> for MakerPalletImpl {
+    fn get_maker_application(maker_id: u64) -> Option<pallet_bridge::MakerApplicationInfo<AccountId, Balance>> {
+        use pallet_maker::ApplicationStatus;
+        
+        let app = pallet_maker::Pallet::<Runtime>::maker_applications(maker_id)?;
+        
+        Some(pallet_bridge::MakerApplicationInfo {
+            account: app.owner,
+            tron_address: app.tron_address,
+            is_active: matches!(app.status, ApplicationStatus::Active),
+            _phantom: core::marker::PhantomData,
+        })
+    }
+    
+    fn is_maker_active(maker_id: u64) -> bool {
+        pallet_maker::Pallet::<Runtime>::is_maker_active(maker_id)
+    }
+    
+    fn get_maker_id(who: &AccountId) -> Option<u64> {
+        pallet_maker::Pallet::<Runtime>::get_maker_id(who)
+    }
+}
+
+// 为 Bridge 和 OTC Order 实现统一的 MakerCreditInterface
+pub struct MakerCreditImpl;
+
+// 为 Bridge 实现 CreditInterface
+impl pallet_bridge::CreditInterface for MakerCreditImpl {
+    fn record_maker_order_completed(
+        maker_id: u64,
+        order_id: u64,
+        response_time_seconds: u32,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_order_completed(
+            maker_id,
+            order_id,
+            response_time_seconds,
+        )
+    }
+    
+    fn record_maker_order_timeout(
+        maker_id: u64,
+        order_id: u64,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_order_timeout(maker_id, order_id)
+    }
+    
+    fn record_maker_dispute_result(
+        maker_id: u64,
+        order_id: u64,
+        maker_win: bool,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_dispute_result(maker_id, order_id, maker_win)
+    }
+}
+
+// 为 OTC Order 实现 MakerCreditInterface（复用相同的实现）
+impl pallet_otc_order::MakerCreditInterface for MakerCreditImpl {
+    fn record_maker_order_completed(
+        maker_id: u64,
+        order_id: u64,
+        response_time_seconds: u32,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_order_completed(
+            maker_id,
+            order_id,
+            response_time_seconds,
+        )
+    }
+    
+    fn record_maker_order_timeout(
+        maker_id: u64,
+        order_id: u64,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_order_timeout(maker_id, order_id)
+    }
+    
+    fn record_maker_dispute_result(
+        maker_id: u64,
+        order_id: u64,
+        maker_win: bool,
+    ) -> sp_runtime::DispatchResult {
+        pallet_credit::Pallet::<Runtime>::record_maker_dispute_result(maker_id, order_id, maker_win)
+    }
+}
+
+// 2️⃣ OTC Order 模块配置（OTC 订单管理）
+/// 函数级中文注释：OtcOrder Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+impl pallet_otc_order::Config for Runtime {
+    type Currency = Balances;
+    type Timestamp = pallet_timestamp::Pallet<Runtime>;
+    type Escrow = pallet_escrow::Pallet<Runtime>;
+    type Credit = CreditWrapper;  // 🚧 临时使用 wrapper，待 pallet-credit 完善
+    type MakerCredit = MakerCreditImpl;  // ✅ 2025-11-03：做市商信用接口
+    type Pricing = PricingProviderImpl;
+    type MakerPallet = MakerPalletImpl;  // Maker Pallet 接口
+    type CommitteeOrigin = frame_system::EnsureSigned<AccountId>;  // 🆕 2025-11-13：KYC管理权限
+    type IdentityProvider = ();  // 🆕 2025-11-13：临时使用空实现（待 pallet_identity 集成）
+
+    // 订单超时配置
+    type OrderTimeout = ConstU64<7_200_000>;  // 2 小时（毫秒）- 2025-11-03 优化
+    type EvidenceWindow = ConstU64<86_400_000>;  // 24 小时（毫秒）
+
+    // 订单金额配置 - 2025-11-10 新增
+    type MaxOrderUsdAmount = MaxOrderUsdAmount;     // 200 USD
+    type MinOrderUsdAmount = MinOrderUsdAmount;     // 20 USD (首购除外)
+    type FirstPurchaseUsdAmount = FirstPurchaseUsdAmount;  // 10 USD
+    type AmountValidationTolerance = AmountValidationTolerance;  // 1%
+
+    // 首购配置（固定 $10 USD，动态 DUST）
+    type FirstPurchaseUsdValue = FirstPurchaseUsdValue;  // 10_000_000 ($10 USD，精度10^6)
+    type MinFirstPurchaseDustAmount = MinFirstPurchaseDustAmount;  // 100 DUST
+    type MaxFirstPurchaseDustAmount = MaxFirstPurchaseDustAmount;  // 10,000 DUST
+    type MaxFirstPurchaseOrdersPerMaker = MaxFirstPurchaseOrdersPerMaker;  // 5
+
+    type WeightInfo = ();
+}
+
+// 3️⃣ Bridge 模块配置（DUST ↔ USDT 桥接）
+/// 函数级中文注释：Bridge Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+impl pallet_bridge::Config for Runtime {
+    type Currency = Balances;
+    type Escrow = pallet_escrow::Pallet<Runtime>;
+    type Pricing = PricingProviderImpl;  // 🆕 2025-11-03：添加价格提供者
+    type MakerPallet = MakerPalletImpl;  // 重用 MakerPalletImpl
+    type Credit = MakerCreditImpl;  // ✅ 2025-11-03：添加真实 Credit 接口
+    type GovernanceOrigin = frame_system::EnsureSigned<AccountId>;
+    
+    // 兑换配置
+    type MinSwapAmount = OcwMinSwapAmount;  // 10 DUST
+    type SwapTimeout = SwapTimeout;  // 30 分钟
+    type OcwSwapTimeoutBlocks = OcwSwapTimeoutBlocks;  // 100 区块（2025-11-03优化）
+    
+    type WeightInfo = ();
+}
+
+/// 函数级中文注释：AI策略管理模块配置
+/// 🆕 2025-11-04：AI驱动的自动化交易系统
+impl pallet_ai_trader::Config for Runtime {
     type WeightInfo = ();
     
-    // ===== 治理配置 =====
-    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+    // 最大值配置
+    type MaxNameLength = ConstU32<64>;      // 策略名称最大64字节
+    type MaxSymbolLength = ConstU32<32>;    // 交易对符号最大32字节
+    type MaxCIDLength = ConstU32<64>;       // IPFS CID最大64字节
+    type MaxFeatures = ConstU32<20>;        // 最多20个特征
+    type MaxEndpointLength = ConstU32<256>; // API端点URL最大256字节
+    
+    // OCW授权ID
+    type AuthorityId = pallet_ai_trader::ocw::crypto::TestAuthId;
+}
+
+/// 函数级中文注释：DUST 跨链桥接模块配置
+/// 🆕 2025-11-05：Stardust ↔ Arbitrum 桥接
+impl pallet_dust_bridge::Config for Runtime {
+    // 货币类型（DUST）
+    type Currency = Balances;
+    
+    // 治理权限（用于设置桥接账户等管理操作）
+    // Root 或技术委员会 2/3 批准
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance2, 2, 3>,
+    >;
+    
+    // 最小桥接金额（1 DUST，防止粉尘攻击）
+    type MinBridgeAmount = ConstU128<1_000_000_000_000>;
+    
+    // 最大桥接金额（1,000,000 DUST，风险控制）
+    type MaxBridgeAmount = ConstU128<1_000_000_000_000_000_000>;
+    
+    // 桥接超时时间（1小时 = 600个区块，假设6秒/区块）
+    type BridgeTimeout = ConstU32<600>;
 }
 
 /// 函数级详细中文注释：空的推荐关系提供者（Trading暂不使用推荐功能）
@@ -1769,6 +2308,11 @@ impl pallet_escrow::pallet::ExpiryPolicy<AccountId, BlockNumber> for NoopExpiryP
 }
 
 parameter_types! { pub const ArbMaxEvidence: u32 = 16; pub const ArbMaxCidLen: u32 = 64; }
+
+// 🆕 纠纷押金常量配置（方案 A：托管扣押金，订单金额15%）
+const DISPUTE_RESPONSE_BLOCKS: u32 = 7 * 14400; // 7天（假设每天14400个区块，6秒/区块）
+const DEPOSIT_RATIO_BPS: u16 = 1500; // 15% = 1500 basis points
+
 impl pallet_arbitration::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MaxEvidence = ArbMaxEvidence;
@@ -1781,6 +2325,18 @@ impl pallet_arbitration::Config for Runtime {
         frame_system::EnsureRoot<AccountId>,
         pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
     >;
+
+    /// 🆕 双向押金相关配置（方案 A：从托管账户扣除押金）
+    /// - 押金来源：托管账户（不是用户账户）
+    /// - 押金比例：订单金额的 15%
+    /// - 双向机制：发起方和应诉方都需从托管扣押金
+    type Fungible = pallet_balances::Pallet<Runtime>;
+    type RuntimeHoldReason = RuntimeHoldReason;
+    type DepositRatioBps = ConstU16<DEPOSIT_RATIO_BPS>;  // 15% 押金比例
+    type ResponseDeadline = ConstU32<DISPUTE_RESPONSE_BLOCKS>;
+    type RejectedSlashBps = ConstU16<3000>;          // 败诉罚没 30%
+    type PartialSlashBps = ConstU16<5000>;           // 部分胜诉罚没 50%
+    type TreasuryAccount = TreasuryAccount;
 }
 
 // 已移除：Karma 授权命名空间常量
@@ -1796,28 +2352,27 @@ parameter_types! {
 
 pub struct ArbitrationRouter;
 /// 函数级中文注释：仲裁域路由器实现。转发到对应业务 Pallet 的校验与执行接口。
-/// 
+///
 /// 支持的业务域：
 /// 1. OTC订单 (b"otc_ord_") - 买家或卖家可发起争议
 /// 2. SimpleBridge (b"sm_brdge") - 用户或做市商可发起争议
-impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRouter {
+impl pallet_arbitration::pallet::ArbitrationRouter<AccountId, Balance> for ArbitrationRouter {
     /// 函数级中文注释：权限校验 - 验证用户是否有权对指定域的对象发起争议
     fn can_dispute(domain: [u8; 8], who: &AccountId, id: u64) -> bool {
         if domain == OtcOrderNsBytes::get() {
             // OTC订单：买家或卖家可发起
-            // 🆕 2025-10-29：使用统一的 pallet-trading
-            use pallet_trading::ArbitrationHook;
-            pallet_trading::pallet::Pallet::<Runtime>::can_dispute(who, id)
+            // ✅ 2025-11-03：已实现仲裁接口
+            pallet_otc_order::Pallet::<Runtime>::can_dispute_order(who, id)
         } else if domain == SimpleBridgeNsBytes::get() {
-            // SimpleBridge：TODO - 待 pallet-trading 实现ArbitrationHook trait
-            // 暂时返回false，等待simple-bridge实现仲裁接口
-            false
+            // SimpleBridge (Bridge)：用户或做市商可发起
+            // ✅ 2025-11-03：已实现仲裁接口
+            pallet_bridge::Pallet::<Runtime>::can_dispute_swap(who, id)
         } else {
             false
         }
     }
     /// 函数级中文注释：将仲裁裁决应用到对应域
-    /// 
+    ///
     /// 裁决类型：
     /// - Release: 全额放款给卖家/做市商（买家败诉）
     /// - Refund: 全额退款给买家（卖家/做市商败诉）
@@ -1827,33 +2382,103 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId> for ArbitrationRou
         id: u64,
         decision: pallet_arbitration::pallet::Decision,
     ) -> frame_support::dispatch::DispatchResult {
-        use pallet_arbitration::pallet::Decision as D;
         if domain == OtcOrderNsBytes::get() {
-            // OTC订单域
-            // 🆕 2025-10-29：使用统一的 pallet-trading
-            match decision {
-                D::Release => {
-                    use pallet_trading::ArbitrationHook;
-                    pallet_trading::pallet::Pallet::<Runtime>::arbitrate_release(id)
-                }
-                D::Refund => {
-                    use pallet_trading::ArbitrationHook;
-                    pallet_trading::pallet::Pallet::<Runtime>::arbitrate_refund(id)
-                }
-                D::Partial(bps) => {
-                    use pallet_trading::ArbitrationHook;
-                    pallet_trading::pallet::Pallet::<Runtime>::arbitrate_partial(id, bps)
-                }
+            // OTC订单域：应用仲裁裁决
+            // ✅ 2025-11-03：已实现仲裁接口
+            pallet_otc_order::Pallet::<Runtime>::apply_arbitration_decision(id, decision)
+        } else if domain == SimpleBridgeNsBytes::get() {
+            // SimpleBridge (Bridge) 域：应用仲裁裁决
+            // ✅ 2025-11-03：已实现仲裁接口
+            pallet_bridge::Pallet::<Runtime>::apply_arbitration_decision(id, decision)
+        } else {
+            Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
+        }
+    }
+
+    /// 🆕 函数级中文注释：获取纠纷对方账户
+    ///
+    /// 用途：双向押金机制需要知道谁是应诉方
+    /// - OTC订单：发起方是买家则返回卖家，发起方是卖家则返回买家
+    /// - SimpleBridge：发起方是用户则返回做市商账户
+    ///
+    /// TODO: 实现完整的对方账户查询逻辑
+    fn get_counterparty(
+        domain: [u8; 8],
+        initiator: &AccountId,
+        id: u64,
+    ) -> Result<AccountId, sp_runtime::DispatchError> {
+        if domain == OtcOrderNsBytes::get() {
+            // OTC订单：从订单信息中获取对方
+            let order = pallet_otc_order::Orders::<Runtime>::get(id)
+                .ok_or(sp_runtime::DispatchError::Other("OrderNotFound"))?;
+
+            if initiator == &order.taker {
+                // 发起方是买家，对方是卖家
+                Ok(order.maker)
+            } else if initiator == &order.maker {
+                // 发起方是卖家，对方是买家
+                Ok(order.taker)
+            } else {
+                Err(sp_runtime::DispatchError::Other("NotParticipant"))
             }
         } else if domain == SimpleBridgeNsBytes::get() {
-            // SimpleBridge域：TODO - 待 pallet-trading 实现ArbitrationHook trait
-            // 暂时返回错误，等待simple-bridge实现仲裁接口
-            // 
-            // 计划实现：
-            // - arbitrate_release: 放款给做市商
-            // - arbitrate_refund: 退款给用户
-            // - arbitrate_partial: 按比例分账
-            Err(sp_runtime::DispatchError::Other("SimpleBridgeArbitrationNotImplemented"))
+            // SimpleBridge (Bridge)：查询对方账户
+            // - 官方桥接：无对方（系统自动处理），返回系统账户
+            // - 做市商桥接：查询 MakerSwaps 获取做市商账户
+
+            // 先尝试查询做市商桥接记录
+            if let Some(maker_swap) = pallet_bridge::MakerSwaps::<Runtime>::get(id) {
+                // 做市商桥接：发起方是用户则返回做市商，发起方是做市商则返回用户
+                if initiator == &maker_swap.user {
+                    Ok(maker_swap.maker)
+                } else if initiator == &maker_swap.maker {
+                    Ok(maker_swap.user)
+                } else {
+                    Err(sp_runtime::DispatchError::Other("NotParticipant"))
+                }
+            } else if let Some(swap_req) = pallet_bridge::SwapRequests::<Runtime>::get(id) {
+                // 官方桥接：只有用户参与，返回平台账户作为对方
+                if initiator == &swap_req.user {
+                    Ok(PlatformAccount::get())
+                } else {
+                    Err(sp_runtime::DispatchError::Other("NotParticipant"))
+                }
+            } else {
+                Err(sp_runtime::DispatchError::Other("SwapNotFound"))
+            }
+        } else {
+            Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
+        }
+    }
+
+    /// 🆕 函数级中文注释：获取订单/交易金额（用于计算押金）
+    ///
+    /// 用途：方案 A - 从托管账户扣除订单金额15%作为押金
+    /// - OTC订单：返回订单的 DUST 数量（order.qty）
+    /// - SimpleBridge：返回兑换的 DUST 金额（swap.dust_amount）
+    ///
+    /// 返回值：订单/交易的 DUST 金额（Balance 类型）
+    fn get_order_amount(domain: [u8; 8], id: u64) -> Result<Balance, sp_runtime::DispatchError> {
+        if domain == OtcOrderNsBytes::get() {
+            // OTC订单：从订单信息中获取 DUST 数量
+            let order = pallet_otc_order::Orders::<Runtime>::get(id)
+                .ok_or(sp_runtime::DispatchError::Other("OrderNotFound"))?;
+
+            // 返回订单的 DUST 数量（qty 字段）
+            Ok(order.qty)
+        } else if domain == SimpleBridgeNsBytes::get() {
+            // SimpleBridge (Bridge)：查询兑换金额
+            // - 官方桥接：返回 swap.dust_amount
+            // - 做市商桥接：返回 maker_swap.dust_amount
+
+            // 先尝试查询做市商桥接记录
+            if let Some(maker_swap) = pallet_bridge::MakerSwaps::<Runtime>::get(id) {
+                Ok(maker_swap.dust_amount)
+            } else if let Some(swap_req) = pallet_bridge::SwapRequests::<Runtime>::get(id) {
+                Ok(swap_req.dust_amount)
+            } else {
+                Err(sp_runtime::DispatchError::Other("SwapNotFound"))
+            }
         } else {
             Err(sp_runtime::DispatchError::Other("UnsupportedDomain"))
         }
@@ -1874,6 +2499,8 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
         action: u8,
     ) -> frame_support::dispatch::DispatchResult {
         match (domain, action) {
+            // 🗑️ 2025-11-16: 已删除 domain=1 (grave) 所有治理操作
+            /*
             // 1=grave：治理强制执行（示例：10=清空封面；11=强制转让墓地 owner 到平台账户）
             (1, 10) => {
                 // 清空封面
@@ -1907,6 +2534,7 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
                 target,
                 vec![],
             ),
+            */
             // 2=deceased：更新 profile（此处作为示例仅切换可见性为 true）
             (2, 1) => {
                 // 证据由上层记录；此处直接调用 gov_set_visibility(true)
@@ -1950,58 +2578,6 @@ impl pallet_stardust_appeals::AppealRouter<AccountId> for ContentGovernanceRoute
                     Err(sp_runtime::DispatchError::Other("MissingNewOwner"))
                 }
             }
-            // 🆕 2025-10-28 已注释: deceased-text/media 治理调用已移除 - 整合到 deceased pallet
-            /*
-            // 3=deceased-text：20=移除悼词；21=强制删除文本（支持文章/留言）
-            (3, 20) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_eulogy(
-                RuntimeOrigin::root(),
-                target as u64,
-                vec![],
-            ),
-            (3, 21) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_remove_text(
-                RuntimeOrigin::root(),
-                target as u64,
-                vec![],
-            ),
-            // 3=deceased-text：22=治理编辑文本；23=治理设置生平
-            (3, 22) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_edit_text(
-                RuntimeOrigin::root(),
-                target as u64,
-                None,
-                None,
-                None,
-                vec![],
-            ),
-            (3, 23) => pallet_deceased_text::pallet::Pallet::<Runtime>::gov_set_life(
-                RuntimeOrigin::root(),
-                target as u64,
-                vec![],
-                vec![],
-            ),
-            // 4=deceased-media：隐藏媒体（target 为 media_id）
-            (4, 30) => pallet_deceased_media::pallet::Pallet::<Runtime>::gov_set_media_hidden(
-                RuntimeOrigin::root(),
-                target as u64,
-                true,
-                vec![],
-            ),
-            // 4=deceased-media：31=替换媒体URI；32=冻结视频集
-            (4, 31) => pallet_deceased_media::pallet::Pallet::<Runtime>::gov_replace_media_uri(
-                RuntimeOrigin::root(),
-                target as u64,
-                vec![],
-                vec![],
-            ),
-            (4, 32) => {
-                // 将 target 解读为 VideoCollectionId
-                pallet_deceased_media::pallet::Pallet::<Runtime>::gov_freeze_video_collection(
-                    RuntimeOrigin::root(),
-                    target as u64,
-                    true,
-                    vec![],
-                )
-            }
-            */
             // 5=park：转移园区所有权（占位，new_owner=平台账户）
             (5, 40) => pallet_stardust_park::pallet::Pallet::<Runtime>::gov_transfer_park(
                 RuntimeOrigin::root(),
@@ -2041,7 +2617,7 @@ impl pallet_stardust_ipfs::Config for Runtime {
     /// - 修改后：使用 DecentralizedStorageAccount（费用进入存储专用账户，专款专用）
     /// - 优势：存储费用独立管理、审计清晰、与 pallet-storage-treasury 打通
     type FeeCollector = DecentralizedStorageAccount;
-    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+    type GovernanceOrigin = frame_system::EnsureSigned<AccountId>;
     type MaxCidHashLen = IpfsMaxCidHashLen;
     type MaxPeerIdLen = frame_support::traits::ConstU32<128>;
     type MinOperatorBond = frame_support::traits::ConstU128<10_000_000_000_000>; // 0.01 UNIT 示例
@@ -2430,37 +3006,91 @@ impl pallet_affiliate::MembershipProvider<AccountId> for AffiliateMembershipProv
 impl pallet_affiliate::Config for Runtime {
     /// 事件类型
     type RuntimeEvent = RuntimeEvent;
-    
-    /// 货币系统
+
+    /// 货币系统（支持锁定和保留，用于治理押金）
     type Currency = Balances;
-    
+
     /// 托管 PalletId（使用现有的 AffiliatePalletId）
     type EscrowPalletId = AffiliatePalletId;
-    
+
     /// 提款权限（Root 或 财务委员会）
     type WithdrawOrigin = frame_system::EnsureRoot<AccountId>;
-    
-    /// 管理员权限（配置管理）
+
+    /// 管理员权限（配置管理 + 紧急暂停治理）
+    /// 注：紧急暂停需要技术委员会5/7超级多数，恢复需要全票
     type AdminOrigin = frame_system::EnsureRoot<AccountId>;
-    
+
     /// 会员信息提供者
     type MembershipProvider = AffiliateMembershipProvider;
-    
+
     /// 推荐码最大长度
     type MaxCodeLen = AffiliateMaxCodeLen;
-    
+
     /// 推荐链最大搜索深度
     type MaxSearchHops = AffiliateMaxSearchHops;
-    
+
     /// 销毁账户（5%销毁）
     type BurnAccount = BurnAccount;
-    
+
     /// 国库账户（2%国库）
     type TreasuryAccount = TreasuryAccount;
-    
+
     /// 存储费用账户（3%存储）
     type StorageAccount = DecentralizedStorageAccount;
 }
+
+// ========================================
+// 治理参数说明（硬编码在 pallet 中）
+// ========================================
+//
+// 即时分成比例治理系统参数：
+//
+// **提案押金**：
+// - 微调提案（≤10%变化）：1,000 DUST
+// - 重大提案（>10%变化）：10,000 DUST
+//
+// **时间参数**：
+// - 提案执行延迟：43200 区块（3天）
+// - 提案冷却期：100800 区块（7天）
+// - 失败冷却期：432000 区块（30天）
+//
+// **权重计算**：
+// - 持币权重：70%（平方根，上限1000）
+// - 参与权重：20%（历史投票次数）
+// - 贡献权重：10%（推荐贡献 + 委员会成员）
+//
+// **信念投票**：
+// - 不锁定：1x
+// - 锁定1周：1.5x
+// - 锁定2周：2x
+// - 锁定4周：3x
+// - 锁定8周：4x
+// - 锁定16周：5x
+// - 锁定32周：6x
+//
+// **通过条件**：
+// - 微调提案：技术委员会2/3多数
+// - 重大提案：全民公投
+//   - 最低参与率：15%
+//   - 自适应阈值：
+//     - 50%+参与 → 50%支持
+//     - 30-50%参与 → 55%支持
+//     - 15-30%参与 → 60%支持
+//
+// **反垃圾机制**：
+// - 最大并发提案：3个/账户
+// - 提案间隔：7天
+// - 失败后冷却期：30天
+//
+// **紧急机制**：
+// - 暂停：技术委员会5/7超级多数
+// - 恢复：Root 或 技术委员会全票（7/7）
+//
+// **唯一修改通道**：
+// InstantLevelPercents 只能通过 execute_percentage_change() 修改
+// 该函数仅在提案通过并到达执行区块时自动调用
+//
+// ========================================
 
 // ===== pallet_membership 运行时配置 =====
 parameter_types! {
@@ -2469,10 +3099,15 @@ parameter_types! {
     pub const Units: Balance = 1_000_000_000_000; // 1 DUST = 10^12
     pub const MinMembershipPrice: Balance = 100_000_000_000_000; // 100 DUST
     pub const MaxMembershipPrice: Balance = 10_000_000_000_000_000; // 10,000 DUST
+    /// 🆕 2025-11-10：最低持币价值（美分）
+    /// 10000美分 = 100美元
+    pub const MinHoldingValueCents: u64 = 10000;
 }
 
+/// 函数级中文注释：Membership Pallet 配置实现
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+/// - 🆕 2025-11-10：增加持币门槛验证（持币价值≥100美元）
 impl pallet_membership::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type PalletId = MembershipPalletId;
     type BlocksPerYear = BlocksPerYear;
@@ -2486,6 +3121,9 @@ impl pallet_membership::Config for Runtime {
     type MinMembershipPrice = MinMembershipPrice;
     type MaxMembershipPrice = MaxMembershipPrice;
     type AffiliatePalletId = AffiliatePalletId;
+    // 🆕 2025-11-10：连接 pallet_pricing 用于价格查询
+    type PricingConfig = Runtime;
+    type MinHoldingValueCents = MinHoldingValueCents;
     type WeightInfo = ();
 }
 
@@ -2568,14 +3206,183 @@ impl pallet_chat::Config for Runtime {
     /// - 历史消息通过IPFS查询
     /// - 节省链上存储空间
     type MaxMessagesPerSession = frame_support::traits::ConstU32<1000>;
+    
+    /// Weight info
+    type WeightInfo = pallet_chat::SubstrateWeight<Runtime>;
+    
+    /// 函数级中文注释：消息发送速率限制窗口期（100个区块，约10分钟）
+    /// - 防止垃圾消息攻击
+    type RateLimitWindow = frame_support::traits::ConstU32<100>;
+    
+    /// 函数级中文注释：速率限制窗口内最多发送消息数（20条）
+    /// - 防止刷屏
+    type MaxMessagesPerWindow = frame_support::traits::ConstU32<20>;
+    
+    /// 函数级中文注释：消息过期时间（1,296,000个区块，约90天）
+    /// - 自动清理过期消息
+    /// - 节省存储空间
+    type MessageExpirationTime = frame_support::traits::ConstU32<1296000>;
+}
+
+// ========= 🆕 2025-11-13: Phase 3 AI Chat Integration =========
+
+// ===== deceased-ai 配置 =====
+parameter_types! {
+    /// 函数级中文注释：默认月度配额（每个AI服务提供商）
+    /// - 推荐值：10000次查询/月
+    /// - 防止滥用
+    pub const DefaultMonthlyQuota: u32 = 10_000;
+
+    /// 函数级中文注释：每个逝者最多授权的AI服务提供商数量
+    /// - 推荐值：10个
+    /// - 防止状态膨胀
+    pub const MaxProvidersPerDeceased: u32 = 10;
+}
+
+/// 函数级详细中文注释：DeceasedAI Pallet 配置实现
+/// - Phase 3 第二层：AI训练准备层
+/// - 负责AI服务管理和训练任务调度
+impl pallet_deceased_ai::Config for Runtime {
+    type DeceasedId = u64;
+    type DeceasedProvider = DeceasedAIDataAdapter;
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
+    >;
+    type WeightInfo = ();
+    type DefaultMonthlyQuota = DefaultMonthlyQuota;
+    type MaxProvidersPerDeceased = MaxProvidersPerDeceased;
+}
+
+// ===== ai-chat 配置 =====
+parameter_types! {
+    /// 函数级中文注释：单个会话最大消息数（1000条）
+    /// - 防止会话存储无限膨胀
+    /// - 1000条消息约可支持50轮对话
+    pub const MaxMessagesPerSession: u32 = 1000;
+
+    /// 函数级中文注释：单用户最大活跃会话数（10个）
+    /// - 防止用户创建过多会话
+    /// - 10个会话足够日常使用
+    pub const MaxActiveConversations: u32 = 10;
+
+    /// 函数级中文注释：会话过期区块数（30天 = 432000区块，假设6秒/块）
+    /// - 超过30天无活动的会话自动过期
+    /// - 过期后需要重新激活
+    pub const SessionExpiryBlocks: BlockNumber = 30 * DAYS;
+}
+
+/// 函数级详细中文注释：AIChat Pallet 配置实现
+/// - Phase 3 第三层：AI对话集成层
+/// - 负责实时对话管理和OCW AI请求处理
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+impl pallet_ai_chat::Config for Runtime {
+    type DeceasedId = u64;
+    type DeceasedProvider = DeceasedAIDataAdapter;
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance3, 2, 3>,
+    >;
+    type WeightInfo = ();
+    type MaxMessagesPerSession = MaxMessagesPerSession;
+    type MaxActiveConversations = MaxActiveConversations;
+    type SessionExpiryBlocks = SessionExpiryBlocks;
+}
+
+/// 函数级详细中文注释：DeceasedAI数据提供者适配器
+/// - 为 pallet-ai-chat 提供访问 pallet-deceased-ai 的接口
+/// - 实现 DeceasedDataProvider trait
+pub struct DeceasedAIDataAdapter;
+impl pallet_deceased_ai::DeceasedDataProvider<u64, AccountId> for DeceasedAIDataAdapter {
+    fn deceased_exists(deceased_id: u64) -> bool {
+        pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(deceased_id)
+    }
+
+    fn is_deceased_owner(who: &AccountId, deceased_id: u64) -> bool {
+        if let Some(d) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(deceased_id) {
+            d.owner == *who
+        } else {
+            false
+        }
+    }
+
+    fn get_deceased_works(
+        deceased_id: u64,
+        offset: u32,
+        limit: u32,
+    ) -> Result<(Vec<u64>, u32), sp_runtime::DispatchError> {
+        // 从 WorksByDeceased 存储读取该逝者的所有作品 ID
+        let all_work_ids = pallet_deceased::pallet::WorksByDeceased::<Runtime>::get(deceased_id);
+
+        // 计算总数
+        let total = all_work_ids.len() as u32;
+
+        // 应用分页
+        let start = offset as usize;
+        let end = core::cmp::min(start + limit as usize, all_work_ids.len());
+
+        // 返回分页结果
+        let paged_ids: Vec<u64> = all_work_ids[start..end].to_vec();
+
+        Ok((paged_ids, total))
+    }
+
+    fn get_work_details(work_id: u64) -> Result<pallet_deceased_ai::ExportedWork, sp_runtime::DispatchError> {
+        // 从 DeceasedWorks 存储读取作品信息
+        let work = pallet_deceased::pallet::DeceasedWorks::<Runtime>::get(work_id)
+            .ok_or(sp_runtime::DispatchError::Other("WorkNotFound"))?;
+
+        // 转换 WorkType 枚举为字符串
+        let work_type_str = work.work_type.as_str();
+        let work_type_bytes: Vec<u8> = work_type_str.as_bytes().to_vec();
+        let work_type_bounded = frame_support::BoundedVec::try_from(work_type_bytes)
+            .map_err(|_| sp_runtime::DispatchError::Other("WorkTypeConversionFailed"))?;
+
+        // 计算 AI 训练权重
+        let ai_weight = work.ai_training_weight();
+
+        // 构建 ExportedWork 结构
+        Ok(pallet_deceased_ai::ExportedWork {
+            work_id,
+            deceased_id: work.deceased_id,
+            work_type_str: work_type_bounded,
+            title: work.title,
+            description: work.description,
+            ipfs_cid: work.ipfs_cid,
+            file_size: work.file_size,
+            created_at: work.created_at,
+            tags: work.tags,
+            sentiment: work.sentiment,
+            style_tags: work.style_tags,
+            expertise_fields: work.expertise_fields,
+            ai_weight,
+        })
+    }
+
+    fn get_ai_training_works(deceased_id: u64) -> Result<Vec<u64>, sp_runtime::DispatchError> {
+        // 从 WorksByDeceased 存储读取该逝者的所有作品 ID
+        let all_work_ids = pallet_deceased::pallet::WorksByDeceased::<Runtime>::get(deceased_id);
+
+        // 过滤出 ai_training_enabled == true 的作品
+        let mut ai_training_works = Vec::new();
+        for work_id in all_work_ids.iter() {
+            if let Some(work) = pallet_deceased::pallet::DeceasedWorks::<Runtime>::get(work_id) {
+                if work.ai_training_enabled {
+                    ai_training_works.push(*work_id);
+                }
+            }
+        }
+
+        Ok(ai_training_works)
+    }
 }
 
 // ========= Deposits（通用押金管理） =========
-/// 函数级中文注释：通用押金管理模块配置
-/// - 统一管理申诉押金、审核押金、投诉押金
-/// - 资金安全：使用Currency trait冻结押金
-/// - 权限控制：释放和罚没需要治理权限
-/// [已归档 2025-11-03] 迁移到 Holds API，参考 pallet-stardust-appeals
+// 函数级中文注释：通用押金管理模块配置
+// - 统一管理申诉押金、审核押金、投诉押金
+// - 资金安全：使用Currency trait冻结押金
+// - 权限控制：释放和罚没需要治理权限
+// [已归档 2025-11-03] 迁移到 Holds API，参考 pallet-stardust-appeals
 /*
 impl pallet_deposits::Config for Runtime {
     /// 事件类型
@@ -2610,4 +3417,206 @@ impl pallet_deposits::Config for Runtime {
     type MaxDepositsPerAccount = frame_support::traits::ConstU32<128>;
 }
 */
+
+// ========= 🆕 2025-11-03 Frontier: EVM 配置 =========
+// ⚠️ 临时禁用以排查 runtime 启动问题
+// pub mod evm;
+// pub use evm::*;
+
+// ========= 🆕 2025-01-20 Governance Params 配置 =========
+pub mod governance_params;
+
+// ========= 🆕 2025-11-17 Social（社交关系管理）配置 =========
+
+/// 函数级详细中文注释：社交关注系统目标验证器
+///
+/// ### 职责
+/// - 验证不同类型目标的存在性
+/// - 检查用户对目标的管理权限
+/// - 验证目标的可见性和访问控制
+///
+/// ### 实现逻辑
+/// - **Deceased**：从 pallet-deceased 查询逝者信息
+/// - **User**：检查账户是否存在（系统账户或已活跃账户）
+/// - **Grave**：从 pallet-stardust-grave 查询墓地信息（如果启用）
+/// - **Pet**：从 pallet-stardust-pet 查询宠物信息
+/// - **Memorial**：从 pallet-memorial 查询纪念馆信息
+///
+/// ### 设计理念
+/// - 解耦验证逻辑：social pallet 不直接依赖其他 pallet
+/// - 运行时注入：runtime 层面实现具体验证逻辑
+/// - 类型扩展：新增目标类型时只需扩展此实现
+pub struct SocialTargetValidator;
+
+impl pallet_social::TargetValidator<AccountId> for SocialTargetValidator {
+    /// 函数级中文注释：验证目标是否存在
+    fn target_exists(target: &pallet_social::Target) -> bool {
+        use pallet_social::TargetType;
+
+        match target.target_type {
+            // 逝者：检查 deceased 是否存在
+            TargetType::Deceased => {
+                pallet_deceased::pallet::DeceasedOf::<Runtime>::contains_key(target.target_id)
+            },
+
+            // 用户：暂时允许所有用户（未来可添加账户验证）
+            TargetType::User => {
+                // TODO: 可以添加账户是否已活跃的检查
+                // frame_system::pallet::Account::<Runtime>::contains_key(&account_id)
+                true
+            },
+
+            // 墓地：检查 grave 是否存在（如果启用）
+            TargetType::Grave => {
+                // 🗑️ 2025-11-16: pallet_stardust_grave 已删除
+                // pallet_stardust_grave::pallet::Graves::<Runtime>::contains_key(target.target_id)
+                false  // 暂时禁用，等待新的 memorial-space 实现
+            },
+
+            // 宠物：检查 pet 是否存在
+            TargetType::Pet => {
+                pallet_stardust_pet::pallet::PetOf::<Runtime>::contains_key(target.target_id)
+            },
+
+            // 纪念馆：暂时禁用，等待具体需求
+            TargetType::Memorial => {
+                // TODO: 实现 memorial hall 的验证逻辑
+                false
+            },
+        }
+    }
+
+    /// 函数级中文注释：验证用户是否有权限管理目标
+    fn can_manage_target(who: &AccountId, target: &pallet_social::Target) -> bool {
+        use pallet_social::TargetType;
+
+        match target.target_type {
+            // 逝者：检查是否为 owner
+            TargetType::Deceased => {
+                if let Some(deceased) = pallet_deceased::pallet::DeceasedOf::<Runtime>::get(target.target_id) {
+                    deceased.owner == *who
+                } else {
+                    false
+                }
+            },
+
+            // 用户：只能管理自己
+            TargetType::User => {
+                // 将 target_id 转换为 AccountId 进行比较
+                // 注意：这里假设 target_id 是账户的某种标识符
+                // 实际实现可能需要更复杂的映射逻辑
+                // TODO: 实现 user_id → AccountId 的映射
+                true  // 暂时允许，实际应该检查 target_id 对应的账户是否为 who
+            },
+
+            // 墓地：检查是否为 owner（如果启用）
+            TargetType::Grave => {
+                // 🗑️ 2025-11-16: pallet_stardust_grave 已删除
+                false
+            },
+
+            // 宠物：检查是否为 owner
+            TargetType::Pet => {
+                if let Some(pet) = pallet_stardust_pet::pallet::PetOf::<Runtime>::get(target.target_id) {
+                    pet.owner == *who
+                } else {
+                    false
+                }
+            },
+
+            // 纪念馆：暂时禁用
+            TargetType::Memorial => {
+                // TODO: 实现 memorial hall 的权限检查
+                false
+            },
+        }
+    }
+
+    /// 函数级中文注释：验证目标是否可见（用于关注前检查）
+    fn is_target_visible(_who: &AccountId, target: &pallet_social::Target) -> bool {
+        use pallet_social::TargetType;
+
+        match target.target_type {
+            // 逝者：检查可见性设置
+            TargetType::Deceased => {
+                // 使用 VisibilityOf 存储检查可见性
+                // 如果 VisibilityOf 返回 None，表示公开（默认值）
+                pallet_deceased::pallet::VisibilityOf::<Runtime>::get(target.target_id)
+                    .unwrap_or(true)  // None 视为 true（默认公开）
+            },
+
+            // 用户：默认公开
+            TargetType::User => true,
+
+            // 墓地：检查可见性（如果启用）
+            TargetType::Grave => false,  // 🗑️ 2025-11-16: 已删除
+
+            // 宠物：默认公开（Pet 结构体没有可见性字段）
+            TargetType::Pet => {
+                // Pet 默认公开，只要存在就可见
+                pallet_stardust_pet::pallet::PetOf::<Runtime>::contains_key(target.target_id)
+            },
+
+            // 纪念馆：暂时禁用
+            TargetType::Memorial => {
+                // TODO: 实现 memorial hall 的可见性检查
+                false
+            },
+        }
+    }
+}
+
+/// 函数级详细中文注释：社交关系管理模块配置
+///
+/// ### 功能定位
+/// - 统一管理多种类型目标的关注关系
+/// - 支持 Deceased、User、Grave、Pet、Memorial 等目标类型
+/// - 提供双向索引（关注列表 + 关注者列表）
+/// - 兼容 pallet-deceased 的原有关注功能
+///
+/// ### 配置参数
+/// - **MaxFollowersPerTarget**: 每个目标最多关注者数量（10,000）
+///   - 继承自 deceased 的 MaxFollowers 参数
+///   - 防止热门目标的关注者列表过大
+///
+/// - **MaxFollowingPerUser**: 每个用户最多关注数量（1,000）
+///   - 防止用户无限制关注导致的存储膨胀
+///   - 一般用户完全足够使用
+///
+/// - **MaxBatchSize**: 批量操作最大数量（100）
+///   - 单次批量关注/取消关注的最大目标数量
+///   - 平衡用户体验和 Gas 消耗
+///
+/// ### 目标验证器
+/// - 使用 SocialTargetValidator 实现跨 pallet 验证
+/// - 验证目标存在性、权限和可见性
+/// - 支持未来扩展新的目标类型
+impl pallet_social::Config for Runtime {
+    /// 事件类型
+    type RuntimeEvent = RuntimeEvent;
+
+    /// 函数级中文注释：每个目标最多关注者数量（10,000）
+    /// - 继承自 pallet-deceased 的 MaxFollowers
+    /// - 防止热门目标（如名人逝者）的关注者列表过大
+    /// - 达到上限后新关注会失败
+    type MaxFollowersPerTarget = frame_support::traits::ConstU32<10_000>;
+
+    /// 函数级中文注释：每个用户最多关注数量（1,000）
+    /// - 防止用户无限制关注导致存储膨胀
+    /// - 1,000 个关注对象对一般用户完全足够
+    /// - 达到上限后无法继续关注
+    type MaxFollowingPerUser = frame_support::traits::ConstU32<1_000>;
+
+    /// 函数级中文注释：批量操作最大数量（100）
+    /// - 单次 batch_follow 或 batch_unfollow 的最大目标数量
+    /// - 平衡用户体验和 Gas 消耗
+    /// - 超过上限会返回错误
+    type MaxBatchSize = frame_support::traits::ConstU32<100>;
+
+    /// 函数级中文注释：目标验证器
+    /// - 使用 SocialTargetValidator 实现跨 pallet 验证
+    /// - 验证目标存在性、权限和可见性
+    /// - 解耦 social pallet 与其他 pallet 的直接依赖
+    type TargetValidator = SocialTargetValidator;
+}
 

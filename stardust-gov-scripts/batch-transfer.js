@@ -15,10 +15,10 @@ const path = require('path');
 // 配置项
 const DEFAULT_WS_ENDPOINT = process.env.MEMOPARK_WS || 'ws://127.0.0.1:9944';
 
-// 发送账户配置
+// 发送账户配置（改为使用开发链内置的 Alice Root 账户）
 const SENDER_CONFIG = {
-  mnemonic: 'satoshi sure behave certain impulse ski slight track century kitchen clutch story',
-  expectedAddress: '5CrDBEVDgXUwctSuV8EvQEBo2m187PcxoY36V7H7PGErHUW4',
+  suri: '//Alice',
+  expectedAddress: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
 };
 
 // 批量转账配置
@@ -31,6 +31,8 @@ const BATCH_CONFIG = {
   batchSize: 25,                          // 每批处理数量（调整为25）
   delayBetweenBatches: 3000,              // 批次间延迟（毫秒）
   delayBetweenTxs: 500,                   // 交易间延迟（毫秒）
+  maxRetries: 3,                          // 失败后最大重试次数
+  retryDelay: 2000,                       // 重试延迟（毫秒）
 };
 
 /**
@@ -61,9 +63,14 @@ function generateRandomAmount(minAmount, maxAmount, decimals) {
   const max = maxAmount * (10n ** BigInt(decimals));
   const range = max - min;
   
-  // 生成随机数
+  // 安全的随机数生成（避免精度损失）
+  // 将 range 分成高位和低位处理
+  const rangeStr = range.toString();
   const randomValue = Math.random();
-  const randomBigInt = min + BigInt(Math.floor(Number(range) * randomValue));
+  
+  // 使用字符串乘法避免精度问题
+  const randomStr = (BigInt(Math.floor(parseFloat(rangeStr) * randomValue))).toString();
+  const randomBigInt = min + BigInt(randomStr);
   
   return randomBigInt;
 }
@@ -226,6 +233,55 @@ async function submitTransfer(api, tx, signer, recipient, amount, decimals, symb
 }
 
 /**
+ * 函数级详细中文注释：带重试机制的转账（增强版）
+ */
+async function transferWithRetry(api, signer, recipient, amount, decimals, symbol, index, total, maxRetries = BATCH_CONFIG.maxRetries) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`   🔄 重试 ${attempt - 1}/${maxRetries - 1}...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.retryDelay));
+      }
+      
+      const tx = api.tx.balances.transferKeepAlive(recipient, amount);
+      const result = await submitTransfer(
+        api, tx, signer, recipient, amount, 
+        decimals, symbol, index, total
+      );
+      
+      return { success: true, result };
+      
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt < maxRetries) {
+        console.error(`   ⚠️  尝试 ${attempt} 失败，准备重试: ${error.message}`);
+      }
+    }
+  }
+  
+  // 所有重试都失败
+  console.error(`   ❌ 经过 ${maxRetries} 次尝试后仍然失败`);
+  return { success: false, error: lastError };
+}
+
+/**
+ * 函数级详细中文注释：显示当前进度统计
+ */
+function showProgress(successCount, failCount, totalCount) {
+  const processedCount = successCount + failCount;
+  const successRate = ((successCount / processedCount) * 100).toFixed(2);
+  
+  console.log('\n📊 当前进度统计:');
+  console.log(`   已处理: ${processedCount}/${totalCount} (${((processedCount / totalCount) * 100).toFixed(2)}%)`);
+  console.log(`   ✅ 成功: ${successCount} 笔`);
+  console.log(`   ❌ 失败: ${failCount} 笔`);
+  console.log(`   📈 成功率: ${successRate}%`);
+}
+
+/**
  * 函数级详细中文注释：保存转账结果到文件
  */
 function saveResults(results, filename) {
@@ -266,9 +322,9 @@ async function main() {
     await cryptoWaitReady();
     console.log('\n✅ 加密库准备完成');
 
-    // 2. 创建发送账户密钥对
+    // 2. 创建发送账户密钥对（使用 Alice Root）
     const keyring = new Keyring({ type: 'sr25519' });
-    const senderPair = keyring.addFromMnemonic(SENDER_CONFIG.mnemonic);
+    const senderPair = keyring.addFromUri(SENDER_CONFIG.suri);
     
     // 3. 验证地址
     if (senderPair.address !== SENDER_CONFIG.expectedAddress) {
@@ -341,12 +397,15 @@ async function main() {
     console.log(`总笔数: ${transfers.length}`);
     console.log(`平均金额: ${formatBalance(totalAmount / BigInt(transfers.length), decimals, symbol)}`);
     
-    // 9. 预估手续费
-    const testTx = api.tx.balances.transferKeepAlive(accounts[0].address, transfers[0].amount);
-    const { partialFee } = await testTx.paymentInfo(senderPair);
-    const estimatedFees = partialFee.toBigInt() * BigInt(transfers.length);
-    console.log(`预估总手续费: ${formatBalance(estimatedFees, decimals, symbol)}`);
-    console.log(`单笔手续费: ${formatBalance(partialFee, decimals, symbol)}`);
+    // 9. 预估手续费（跳过，直接估算固定值）
+    // 注意：由于链端 TransactionPaymentApi 有问题，跳过 paymentInfo 调用
+    console.log('⚠️  跳过手续费预估（使用固定值估算）');
+    
+    // 使用固定手续费估算：每笔 0.01 DUST
+    const estimatedSingleFee = 10_000_000_000n; // 0.01 DUST (精度12)
+    const estimatedFees = estimatedSingleFee * BigInt(transfers.length);
+    console.log(`预估总手续费: ${formatBalance(estimatedFees, decimals, symbol)} (按 0.01 ${symbol}/笔 估算)`);
+    console.log(`单笔手续费: ${formatBalance(estimatedSingleFee, decimals, symbol)} (估算值)`);
     
     const totalRequired = totalAmount + estimatedFees;
     console.log(`需要总额: ${formatBalance(totalRequired, decimals, symbol)}`);
@@ -393,32 +452,26 @@ async function main() {
         const { recipient, amount, index } = batch[i];
         const globalIndex = batchIndex * BATCH_CONFIG.batchSize + i + 1;
         
-        try {
-          const tx = api.tx.balances.transferKeepAlive(recipient, amount);
-          const result = await submitTransfer(
-            api, tx, senderPair, recipient, amount, 
-            decimals, symbol, globalIndex, transfers.length
-          );
-          
+        // 使用带重试机制的转账函数
+        const transferResult = await transferWithRetry(
+          api, senderPair, recipient, amount, 
+          decimals, symbol, globalIndex, transfers.length
+        );
+        
+        if (transferResult.success) {
           results.push({
             index,
             recipient,
             amount: amount.toString(),
             amountFormatted: formatBalance(amount, decimals, symbol),
             success: true,
-            blockHash: result.blockHash,
+            blockHash: transferResult.result.blockHash,
             timestamp: new Date().toISOString(),
           });
           
           successCount++;
-          
-          // 交易间延迟
-          if (i < batch.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.delayBetweenTxs));
-          }
-          
-        } catch (error) {
-          console.error(`   ❌ 转账失败: ${error.message}`);
+        } else {
+          console.error(`   ❌ 转账失败: ${transferResult.error.message}`);
           
           results.push({
             index,
@@ -426,22 +479,47 @@ async function main() {
             amount: amount.toString(),
             amountFormatted: formatBalance(amount, decimals, symbol),
             success: false,
-            error: error.message,
+            error: transferResult.error.message,
             timestamp: new Date().toISOString(),
           });
           
           failCount++;
         }
+        
+        // 交易间延迟
+        if (i < batch.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.delayBetweenTxs));
+        }
       }
       
-      // 批次间延迟
-      if (batchIndex < batches.length - 1) {
-        console.log(`\n⏳ 等待 ${BATCH_CONFIG.delayBetweenBatches / 1000} 秒后处理下一批次...`);
-        await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.delayBetweenBatches));
-      }
+      // 每个批次后显示进度统计
+      showProgress(successCount, failCount, transfers.length);
       
       // 每个批次后保存中间结果
       saveResults(results, BATCH_CONFIG.resultsFile);
+      
+      // 每个批次后检查余额（防止余额不足）
+      if (batchIndex < batches.length - 1) {
+        const { data: currentBalanceData } = await api.query.system.account(senderPair.address);
+        const currentBalance = currentBalanceData.free.toBigInt();
+        
+        // 计算剩余批次需要的金额
+        const remainingTransfers = transfers.slice((batchIndex + 1) * BATCH_CONFIG.batchSize);
+        const remainingAmount = remainingTransfers.reduce((sum, t) => sum + t.amount, 0n);
+        const estimatedRemainingFees = estimatedSingleFee * BigInt(remainingTransfers.length);
+        const totalRemaining = remainingAmount + estimatedRemainingFees;
+        
+        if (currentBalance < totalRemaining) {
+          console.error('\n⚠️  警告: 余额可能不足以完成剩余转账');
+          console.error(`   当前余额: ${formatBalance(currentBalance, decimals, symbol)}`);
+          console.error(`   预估需要: ${formatBalance(totalRemaining, decimals, symbol)}`);
+          console.error('   是否继续？按 Ctrl+C 取消，或等待 10 秒继续...');
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+        
+        console.log(`\n⏳ 等待 ${BATCH_CONFIG.delayBetweenBatches / 1000} 秒后处理下一批次...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.delayBetweenBatches));
+      }
     }
     
     // 13. 显示最终结果

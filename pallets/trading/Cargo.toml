@@ -12,27 +12,28 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11.3", default-features = false, features = ["derive"] }
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false, optional = true }
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
-sp-arithmetic = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false, optional = true }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-arithmetic = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
 log = { version = "0.4.22", default-features = false }
 
-# 依赖其他pallet
-pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.18.9", default-features = false }
+# 🆕 2025-11-03: pallet-trading 重构 - 依赖拆分后的子模块
+pallet-maker = { path = "../maker", default-features = false }
+pallet-otc-order = { path = "../otc-order", default-features = false }
+pallet-bridge = { path = "../bridge", default-features = false }
+pallet-trading-common = { path = "../trading-common", default-features = false }
+
+# 依赖其他pallet（保留用于类型定义）
+pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
 pallet-pricing = { path = "../pricing", default-features = false }
 pallet-escrow = { path = "../escrow", default-features = false }
-
-# 🆕 2025-10-29: 使用整合后的pallet
-pallet-credit = { path = "../credit", default-features = false }  # 替代 buyer-credit 和 maker-credit
-pallet-affiliate = { path = "../affiliate", default-features = false }  # 替代 affiliate-config
-
-# 🔴 2025-10-30 已移除: pallet-stardust-referrals 已删除，推荐码功能已整合到 pallet-affiliate
-# pallet-stardust-referrals = { path = "../stardust-referrals", default-features = false }
+pallet-credit = { path = "../credit", default-features = false }
+pallet-affiliate = { path = "../affiliate", default-features = false }
 pallet-evidence = { path = "../evidence", default-features = false }
 
 [dev-dependencies]
@@ -52,11 +53,17 @@ std = [
 	"sp-io/std",
 	"sp-arithmetic/std",
 	"log/std",
+	# 🆕 2025-11-03: pallet-trading 重构 - 子模块依赖
+	"pallet-maker/std",
+	"pallet-otc-order/std",
+	"pallet-bridge/std",
+	"pallet-trading-common/std",
+	# 保留的依赖
 	"pallet-timestamp/std",
 	"pallet-pricing/std",
 	"pallet-escrow/std",
-	"pallet-credit/std",  # 🆕 2025-10-29: 替代 buyer-credit 和 maker-credit
-	"pallet-affiliate/std",  # 🆕 2025-10-29: 替代 affiliate-config
+	"pallet-credit/std",
+	"pallet-affiliate/std",
 	"pallet-evidence/std",
 ]
 runtime-benchmarks = [

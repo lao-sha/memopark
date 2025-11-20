@@ -26,11 +26,11 @@ const CreateScenePage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Card title="创建场景">
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          <Typography.Paragraph type="secondary">可选填写 domain（例如 1=Grave，3=Pet），仅用于前端筛选。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">可选填写 domain（例如 1=纪念馆，3=宠物），仅用于前端筛选。</Typography.Paragraph>
           <Form form={form} layout="vertical" onFinish={onSubmit}>
             <Form.Item name="name" label="场景名称" rules={[{ required: true }]}>
               <Input placeholder="如：清明、周年、满月等" />

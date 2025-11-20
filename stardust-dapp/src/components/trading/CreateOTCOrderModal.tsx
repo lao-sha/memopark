@@ -231,7 +231,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <Text strong>实际单价：</Text>
             <Text strong style={{ fontSize: 16 }}>
-              {price.toFixed(4)} USDT/MEMO
+              {price.toFixed(4)} USDT/DUST
             </Text>
           </div>
 
@@ -335,7 +335,7 @@ export const CreateOTCOrderModal: React.FC<CreateOTCOrderModalProps> = ({
 
             {/* 购买数量 */}
             <Form.Item
-              label="购买数量（MEMO）"
+              label="购买数量（DUST）"
               name="qty"
               rules={[
                 { required: true, message: '请输入购买数量' },

@@ -75,7 +75,7 @@ const CategoryListPage: React.FC = () => {
   React.useEffect(()=> { load() }, [load])
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
       <Card title="一级类目列表" extra={<Button size="small" onClick={load} loading={loading}>刷新</Button>}>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <div style={{ marginBottom: 8 }}>

@@ -1,0 +1,30 @@
+{
+  "name": "@stardust/arbitrum-contracts",
+  "version": "2.0.0",
+  "description": "Stardust AI Trading System - Arbitrum Smart Contracts (Pure DUST Version)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:arbitrum-sepolia": "hardhat run scripts/deploy.ts --network arbitrumSepolia",
+    "deploy:arbitrum": "hardhat run scripts/deploy.ts --network arbitrum",
+    "verify": "hardhat verify",
+    "lint": "solhint 'src/**/*.sol'",
+    "format": "prettier --write 'src/**/*.sol'"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.4",
+    "hardhat": "^2.19.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "prettier": "^3.2.0",
+    "prettier-plugin-solidity": "^1.3.0",
+    "solhint": "^4.1.0"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "^0.8.0",
+    "dotenv": "^16.4.0"
+  }
+}

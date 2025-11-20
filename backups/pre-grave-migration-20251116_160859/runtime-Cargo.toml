@@ -1,0 +1,280 @@
+[package]
+name = "stardust-runtime"
+description = "A solochain runtime template built with Substrate, part of Polkadot Sdk."
+version = "0.1.0"
+license = "Unlicense"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { features = ["derive"], workspace = true }
+frame-benchmarking = { optional = true, workspace = true }
+frame-executive = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-metadata-hash-extension = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-support = { features = ["experimental"], git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-system-benchmarking = { optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-try-runtime = { optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+
+# 🆕 2025-11-03 Trading Refactoring（交易模块重构为模块化）
+# 将原 pallet-trading 拆分为以下独立模块：
+pallet-maker = { path = "../pallets/maker", default-features = false }  # v2.0.0 做市商管理
+pallet-otc-order = { path = "../pallets/otc-order", default-features = false }  # v2.0.0 OTC订单管理
+pallet-bridge = { path = "../pallets/bridge", default-features = false }  # v2.0.0 DUST ↔ USDT 桥接
+pallet-trading-common = { path = "../pallets/trading-common", default-features = false }  # v2.0.0 公共工具
+
+# 🆕 2025-11-04 AI Trading Strategy（AI驱动的交易策略管理）
+pallet-ai-trader = { path = "../pallets/ai-trader", default-features = false }  # v1.0.0 AI策略管理
+
+# 🆕 2025-11-05 DUST Bridge（DUST跨链桥接）
+pallet-dust-bridge = { path = "../pallets/dust-bridge", default-features = false }  # v0.1.0 DUST跨链桥接
+
+# 🆕 2025-01-20 Governance Params（治理参数集中管理）
+pallet-governance-params = { path = "../pallets/governance-params", default-features = false }  # v0.1.0 治理参数管理
+
+# 🔴 2025-11-03 已注释: pallet-trading 旧版本（保留作为统一接口层，可选）
+# pallet-trading = { path = "../pallets/trading", default-features = false }  # v1.0.0 统一交易模块（旧版）
+
+# 函数级中文注释：移除 pallet-otc-maker 依赖
+# pallet-otc-maker = { path = "../pallets/otc-maker", default-features = false }
+
+# 函数级中文注释：2025-10-20 移除 pallet-otc-listing 依赖，功能已由 pallet-market-maker + pallet-otc-order 替代
+# pallet-otc-listing = { path = "../pallets/otc-listing", default-features = false }
+
+# 🔴 2025-10-29 已移除: pallet-otc-order 已整合到 pallet-trading
+# pallet-otc-order = { path = "../pallets/otc-order", default-features = false }
+
+pallet-escrow = { path = "../pallets/escrow", default-features = false }
+pallet-arbitration = { path = "../pallets/arbitration", default-features = false }
+# replaced old ritual/cemetery
+pallet-stardust-park = { path = "../pallets/stardust-park", default-features = false }
+pallet-stardust-grave = { path = "../pallets/stardust-grave", default-features = false }
+pallet-ledger = { path = "../pallets/ledger", default-features = false }
+pallet-deceased = { path = "../pallets/deceased", default-features = false }  # 🆕 2025-10-28：已整合 deceased-text 和 deceased-media
+# pallet-deceased-media = { path = "../pallets/deceased-media", default-features = false }  # 2025-10-28 已移除 - 整合到 pallet-deceased
+# pallet-deceased-text = { path = "../pallets/deceased-text", default-features = false }  # 2025-10-28 已移除 - 整合到 pallet-deceased
+pallet-deceased-ai = { path = "../pallets/deceased-ai", default-features = false }  # 🆕 2025-11-13: Phase 3 - AI训练准备层
+pallet-ai-chat = { path = "../pallets/ai-chat", default-features = false }  # 🆕 2025-11-13: Phase 3 - AI对话集成层
+pallet-memorial = { path = "../pallets/memorial", default-features = false }  # 🆕 2025-10-28：已整合 memo-offerings 和 memo-sacrifice
+# pallet-memo-offerings = { path = "../pallets/memo-offerings", default-features = false }  # 2025-10-28 保留作为参考
+# pallet-memo-sacrifice = { path = "../pallets/memo-sacrifice", default-features = false }  # 2025-10-28 保留作为参考
+
+# 🆕 2025-10-28 Affiliate Integration（联盟计酬整合）
+# 整合了以下5个模块：
+# - pallet-memo-referrals（推荐关系，部分保留用于兼容适配器）
+# - pallet-affiliate（托管）
+# - pallet-affiliate-config（配置）
+# - pallet-affiliate-instant（即时分成）
+# - pallet-affiliate-weekly（周结算）
+pallet-affiliate = { path = "../pallets/affiliate", default-features = false }  # v1.0.0 统一联盟计酬系统
+# pallet-affiliate-weekly = { path = "../pallets/affiliate-weekly", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+# pallet-affiliate-config = { path = "../pallets/affiliate-config", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+# pallet-affiliate-instant = { path = "../pallets/affiliate-instant", default-features = false }  # 2025-10-28 已整合到 pallet-affiliate
+
+pallet-membership = { path = "../pallets/membership", default-features = false }
+pallet-evidence = { path = "../pallets/evidence", default-features = false }
+pallet-identity = { path = "../pallets/identity", default-features = false }
+pallet-stardust-ipfs = { path = "../pallets/stardust-ipfs", default-features = false }
+pallet-stardust-appeals = { path = "../pallets/stardust-appeals", default-features = false }
+pallet-collective = { path = "../pallets/collective", default-features = false }
+pallet-stardust-pet = { path = "../pallets/stardust-pet", default-features = false }
+pallet-pricing = { path = "../pallets/pricing", default-features = false }
+# 函数级中文注释：2025-10-28 移除 pallet-buyer-credit 和 pallet-maker-credit，已整合为 pallet-credit
+# pallet-buyer-credit = { path = "../pallets/buyer-credit", default-features = false }
+# pallet-maker-credit = { path = "../pallets/maker-credit", default-features = false }
+pallet-credit = { path = "../pallets/credit", default-features = false }
+# [已归档 2025-11-03] 迁移到 Holds API
+# pallet-deposits = { path = "../pallets/deposits", default-features = false }
+pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
+
+# 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
+# pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
+
+pallet-chat = { path = "../pallets/chat", default-features = false }
+pallet-sudo.workspace = true
+pallet-template.workspace = true
+pallet-timestamp.workspace = true
+pallet-treasury = { path = "../pallets/treasury", default-features = false }
+pallet-origin-restriction = { path = "../pallets/origin-restriction", default-features = false }
+# pallet-fee-guard = { path = "../pallets/fee-guard", default-features = false }  # 已移除 - 使用官方 pallet-proxy 替代
+pallet-transaction-payment-rpc-runtime-api.workspace = true
+pallet-transaction-payment.workspace = true
+scale-info = { features = ["derive", "serde"], workspace = true }
+serde_json = { workspace = true, default-features = false, features = ["alloc"] }
+sp-api.workspace = true
+sp-block-builder.workspace = true
+sp-consensus-aura = { features = ["serde"], workspace = true }
+sp-consensus-grandpa = { features = ["serde"], workspace = true }
+sp-core = { features = ["serde"], workspace = true }
+sp-genesis-builder.workspace = true
+sp-inherents.workspace = true
+sp-keyring.workspace = true
+sp-offchain.workspace = true
+sp-runtime = { features = ["serde"], workspace = true }
+sp-session.workspace = true
+sp-storage.workspace = true
+sp-transaction-pool.workspace = true
+sp-version = { features = ["serde"], workspace = true }
+
+# 🆕 Frontier: 以太坊兼容层
+pallet-evm = { workspace = true }
+pallet-ethereum = { workspace = true }
+pallet-base-fee = { workspace = true }
+pallet-dynamic-fee = { workspace = true }
+fp-evm = { workspace = true }
+fp-rpc = { workspace = true }
+fp-self-contained = { workspace = true }
+evm = { version = "0.41.1", default-features = false, features = ["with-codec"] }
+
+[build-dependencies]
+substrate-wasm-builder = { optional = true, workspace = true, default-features = true }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"frame-benchmarking?/std",
+	"frame-executive/std",
+	"frame-metadata-hash-extension/std",
+	"frame-support/std",
+	"frame-system-benchmarking?/std",
+	"frame-system-rpc-runtime-api/std",
+	"frame-system/std",
+	"frame-try-runtime?/std",
+	"pallet-aura/std",
+	"pallet-balances/std",
+	"pallet-grandpa/std",
+	# "pallet-trading/std",  # 🔴 2025-11-03 已注释 - 重构为模块化
+	"pallet-maker/std",  # 🆕 2025-11-03：做市商管理模块
+	"pallet-otc-order/std",  # 🆕 2025-11-03：OTC订单管理模块
+	"pallet-bridge/std",  # 🆕 2025-11-03：DUST ↔ USDT 桥接模块
+	"pallet-trading-common/std",  # 🆕 2025-11-03：公共工具模块
+	"pallet-ai-trader/std",  # 🆕 2025-11-04：AI策略管理模块
+	"pallet-dust-bridge/std",  # 🆕 2025-11-05：DUST跨链桥接模块
+	"pallet-governance-params/std",  # 🆕 2025-01-20：治理参数管理模块
+	"pallet-escrow/std",
+	"pallet-arbitration/std",
+	"pallet-stardust-park/std",
+	"pallet-stardust-grave/std",
+	"pallet-ledger/std",
+	"pallet-deceased/std",  # 🆕 2025-10-28：已整合 deceased-text 和 deceased-media
+# "pallet-deceased-media/std",  # 2025-10-28 已移除 - 整合到 pallet-deceased
+# "pallet-deceased-text/std",  # 2025-10-28 已移除 - 整合到 pallet-deceased
+	"pallet-deceased-ai/std",  # 🆕 2025-11-13: Phase 3 - AI训练准备层
+	"pallet-ai-chat/std",  # 🆕 2025-11-13: Phase 3 - AI对话集成层
+	"pallet-memorial/std",  # 🆕 2025-10-28：已整合 memo-offerings 和 memo-sacrifice
+# "pallet-memo-offerings/std",  # 2025-10-28 保留作为参考
+# "pallet-memo-sacrifice/std",  # 2025-10-28 保留作为参考
+
+	# 🆕 2025-10-28 Affiliate Integration
+	"pallet-affiliate/std",  # v1.0.0 统一联盟计酬系统（已整合5个模块）
+# "pallet-affiliate-weekly/std",  # 2025-10-28 已整合到 pallet-affiliate
+# "pallet-affiliate-config/std",  # 2025-10-28 已整合到 pallet-affiliate
+# "pallet-affiliate-instant/std",  # 2025-10-28 已整合到 pallet-affiliate
+
+	"pallet-membership/std",
+	"pallet-evidence/std",
+	"pallet-identity/std",
+	"pallet-stardust-ipfs/std",
+    "pallet-stardust-appeals/std",
+	"pallet-collective/std",
+	"pallet-stardust-pet/std",
+    "pallet-pricing/std",
+    # "pallet-buyer-credit/std",  # 2025-10-28 已移除
+    # "pallet-maker-credit/std",  # 2025-10-28 已移除
+    "pallet-credit/std",
+    # "pallet-deposits/std",  # [已归档 2025-11-03]
+    "pallet-storage-treasury/std",
+    # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
+    "pallet-chat/std",
+	"pallet-sudo/std",
+	"pallet-template/std",
+	"pallet-timestamp/std",
+	"pallet-treasury/std",
+	"pallet-origin-restriction/std",
+	# "pallet-fee-guard/std",  # 已移除
+	"pallet-transaction-payment-rpc-runtime-api/std",
+	"pallet-transaction-payment/std",
+	"scale-info/std",
+	"serde_json/std",
+	"sp-api/std",
+	"sp-block-builder/std",
+	"sp-consensus-aura/std",
+	"sp-consensus-grandpa/std",
+	"sp-core/std",
+	"sp-genesis-builder/std",
+	"sp-inherents/std",
+	"sp-keyring/std",
+	"sp-offchain/std",
+	"sp-runtime/std",
+	"sp-session/std",
+	"sp-storage/std",
+	"sp-transaction-pool/std",
+	"sp-version/std",
+	"substrate-wasm-builder",
+	
+	# 🆕 Frontier features
+	"pallet-evm/std",
+	"pallet-ethereum/std",
+	"pallet-base-fee/std",
+	"pallet-dynamic-fee/std",
+	"fp-evm/std",
+	"fp-rpc/std",
+	"fp-self-contained/std",
+	"evm/std",
+]
+
+runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-support/runtime-benchmarks",
+	"frame-system-benchmarking/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-balances/runtime-benchmarks",
+	"pallet-collective/runtime-benchmarks",
+	"pallet-grandpa/runtime-benchmarks",
+	"pallet-sudo/runtime-benchmarks",
+	"pallet-template/runtime-benchmarks",
+	"pallet-timestamp/runtime-benchmarks",
+	"sp-runtime/runtime-benchmarks",
+]
+
+try-runtime = [
+	"frame-executive/try-runtime",
+	"frame-support/try-runtime",
+	"frame-system/try-runtime",
+	"frame-try-runtime/try-runtime",
+	"pallet-aura/try-runtime",
+	"pallet-balances/try-runtime",
+	"pallet-grandpa/try-runtime",
+	"pallet-sudo/try-runtime",
+	"pallet-template/try-runtime",
+	"pallet-timestamp/try-runtime",
+	"pallet-transaction-payment/try-runtime",
+	"sp-runtime/try-runtime",
+]
+
+# Enable the metadata hash generation.
+#
+# This is hidden behind a feature because it increases the compile time.
+# The wasm binary needs to be compiled twice, once to fetch the metadata,
+# generate the metadata hash and then a second time with the
+# `RUNTIME_METADATA_HASH` environment variable set for the `CheckMetadataHash`
+# extension.
+metadata-hash = ["substrate-wasm-builder/metadata-hash"]
+
+# A convenience feature for enabling things when doing a build
+# for an on-chain release.
+#
+# It enables both the metadata-hash generation and disables the logging from
+# `sp-api` in the runtime, which is just in memory and never visible.
+on-chain-release-build = ["metadata-hash", "sp-api/disable-logging"]

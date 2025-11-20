@@ -54,8 +54,8 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setDataLoading(true);
     try {
-      // 🆕 查找当前账户的做市商（pallet-trading已合并做市商和桥接配置）
-      const makersEntries = await api.query.trading.makerApplications.entries();
+      // 🆕 查找当前账户的做市商（使用新的 pallet-maker）
+      const makersEntries = await api.query.maker.makerApplications.entries();
       
       let foundMaker: any = null;
       let mmId: number = 0;
@@ -86,8 +86,8 @@ export const MakerBridgeDashboard: React.FC = () => {
       
       setMakerInfo(foundMaker);
       
-      // 🆕 从maker数据中提取桥接配置（已合并到makerApplications）
-      const makerDataForConfig = await api.query.trading.makerApplications(mmId);
+      // 🆕 从maker数据中提取桥接配置
+      const makerDataForConfig = await api.query.maker.makerApplications(mmId);
       if (makerDataForConfig.isSome) {
         const makerJSON = makerDataForConfig.unwrap().toJSON() as any;
         
@@ -125,8 +125,8 @@ export const MakerBridgeDashboard: React.FC = () => {
     if (!api) return;
     
     try {
-      // 查询所有兑换记录，筛选该做市商的待处理订单（🆕 pallet-trading）
-      const allSwapsEntries = await api.query.trading.makerSwaps.entries();
+      // 查询所有兑换记录，筛选该做市商的待处理订单（🆕 pallet-bridge）
+      const allSwapsEntries = await api.query.bridge.makerSwaps.entries();
       
       const pending: any[] = [];
       for (const [key, recordOpt] of allSwapsEntries) {
@@ -169,10 +169,16 @@ export const MakerBridgeDashboard: React.FC = () => {
       const maxSwapAmountRaw = Math.floor(values.maxSwapAmount * 1_000_000);
       const feeRateBps = Math.floor(values.feeRate * 100);
       
-      // 调用链上方法
-      const tx = api.tx.trading.enableBridgeService(
-        makerInfo.mmId,
-        maxSwapAmountRaw,
+      // TODO: 在新架构中，桥接服务由做市商的 direction 控制，无需单独启用
+      // 暂时提示用户功能调整
+      message.warning('桥接服务已自动启用，无需手动操作');
+      setEnableModalVisible(false);
+      return;
+      
+      // 旧的调用（已废弃）
+      // const tx = api.tx.trading.enableBridgeService(
+      //   makerInfo.mmId,
+      //   maxSwapAmountRaw,
         feeRateBps
       );
       
@@ -202,9 +208,13 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.trading.disableBridgeService(makerInfo.mmId);
+      // TODO: 在新架构中，可以通过 pallet-maker 的 cancelMaker 来暂停服务
+      message.warning('请使用做市商管理页面来暂停/恢复服务');
+      return;
       
-      const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
+      // 旧的调用（已废弃）
+      // const tx = api.tx.trading.disableBridgeService(makerInfo.mmId);
+      // const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
       
       message.success(`桥接服务已禁用！交易哈希: ${hash.substring(0, 10)}...`);
       
@@ -229,7 +239,7 @@ export const MakerBridgeDashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const tx = api.tx.trading.markSwapComplete(  // 🆕 pallet-trading
+      const tx = api.tx.bridge.markSwapComplete(  // 🆕 pallet-bridge
         selectedSwap.swapId,
         trc20TxHash
       );
@@ -334,7 +344,7 @@ export const MakerBridgeDashboard: React.FC = () => {
   ];
   
   return (
-    <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
       <Card>
         {/* 页面标题 */}
         <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 24 }}>

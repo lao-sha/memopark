@@ -6,7 +6,8 @@ import {
   FireOutlined,
   HistoryOutlined,
   GiftOutlined,
-  TeamOutlined
+  TeamOutlined,
+  HomeOutlined
 } from '@ant-design/icons'
 
 /**
@@ -27,20 +28,28 @@ interface ActionItem {
 
 const actions: ActionItem[] = [
   {
+    key: 'memorial',
+    icon: <HomeOutlined style={{ fontSize: 24 }} />,
+    label: '纪念馆首页',
+    description: '浏览所有纪念馆',
+    color: '#B8860B',
+    route: '#/memorial'
+  },
+  {
     key: 'create',
     icon: <PlusOutlined style={{ fontSize: 24 }} />,
-    label: '创建墓地',
-    description: '为逝者建立纪念馆',
+    label: '创建纪念馆',
+    description: '为逝者建立纪念空间',
     color: 'var(--color-primary)',
-    route: '#/grave/create'
+    route: '#/deceased/create' // 旧墓位功能已删除，改为创建逝者
   },
   {
     key: 'my',
     icon: <UnorderedListOutlined style={{ fontSize: 24 }} />,
-    label: '我的墓地',
+    label: '我的创建',
     description: '管理我的纪念馆',
     color: 'var(--color-secondary)',
-    route: '#/grave/my'
+    route: '#/deceased/list' // 旧墓位功能已删除，改为逝者列表
   },
   {
     key: 'offering',
@@ -49,14 +58,6 @@ const actions: ActionItem[] = [
     description: '查看供奉记录',
     color: 'var(--color-accent)',
     route: '#/offerings/timeline'
-  },
-  {
-    key: 'deceased',
-    icon: <TeamOutlined style={{ fontSize: 24 }} />,
-    label: '逝者列表',
-    description: '浏览所有逝者',
-    color: 'var(--color-info)',
-    route: '#/deceased/list'
   }
 ]
 

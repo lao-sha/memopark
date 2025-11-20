@@ -25,7 +25,7 @@ const WalletCreatedPage: React.FC<WalletCreatedPageProps> = ({
     <div
       style={{
         padding: '20px',
-        maxWidth: '640px',
+        maxWidth: '480px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #fff7e6 0%, #ffffff 100%)',

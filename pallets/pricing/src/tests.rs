@@ -7,7 +7,7 @@ use frame_support::{assert_noop, assert_ok};
 // ==================== Helper Functions ====================
 
 /// 函数级中文注释：1 DUST = 1,000,000,000,000 单位（精度10^12）
-const MEMO: u128 = 1_000_000_000_000;
+const DUST: u128 = 1_000_000_000_000;
 
 /// 函数级中文注释：1 USDT = 1,000,000 单位（精度10^6）
 const USDT: u64 = 1_000_000;
@@ -22,7 +22,7 @@ fn add_otc_order_works() {
         
         let timestamp = 1000u64;
         let price = 50 * USDT; // 50 USDT/DUST
-        let qty = 100 * MEMO;  // 100 DUST
+        let qty = 100 * DUST;  // 100 DUST
 
         // 添加订单
         assert_ok!(Pricing::add_otc_order(timestamp, price, qty));
@@ -54,16 +54,16 @@ fn add_otc_order_works() {
 fn otc_multiple_orders_average_price() {
     new_test_ext().execute_with(|| {
         // 订单1: 100 DUST @ 50 USDT = 5000 USDT
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * DUST));
 
         // 订单2: 200 DUST @ 60 USDT = 12000 USDT
-        assert_ok!(Pricing::add_otc_order(2000, 60 * USDT, 200 * MEMO));
+        assert_ok!(Pricing::add_otc_order(2000, 60 * USDT, 200 * DUST));
 
         // 总计: 300 DUST, 17000 USDT
         // 平均价格: 17000 / 300 = 56.67 USDT/DUST (约)
 
         let agg = Pricing::otc_aggregate();
-        assert_eq!(agg.total_dust, 300 * MEMO);
+        assert_eq!(agg.total_dust, 300 * DUST);
         assert_eq!(agg.order_count, 2);
 
         let avg_price = Pricing::get_otc_average_price();
@@ -78,17 +78,17 @@ fn otc_multiple_orders_average_price() {
 fn otc_orders_exceed_limit_removes_oldest() {
     new_test_ext().execute_with(|| {
         // 添加 1,000,000 DUST
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 1_000_000 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 1_000_000 * DUST));
 
         let agg_before = Pricing::otc_aggregate();
         assert_eq!(agg_before.order_count, 1);
 
         // 再添加 100,000 DUST（超过限制）
-        assert_ok!(Pricing::add_otc_order(2000, 60 * USDT, 100_000 * MEMO));
+        assert_ok!(Pricing::add_otc_order(2000, 60 * USDT, 100_000 * DUST));
 
         // 验证最旧的订单被部分或全部删除
         let agg_after = Pricing::otc_aggregate();
-        assert!(agg_after.total_dust <= 1_000_000 * MEMO);
+        assert!(agg_after.total_dust <= 1_000_000 * DUST);
         
         // 新订单应该存在
         let avg_price = Pricing::get_otc_average_price();
@@ -106,7 +106,7 @@ fn add_bridge_swap_works() {
         
         let timestamp = 1000u64;
         let price = 55 * USDT; // 55 USDT/DUST
-        let qty = 50 * MEMO;   // 50 DUST
+        let qty = 50 * DUST;   // 50 DUST
 
         // 添加兑换
         assert_ok!(Pricing::add_bridge_swap(timestamp, price, qty));
@@ -138,13 +138,13 @@ fn add_bridge_swap_works() {
 fn bridge_multiple_swaps_average_price() {
     new_test_ext().execute_with(|| {
         // 兑换1: 100 DUST @ 55 USDT
-        assert_ok!(Pricing::add_bridge_swap(1000, 55 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_bridge_swap(1000, 55 * USDT, 100 * DUST));
 
         // 兑换2: 150 DUST @ 58 USDT
-        assert_ok!(Pricing::add_bridge_swap(2000, 58 * USDT, 150 * MEMO));
+        assert_ok!(Pricing::add_bridge_swap(2000, 58 * USDT, 150 * DUST));
 
         let agg = Pricing::bridge_aggregate();
-        assert_eq!(agg.total_dust, 250 * MEMO);
+        assert_eq!(agg.total_dust, 250 * DUST);
         assert_eq!(agg.order_count, 2);
 
         let avg_price = Pricing::get_bridge_average_price();
@@ -164,26 +164,26 @@ fn get_market_stats_works() {
         crate::ColdStartExited::<Test>::put(true);
         
         // 添加OTC订单
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * DUST));
 
         // 添加Bridge兑换
-        assert_ok!(Pricing::add_bridge_swap(2000, 55 * USDT, 50 * MEMO));
+        assert_ok!(Pricing::add_bridge_swap(2000, 55 * USDT, 50 * DUST));
 
         // 获取市场统计
         let stats = Pricing::get_market_stats();
 
         // 验证OTC数据
         assert_eq!(stats.otc_price, 50 * USDT);
-        assert_eq!(stats.otc_volume, 100 * MEMO);
+        assert_eq!(stats.otc_volume, 100 * DUST);
         assert_eq!(stats.otc_order_count, 1);
 
         // 验证Bridge数据
         assert_eq!(stats.bridge_price, 55 * USDT);
-        assert_eq!(stats.bridge_volume, 50 * MEMO);
+        assert_eq!(stats.bridge_volume, 50 * DUST);
         assert_eq!(stats.bridge_swap_count, 1);
 
         // 验证总量
-        assert_eq!(stats.total_volume, 150 * MEMO);
+        assert_eq!(stats.total_volume, 150 * DUST);
 
         // 验证加权平均价格（100*50 + 50*55）/ 150 = 51.67 USDT
         assert!(stats.weighted_price >= 51 * USDT);
@@ -199,10 +199,10 @@ fn get_dust_market_price_weighted_works() {
         crate::ColdStartExited::<Test>::put(true);
         
         // 添加OTC订单（200 DUST @ 50 USDT）
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 200 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 200 * DUST));
 
         // 添加Bridge兑换（100 DUST @ 60 USDT）
-        assert_ok!(Pricing::add_bridge_swap(2000, 60 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_bridge_swap(2000, 60 * USDT, 100 * DUST));
 
         // 加权平均价格: (200*50 + 100*60) / 300 = 53.33 USDT
         let weighted_price = Pricing::get_dust_market_price_weighted();
@@ -222,7 +222,7 @@ fn check_price_deviation_within_range() {
         crate::ColdStartExited::<Test>::put(true);
         
         // 设置基准价格：50 USDT
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * DUST));
 
         // 测试价格：55 USDT（偏离10%，在20%限制内）
         let test_price = 55 * USDT;
@@ -242,7 +242,7 @@ fn check_price_deviation_exceeds_range() {
         crate::ColdStartExited::<Test>::put(true);
         
         // 设置基准价格：50 USDT
-        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * MEMO));
+        assert_ok!(Pricing::add_otc_order(1000, 50 * USDT, 100 * DUST));
 
         // 测试价格：65 USDT（偏离30%，超出20%限制）
         let test_price_high = 65 * USDT;
