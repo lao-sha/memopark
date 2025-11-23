@@ -458,6 +458,25 @@ use super::{
 };
 use sp_runtime::traits::IdentityLookup;
 
+/// 函数级中文注释：基于区块哈希的简单随机数实现
+/// 注意：这不是密码学安全的随机数,仅用于ID生成等非安全关键场景
+pub struct SimpleRandomness;
+
+impl frame_support::traits::Randomness<Hash, BlockNumber> for SimpleRandomness {
+    fn random(subject: &[u8]) -> (Hash, BlockNumber) {
+        let block_number = System::block_number();
+        let block_hash = System::block_hash(block_number);
+
+        // 将 subject 与区块哈希混合
+        let mut data = subject.to_vec();
+        data.extend_from_slice(block_hash.as_ref());
+        data.extend_from_slice(&block_number.to_le_bytes());
+
+        let hash = sp_core::hashing::blake2_256(&data);
+        (Hash::from(hash), block_number)
+    }
+}
+
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 parameter_types! {
@@ -858,6 +877,17 @@ impl pallet_deceased::Config for Runtime {
 
     /// 函数级中文注释：RuntimeHoldReason - hold机制的原因类型
     type RuntimeHoldReason = RuntimeHoldReason;
+
+    // ========== 随机数和时间配置 ==========
+    /// 函数级中文注释：特权起源 - 用于敏感操作（如强制删除）
+    type PrivilegedOrigin = frame_system::EnsureRoot<AccountId>;
+
+    /// 函数级中文注释：随机数源 - 用于生成唯一ID
+    /// 注意：使用SimpleRandomness,基于区块哈希,仅用于ID生成的辅助随机性
+    type Randomness = SimpleRandomness;
+
+    /// 函数级中文注释：Unix时间提供器 - 用于时间戳相关功能
+    type UnixTime = pallet_timestamp::Pallet<Runtime>;
 }
 
 /// 函数级详细中文注释：Real Pricing Provider 实现（连接 pallet-pricing）
@@ -3222,6 +3252,20 @@ impl pallet_chat::Config for Runtime {
     /// - 自动清理过期消息
     /// - 节省存储空间
     type MessageExpirationTime = frame_support::traits::ConstU32<1296000>;
+
+    // ========== ChatUserId相关配置 ==========
+    /// 函数级中文注释：随机数源 - 用于生成ChatUserId
+    /// 注意：使用SimpleRandomness,基于区块哈希,仅用于ID生成的辅助随机性
+    type Randomness = SimpleRandomness;
+
+    /// 函数级中文注释：时间提供器 - 用于时间戳
+    type UnixTime = pallet_timestamp::Pallet<Runtime>;
+
+    /// 函数级中文注释：用户昵称最大长度（64字节，约21个中文字符）
+    type MaxNicknameLength = frame_support::traits::ConstU32<64>;
+
+    /// 函数级中文注释：用户个性签名最大长度（256字节）
+    type MaxSignatureLength = frame_support::traits::ConstU32<256>;
 }
 
 // ========= 🆕 2025-11-13: Phase 3 AI Chat Integration =========

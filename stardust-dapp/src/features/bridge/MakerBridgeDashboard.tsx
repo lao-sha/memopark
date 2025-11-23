@@ -173,22 +173,21 @@ export const MakerBridgeDashboard: React.FC = () => {
       // 暂时提示用户功能调整
       message.warning('桥接服务已自动启用，无需手动操作');
       setEnableModalVisible(false);
-      return;
-      
+
       // 旧的调用（已废弃）
       // const tx = api.tx.trading.enableBridgeService(
       //   makerInfo.mmId,
       //   maxSwapAmountRaw,
-        feeRateBps
-      );
-      
-      const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
-      
-      message.success(`桥接服务已启用！交易哈希: ${hash.substring(0, 10)}...`);
-      setEnableModalVisible(false);
-      
-      // 刷新数据
-      await loadMakerInfo();
+      //   feeRateBps
+      // );
+      //
+      // const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
+      //
+      // message.success(`桥接服务已启用！交易哈希: ${hash.substring(0, 10)}...`);
+      // setEnableModalVisible(false);
+      //
+      // // 刷新数据
+      // await loadMakerInfo();
     } catch (error: any) {
       console.error('启用服务失败:', error);
       message.error(`启用失败: ${error.message || '未知错误'}`);
@@ -210,16 +209,15 @@ export const MakerBridgeDashboard: React.FC = () => {
     try {
       // TODO: 在新架构中，可以通过 pallet-maker 的 cancelMaker 来暂停服务
       message.warning('请使用做市商管理页面来暂停/恢复服务');
-      return;
-      
+
       // 旧的调用（已废弃）
       // const tx = api.tx.trading.disableBridgeService(makerInfo.mmId);
       // const hash = await signAndSendTxWithPrompt(tx, currentAccount.address);
-      
-      message.success(`桥接服务已禁用！交易哈希: ${hash.substring(0, 10)}...`);
-      
-      // 刷新数据
-      await loadMakerInfo();
+      //
+      // message.success(`桥接服务已禁用！交易哈希: ${hash.substring(0, 10)}...`);
+      //
+      // // 刷新数据
+      // await loadMakerInfo();
     } catch (error: any) {
       console.error('禁用服务失败:', error);
       message.error(`禁用失败: ${error.message || '未知错误'}`);

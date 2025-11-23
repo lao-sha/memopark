@@ -75,14 +75,15 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/membership/purchase', component: lazy(() => import('./features/membership/MembershipPurchasePage')) },
   { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
   { match: h => h === '#/storage-treasury', component: lazy(() => import('./features/storage-treasury/StorageTreasuryDashboard')) },
-  { match: h => h === '#/chat', component: lazy(() => import('./features/chat/ChatPage')) },
+  { match: h => h === '#/chat', component: lazy(() => import('./features/chat/OneOnOneChatPage')) },  // 🆕 一对一聊天
   { match: h => h === '#/chat/blocked', component: lazy(() => import('./features/chat/BlockedUsersPage')) },  // 🆕 聊天黑名单管理
   { match: h => h === '#/chat/cache', component: lazy(() => import('./features/chat/CacheManagement')) },  // 🆕 聊天缓存管理
-  { match: h => h === '#/smart-chat', component: lazy(() => import('./features/smart-chat/SmartChatApp')) },  // 🆕 Stardust智能群聊系统
-  { match: h => h === '#/smart-chat/demo', component: lazy(() => import('./features/smart-chat/SmartGroupChatPage')) },  // 🆕 智能聊天演示页面
+  { match: h => h === '#/smart-chat/demo', component: lazy(() => import('./features/smart-chat/SmartGroupChatPage')) },  // 🆕 聊天演示页面
+  { match: h => h.startsWith('#/smart-chat'), component: lazy(() => import('./features/smart-chat/SmartChatApp')) },  // 🆕 Stardust群聊系统
   { match: h => h === '#/ai-trader', component: lazy(() => import('./features/ai-trader/AIStrategyDemo')) },  // 🆕 AI 交易策略
   { match: h => h === '#/profile', component: lazy(() => import('./features/profile/MyWalletPage')) },  // 🆕 我的钱包（个人中心）
   { match: h => h === '#/wallet', component: lazy(() => import('./features/wallet/WalletManagePage')) },  // 🆕 钱包管理
+  { match: h => h === '#/contacts', component: lazy(() => import('./features/contacts/ContactsPage')) },  // 🆕 通讯录管理
 ];
 
 // UI 组件展示页仅在开发模式暴露

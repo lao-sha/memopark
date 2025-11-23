@@ -32,6 +32,7 @@
 
 use super::*;
 use crate::mock::{ExtBuilder, Test, System, Deceased};
+use crate::anti_spam::OperationType;  // 添加 OperationType 导入
 use frame_support::{assert_ok, assert_noop};
 
 // ============= 测试辅助函数 =============

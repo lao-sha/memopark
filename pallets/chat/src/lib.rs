@@ -30,7 +30,6 @@
 //! ```
 
 extern crate alloc;
-use alloc::vec::Vec;
 
 pub use pallet::*;
 
@@ -41,10 +40,78 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::{pallet_prelude::*, BoundedVec};
+use frame_support::{pallet_prelude::*, BoundedVec, traits::{Randomness, UnixTime}};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Hash, Saturating};
+use sp_std::convert::TryInto;
+
+/// 聊天用户ID类型定义 - 11位数字
+pub type ChatUserId = u64;
+
+/// 用户状态枚举
+#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[codec(mel_bound())]
+pub enum UserStatus {
+    /// 在线
+    Online,
+    /// 离线
+    Offline,
+    /// 忙碌
+    Busy,
+    /// 离开
+    Away,
+    /// 隐身
+    Invisible,
+}
+
+impl Default for UserStatus {
+    fn default() -> Self {
+        Self::Online
+    }
+}
+
+/// 隐私设置结构
+#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+pub struct PrivacySettings {
+    /// 是否允许陌生人发送消息
+    pub allow_stranger_messages: bool,
+    /// 是否显示在线状态
+    pub show_online_status: bool,
+    /// 是否显示最后活跃时间
+    pub show_last_active: bool,
+}
+
+impl Default for PrivacySettings {
+    fn default() -> Self {
+        Self {
+            allow_stranger_messages: true,
+            show_online_status: true,
+            show_last_active: true,
+        }
+    }
+}
+
+/// 聊天用户资料结构
+#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+#[codec(mel_bound())]
+pub struct ChatUserProfile<T: Config> {
+    /// 用户显示昵称（可选）
+    pub nickname: Option<BoundedVec<u8, T::MaxNicknameLength>>,
+    /// 头像IPFS CID（可选）
+    pub avatar_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+    /// 个性签名（可选）
+    pub signature: Option<BoundedVec<u8, T::MaxSignatureLength>>,
+    /// 用户状态
+    pub status: UserStatus,
+    /// 隐私设置
+    pub privacy_settings: PrivacySettings,
+    /// 创建时间戳
+    pub created_at: u64,
+    /// 最后活跃时间戳
+    pub last_active: u64,
+}
 
 /// 函数级详细中文注释：权重信息 trait
 /// - 定义所有可调用函数的权重计算
@@ -60,6 +127,11 @@ pub trait WeightInfo {
 	fn block_user() -> Weight;
 	fn unblock_user() -> Weight;
 	fn cleanup_old_messages(n: u32) -> Weight;
+	// 新增ChatUserId相关功能权重
+	fn register_chat_user() -> Weight;
+	fn update_chat_profile() -> Weight;
+	fn set_user_status() -> Weight;
+	fn update_privacy_settings() -> Weight;
 }
 
 /// 函数级详细中文注释：默认权重实现
@@ -147,18 +219,63 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			0
 		)
 	}
+
+	/// 注册聊天用户权重：多次读写操作
+	/// - 读：AccountToChatUserId检查 + UsedChatUserIds迭代检查
+	/// - 写：UsedChatUserIds + AccountToChatUserId + ChatUserIdToAccount + ChatUserProfiles
+	fn register_chat_user() -> Weight {
+		Weight::from_parts(
+			2 * 25_000_000 + 4 * 100_000_000,
+			0
+		)
+	}
+
+	/// 更新聊天资料权重：2次读 + 1次写
+	/// - 读：AccountToChatUserId + ChatUserProfiles
+	/// - 写：ChatUserProfiles
+	fn update_chat_profile() -> Weight {
+		Weight::from_parts(
+			2 * 25_000_000 + 1 * 100_000_000,
+			0
+		)
+	}
+
+	/// 设置用户状态权重：2次读 + 1次写
+	/// - 读：AccountToChatUserId + ChatUserProfiles
+	/// - 写：ChatUserProfiles
+	fn set_user_status() -> Weight {
+		Weight::from_parts(
+			2 * 25_000_000 + 1 * 100_000_000,
+			0
+		)
+	}
+
+	/// 更新隐私设置权重：2次读 + 1次写
+	/// - 读：AccountToChatUserId + ChatUserProfiles
+	/// - 写：ChatUserProfiles
+	fn update_privacy_settings() -> Weight {
+		Weight::from_parts(
+			2 * 25_000_000 + 1 * 100_000_000,
+			0
+		)
+	}
 }
 
 /// 函数级详细中文注释：消息元数据结构
 /// - 链上只存储元数据，不存储实际内容
 /// - 消息内容加密后存储在IPFS，链上只保存CID
+/// - 同时支持AccountId和ChatUserId，提供向后兼容和隐私保护
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct MessageMeta<T: Config> {
-	/// 发送方账户
+	/// 发送方账户（用于权限验证）
 	pub sender: T::AccountId,
-	/// 接收方账户
+	/// 接收方账户（用于权限验证和通知）
 	pub receiver: T::AccountId,
+	/// 发送方聊天用户ID（用于显示和隐私）
+	pub sender_chat_id: Option<ChatUserId>,
+	/// 接收方聊天用户ID（用于显示和隐私）
+	pub receiver_chat_id: Option<ChatUserId>,
 	/// IPFS CID（加密的消息内容）
 	pub content_cid: BoundedVec<u8, <T as Config>::MaxCidLen>,
 	/// 会话ID（用于分组消息）
@@ -173,6 +290,8 @@ pub struct MessageMeta<T: Config> {
 	pub is_deleted_by_sender: bool,
 	/// 接收方是否已删除（软删除）
 	pub is_deleted_by_receiver: bool,
+	/// 回复的消息ID（可选）
+	pub reply_to: Option<u64>,
 }
 
 /// 函数级详细中文注释：会话信息结构
@@ -196,6 +315,8 @@ pub struct Session<T: Config> {
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
+	use sp_std::vec::Vec;
+	use sp_std::vec;
 
 	/// 函数级详细中文注释：消息类型枚举
 	#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, TypeInfo, MaxEncodedLen, RuntimeDebug)]
@@ -256,6 +377,21 @@ pub mod pallet {
 		/// 过期后可被清理
 		#[pallet::constant]
 		type MessageExpirationTime: Get<BlockNumberFor<Self>>;
+
+		/// ChatUserId相关配置
+		/// 随机数源，用于生成ChatUserId
+		type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
+
+		/// 时间提供器，用于时间戳
+		type UnixTime: UnixTime;
+
+		/// 用户昵称最大长度
+		#[pallet::constant]
+		type MaxNicknameLength: Get<u32>;
+
+		/// 用户个性签名最大长度
+		#[pallet::constant]
+		type MaxSignatureLength: Get<u32>;
 	}
 
 	/// 函数级详细中文注释：消息元数据存储
@@ -360,6 +496,60 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
+	/// 函数级详细中文注释：已使用的聊天用户ID
+	/// - Key: ChatUserId
+	/// - Value: bool（标记是否已使用）
+	/// - 用于防止ID重复
+	#[pallet::storage]
+	pub type UsedChatUserIds<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		ChatUserId,
+		bool,
+		OptionQuery,
+	>;
+
+	/// 函数级详细中文注释：账户到聊天用户ID的映射
+	/// - Key: 账户地址
+	/// - Value: ChatUserId
+	/// - 每个账户只能有一个ChatUserId
+	#[pallet::storage]
+	#[pallet::getter(fn account_to_chat_user_id)]
+	pub type AccountToChatUserId<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		ChatUserId,
+		OptionQuery,
+	>;
+
+	/// 函数级详细中文注释：聊天用户ID到账户地址的反向映射
+	/// - Key: ChatUserId
+	/// - Value: 账户地址
+	/// - 用于快速反向查找
+	#[pallet::storage]
+	#[pallet::getter(fn chat_user_id_to_account)]
+	pub type ChatUserIdToAccount<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		ChatUserId,
+		T::AccountId,
+		OptionQuery,
+	>;
+
+	/// 函数级详细中文注释：聊天用户资料
+	/// - Key: ChatUserId
+	/// - Value: 用户资料信息
+	/// - 包含昵称、头像、状态等信息
+	#[pallet::storage]
+	pub type ChatUserProfiles<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		ChatUserId,
+		ChatUserProfile<T>,
+		OptionQuery,
+	>;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
@@ -427,6 +617,41 @@ pub mod pallet {
 			operator: T::AccountId,
 			count: u32,
 		},
+
+		/// 函数级详细中文注释：聊天用户创建成功
+		/// [account_id, chat_user_id]
+		ChatUserCreated {
+			account_id: T::AccountId,
+			chat_user_id: ChatUserId,
+		},
+
+		/// 函数级详细中文注释：聊天用户资料更新
+		/// [chat_user_id]
+		ChatUserProfileUpdated {
+			chat_user_id: ChatUserId,
+		},
+
+		/// 函数级详细中文注释：用户状态变更
+		/// [chat_user_id, new_status_code]
+		ChatUserStatusChanged {
+			chat_user_id: ChatUserId,
+			new_status: u8,
+		},
+
+		/// 函数级详细中文注释：隐私设置更新
+		/// [chat_user_id]
+		PrivacySettingsUpdated {
+			chat_user_id: ChatUserId,
+		},
+
+		/// 函数级详细中文注释：增强版消息已发送（包含ChatUserId）
+		/// [msg_id, sender_chat_id, receiver_chat_id, content_cid]
+		MessageSentWithChatId {
+			msg_id: u64,
+			sender_chat_id: Option<ChatUserId>,
+			receiver_chat_id: Option<ChatUserId>,
+			content_cid: BoundedVec<u8, T::MaxCidLen>,
+		},
 	}
 
 	#[pallet::error]
@@ -463,6 +688,27 @@ pub mod pallet {
 		CannotBlockSelf,
 		/// 清理数量参数无效（必须大于0且小于等于1000）
 		InvalidCleanupLimit,
+
+		/// 聊天用户ID生成失败
+		ChatUserIdGenerationFailed,
+
+		/// 聊天用户已存在
+		ChatUserAlreadyExists,
+
+		/// 聊天用户不存在
+		ChatUserNotFound,
+
+		/// 不允许陌生人消息
+		StrangerMessagesNotAllowed,
+
+		/// 昵称过长
+		NicknameTooLong,
+
+		/// 个性签名过长
+		SignatureTooLong,
+
+		/// 无效的用户状态
+		InvalidUserStatus,
 	}
 
 	#[pallet::call]
@@ -503,17 +749,24 @@ pub mod pallet {
 			// 【安全检查2】频率限制检查
 			Self::check_rate_limit(&sender)?;
 
+			// 【安全检查3】检查陌生人消息权限（基于ChatUserId隐私设置）
+			Self::check_stranger_message_permission(&sender, &receiver)?;
+
 			// 验证CID长度
 			ensure!(content_cid.len() <= T::MaxCidLen::get() as usize, Error::<T>::CidTooLong);
-			
+
 			// 【重要】验证CID是否加密（规则6）
 			// 根据项目规则，除证据类数据外，其他数据CID必须加密
 			// 聊天消息必须加密
 			ensure!(Self::is_cid_encrypted(&content_cid), Error::<T>::CidNotEncrypted);
-			
+
 			let cid_bounded: BoundedVec<u8, T::MaxCidLen> = content_cid
 				.try_into()
 				.map_err(|_| Error::<T>::CidTooLong)?;
+
+			// 获取或创建ChatUserId（双方）
+			let sender_chat_id = Self::get_or_create_chat_user_id(&sender).ok();
+			let receiver_chat_id = Self::get_or_create_chat_user_id(&receiver).ok();
 
 			// 获取或创建会话
 			let session_id = if let Some(id) = session_id {
@@ -536,18 +789,21 @@ pub mod pallet {
 				_ => MessageType::Text, // 默认为文本
 			};
 
-			// 创建消息
+			// 创建消息（增强版，包含ChatUserId）
 			let now = <frame_system::Pallet<T>>::block_number();
 			let message = MessageMeta {
 				sender: sender.clone(),
 				receiver: receiver.clone(),
-				content_cid: cid_bounded,
+				sender_chat_id,
+				receiver_chat_id,
+				content_cid: cid_bounded.clone(),
 				session_id,
 				msg_type,
 				sent_at: now,
 				is_read: false,
 				is_deleted_by_sender: false,
 				is_deleted_by_receiver: false,
+				reply_to: None,
 			};
 
 			// 存储消息
@@ -569,12 +825,19 @@ pub mod pallet {
 				*count = count.saturating_add(1);
 			});
 
-			// 触发事件
+			// 触发双重事件：原有事件（保持向后兼容）+ 新增强事件（包含ChatUserId）
 			Self::deposit_event(Event::MessageSent {
 				msg_id,
 				session_id,
 				sender,
 				receiver,
+			});
+
+			Self::deposit_event(Event::MessageSentWithChatId {
+				msg_id,
+				sender_chat_id,
+				receiver_chat_id,
+				content_cid: cid_bounded,
 			});
 
 			Ok(())
@@ -941,6 +1204,228 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		/// 函数级详细中文注释：注册聊天用户ID
+		///
+		/// # 参数
+		/// - `nickname`: 可选的用户昵称
+		///
+		/// # 功能
+		/// - 为调用者创建聊天用户ID和基础资料
+		/// - 如果用户已注册则返回错误
+		/// - 可以在注册时设置昵称
+		#[pallet::call_index(12)]
+		#[pallet::weight(T::WeightInfo::register_chat_user())]
+		pub fn register_chat_user(
+			origin: OriginFor<T>,
+			nickname: Option<Vec<u8>>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 检查是否已注册
+			ensure!(
+				!AccountToChatUserId::<T>::contains_key(&who),
+				Error::<T>::ChatUserAlreadyExists
+			);
+
+			// 创建聊天用户ID
+			let chat_user_id = Self::get_or_create_chat_user_id(&who)?;
+
+			// 更新昵称（如果提供）
+			if let Some(nick_vec) = nickname {
+				ensure!(
+					nick_vec.len() <= T::MaxNicknameLength::get() as usize,
+					Error::<T>::NicknameTooLong
+				);
+
+				let nick_bounded: BoundedVec<u8, T::MaxNicknameLength> = nick_vec
+					.try_into()
+					.map_err(|_| Error::<T>::NicknameTooLong)?;
+
+				ChatUserProfiles::<T>::mutate(chat_user_id, |profile_opt| {
+					if let Some(ref mut profile) = profile_opt {
+						profile.nickname = Some(nick_bounded);
+						profile.last_active = T::UnixTime::now().as_secs();
+					}
+				});
+			}
+
+			Ok(())
+		}
+
+		/// 函数级详细中文注释：更新用户资料
+		///
+		/// # 参数
+		/// - `nickname`: 可选的昵称更新
+		/// - `avatar_cid`: 可选的头像CID更新
+		/// - `signature`: 可选的个性签名更新
+		///
+		/// # 功能
+		/// - 更新调用者的聊天用户资料
+		/// - 如果用户未注册则自动创建
+		/// - 只更新提供的字段，未提供的保持不变
+		#[pallet::call_index(13)]
+		#[pallet::weight(T::WeightInfo::update_chat_profile())]
+		pub fn update_chat_profile(
+			origin: OriginFor<T>,
+			nickname: Option<Vec<u8>>,
+			avatar_cid: Option<Vec<u8>>,
+			signature: Option<Vec<u8>>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 获取或创建聊天用户ID
+			let chat_user_id = Self::get_or_create_chat_user_id(&who)?;
+
+			// 验证和转换数据
+			let nickname_bounded = if let Some(nick_vec) = nickname {
+				ensure!(
+					nick_vec.len() <= T::MaxNicknameLength::get() as usize,
+					Error::<T>::NicknameTooLong
+				);
+				Some(Some(nick_vec.try_into().map_err(|_| Error::<T>::NicknameTooLong)?))
+			} else {
+				None
+			};
+
+			let avatar_cid_bounded = if let Some(cid_vec) = avatar_cid {
+				ensure!(
+					cid_vec.len() <= T::MaxCidLen::get() as usize,
+					Error::<T>::CidTooLong
+				);
+				Some(Some(cid_vec.try_into().map_err(|_| Error::<T>::CidTooLong)?))
+			} else {
+				None
+			};
+
+			let signature_bounded = if let Some(sig_vec) = signature {
+				ensure!(
+					sig_vec.len() <= T::MaxSignatureLength::get() as usize,
+					Error::<T>::SignatureTooLong
+				);
+				Some(Some(sig_vec.try_into().map_err(|_| Error::<T>::SignatureTooLong)?))
+			} else {
+				None
+			};
+
+			// 更新用户资料
+			ChatUserProfiles::<T>::mutate(chat_user_id, |profile_opt| {
+				if let Some(ref mut profile) = profile_opt {
+					if let Some(nick) = nickname_bounded {
+						profile.nickname = nick;
+					}
+					if let Some(avatar) = avatar_cid_bounded {
+						profile.avatar_cid = avatar;
+					}
+					if let Some(sig) = signature_bounded {
+						profile.signature = sig;
+					}
+					profile.last_active = T::UnixTime::now().as_secs();
+				}
+			});
+
+			// 触发事件
+			Self::deposit_event(Event::ChatUserProfileUpdated {
+				chat_user_id,
+			});
+
+			Ok(())
+		}
+
+		/// 函数级详细中文注释：设置用户状态
+		///
+		/// # 参数
+		/// - `status_code`: 用户状态代码 (0=Online, 1=Offline, 2=Busy, 3=Away, 4=Invisible)
+		///
+		/// # 功能
+		/// - 更新调用者的在线状态
+		/// - 如果用户未注册则自动创建
+		/// - 自动更新最后活跃时间
+		#[pallet::call_index(14)]
+		#[pallet::weight(T::WeightInfo::set_user_status())]
+		pub fn set_user_status(
+			origin: OriginFor<T>,
+			status_code: u8,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 转换状态代码
+			let status = match status_code {
+				0 => UserStatus::Online,
+				1 => UserStatus::Offline,
+				2 => UserStatus::Busy,
+				3 => UserStatus::Away,
+				4 => UserStatus::Invisible,
+				_ => return Err(Error::<T>::InvalidUserStatus.into()),
+			};
+
+			// 获取或创建聊天用户ID
+			let chat_user_id = Self::get_or_create_chat_user_id(&who)?;
+
+			// 更新用户状态
+			ChatUserProfiles::<T>::mutate(chat_user_id, |profile_opt| {
+				if let Some(ref mut profile) = profile_opt {
+					profile.status = status.clone();
+					profile.last_active = T::UnixTime::now().as_secs();
+				}
+			});
+
+			// 触发事件
+			Self::deposit_event(Event::ChatUserStatusChanged {
+				chat_user_id,
+				new_status: status_code,
+			});
+
+			Ok(())
+		}
+
+		/// 函数级详细中文注释：更新隐私设置
+		///
+		/// # 参数
+		/// - `allow_stranger_messages`: 是否允许陌生人发送消息
+		/// - `show_online_status`: 是否显示在线状态
+		/// - `show_last_active`: 是否显示最后活跃时间
+		///
+		/// # 功能
+		/// - 更新调用者的隐私设置
+		/// - 如果用户未注册则自动创建
+		/// - 精确控制各项隐私选项
+		#[pallet::call_index(15)]
+		#[pallet::weight(T::WeightInfo::update_privacy_settings())]
+		pub fn update_privacy_settings(
+			origin: OriginFor<T>,
+			allow_stranger_messages: Option<bool>,
+			show_online_status: Option<bool>,
+			show_last_active: Option<bool>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 获取或创建聊天用户ID
+			let chat_user_id = Self::get_or_create_chat_user_id(&who)?;
+
+			// 更新隐私设置
+			ChatUserProfiles::<T>::mutate(chat_user_id, |profile_opt| {
+				if let Some(ref mut profile) = profile_opt {
+					if let Some(allow_stranger) = allow_stranger_messages {
+						profile.privacy_settings.allow_stranger_messages = allow_stranger;
+					}
+					if let Some(show_online) = show_online_status {
+						profile.privacy_settings.show_online_status = show_online;
+					}
+					if let Some(show_active) = show_last_active {
+						profile.privacy_settings.show_last_active = show_active;
+					}
+					profile.last_active = T::UnixTime::now().as_secs();
+				}
+			});
+
+			// 触发事件
+			Self::deposit_event(Event::PrivacySettingsUpdated {
+				chat_user_id,
+			});
+
+			Ok(())
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
@@ -1203,16 +1688,277 @@ pub mod pallet {
 		}
 
 		/// 函数级详细中文注释：查询用户的黑名单列表
-		/// 
+		///
 		/// # 参数
 		/// - `user`: 用户账户
-		/// 
+		///
 		/// # 返回
 		/// - Vec<T::AccountId>: 被该用户拉黑的账户列表
 		pub fn list_blocked_users(user: T::AccountId) -> Vec<T::AccountId> {
 			Blacklist::<T>::iter_prefix(&user)
 				.map(|(blocked, _)| blocked)
 				.collect()
+		}
+
+		// ===== ChatUserId 相关功能 =====
+
+		/// 函数级详细中文注释：生成11位数聊天用户ID
+		///
+		/// # 返回
+		/// - Ok(ChatUserId): 生成的唯一11位数ID
+		/// - Err(DispatchError): ID生成失败
+		///
+		/// # 说明
+		/// - ID范围：10,000,000,000 - 99,999,999,999 (11位数)
+		/// - 使用多源随机数确保唯一性和随机性
+		/// - 最大重试100次防止无限循环
+		pub fn generate_chat_user_id() -> Result<ChatUserId, DispatchError> {
+			const MIN_ID: u64 = 10_000_000_000;  // 11位数最小值
+			const MAX_ID: u64 = 99_999_999_999;  // 11位数最大值
+			const MAX_RETRIES: u8 = 100;         // 最大重试次数
+
+			for attempt in 0..MAX_RETRIES {
+				// 获取多源随机种子
+				let random_seed = Self::get_random_seed_for_chat(attempt);
+
+				// 从种子生成候选ID
+				let candidate_id = Self::generate_id_from_seed(random_seed, MIN_ID, MAX_ID);
+
+				// 检查ID是否已被使用
+				if !UsedChatUserIds::<T>::contains_key(&candidate_id) {
+					// 标记为已使用
+					UsedChatUserIds::<T>::insert(&candidate_id, true);
+					return Ok(candidate_id);
+				}
+			}
+
+			// 重试次数用完，返回错误
+			Err(Error::<T>::ChatUserIdGenerationFailed.into())
+		}
+
+		/// 函数级详细中文注释：获取聊天用户ID专用的随机种子
+		///
+		/// # 参数
+		/// - `attempt`: 当前重试次数，增加随机性
+		///
+		/// # 返回
+		/// - [u8; 32]: 32字节随机种子
+		///
+		/// # 说明
+		/// 结合多个随机源：系统随机数、时间戳、块号、重试次数、已用ID数量
+		fn get_random_seed_for_chat(attempt: u8) -> [u8; 32] {
+			let mut seed = [0u8; 32];
+
+			// 1. 系统随机数（主要随机源）
+			let random = T::Randomness::random(&b"chat_user_id"[..]).0;
+			seed[0..32].copy_from_slice(&random.as_ref()[0..32]);
+
+			// 2. 混合当前时间戳（增加时间随机性）
+			let timestamp = T::UnixTime::now().as_secs();
+			let timestamp_bytes = timestamp.to_le_bytes();
+			for i in 0..8 {
+				seed[i] ^= timestamp_bytes[i % 8];
+			}
+
+			// 3. 混合块号（增加区块随机性）
+			let block_number = <frame_system::Pallet<T>>::block_number();
+			if let Ok(block_u64) = TryInto::<u64>::try_into(block_number) {
+				let block_bytes = block_u64.to_le_bytes();
+				for i in 0..8 {
+					seed[8 + i] ^= block_bytes[i];
+				}
+			}
+
+			// 4. 混合重试次数（防止连续碰撞）
+			seed[16] ^= attempt;
+
+			// 5. 混合已生成ID数量（增加唯一性）
+			let used_count = UsedChatUserIds::<T>::iter().count() as u64;
+			let count_bytes = used_count.to_le_bytes();
+			for i in 0..8 {
+				seed[17 + i] ^= count_bytes[i];
+			}
+
+			seed
+		}
+
+		/// 函数级详细中文注释：从种子生成指定范围内的ID
+		///
+		/// # 参数
+		/// - `seed`: 32字节随机种子
+		/// - `min`: 最小ID值
+		/// - `max`: 最大ID值
+		///
+		/// # 返回
+		/// - u64: 范围内的随机ID
+		fn generate_id_from_seed(seed: [u8; 32], min: u64, max: u64) -> u64 {
+			// 使用前8字节生成基础随机数
+			let random_u64 = u64::from_le_bytes([
+				seed[0], seed[1], seed[2], seed[3],
+				seed[4], seed[5], seed[6], seed[7]
+			]);
+
+			// 使用中间8字节增加随机性
+			let random_u64_2 = u64::from_le_bytes([
+				seed[8], seed[9], seed[10], seed[11],
+				seed[12], seed[13], seed[14], seed[15]
+			]);
+
+			// 合并两个随机数
+			let combined_random = random_u64.wrapping_add(random_u64_2);
+
+			// 映射到指定范围
+			min + (combined_random % (max - min + 1))
+		}
+
+		/// 函数级详细中文注释：为账户获取或创建聊天用户ID
+		///
+		/// # 参数
+		/// - `account`: 要获取/创建ID的账户
+		///
+		/// # 返回
+		/// - Ok(ChatUserId): 聊天用户ID
+		/// - Err(DispatchError): 创建失败
+		///
+		/// # 说明
+		/// - 如果账户已有ChatUserId则直接返回
+		/// - 否则生成新ID并建立映射关系
+		/// - 同时创建默认用户资料
+		pub fn get_or_create_chat_user_id(
+			account: &T::AccountId
+		) -> Result<ChatUserId, DispatchError> {
+			// 检查是否已存在聊天用户ID
+			if let Some(existing_id) = AccountToChatUserId::<T>::get(account) {
+				return Ok(existing_id);
+			}
+
+			// 生成新的聊天用户ID
+			let new_chat_user_id = Self::generate_chat_user_id()?;
+
+			// 建立双向映射关系
+			AccountToChatUserId::<T>::insert(account, new_chat_user_id);
+			ChatUserIdToAccount::<T>::insert(new_chat_user_id, account);
+
+			// 创建默认用户资料
+			let profile = ChatUserProfile {
+				nickname: None,
+				avatar_cid: None,
+				signature: None,
+				status: UserStatus::Online,
+				privacy_settings: PrivacySettings::default(),
+				created_at: T::UnixTime::now().as_secs(),
+				last_active: T::UnixTime::now().as_secs(),
+			};
+
+			ChatUserProfiles::<T>::insert(new_chat_user_id, profile);
+
+			// 触发事件
+			Self::deposit_event(Event::ChatUserCreated {
+				account_id: account.clone(),
+				chat_user_id: new_chat_user_id,
+			});
+
+			Ok(new_chat_user_id)
+		}
+
+		/// 函数级详细中文注释：通过聊天用户ID查找账户
+		///
+		/// # 参数
+		/// - `chat_user_id`: 聊天用户ID
+		///
+		/// # 返回
+		/// - Some(T::AccountId): 对应的账户ID
+		/// - None: 不存在对应关系
+		pub fn get_account_by_chat_user_id(
+			chat_user_id: ChatUserId
+		) -> Option<T::AccountId> {
+			ChatUserIdToAccount::<T>::get(chat_user_id)
+		}
+
+		/// 函数级详细中文注释：通过账户查找聊天用户ID
+		///
+		/// # 参数
+		/// - `account`: 账户ID
+		///
+		/// # 返回
+		/// - Some(ChatUserId): 对应的聊天用户ID
+		/// - None: 尚未注册聊天用户
+		pub fn get_chat_user_id_by_account(
+			account: &T::AccountId
+		) -> Option<ChatUserId> {
+			AccountToChatUserId::<T>::get(account)
+		}
+
+		/// 函数级详细中文注释：获取聊天用户资料
+		///
+		/// # 参数
+		/// - `chat_user_id`: 聊天用户ID
+		///
+		/// # 返回
+		/// - Some(ChatUserProfile): 用户资料
+		/// - None: 用户不存在
+		pub fn get_chat_user_profile(
+			chat_user_id: ChatUserId
+		) -> Option<ChatUserProfile<T>> {
+			ChatUserProfiles::<T>::get(chat_user_id)
+		}
+
+		/// 函数级详细中文注释：检查陌生人消息权限
+		///
+		/// # 参数
+		/// - `sender_account`: 发送方账户
+		/// - `receiver_account`: 接收方账户
+		///
+		/// # 返回
+		/// - Ok(()): 允许发送
+		/// - Err(Error): 不允许发送
+		///
+		/// # 说明
+		/// 根据接收方的隐私设置决定是否允许陌生人发送消息
+		pub fn check_stranger_message_permission(
+			sender_account: &T::AccountId,
+			receiver_account: &T::AccountId,
+		) -> DispatchResult {
+			// 获取接收方聊天用户ID
+			let receiver_chat_id = Self::get_chat_user_id_by_account(receiver_account);
+
+			if let Some(chat_id) = receiver_chat_id {
+				if let Some(profile) = ChatUserProfiles::<T>::get(chat_id) {
+					// 检查隐私设置
+					if !profile.privacy_settings.allow_stranger_messages {
+						// 不允许陌生人消息，检查是否已有会话
+						let session_id = Self::get_session_id(&sender_account, &receiver_account);
+						ensure!(
+							Sessions::<T>::contains_key(&session_id),
+							Error::<T>::StrangerMessagesNotAllowed
+						);
+					}
+				}
+			}
+
+			Ok(())
+		}
+
+		/// 函数级详细中文注释：计算会话ID
+		///
+		/// # 参数
+		/// - `account1`: 第一个参与者账户
+		/// - `account2`: 第二个参与者账户
+		///
+		/// # 返回
+		/// - T::Hash: 会话的唯一标识符
+		///
+		/// # 说明
+		/// 为两个账户生成确定性的会话ID，无论参数顺序如何都返回相同结果
+		pub fn get_session_id(
+			account1: &T::AccountId,
+			account2: &T::AccountId,
+		) -> T::Hash {
+			// 确保账户顺序一致，生成确定性的会话ID
+			let mut participants = vec![account1.clone(), account2.clone()];
+			participants.sort();
+
+			T::Hashing::hash_of(&participants)
 		}
 	}
 }

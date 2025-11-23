@@ -70,6 +70,12 @@ members = [
     "pallets/memorial-space",  # 虚拟纪念空间管理
     "pallets/social",          # 社交关系管理
 
+    # 🆕 2025-11-21: 通讯录管理模块
+    "pallets/contacts",        # 联系人、分组、黑名单、好友申请
+
+    # 🚧 暂时禁用 - 需要适配 stable2506
+    # "pallets/public-media",
+
     "runtime",
 ]
 exclude = []

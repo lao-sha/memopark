@@ -19,6 +19,19 @@ pub mod media;
 pub mod works;  // 🆕 Phase 1: AI训练数据基础
 pub mod anti_spam;  // 🆕 Phase 5: 防刷机制
 pub mod governance;  // 🆕 Phase 1.4: 永久质押押金治理机制
+
+// 🆕 简化版基础测试
+#[cfg(test)]
+pub mod basic_tests;
+
+// 🆕 独立单元测试
+#[cfg(test)]
+pub mod simple_tests;
+
+// 🆕 集成测试 - 验证核心功能逻辑
+#[cfg(test)]
+pub mod integration_tests;
+
 pub use text::*;
 pub use media::*;
 pub use works::*;  // 🆕 导出作品相关类型
@@ -451,6 +464,7 @@ pub mod pallet {
     use frame_support::traits::ReservableCurrency;
     use frame_support::traits::Currency;
     use frame_support::traits::fungible::{MutateHold, Inspect, Mutate}; // 添加 Mutate trait
+    use frame_support::traits::{Randomness, UnixTime}; // 添加随机数和时间trait导入
     use sp_runtime::traits::{SaturatedConversion, AtLeast32BitUnsigned};
     use sp_runtime::Saturating;
     use sp_std::vec;
@@ -508,6 +522,12 @@ pub mod pallet {
         /// - 用于本 Pallet 的治理专用接口（gov*），执行"失钥救济/内容治理类 C/U/D"。
         /// - 建议在 Runtime 中绑定为 EitherOfDiverse<Root, EnsureContentSigner>，与其他内容域保持一致。
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        /// 函数级详细中文注释：特权账户免押金创建检查
+        /// - 用于检查是否为特权账户（root账户、治理委员会等）
+        /// - 特权账户可免押金创建逝者记录
+        /// - 建议绑定为 EitherOfDiverse<Root, GovernanceOrigin>
+        type PrivilegedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         /// 函数级详细中文注释：IPFS自动pin提供者，供逝者CID自动固定
         /// 
@@ -660,6 +680,16 @@ pub mod pallet {
         /// - 继承pallet-deceased的关注功能到统一的社交管理系统
         /// - 支持多类型目标关注（逝者、墓地、用户等）
         type Social: pallet_social::SocialInterface<Self::AccountId>;
+
+        /// 函数级详细中文注释：随机数生成器（用于生成10位数逝者ID）
+        /// - 用于生成范围在 1,000,000,000 - 9,999,999,999 的随机逝者ID
+        /// - 结合区块时间戳和系统随机性确保唯一性
+        type Randomness: frame_support::traits::Randomness<Self::Hash, BlockNumberFor<Self>>;
+
+        /// 函数级详细中文注释：时间提供器（用于随机数种子增强）
+        /// - 提供Unix时间戳用于ID生成的额外随机性
+        /// - 确保不同时间创建的逝者ID具有更好的随机分布
+        type UnixTime: frame_support::traits::UnixTime;
     }
 
     #[pallet::storage]
@@ -921,6 +951,22 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_operation_complaint_id)]
     pub type NextOperationComplaintId<T: Config> = StorageValue<_, u64, ValueQuery>;
+
+    // ============= 🆕 随机逝者ID生成相关存储项 =============
+
+    /// 函数级详细中文注释：已使用的逝者ID集合
+    /// - Key: 逝者ID（10位数：1,000,000,000 - 9,999,999,999）
+    /// - Value: bool（标记是否已使用）
+    /// - 用途：防止随机ID重复，确保每个逝者ID唯一
+    /// - 说明：由于需要支持10位数范围的ID，使用StorageMap记录已使用ID
+    #[pallet::storage]
+    pub type UsedDeceasedIds<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // deceased_id (10-digit range)
+        bool,
+        OptionQuery,
+    >;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -4490,6 +4536,9 @@ pub mod pallet {
             death_ts: Vec<u8>,              // 必填，格式 YYYYMMDD（8 位数字）
             links: Vec<Vec<u8>>,
         ) -> DispatchResult {
+            // ========== 🆕 特权检查（在ensure_signed之前） ==========
+            let is_privileged = T::PrivilegedOrigin::try_origin(origin.clone()).is_ok();
+
             let who = ensure_signed(origin)?;
             
             // 删除冗余检查：容量上限由 BoundedVec::try_push 自动管理（硬上限6）
@@ -4530,11 +4579,26 @@ pub mod pallet {
                 links_bv.try_push(lb).map_err(|_| Error::<T>::BadInput)?;
             }
 
-            let id = NextDeceasedId::<T>::get();
-            let next = id
-                .checked_add(&<T as pallet::Config>::DeceasedId::from(1u32))
-                .ok_or(Error::<T>::Overflow)?;
-            NextDeceasedId::<T>::put(next);
+            // ========== 🆕 随机逝者ID生成 ==========
+            // 生成随机10位数逝者ID（替换顺序ID生成）
+            let id_u64 = if is_privileged {
+                // 特权用户：生成随机ID，不受顺序限制
+                Self::generate_deceased_id()?
+            } else {
+                // 普通用户：同样使用随机ID（统一策略）
+                Self::generate_deceased_id()?
+            };
+
+            // 将u64转换为T::DeceasedId类型（使用饱和转换）
+            let id = T::DeceasedId::saturated_from(id_u64);
+
+            // 注意：NextDeceasedId存储项现已弃用，不再递增
+            // let id = NextDeceasedId::<T>::get();
+            // let next = id
+            //     .checked_add(&<T as pallet::Config>::DeceasedId::from(1u32))
+            //     .ok_or(Error::<T>::Overflow)?;
+            // NextDeceasedId::<T>::put(next);
+            // ======================================
 
             let now: BlockNumberFor<T> = <frame_system::Pallet<T>>::block_number();
             // 构造 token：使用Pallet级公共函数（已提取）
@@ -4577,77 +4641,80 @@ pub mod pallet {
             }
 
             // ========== 🆕 Phase 2.2: 分类索引维护（创建时） ==========
-            // 提前转换deceased_id为u64（后续多处使用）
-            use sp_runtime::traits::UniqueSaturatedInto;
-            let deceased_id_u64: u64 = id.unique_saturated_into();
+            // 直接使用之前生成的id_u64，避免重复转换
+            // use sp_runtime::traits::UniqueSaturatedInto;
+            // let deceased_id_u64: u64 = id.unique_saturated_into();
 
             // 默认分类为 Ordinary，添加到分类索引中
             let default_category = DeceasedCategory::Ordinary;
-            Self::add_to_category_index(default_category, deceased_id_u64);
+            // 🔧 Bug修复：初始化CategoryOf存储（之前遗漏导致所有deceased都显示为Ordinary）
+            CategoryOf::<T>::insert(id_u64, default_category);
+            Self::add_to_category_index(default_category, id_u64);
 
             // ========== 🆕 Phase 2.4: 时间索引维护 ==========
             let current_block = <frame_system::Pallet<T>>::block_number();
-            Self::add_to_creation_time_index(current_block, deceased_id_u64);
+            Self::add_to_creation_time_index(current_block, id_u64);
             // =========================================================
 
-            // ========== 🆕 Phase 1.4: 永久质押押金锁定 ==========
+            // ========== 🆕 Phase 1.4: 永久质押押金锁定（条件式） ==========
             // (deceased_id_u64 已在上面定义)
 
-            // 使用默认内容规模（Medium），后续可通过接口修改
-            let expected_scale = ContentScale::Medium;
+            // 特权用户跳过押金机制
+            if !is_privileged {
+                // 普通用户：需要锁定押金
 
-            // 计算押金金额（USDT）
-            let deposit_usdt = governance::DepositCalculator::<T>::calculate_creation_deposit_usdt(
-                &who,
-                expected_scale.clone(),
-            );
+                // 使用默认内容规模（Medium），后续可通过接口修改
+                let expected_scale = ContentScale::Medium;
 
-            // 通过PricingProvider获取汇率并转换为DUST
-            let deposit_dust = governance::ExchangeRateHelper::<T>::convert_usdt_to_dust(deposit_usdt)?;
+                // 计算押金金额（USDT）
+                let deposit_usdt = governance::DepositCalculator::<T>::calculate_creation_deposit_usdt(
+                    &who,
+                    expected_scale.clone(),
+                );
 
-            // 锁定押金（使用hold机制）
-            T::Fungible::hold(
-                &T::RuntimeHoldReason::from(crate::HoldReason::DeceasedOwnerDeposit),
-                &who,
-                deposit_dust,
-            )?;
+                // 通过PricingProvider获取汇率并转换为DUST
+                let deposit_dust = governance::ExchangeRateHelper::<T>::convert_usdt_to_dust(deposit_usdt)?;
 
-            // 创建押金记录（方案3：动态调整押金）
-            let deposit_record = OwnerDepositRecord {
-                owner: who.clone(),
-                deceased_id: deceased_id_u64,
-                target_deposit_usdt: deposit_usdt,  // 方案3：目标押金，默认等于初始押金
-                initial_deposit_usdt: deposit_usdt,
-                initial_deposit_dust: deposit_dust,
-                current_locked_dust: deposit_dust,
-                available_usdt: deposit_usdt,
-                available_dust: deposit_dust,
-                deducted_usdt: 0,
-                deducted_dust: BalanceOf::<T>::zero(),
-                exchange_rate: governance::ExchangeRateHelper::<T>::get_cached_rate()?,
-                locked_at: now,
-                expected_scale: expected_scale.clone(),
-                status: DepositStatus::Active,
-                adjustments: BoundedVec::default(),  // 方案3：调整历史，初始为空
-                supplement_warning: None,  // 方案3：补充警告，初始为None
-            };
+                // 锁定押金（使用hold机制）
+                T::Fungible::hold(
+                    &T::RuntimeHoldReason::from(crate::HoldReason::DeceasedOwnerDeposit),
+                    &who,
+                    deposit_dust,
+                )?;
 
-            // 存储押金记录
-            OwnerDepositRecords::<T>::insert(deceased_id_u64, deposit_record);
+                // 创建押金记录（方案3：动态调整押金）
+                let deposit_record = OwnerDepositRecord {
+                    owner: who.clone(),
+                    deceased_id: id_u64,
+                    target_deposit_usdt: deposit_usdt,  // 方案3：目标押金，默认等于初始押金
+                    initial_deposit_usdt: deposit_usdt,
+                    initial_deposit_dust: deposit_dust,
+                    current_locked_dust: deposit_dust,
+                    available_usdt: deposit_usdt,
+                    available_dust: deposit_dust,
+                    deducted_usdt: 0,
+                    deducted_dust: BalanceOf::<T>::zero(),
+                    exchange_rate: governance::ExchangeRateHelper::<T>::get_cached_rate()?,
+                    locked_at: now,
+                    expected_scale: expected_scale.clone(),
+                    status: DepositStatus::Active,
+                    adjustments: BoundedVec::default(),  // 方案3：调整历史，初始为空
+                    supplement_warning: None,  // 方案3：补充警告，初始为None
+                };
 
-            // ========== 🚀 Phase 1 优化：删除 Owner 索引 ==========
-            // ❌ 删除：OwnerDepositsByOwner 索引（改用遍历查询，低频操作可接受）
-            // 注：按 owner 查询押金时，改用 OwnerDepositRecords::iter() 过滤
-            // =====================================================
+                // 存储押金记录
+                OwnerDepositRecords::<T>::insert(id_u64, deposit_record);
 
-            // 发出押金锁定事件
-            Self::deposit_event(Event::DeceasedCreatedWithDeposit {
-                deceased_id: deceased_id_u64,
-                owner: who.clone(),
-                deposit_usdt,
-                deposit_dust,
-                expected_scale: expected_scale.as_u8(),
-            });
+                // 发出押金锁定事件
+                Self::deposit_event(Event::DeceasedCreatedWithDeposit {
+                    deceased_id: id_u64,
+                    owner: who.clone(),
+                    deposit_usdt,
+                    deposit_dust,
+                    expected_scale: expected_scale.as_u8(),
+                });
+            }
+            // 特权用户：跳过押金锁定，不创建押金记录，不发送押金事件
             // =================================================
 
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
@@ -6401,7 +6468,14 @@ pub mod pallet {
             let old_category = Self::category_of(deceased_id);
             CategoryOf::<T>::insert(deceased_id, category);
 
-            // 3. 发送事件
+            // 3.5. 维护分类索引（修复Bug：与approve_category_change保持一致）
+            Self::update_category_index(
+                old_category,
+                category,
+                deceased_id
+            );
+
+            // 4. 发送事件
             let note_cid_bounded = note_cid.map(|v| {
                 let mut bounded = BoundedVec::<u8, ConstU32<64>>::default();
                 for byte in v.iter().take(64) {
@@ -10623,6 +10697,120 @@ pub mod pallet {
                 }
             }
             false
+        }
+
+        // ============= 🆕 随机逝者ID生成算法 =============
+
+        /// 函数级详细中文注释：生成10位数逝者ID
+        ///
+        /// # 返回值
+        /// - `Ok(u64)`: 生成的唯一10位数ID（范围：1,000,000,000 - 9,999,999,999）
+        /// - `Err(DispatchError)`: ID生成失败（重试次数用完）
+        ///
+        /// # 说明
+        /// - ID范围：1,000,000,000 - 9,999,999,999 (10位数)
+        /// - 使用多源随机数确保唯一性和随机性
+        /// - 最大重试100次防止无限循环
+        /// - 结合系统随机数、时间戳、块号等多重熵源
+        pub fn generate_deceased_id() -> Result<u64, DispatchError> {
+            const MIN_ID: u64 = 1_000_000_000;  // 10位数最小值
+            const MAX_ID: u64 = 9_999_999_999;  // 10位数最大值
+            const MAX_RETRIES: u8 = 100;        // 最大重试次数
+
+            for attempt in 0..MAX_RETRIES {
+                // 获取多源随机种子
+                let random_seed = Self::get_random_seed_for_deceased(attempt);
+
+                // 从种子生成候选ID
+                let candidate_id = Self::generate_id_from_seed(random_seed, MIN_ID, MAX_ID);
+
+                // 检查ID是否已被使用
+                if !UsedDeceasedIds::<T>::contains_key(&candidate_id) {
+                    // 标记为已使用
+                    UsedDeceasedIds::<T>::insert(&candidate_id, true);
+                    return Ok(candidate_id);
+                }
+            }
+
+            // 重试次数用完，返回错误
+            Err(sp_runtime::DispatchError::Other(
+                "Failed to generate unique deceased ID after maximum retries"
+            ))
+        }
+
+        /// 函数级详细中文注释：获取逝者ID专用的随机种子
+        ///
+        /// # 参数
+        /// - `attempt`: 当前重试次数，增加随机性
+        ///
+        /// # 返回值
+        /// - `[u8; 32]`: 32字节随机种子
+        ///
+        /// # 说明
+        /// 结合多个随机源：系统随机数、时间戳、块号、重试次数、已用ID数量
+        fn get_random_seed_for_deceased(attempt: u8) -> [u8; 32] {
+            let mut seed = [0u8; 32];
+
+            // 1. 系统随机数（主要随机源）
+            let random = T::Randomness::random(&b"deceased_id"[..]).0;
+            seed[0..32].copy_from_slice(&random.as_ref()[0..32]);
+
+            // 2. 混合当前时间戳（增加时间随机性）
+            let timestamp = T::UnixTime::now().as_secs();
+            let timestamp_bytes = timestamp.to_le_bytes();
+            for i in 0..8 {
+                seed[i] ^= timestamp_bytes[i % 8];
+            }
+
+            // 3. 混合块号（增加区块随机性）
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            if let Ok(block_u64) = sp_std::convert::TryInto::<u64>::try_into(block_number) {
+                let block_bytes = block_u64.to_le_bytes();
+                for i in 0..8 {
+                    seed[8 + i] ^= block_bytes[i];
+                }
+            }
+
+            // 4. 混合重试次数（防止连续碰撞）
+            seed[16] ^= attempt;
+
+            // 5. 混合已生成ID数量（增加唯一性）
+            let used_count = UsedDeceasedIds::<T>::iter().count() as u64;
+            let count_bytes = used_count.to_le_bytes();
+            for i in 0..8 {
+                seed[17 + i] ^= count_bytes[i];
+            }
+
+            seed
+        }
+
+        /// 函数级详细中文注释：从种子生成指定范围内的ID
+        ///
+        /// # 参数
+        /// - `seed`: 32字节随机种子
+        /// - `min`: 最小ID值
+        /// - `max`: 最大ID值
+        ///
+        /// # 返回值
+        /// - `u64`: 范围内的随机ID
+        fn generate_id_from_seed(seed: [u8; 32], min: u64, max: u64) -> u64 {
+            // 使用前8字节生成基础随机数
+            let random_u64 = u64::from_le_bytes([
+                seed[0], seed[1], seed[2], seed[3],
+                seed[4], seed[5], seed[6], seed[7]
+            ]);
+
+            // 使用中间8字节增加随机性
+            let random_u64_2 = u64::from_le_bytes([
+                seed[8], seed[9], seed[10], seed[11],
+                seed[12], seed[13], seed[14], seed[15]
+            ]);
+
+            // 合并两个随机数
+            let combined_random = random_u64.wrapping_add(random_u64_2);
+
+            // 映射到指定范围
+            min + (combined_random % (max - min + 1))
         }
     }
 

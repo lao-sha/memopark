@@ -1,0 +1,617 @@
+/**
+ * 函数级详细中文注释：通讯录页面样式（纪念馆风格）
+ *
+ * 设计理念：
+ * - 继承首页纪念馆的深金色主调
+ * - 米白色背景，营造温暖怀念的氛围
+ * - 圆角设计，移动端友好
+ * - 与项目整体UI保持高度一致
+ */
+
+/* ==================== 主容器 ==================== */
+.contacts-page {
+  min-height: 100vh;
+  background: #f5f5f5; /* 与聊天界面一致的淡灰色背景 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  padding-bottom: 100px; /* 为底部导航留出空间 */
+}
+
+/* ==================== 顶部搜索栏 ==================== */
+.header-search {
+  background: linear-gradient(to right, #4CAF50, #66BB6A); /* 与聊天界面一致的绿色渐变 */
+  padding: 12px 16px 16px;
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-btn {
+  color: white !important;
+  border: none !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+  transform: scale(1.05);
+}
+
+.back-btn:active {
+  transform: scale(0.95);
+}
+
+.search-input {
+  flex: 1;
+  border-radius: 20px;
+  border: none;
+  height: 36px;
+}
+
+.search-input input {
+  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  color: #333;
+  font-size: 14px;
+}
+
+.search-input input::placeholder {
+  color: #999;
+}
+
+.calendar-icon {
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.calendar-icon:hover {
+  opacity: 1;
+}
+
+/* ==================== 快速操作区域 ==================== */
+.quick-actions {
+  background: white;
+  padding: 12px 16px;
+  border-bottom: 1px solid #E8E8E8;
+  position: sticky;
+  top: 76px; /* 搜索栏高度 */
+  z-index: 99;
+}
+
+.action-buttons {
+  width: 100%;
+  justify-content: space-between;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.primary-btn {
+  background: #4CAF50;
+  border-color: #4CAF50;
+  border-radius: 20px;
+  height: 36px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 90px;
+  font-size: 14px;
+}
+
+.primary-btn:hover {
+  background: #66BB6A;
+  border-color: #66BB6A;
+}
+
+.secondary-btn {
+  border: 1px solid #4CAF50;
+  color: #4CAF50;
+  border-radius: 20px;
+  height: 36px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 85px;
+  background: white;
+  font-size: 14px;
+}
+
+.secondary-btn:hover {
+  background: #E8F5E8;
+  border-color: #66BB6A;
+  color: #66BB6A;
+}
+
+/* ==================== 页面内容区域 ==================== */
+.page-content {
+  padding: 16px;
+}
+
+.contacts-tabs .ant-tabs-tab {
+  color: #666;
+  font-weight: 500;
+}
+
+.contacts-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+.contacts-tabs .ant-tabs-ink-bar {
+  background: #4CAF50;
+}
+
+.contacts-tabs .ant-tabs-content-holder {
+  background: transparent;
+}
+
+/* ==================== 联系人列表 ==================== */
+.contacts-list,
+.groups-list {
+  background: transparent;
+}
+
+.contact-item-wrapper,
+.group-item-wrapper {
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.contact-card,
+.group-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.1);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.contact-card:hover,
+.group-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.2);
+}
+
+.contact-card::before,
+.group-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(76, 175, 80, 0.05), transparent);
+  transition: left 0.5s ease;
+}
+
+.contact-card:hover::before,
+.group-card:hover::before {
+  left: 100%;
+}
+
+/* ==================== 联系人内容 ==================== */
+.contact-content,
+.group-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contact-info-section,
+.group-info-section {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 12px;
+}
+
+.contact-avatar {
+  background: linear-gradient(135deg, #4CAF50, #66BB6A);
+  color: white;
+  flex-shrink: 0;
+}
+
+.group-icon {
+  font-size: 20px;
+  color: #4CAF50;
+  flex-shrink: 0;
+}
+
+.contact-details,
+.group-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.contact-name,
+.group-name {
+  font-size: 15px;
+  color: #2C2C2C;
+  margin: 0;
+}
+
+.contact-status {
+  font-size: 12px;
+}
+
+.group-count {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+}
+
+.contact-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.group-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+/* ==================== 操作按钮 ==================== */
+.contact-actions {
+  flex-shrink: 0;
+}
+
+.action-btn {
+  color: #999;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  color: #4CAF50;
+  background: rgba(76, 175, 80, 0.05);
+}
+
+/* ==================== 空状态 ==================== */
+.contacts-list .ant-empty,
+.groups-list .ant-empty {
+  padding: 40px 20px;
+}
+
+.contacts-list .ant-empty-description,
+.groups-list .ant-empty-description {
+  color: #999;
+  font-size: 14px;
+}
+
+/* ==================== 悬浮按钮 ==================== */
+.ant-float-btn-primary {
+  background: #4CAF50;
+}
+
+.ant-float-btn-primary:hover {
+  background: #66BB6A;
+}
+
+.ant-float-btn-default {
+  background: white;
+  border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+.ant-float-btn-default:hover {
+  border-color: #4CAF50;
+  color: #4CAF50;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 360px) {
+  .action-buttons {
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .primary-btn,
+  .secondary-btn {
+    flex: 1;
+    min-width: 70px;
+    font-size: 13px;
+    padding: 0 8px;
+  }
+
+  .contact-name-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .contact-status {
+    align-self: flex-start;
+  }
+}
+
+/* ==================== 列表项动画 ==================== */
+.contact-item-wrapper:hover .contact-name,
+.group-item-wrapper:hover .group-name {
+  color: #4CAF50;
+  transition: color 0.2s ease;
+}
+
+.contact-item-wrapper:hover .contact-avatar {
+  transform: scale(1.05);
+  transition: transform 0.2s ease;
+}
+
+.group-item-wrapper:hover .group-icon {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+  color: #66BB6A;
+}
+
+/* ==================== 点击反馈 ==================== */
+.contact-card:active,
+.group-card:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.08);
+}
+
+/* ==================== 状态指示器 ==================== */
+.ant-badge-status-success {
+  background: #52c41a;
+}
+
+.ant-badge-status-warning {
+  background: #faad14;
+}
+
+.ant-badge-status-processing {
+  background: #4CAF50;
+}
+
+/* ==================== 标签页内容 ==================== */
+.contacts-tabs .ant-tabs-content {
+  padding-top: 8px;
+}
+
+.contacts-tabs .ant-list-item {
+  padding: 0;
+  border: none;
+}
+
+/* ==================== 加载状态 ==================== */
+.contacts-list .ant-spin-container,
+.groups-list .ant-spin-container {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==================== 提示文本 ==================== */
+.contact-card::after,
+.group-card::after {
+  content: '点击查看详情';
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  font-size: 11px;
+  color: #ccc;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.contact-card:hover::after,
+.group-card:hover::after {
+  opacity: 1;
+}
+
+/* ==================== 搜索高亮 ==================== */
+.search-highlight {
+  background: rgba(76, 175, 80, 0.2);
+  color: #2E7D32;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+/* ==================== 群聊列表样式 ==================== */
+.group-chats-list {
+  background: transparent;
+}
+
+.group-chat-item-wrapper {
+  margin-bottom: 12px;
+  padding: 0;
+  border-bottom: none;
+}
+
+.group-chat-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.group-chat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.25);
+}
+
+.group-chat-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.group-chat-info-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.group-chat-avatar {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: white;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.25);
+}
+
+.group-chat-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-chat-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.group-chat-name {
+  font-size: 16px;
+  color: #333;
+  font-weight: 600;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.encryption-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.group-chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.group-chat-id {
+  font-size: 12px;
+  color: #2E7D32;
+  font-weight: 500;
+  background: rgba(76, 175, 80, 0.08);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.group-chat-member-count {
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.public-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  margin: 0;
+  border-radius: 8px;
+}
+
+.group-chat-description {
+  font-size: 13px;
+  color: #999;
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+.group-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.group-chat-actions .action-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.group-chat-actions .action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+}
+
+/* ==================== 响应式优化 ==================== */
+@media (max-width: 380px) {
+  .group-chat-name-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .group-chat-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .group-chat-actions .action-btn {
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}

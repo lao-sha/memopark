@@ -1,5 +1,6 @@
 import React from 'react';
 import { ConfigProvider, Alert, App as AntdApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import zhCN from 'antd/locale/zh_CN';
 import { WalletProvider } from './providers/WalletProvider';
 import memorialTheme from './theme/colors';
@@ -51,11 +52,29 @@ import UIShowcase from './components/ui/UIShowcase';
  * 函数级详细中文注释：应用主组件
  * - 提供中文语言环境配置
  * - 包装钱包提供者和认证页面
- * - 安装全局“自动 Pin”监听器，实现内容保存后的无感计费接入
+ * - 安装全局"自动 Pin"监听器，实现内容保存后的无感计费接入
  * - 包裹 GovernanceUiProvider，提供专家/治理模式全局开关与齿轮入口
+ * - 配置 React Query 客户端，提供数据缓存和状态管理
  */
 const App: React.FC = () => {
   console.log('🚀 App组件开始渲染');
+
+  // 创建 QueryClient 实例
+  const [queryClient] = React.useState(
+    () => new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 5 * 60 * 1000, // 5分钟
+          gcTime: 10 * 60 * 1000,   // 10分钟垃圾回收
+          retry: 1,
+          refetchOnWindowFocus: false,
+        },
+        mutations: {
+          retry: 1,
+        },
+      },
+    })
+  );
 
   try {
     // 安装自动 Pin 监听器（仅一次）
@@ -70,11 +89,12 @@ const App: React.FC = () => {
     }, []);
 
     return (
-      <ConfigProvider locale={zhCN} theme={memorialTheme}>
-        <AntdApp>
-          <div className="App">
-            <GovernanceUiProvider>
-              <WalletProvider>
+      <QueryClientProvider client={queryClient}>
+        <ConfigProvider locale={zhCN} theme={memorialTheme}>
+          <AntdApp>
+            <div className="App">
+              <GovernanceUiProvider>
+                <WalletProvider>
                   {(() => {
                     const Dynamic = resolveRoute(hash);
                     if (Dynamic) {
@@ -97,6 +117,7 @@ const App: React.FC = () => {
           </div>
         </AntdApp>
       </ConfigProvider>
+    </QueryClientProvider>
     );
   } catch (error) {
     console.error('❌ App组件渲染错误:', error);

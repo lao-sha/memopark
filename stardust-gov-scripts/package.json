@@ -26,11 +26,10 @@
   "author": "Memopark",
   "license": "MIT",
   "dependencies": {
-    "@polkadot/api": "^10.9.1",
-    "@polkadot/util-crypto": "^12.3.2"
+    "@polkadot/api": "^16.5.2",
+    "@polkadot/util-crypto": "^13.5.8"
   },
   "engines": {
     "node": ">=16.0.0"
   }
 }
-

@@ -38,6 +38,9 @@ import {
   type SubmitCategoryChangeParams,
 } from '../../services/deceasedService'
 import { CategoryBadge, getCategoryLabel } from './CategoryBadge'
+import { AmountFormatter } from '../common/AmountFormatter'
+import { useCategoryChangeDeposit } from '../../hooks/useDepositInfo'
+import { useExchangeRate } from '../../hooks/useExchangeRate'
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -74,6 +77,16 @@ export const CategoryChangeRequestForm: React.FC<CategoryChangeRequestFormProps>
   const [reasonFile, setReasonFile] = useState<UploadFile[]>([])
   const [evidenceFiles, setEvidenceFiles] = useState<UploadFile[]>([])
   const [uploading, setUploading] = useState(false)
+
+  // 查询动态押金信息
+  const { depositInfo, isLoading: isDepositLoading, isError: isDepositError } = useCategoryChangeDeposit({
+    enabled: open // 只有在弹窗打开时才查询
+  })
+
+  // 查询汇率信息
+  const { exchangeRate, isLoading: isRateLoading } = useExchangeRate({
+    enabled: open
+  })
 
   /**
    * 函数级详细中文注释：上传文件到IPFS
@@ -207,7 +220,23 @@ export const CategoryChangeRequestForm: React.FC<CategoryChangeRequestFormProps>
         message="申请说明"
         description={
           <ul style={{ paddingLeft: 20, margin: 0 }}>
-            <li>提交申请需要冻结 <Text strong>10 DUST</Text> 押金</li>
+            <li>
+              提交申请需要冻结{' '}
+              <AmountFormatter
+                dustAmount={depositInfo?.dustAmount}
+                usdtAmount={depositInfo?.usdtAmount}
+                exchangeRate={exchangeRate?.rawRate}
+                mode="both"
+                strong
+                loading={isDepositLoading || isRateLoading}
+                showRate
+              />{' '}
+              押金
+              {isDepositError && <Text type="danger">（押金查询失败，请刷新重试）</Text>}
+              {depositInfo?.isEstimate && (
+                <Text type="secondary">（预估金额）</Text>
+              )}
+            </li>
             <li>委员会将在 <Text strong>7天</Text> 内审核您的申请</li>
             <li>审核通过后，押金将全额退还</li>
             <li>审核拒绝后，将扣除50%押金作为处理费</li>
@@ -314,9 +343,14 @@ export const CategoryChangeRequestForm: React.FC<CategoryChangeRequestFormProps>
               type="primary"
               htmlType="submit"
               loading={loading}
-              disabled={!reasonFile[0]}
+              disabled={!reasonFile[0] || isDepositLoading}
             >
-              {uploading ? '上传文件中...' : loading ? '提交中...' : '提交申请（冻结10 DUST）'}
+              {uploading ? '上传文件中...' :
+               loading ? '提交中...' :
+               `提交申请（冻结${
+                 isDepositLoading ? '...' :
+                 depositInfo ? `${depositInfo.dustDisplay} DUST` : '10 DUST'
+               }）`}
             </Button>
           </Space>
         </Form.Item>

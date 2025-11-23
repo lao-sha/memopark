@@ -18,6 +18,7 @@ const testDeceasedData = [
     fullName: "张三",
     bio: "普通工人，热爱生活",
     category: "Ordinary",  // 普通民众，不应在公众纪念馆显示
+    categoryCode: 0,
     birthDate: new Date('1950-01-01'),
     deathDate: new Date('2020-01-01'),
     gender: "Male"
@@ -26,6 +27,7 @@ const testDeceasedData = [
     fullName: "毛泽东",
     bio: "中华人民共和国开国领袖，伟大的马克思主义者",
     category: "HistoricalFigure",  // 历史人物，应在公众纪念馆显示
+    categoryCode: 1,
     birthDate: new Date('1893-12-26'),
     deathDate: new Date('1976-09-09'),
     gender: "Male"
@@ -34,6 +36,7 @@ const testDeceasedData = [
     fullName: "黄继光",
     bio: "中国人民志愿军战士，在抗美援朝战争中壮烈牺牲",
     category: "Martyr",  // 革命烈士，应在公众纪念馆显示
+    categoryCode: 2,
     birthDate: new Date('1931-01-08'),
     deathDate: new Date('1952-10-20'),
     gender: "Male"
@@ -42,6 +45,7 @@ const testDeceasedData = [
     fullName: "袁隆平",
     bio: "中国杂交水稻育种专家，被誉为杂交水稻之父",
     category: "Hero",  // 英雄模范，应在公众纪念馆显示
+    categoryCode: 3,
     birthDate: new Date('1930-09-07'),
     deathDate: new Date('2021-05-22'),
     gender: "Male"
@@ -50,6 +54,7 @@ const testDeceasedData = [
     fullName: "李明",
     bio: "普通教师，为教育事业奉献一生",
     category: "Ordinary",  // 普通民众，不应在公众纪念馆显示
+    categoryCode: 0,
     birthDate: new Date('1960-03-15'),
     deathDate: new Date('2022-07-10'),
     gender: "Male"
@@ -58,6 +63,7 @@ const testDeceasedData = [
     fullName: "邓小平",
     bio: "中国改革开放的总设计师",
     category: "HistoricalFigure",  // 历史人物，应在公众纪念馆显示
+    categoryCode: 1,
     birthDate: new Date('1904-08-22'),
     deathDate: new Date('1997-02-19'),
     gender: "Male"
@@ -89,6 +95,10 @@ async function createTestData() {
       try {
         console.log(`📝 创建逝者 ${index + 1}/${testDeceasedData.length}: ${data.fullName} (${data.category})`);
 
+        // 🔧 在发送交易前，先查询当前的 nextDeceasedId（作为预期ID）
+        const expectedIdQuery = await api.query.deceased.nextDeceasedId();
+        const expectedId = expectedIdQuery.toNumber();
+
         // 创建逝者交易
         const createTx = api.tx.deceased.createDeceased(
           data.fullName,                               // name: Vec<u8>
@@ -99,28 +109,100 @@ async function createTestData() {
           []                                          // links: Vec<Vec<u8>>
         );
 
-        // 发送交易
-        const hash = await createTx.signAndSend(alice);
-        console.log(`  ✅ 交易已提交，哈希: ${hash.toString().substring(0, 10)}...`);
+        // 发送交易并等待交易成功，然后从链上查询最新逝者ID
+        let deceasedId = null;
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('交易超时(30秒)')), 30000);
+
+          createTx.signAndSend(alice, async ({ status, dispatchError, events }) => {
+            // 检查交易错误
+            if (dispatchError) {
+              clearTimeout(timeout);
+              const errorMessage = dispatchError.isModule
+                ? api.registry.findMetaError(dispatchError.asModule).docs.join(' ')
+                : dispatchError.toString();
+              reject(new Error(errorMessage));
+              return;
+            }
+
+            // 检查区块确认并解析事件
+            if (status.isInBlock) {
+              console.log(`  ✅ 交易已进入区块: ${status.asInBlock.toHex().substring(0, 10)}...`);
+            }
+
+            // 最终确认
+            if (status.isFinalized) {
+              clearTimeout(timeout);
+
+              // 方案1: 尝试从事件中获取ID
+              events.forEach(({ event }) => {
+                // 优先捕获 DeceasedCreated 事件
+                if (event.section === 'deceased' && event.method === 'DeceasedCreated') {
+                  deceasedId = event.data[0] ? event.data[0].toNumber() : null;
+                  console.log(`  🎉 逝者创建成功！ID: ${deceasedId} (从 DeceasedCreated 事件获取)`);
+                }
+                // 备用方案：捕获 DeceasedCreatedWithDeposit 事件
+                else if (event.section === 'deceased' && event.method === 'DeceasedCreatedWithDeposit') {
+                  const eventData = event.data.toJSON();
+                  deceasedId = eventData.deceased_id || eventData.deceasedId;
+                  console.log(`  🎉 逝者创建成功！ID: ${deceasedId} (从 DeceasedCreatedWithDeposit 事件获取)`);
+                }
+              });
+
+              // 方案2: 如果事件解析失败，使用预期ID
+              if (deceasedId === null) {
+                deceasedId = expectedId;
+                console.log(`  🎉 逝者创建成功！ID: ${deceasedId} (使用预期ID)`);
+              }
+
+              if (deceasedId === null) {
+                reject(new Error('无法获取逝者ID（事件和链上查询均失败）'));
+              } else {
+                resolve(deceasedId);
+              }
+            }
+          }).catch(err => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+        });
 
         // 如果不是普通民众，设置特殊分类
-        if (data.category !== 'Ordinary') {
-          // 等待一个区块以确保逝者已创建
-          await new Promise(resolve => setTimeout(resolve, 6000));
+        if (data.category !== 'Ordinary' && deceasedId !== null) {
+          console.log(`  🏷️  正在设置分类为: ${data.category}`);
 
           // 强制设置分类（Root权限）
           const setCategoryTx = api.tx.deceased.forceSetCategory(
-            index, // 假设逝者ID就是索引
-            data.category,
+            deceasedId,
+            data.categoryCode,  // 使用数字代码：0=Ordinary, 1=HistoricalFigure, 2=Martyr, 3=Hero, etc.
             `设置为${data.category}分类`
           );
 
-          const categoryHash = await setCategoryTx.signAndSend(alice);
-          console.log(`  🏷️  分类已设置为: ${data.category}`);
-        }
+          // 等待分类设置完成
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('分类设置超时(30秒)')), 30000);
 
-        console.log('  ⏱️  等待区块确认...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+            setCategoryTx.signAndSend(alice, ({ status, dispatchError }) => {
+              if (dispatchError) {
+                clearTimeout(timeout);
+                const errorMessage = dispatchError.isModule
+                  ? api.registry.findMetaError(dispatchError.asModule).docs.join(' ')
+                  : dispatchError.toString();
+                reject(new Error(errorMessage));
+                return;
+              }
+
+              if (status.isFinalized) {
+                clearTimeout(timeout);
+                console.log(`  ✅ 分类已设置为: ${data.category}`);
+                resolve();
+              }
+            }).catch(err => {
+              clearTimeout(timeout);
+              reject(err);
+            });
+          });
+        }
 
       } catch (error) {
         console.error(`  ❌ 创建失败: ${error.message}`);

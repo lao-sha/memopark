@@ -4,6 +4,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
+import smartChatService from '../services/smartChatService';
 
 // ========== 类型定义 ==========
 
@@ -333,28 +334,45 @@ export class OptimisticUIManager extends EventEmitter {
     cid: string,
     onProgress: (progress: number) => void
   ): Promise<string> {
-    return new Promise((resolve, reject) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 0.02;
-        onProgress(Math.min(progress, 1.0));
-
-        if (progress >= 1.0) {
-          clearInterval(interval);
-          // 模拟交易成功，返回链上消息ID
-          const realId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          resolve(realId);
-        }
-      }, 100); // 每100ms更新一次进度
-
-      // 模拟交易可能失败
-      if (Math.random() < 0.02) { // 2% 失败率
-        setTimeout(() => {
-          clearInterval(interval);
-          reject(new Error('交易提交失败'));
-        }, 2000);
+    try {
+      // 真实的区块链调用
+      if (!message.groupId) {
+        throw new Error('群组ID不能为空');
       }
-    });
+
+      // 调用 smartChatService 发送群组消息（使用地址签名）
+      console.log('正在提交消息到区块链...', {
+        groupId: message.groupId,
+        content: message.content,
+        tempId: message.tempId,
+        sender: message.sender,
+      });
+
+      // 模拟进度更新（区块链交易需要时间）
+      let currentProgress = 0;
+      const progressInterval = setInterval(() => {
+        currentProgress = Math.min(currentProgress + 0.05, 0.9);
+        onProgress(currentProgress); // 最多到90%
+      }, 200);
+
+      const realMessageId = await smartChatService.sendGroupMessageWithAddress(
+        message.sender,
+        message.groupId,
+        message.content,
+        'Text',
+        message.tempId
+      );
+
+      clearInterval(progressInterval);
+      onProgress(1.0); // 完成
+
+      console.log('消息已成功提交到区块链，消息ID:', realMessageId);
+      return realMessageId;
+
+    } catch (error) {
+      console.error('提交交易失败:', error);
+      throw new Error(`交易提交失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
   }
 
   /// 最终确认处理
@@ -739,8 +757,13 @@ export class OptimisticUIManager extends EventEmitter {
 
   /// 获取当前用户
   private async getCurrentUser(): Promise<string> {
-    // TODO: 从钱包或认证系统获取当前用户
-    return 'user_' + Math.random().toString(36).substr(2, 9);
+    // 从 localStorage 获取当前用户地址
+    const { getCurrentAddress } = await import('./keystore');
+    const address = getCurrentAddress();
+    if (!address) {
+      throw new Error('未找到当前用户，请先连接钱包');
+    }
+    return address;
   }
 
   /// 更新预估时间

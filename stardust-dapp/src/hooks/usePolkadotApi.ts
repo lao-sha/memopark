@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ApiPromise } from '@polkadot/api';
-import { getApi } from '../lib/providers';
+import { getApi } from '../lib/polkadot';
 
 export interface PolkadotApiState {
   api: ApiPromise | null;

@@ -1182,3 +1182,257 @@ fn test_cleanup_respects_expiration_time() {
 	});
 }
 
+// ============================================================================
+// ChatUserId 功能测试
+// ============================================================================
+
+#[test]
+fn test_register_chat_user_works() {
+	new_test_ext().execute_with(|| {
+		// 注册聊天用户（不带昵称）
+		assert_ok!(Chat::register_chat_user(
+			RuntimeOrigin::signed(ALICE),
+			None
+		));
+
+		// 验证：账户已有ChatUserId
+		let chat_user_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+		assert!(chat_user_id >= 10_000_000_000); // 11位数最小值
+		assert!(chat_user_id <= 99_999_999_999); // 11位数最大值
+
+		// 验证：反向映射存在
+		let account = Chat::get_account_by_chat_user_id(chat_user_id).unwrap();
+		assert_eq!(account, ALICE);
+
+		// 验证：用户资料已创建
+		let profile = Chat::get_chat_user_profile(chat_user_id).unwrap();
+		assert_eq!(profile.nickname, None);
+		assert_eq!(profile.status, crate::UserStatus::Online);
+		assert_eq!(profile.privacy_settings.allow_stranger_messages, true);
+
+		// 测试重复注册应该失败
+		assert_noop!(
+			Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None),
+			Error::<Test>::ChatUserAlreadyExists
+		);
+	});
+}
+
+#[test]
+fn test_register_chat_user_with_nickname() {
+	new_test_ext().execute_with(|| {
+		let nickname = b"Alice".to_vec();
+
+		// 注册聊天用户（带昵称）
+		assert_ok!(Chat::register_chat_user(
+			RuntimeOrigin::signed(ALICE),
+			Some(nickname.clone())
+		));
+
+		// 验证：昵称已设置
+		let chat_user_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+		let profile = Chat::get_chat_user_profile(chat_user_id).unwrap();
+		assert_eq!(profile.nickname.unwrap().to_vec(), nickname);
+	});
+}
+
+#[test]
+fn test_chat_user_id_uniqueness() {
+	new_test_ext().execute_with(|| {
+		// 注册多个用户
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(BOB), None));
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(CHARLIE), None));
+
+		// 获取所有ChatUserId
+		let alice_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+		let bob_id = Chat::get_chat_user_id_by_account(&BOB).unwrap();
+		let charlie_id = Chat::get_chat_user_id_by_account(&CHARLIE).unwrap();
+
+		// 验证：所有ID都不相同
+		assert_ne!(alice_id, bob_id);
+		assert_ne!(bob_id, charlie_id);
+		assert_ne!(alice_id, charlie_id);
+
+		// 验证：所有ID都在11位数范围内
+		for id in [alice_id, bob_id, charlie_id] {
+			assert!(id >= 10_000_000_000);
+			assert!(id <= 99_999_999_999);
+		}
+	});
+}
+
+#[test]
+fn test_update_chat_profile() {
+	new_test_ext().execute_with(|| {
+		// 注册用户
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		let chat_user_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+
+		// 更新资料
+		let new_nickname = b"New Alice".to_vec();
+		let new_signature = b"Hello World!".to_vec();
+		let avatar_cid = b"QmTest123".to_vec();
+
+		assert_ok!(Chat::update_chat_profile(
+			RuntimeOrigin::signed(ALICE),
+			Some(new_nickname.clone()),
+			Some(avatar_cid.clone()),
+			Some(new_signature.clone())
+		));
+
+		// 验证：资料已更新
+		let profile = Chat::get_chat_user_profile(chat_user_id).unwrap();
+		assert_eq!(profile.nickname.unwrap().to_vec(), new_nickname);
+		assert_eq!(profile.avatar_cid.unwrap().to_vec(), avatar_cid);
+		assert_eq!(profile.signature.unwrap().to_vec(), new_signature);
+	});
+}
+
+#[test]
+fn test_set_user_status() {
+	new_test_ext().execute_with(|| {
+		// 注册用户
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		let chat_user_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+
+		// 测试设置不同状态
+		for (status_code, expected_status) in [
+			(0, crate::UserStatus::Online),
+			(1, crate::UserStatus::Offline),
+			(2, crate::UserStatus::Busy),
+			(3, crate::UserStatus::Away),
+			(4, crate::UserStatus::Invisible),
+		] {
+			assert_ok!(Chat::set_user_status(
+				RuntimeOrigin::signed(ALICE),
+				status_code
+			));
+
+			let profile = Chat::get_chat_user_profile(chat_user_id).unwrap();
+			assert_eq!(profile.status, expected_status);
+		}
+
+		// 测试无效状态代码
+		assert_noop!(
+			Chat::set_user_status(RuntimeOrigin::signed(ALICE), 99),
+			Error::<Test>::InvalidUserStatus
+		);
+	});
+}
+
+#[test]
+fn test_privacy_settings() {
+	new_test_ext().execute_with(|| {
+		// 注册用户
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		let chat_user_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+
+		// 更新隐私设置
+		assert_ok!(Chat::update_privacy_settings(
+			RuntimeOrigin::signed(ALICE),
+			Some(false), // 不允许陌生人消息
+			Some(false), // 不显示在线状态
+			Some(false), // 不显示最后活跃时间
+		));
+
+		// 验证：隐私设置已更新
+		let profile = Chat::get_chat_user_profile(chat_user_id).unwrap();
+		assert_eq!(profile.privacy_settings.allow_stranger_messages, false);
+		assert_eq!(profile.privacy_settings.show_online_status, false);
+		assert_eq!(profile.privacy_settings.show_last_active, false);
+	});
+}
+
+#[test]
+fn test_send_message_with_chat_user_id() {
+	new_test_ext().execute_with(|| {
+		// 注册两个用户
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(BOB), None));
+
+		let alice_chat_id = Chat::get_chat_user_id_by_account(&ALICE).unwrap();
+		let bob_chat_id = Chat::get_chat_user_id_by_account(&BOB).unwrap();
+
+		// 发送消息
+		let cid = encrypted_cid(1);
+		assert_ok!(Chat::send_message(
+			RuntimeOrigin::signed(ALICE),
+			BOB,
+			cid.clone(),
+			0,
+			None
+		));
+
+		// 验证：消息包含ChatUserId信息
+		let msg = Chat::get_message(0).unwrap();
+		assert_eq!(msg.sender_chat_id, Some(alice_chat_id));
+		assert_eq!(msg.receiver_chat_id, Some(bob_chat_id));
+		assert_eq!(msg.sender, ALICE);
+		assert_eq!(msg.receiver, BOB);
+	});
+}
+
+#[test]
+fn test_stranger_message_restriction() {
+	new_test_ext().execute_with(|| {
+		// 注册BOB用户并设置不允许陌生人消息
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(BOB), None));
+		assert_ok!(Chat::update_privacy_settings(
+			RuntimeOrigin::signed(BOB),
+			Some(false), // 不允许陌生人消息
+			None,
+			None,
+		));
+
+		// ALICE（未注册）尝试发送消息给BOB应该失败
+		assert_noop!(
+			Chat::send_message(
+				RuntimeOrigin::signed(ALICE),
+				BOB,
+				encrypted_cid(1),
+				0,
+				None
+			),
+			Error::<Test>::StrangerMessagesNotAllowed
+		);
+
+		// ALICE注册后再次尝试，仍应失败（因为没有已有会话）
+		assert_ok!(Chat::register_chat_user(RuntimeOrigin::signed(ALICE), None));
+		assert_noop!(
+			Chat::send_message(
+				RuntimeOrigin::signed(ALICE),
+				BOB,
+				encrypted_cid(1),
+				0,
+				None
+			),
+			Error::<Test>::StrangerMessagesNotAllowed
+		);
+	});
+}
+
+#[test]
+fn test_automatic_chat_user_creation() {
+	new_test_ext().execute_with(|| {
+		// 未注册的用户发送消息时应自动创建ChatUserId
+		let cid = encrypted_cid(1);
+		assert_ok!(Chat::send_message(
+			RuntimeOrigin::signed(ALICE),
+			BOB,
+			cid,
+			0,
+			None
+		));
+
+		// 验证：ALICE和BOB都自动获得了ChatUserId
+		assert!(Chat::get_chat_user_id_by_account(&ALICE).is_some());
+		assert!(Chat::get_chat_user_id_by_account(&BOB).is_some());
+
+		// 验证：消息包含ChatUserId
+		let msg = Chat::get_message(0).unwrap();
+		assert!(msg.sender_chat_id.is_some());
+		assert!(msg.receiver_chat_id.is_some());
+	});
+}
+

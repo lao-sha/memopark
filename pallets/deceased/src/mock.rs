@@ -3,7 +3,7 @@
 use crate as pallet_deceased;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64},
+    traits::{ConstU32, ConstU64, Get},
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -11,7 +11,8 @@ use sp_runtime::{
     BuildStorage,
 };
 use sp_std::vec::Vec;
-use sp_io;
+use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 
 #[allow(dead_code)]
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -201,7 +202,6 @@ impl pallet_deceased::Config for Test {
     type DeceasedId = u64;
     type StringLimit = ConstU32<64>;
     type MaxLinks = ConstU32<10>;
-    type MaxFollowers = ConstU32<1000>;
     type TokenLimit = ConstU32<128>;
     type WeightInfo = TestWeightInfo;
     type GovernanceOrigin = EnsureRootOr100;
@@ -236,6 +236,25 @@ impl pallet_deceased::Config for Test {
     // 共享类型
     type Currency = MockCurrency;
     type MaxTokenLen = ConstU32<128>;
+
+    // ========== 🆕 新增配置项 ==========
+    /// 函数级中文注释：特权Origin - 允许账户0（Root）和账户100进行特权操作
+    type PrivilegedOrigin = EnsureRootOr100;
+
+    /// 函数级中文注释：随机数生成器 - 测试用简单随机数实现
+    type Randomness = TestRandomness;
+
+    /// 函数级中文注释：Unix时间提供器 - 测试用固定时间
+    type UnixTime = TestTime;
+
+    // ========== 新增缺失的配置项 ==========
+    type PricingProvider = MockPricingProvider;
+    type CommitteeOrigin = frame_system::EnsureRoot<u64>;
+    type ApprovalThreshold = ConstU32<3>;
+    type Fungible = MockFungible;  // 使用Mock实现
+    type RuntimeHoldReason = MockHoldReason;
+    type TreasuryAccount = TreasuryAccountProvider;
+    type Social = MockSocial;  // 使用Mock实现
 }
 
 /// 函数级中文注释：Mock的IpfsPinner实现，简化pin逻辑
@@ -260,6 +279,24 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .into()
 }
 
+// ========== 🆕 新增 Mock 实现 ==========
+
+/// 函数级中文注释：Mock 定价服务提供者
+pub struct MockPricingProvider;
+impl pallet_deceased::governance::PricingProvider for MockPricingProvider {
+    fn get_current_exchange_rate() -> Result<u64, &'static str> {
+        Ok(1_000_000) // 1 USDT = 1_000_000 (精度 10^6)
+    }
+}
+
+/// 函数级中文注释：Mock 国库账户提供者
+pub struct TreasuryAccountProvider;
+impl Get<u64> for TreasuryAccountProvider {
+    fn get() -> u64 {
+        999 // Mock 国库账户
+    }
+}
+
 /// 函数级详细中文注释：ExtBuilder模式，提供链式配置测试环境
 ///
 /// ### 功能说明
@@ -279,5 +316,124 @@ impl ExtBuilder {
     pub fn build(self) -> sp_io::TestExternalities {
         new_test_ext()
     }
+}
+
+// ========== 🆕 Test Mock实现 ==========
+
+/// 函数级中文注释：测试用随机数生成器
+/// - 提供简单的伪随机数，基于传入的subject生成确定性随机数
+/// - 用于测试环境，确保测试结果的可重现性
+pub struct TestRandomness;
+
+impl frame_support::traits::Randomness<sp_core::H256, u64> for TestRandomness {
+    fn random(subject: &[u8]) -> (sp_core::H256, u64) {
+        // 基于subject生成简单的伪随机数
+        let mut seed = [0u8; 32];
+        for (i, byte) in subject.iter().enumerate() {
+            if i < 32 {
+                seed[i] = *byte;
+            }
+        }
+
+        // 添加一些变换以增加随机性
+        for i in 0..32 {
+            seed[i] = seed[i].wrapping_add(i as u8).wrapping_add(1);
+        }
+
+        // 添加当前区块号作为额外的熵源
+        let block_number = System::block_number();
+        let block_bytes = block_number.to_le_bytes();
+        for i in 0..8 {
+            seed[i] ^= block_bytes[i % 8];
+        }
+
+        (sp_core::H256::from(seed), block_number)
+    }
+}
+
+/// 函数级中文注释：测试用时间提供器
+/// - 返回基于区块号的模拟时间戳
+/// - 每个区块间隔6秒（模拟真实链的出块时间）
+pub struct TestTime;
+
+impl frame_support::traits::UnixTime for TestTime {
+    fn now() -> core::time::Duration {
+        // 基于区块号计算模拟时间戳
+        // 假设创世块时间为2024-01-01 00:00:00 UTC (1704067200)
+        const GENESIS_TIMESTAMP: u64 = 1704067200;
+        const BLOCK_INTERVAL_SECS: u64 = 6;
+
+        let block_number = System::block_number();
+        let elapsed_secs = block_number * BLOCK_INTERVAL_SECS;
+        let current_timestamp = GENESIS_TIMESTAMP + elapsed_secs;
+
+        core::time::Duration::from_secs(current_timestamp)
+    }
+}
+
+// ========== 🆕 Mock trait implementations ==========
+
+/// Mock Fungible implementation for testing
+pub struct MockFungible;
+
+impl frame_support::traits::fungible::Inspect<u64> for MockFungible {
+    type Balance = u64;
+
+    fn total_issuance() -> Self::Balance { 1000000000 }
+    fn minimum_balance() -> Self::Balance { 1 }
+    fn balance(who: &u64) -> Self::Balance { 1000000 }
+    fn total_balance(who: &u64) -> Self::Balance { 1000000 }
+    fn reducible_balance(who: &u64, _preservation: frame_support::traits::Preservation, _force: frame_support::traits::Fortitude) -> Self::Balance { 1000000 }
+    fn can_deposit(who: &u64, amount: Self::Balance, _provenance: frame_support::traits::Provenance) -> frame_support::traits::tokens::DepositConsequence {
+        frame_support::traits::tokens::DepositConsequence::Success
+    }
+    fn can_withdraw(who: &u64, amount: Self::Balance) -> frame_support::traits::tokens::WithdrawConsequence<Self::Balance> {
+        frame_support::traits::tokens::WithdrawConsequence::Success
+    }
+}
+
+impl frame_support::traits::fungible::Mutate<u64> for MockFungible {
+    fn mint_into(_who: &u64, amount: Self::Balance) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+    fn burn_from(_who: &u64, amount: Self::Balance, _preservation: frame_support::traits::Preservation, _precision: frame_support::traits::Precision, _force: frame_support::traits::Fortitude) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+}
+
+impl frame_support::traits::fungible::hold::Inspect<u64> for MockFungible {
+    type Reason = MockHoldReason;
+
+    fn balance_on_hold(_reason: &Self::Reason, _who: &u64) -> Self::Balance { 0 }
+    fn can_hold(_reason: &Self::Reason, _who: &u64, _amount: Self::Balance) -> bool { true }
+}
+
+impl frame_support::traits::fungible::hold::Mutate<u64> for MockFungible {
+    fn hold(_reason: &Self::Reason, _who: &u64, _amount: Self::Balance) -> sp_runtime::DispatchResult { Ok(()) }
+    fn release(_reason: &Self::Reason, _who: &u64, amount: Self::Balance, _precision: frame_support::traits::Precision) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+    fn burn_held(_reason: &Self::Reason, _who: &u64, amount: Self::Balance, _precision: frame_support::traits::Precision, _force: frame_support::traits::Fortitude) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+    fn transfer_on_hold(_reason: &Self::Reason, _source: &u64, _dest: &u64, amount: Self::Balance, _precision: frame_support::traits::Precision, _restriction: frame_support::traits::Restriction, _force: frame_support::traits::Fortitude) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+    fn transfer_and_hold(_reason: &Self::Reason, _source: &u64, _dest: &u64, amount: Self::Balance, _precision: frame_support::traits::Precision, _preservation: frame_support::traits::Preservation, _force: frame_support::traits::Fortitude) -> Result<Self::Balance, sp_runtime::DispatchError> { Ok(amount) }
+}
+
+/// Mock HoldReason for testing
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
+pub enum MockHoldReason {
+    DeceasedDeposit,
+}
+
+impl From<pallet_deceased::HoldReason> for MockHoldReason {
+    fn from(reason: pallet_deceased::HoldReason) -> Self {
+        match reason {
+            pallet_deceased::HoldReason::DeceasedDeposit => MockHoldReason::DeceasedDeposit,
+        }
+    }
+}
+
+/// Mock Social implementation for testing
+pub struct MockSocial;
+
+impl pallet_social::SocialInterface<u64> for MockSocial {
+    fn is_following(_follower: &u64, _followee: &u64) -> bool { false }
+    fn follow(_follower: &u64, _followee: &u64) -> sp_runtime::DispatchResult { Ok(()) }
+    fn unfollow(_follower: &u64, _followee: &u64) -> sp_runtime::DispatchResult { Ok(()) }
+    fn get_followers_count(_account: &u64) -> u32 { 0 }
+    fn get_following_count(_account: &u64) -> u32 { 0 }
 }
 

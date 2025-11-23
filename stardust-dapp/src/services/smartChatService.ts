@@ -3,8 +3,9 @@
 /// 处理智能群聊系统与Substrate区块链的所有交互
 
 import { ApiPromise } from '@polkadot/api';
-import { KeyringPair } from '@polkadot/keyring/types';
-import { getApi } from '../lib/providers';
+import { getApi } from '../lib/polkadot';
+import { signAndSendTxWithPrompt } from '../lib/polkadot-safe';
+import sessionSigner from '../lib/session-signer';
 
 /// 群组信息接口
 export interface GroupInfo {
@@ -68,42 +69,59 @@ export class SmartChatService {
 
   /// 创建群组
   async createGroup(
-    signer: KeyringPair,
+    address: string,
     name: string,
     description?: string,
     encryptionMode: 'Military' | 'Business' | 'Selective' | 'Transparent' = 'Business',
-    maxMembers?: number,
     isPublic: boolean = false
   ): Promise<string> {
     try {
       const api = await this.ensureApi();
 
+      // 转换加密模式为 u8
+      const encryptionModeMap = {
+        Military: 0,
+        Business: 1,
+        Selective: 2,
+        Transparent: 3,
+      };
+      const encryptionModeU8 = encryptionModeMap[encryptionMode];
+
       const tx = api.tx.smartGroupChat.createGroup(
         Array.from(new TextEncoder().encode(name)),
         description ? Array.from(new TextEncoder().encode(description)) : null,
-        encryptionMode,
-        maxMembers,
+        encryptionModeU8,
         isPublic
       );
 
-      return new Promise((resolve, reject) => {
-        tx.signAndSend(signer, ({ status, events }) => {
-          if (status.isInBlock) {
-            // 查找群组创建事件
+      return new Promise(async (resolve, reject) => {
+        try {
+          const hash = await signAndSendTxWithPrompt(tx, address);
+
+          // 等待交易上链并查找事件
+          const unsub = await api.rpc.chain.subscribeFinalizedHeads(async (header) => {
+            const blockHash = await api.rpc.chain.getBlockHash(header.number);
+            const events = await api.query.system.events.at(blockHash);
+
             const groupCreatedEvent = events.find(
               ({ event }) => event.section === 'smartGroupChat' && event.method === 'GroupCreated'
             );
 
             if (groupCreatedEvent) {
               const [, groupId] = groupCreatedEvent.event.data;
+              unsub();
               resolve(groupId.toString());
-            } else {
-              reject(new Error('群组创建事件未找到'));
             }
-          } else if (status.isError) {
-            reject(new Error('群组创建交易失败'));
-          }
-        }).catch(reject);
+          });
+
+          // 30秒超时（等待区块确认需要更长时间）
+          setTimeout(() => {
+            unsub();
+            reject(new Error('群组创建超时'));
+          }, 30000);
+        } catch (error) {
+          reject(error);
+        }
       });
     } catch (error) {
       console.error('创建群组失败:', error);
@@ -123,12 +141,24 @@ export class SmartChatService {
     try {
       const api = await this.ensureApi();
 
+      // 转换 messageType 为 u8
+      const messageTypeMap = {
+        Text: 0,
+        Image: 1,
+        File: 2,
+        Voice: 3,
+      };
+      const messageTypeU8 = messageTypeMap[messageType];
+
+      // 注意：链上函数只需要3个参数 (group_id, content, message_type)
+      // tempId 和 forceEncryptionMode 目前不被链上支持
+      console.log('tempId (前端标识):', tempId);
+      console.log('forceEncryptionMode (前端选项):', forceEncryptionMode);
+
       const tx = api.tx.smartGroupChat.sendGroupMessage(
         parseInt(groupId),
         Array.from(new TextEncoder().encode(content)),
-        messageType,
-        tempId ? Array.from(new TextEncoder().encode(tempId)) : null,
-        forceEncryptionMode
+        messageTypeU8
       );
 
       return new Promise((resolve, reject) => {
@@ -156,38 +186,65 @@ export class SmartChatService {
     }
   }
 
+  /// 发送群组消息 (使用地址签名，支持乐观更新)
+  async sendGroupMessageWithAddress(
+    address: string,
+    groupId: string,
+    content: string,
+    messageType: 'Text' | 'Image' | 'File' | 'Voice' = 'Text',
+    tempId?: string,
+    forceEncryptionMode?: 'Military' | 'Business' | 'Selective' | 'Transparent'
+  ): Promise<string> {
+    try {
+      const api = await this.ensureApi();
+
+      // 转换 messageType 为 u8
+      const messageTypeMap = {
+        Text: 0,
+        Image: 1,
+        File: 2,
+        Voice: 3,
+      };
+      const messageTypeU8 = messageTypeMap[messageType];
+
+      // 注意：链上函数只需要3个参数 (group_id, content, message_type)
+      // tempId 和 forceEncryptionMode 目前不被支持
+      const tx = api.tx.smartGroupChat.sendGroupMessage(
+        parseInt(groupId),
+        Array.from(new TextEncoder().encode(content)),
+        messageTypeU8
+      );
+
+      // 使用会话签名管理器（自动处理密码输入和会话管理）
+      console.log('使用会话签名发送消息...');
+      console.log('tempId (前端使用):', tempId);
+      console.log('forceEncryptionMode (前端使用):', forceEncryptionMode);
+
+      const hash = await sessionSigner.signAndSendTx(tx);
+
+      // 返回基于时间戳的消息ID（临时方案）
+      // 注意：这个ID只是前端使用，链上会生成真实的消息ID
+      return `msg_${Date.now()}`;
+
+    } catch (error) {
+      console.error('发送群组消息失败:', error);
+      throw error;
+    }
+  }
+
   /// 加入群组
   async joinGroup(
-    signer: KeyringPair,
-    groupId: string,
-    inviteCode?: string
+    address: string,
+    groupId: string
   ): Promise<void> {
     try {
       const api = await this.ensureApi();
 
       const tx = api.tx.smartGroupChat.joinGroup(
-        parseInt(groupId),
-        inviteCode ? Array.from(new TextEncoder().encode(inviteCode)) : null
+        parseInt(groupId)
       );
 
-      return new Promise((resolve, reject) => {
-        tx.signAndSend(signer, ({ status, events }) => {
-          if (status.isInBlock) {
-            // 查找成员加入事件
-            const memberJoinedEvent = events.find(
-              ({ event }) => event.section === 'smartGroupChat' && event.method === 'MemberJoined'
-            );
-
-            if (memberJoinedEvent) {
-              resolve();
-            } else {
-              reject(new Error('成员加入事件未找到'));
-            }
-          } else if (status.isError) {
-            reject(new Error('加入群组交易失败'));
-          }
-        }).catch(reject);
-      });
+      await signAndSendTxWithPrompt(tx, address);
     } catch (error) {
       console.error('加入群组失败:', error);
       throw error;
@@ -196,7 +253,7 @@ export class SmartChatService {
 
   /// 离开群组
   async leaveGroup(
-    signer: KeyringPair,
+    address: string,
     groupId: string
   ): Promise<void> {
     try {
@@ -204,24 +261,7 @@ export class SmartChatService {
 
       const tx = api.tx.smartGroupChat.leaveGroup(parseInt(groupId));
 
-      return new Promise((resolve, reject) => {
-        tx.signAndSend(signer, ({ status, events }) => {
-          if (status.isInBlock) {
-            // 查找成员离开事件
-            const memberLeftEvent = events.find(
-              ({ event }) => event.section === 'smartGroupChat' && event.method === 'MemberLeft'
-            );
-
-            if (memberLeftEvent) {
-              resolve();
-            } else {
-              reject(new Error('成员离开事件未找到'));
-            }
-          } else if (status.isError) {
-            reject(new Error('离开群组交易失败'));
-          }
-        }).catch(reject);
-      });
+      await signAndSendTxWithPrompt(tx, address);
     } catch (error) {
       console.error('离开群组失败:', error);
       throw error;
@@ -311,28 +351,57 @@ export class SmartChatService {
       // 查询消息存储
       const messageEntries = await api.query.smartGroupChat.groupMessages.entries(parseInt(groupId));
 
+      // MessageType 映射：数字 -> 字符串
+      const messageTypeMap: { [key: number]: 'Text' | 'Image' | 'File' | 'Voice' } = {
+        0: 'Text',
+        1: 'Image',
+        2: 'File',
+        3: 'Voice',
+      };
+
       for (const [key, messageOpt] of messageEntries) {
         if (messageOpt.isSome) {
           const messageData = messageOpt.unwrap();
           const messageId = key.args[1].toString();
+
+          // 安全获取 messageType
+          let messageType: 'Text' | 'Image' | 'File' | 'Voice' = 'Text';
+          try {
+            // messageData.messageType 可能是枚举对象或数字
+            if (messageData.messageType) {
+              if (typeof messageData.messageType.toNumber === 'function') {
+                messageType = messageTypeMap[messageData.messageType.toNumber()] || 'Text';
+              } else if (messageData.messageType.type) {
+                messageType = messageData.messageType.type as any;
+              } else if (messageData.messageType.isText) {
+                messageType = 'Text';
+              } else if (messageData.messageType.isImage) {
+                messageType = 'Image';
+              } else if (messageData.messageType.isFile) {
+                messageType = 'File';
+              } else if (messageData.messageType.isVoice) {
+                messageType = 'Voice';
+              }
+            }
+          } catch (e) {
+            console.warn('解析 messageType 失败:', e);
+          }
 
           messages.push({
             id: messageId,
             groupId: groupId,
             sender: messageData.sender.toString(),
             content: new TextDecoder().decode(Uint8Array.from(messageData.content)),
-            messageType: messageData.messageType.type as any,
-            encryptionMode: messageData.encryptionMode.type as any,
+            messageType: messageType,
+            encryptionMode: 'Business', // 链上结构无此字段，使用默认值
             timestamp: messageData.timestamp.toNumber(),
-            tempId: messageData.tempId.isSome
-              ? new TextDecoder().decode(Uint8Array.from(messageData.tempId.unwrap()))
-              : undefined,
+            // tempId 字段链上结构不存在，不传递
           });
         }
       }
 
-      // 按时间戳排序并分页
-      messages.sort((a, b) => b.timestamp - a.timestamp);
+      // 按时间戳排序并分页（升序，旧消息在前）
+      messages.sort((a, b) => a.timestamp - b.timestamp);
       return messages.slice(offset, offset + limit);
     } catch (error) {
       console.error('获取群组消息失败:', error);

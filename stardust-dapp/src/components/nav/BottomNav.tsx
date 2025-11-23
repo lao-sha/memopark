@@ -1,16 +1,18 @@
 import React from 'react'
 import { Modal } from 'antd'
-import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, MessageOutlined } from '@ant-design/icons'
+import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, MessageOutlined, HeartOutlined } from '@ant-design/icons'
 
   /**
    * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
    * - 入口：主页、聊天、创建纪念馆（FAB）、我的纪念、我的钱包
    * - 事件：优先触发 mp.nav 切换 `AuthEntryPage` 内部 Tab；同时回退到哈希路由
    * - 样式：固定于底部，最大宽度 480px 居中（与页面宽度一致）
+   * - 隐藏：在进入群聊详情页面时自动隐藏
    */
 const BottomNav: React.FC = () => {
   const [active, setActive] = React.useState<string>('home')
   const [current, setCurrent] = React.useState<string | null>(null)
+  const [hidden, setHidden] = React.useState<boolean>(false)
 
   /**
    * 函数级中文注释：根据 hash 推断激活项
@@ -22,7 +24,7 @@ const BottomNav: React.FC = () => {
     if (h === '#/' || h === '' || h === '#/home' || h === '#/memorial') return 'home'
     if (h.startsWith('#/chat') || h.startsWith('#/smart-chat')) return 'chat'
     if (h.startsWith('#/memorial/my')) return 'my-memorial'
-    if (h.startsWith('#/profile')) return 'my-wallet'
+    if (h.startsWith('#/contacts')) return 'contacts'
     return 'home'
   }, [])
 
@@ -32,10 +34,18 @@ const BottomNav: React.FC = () => {
     const onHash = () => setActive(computeActiveByHash())
     const onTab = (e: any) => { if (e?.detail?.tab) setActive(e.detail.tab) }
     const onAddr = () => { try { setCurrent(localStorage.getItem('mp.current') || null) } catch {} }
+    // 监听导航栏隐藏/显示事件
+    const onHideNav = (e: any) => { setHidden(e?.detail?.hidden ?? false) }
     window.addEventListener('hashchange', onHash)
     window.addEventListener('mp.nav', onTab as any)
     window.addEventListener('storage', onAddr)
-    return () => { window.removeEventListener('hashchange', onHash); window.removeEventListener('mp.nav', onTab as any); window.removeEventListener('storage', onAddr) }
+    window.addEventListener('mp.nav.visibility', onHideNav as any)
+    return () => {
+      window.removeEventListener('hashchange', onHash)
+      window.removeEventListener('mp.nav', onTab as any)
+      window.removeEventListener('storage', onAddr)
+      window.removeEventListener('mp.nav.visibility', onHideNav as any)
+    }
   }, [computeActiveByHash])
   /**
    * 函数级中文注释：导航跳转（Tab 与 Hash 双通道）
@@ -51,10 +61,10 @@ const BottomNav: React.FC = () => {
     }
 
     // 函数级中文注释：未登录拦截配置
-    // - 创建纪念馆、我的钱包需要地址
+    // - 创建纪念馆、我的钱包、我的纪念需要地址
     // - 首页（home）无需登录，所有人可查看纪念馆
-    // - 我的纪念（my-memorial）无需登录
-    const needAddr = tabKey === 'my-wallet'
+    // - 智能聊天无需登录
+    const needAddr = tabKey === 'my-wallet' || tabKey === 'my-memorial'
     const addr = current || (typeof window !== 'undefined' ? localStorage.getItem('mp.current') : null)
     if (needAddr && !addr) {
       const inst = Modal.confirm({
@@ -110,6 +120,11 @@ const BottomNav: React.FC = () => {
     }
   }
 
+  // 如果导航栏被隐藏，则不渲染
+  if (hidden) {
+    return null
+  }
+
   return (
     <>
       {/* 底部导航栏 */}
@@ -135,14 +150,14 @@ const BottomNav: React.FC = () => {
 
             <button onClick={() => go('chat', '#/smart-chat')} style={{ ...btnStyle, ...(active==='chat'?btnActiveChatStyle:undefined) }}>
               <MessageOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>智能聊天</span>
+              <span style={txtStyle}>聊天</span>
             </button>
 
             {/* FAB中心大按钮（占位，不计入grid流） */}
             <div />
 
             <button onClick={() => go('my-memorial', '#/memorial/my')} style={{ ...btnStyle, ...(active==='my-memorial'?btnActiveMemorialStyle:undefined) }}>
-              <TeamOutlined style={{ fontSize: 22 }} />
+              <HeartOutlined style={{ fontSize: 22 }} />
               <span style={txtStyle}>我的纪念</span>
             </button>
 

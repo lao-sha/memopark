@@ -12,6 +12,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@polkadot/api": "^16.4.6",
+    "@polkadot/extension-dapp": "^0.62.5",
     "@polkadot/keyring": "^13.5.6",
     "@polkadot/util-crypto": "^13.5.6",
     "@tanstack/react-query": "^5.85.5",
@@ -32,6 +33,7 @@
     "react-router-dom": "^7.9.4",
     "react-window": "^2.2.3",
     "tweetnacl": "^1.0.3",
+    "uuid": "^13.0.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -39,12 +41,16 @@
     "@types/node": "^24.3.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.2",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.22",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "postcss": "^8.5.6",
     "prettier": "^3.6.2",
+    "tailwindcss": "^3.4.18",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.4",

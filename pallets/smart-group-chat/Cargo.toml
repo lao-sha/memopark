@@ -16,22 +16,22 @@ targets = ["x86_64-unknown-linux-gnu"]
 # Substrate框架
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false, optional = true }
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
-sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a", default-features = false }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false, optional = true }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-std = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = false }
 
 # 本地依赖 (其他pallets)
 pallet-chat = { path = "../chat", default-features = false }
 pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
 
 [dev-dependencies]
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a" }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a" }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "f3969c7ddd34985e6e709ed458bcc519f651682a" }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
 
 [features]
 default = ["std"]

@@ -3,7 +3,7 @@
 /// 提供50ms瞬时响应的聊天消息UI组件
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Badge, Progress, Button, Tooltip, Spin, Alert } from 'antd';
+import { Badge, Progress, Button, Tooltip, Spin, Alert, Modal } from 'antd';
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -12,16 +12,164 @@ import {
   LockOutlined,
   CloudUploadOutlined,
   GlobalOutlined,
-  RetryOutlined,
+  ReloadOutlined,
   CloseOutlined,
+  SmileOutlined,
+  PictureOutlined,
+  DeleteOutlined,
+  VideoCameraOutlined,
+  PlayCircleOutlined,
+  AudioOutlined,
+  PauseOutlined,
 } from '@ant-design/icons';
+import { Popover, Image } from 'antd';
+
+// ========== 表情数据 ==========
+
+/// 常用表情列表（按类别分组）
+const EMOJI_CATEGORIES = {
+  '常用': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝'],
+  '情绪': ['🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '😮‍💨', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮'],
+  '手势': ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏'],
+  '心形': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '❤️‍🔥', '❤️‍🩹', '💋', '💯', '💢', '💥', '💫'],
+  '物品': ['🎁', '🎉', '🎊', '🎈', '🎂', '🍰', '☕', '🍵', '🍺', '🍻', '🥂', '🍾', '🍷', '🍸', '🍹', '🧃', '🌹', '🌸', '💐', '🌺', '🌻', '🌼', '🌷', '🪻', '🏵️', '🎀'],
+  '动物': ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺'],
+};
+
+/// 最近使用的表情（本地存储）
+const getRecentEmojis = (): string[] => {
+  try {
+    const stored = localStorage.getItem('recent_emojis');
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+/// 保存最近使用的表情
+const saveRecentEmoji = (emoji: string) => {
+  try {
+    const recent = getRecentEmojis();
+    const updated = [emoji, ...recent.filter(e => e !== emoji)].slice(0, 20);
+    localStorage.setItem('recent_emojis', JSON.stringify(updated));
+  } catch {
+    // 忽略存储错误
+  }
+};
 import OptimisticUIManager, {
   OptimisticMessage,
   MessageStatus,
   ProcessingStage,
 } from '../../lib/optimistic-ui-manager';
+import { uploadToIpfs } from '../../lib/ipfs';
 
 // ========== 类型定义 ==========
+
+// IPFS 网关地址（本地网关，快速且无需等待传播）
+const IPFS_GATEWAY = 'http://127.0.0.1:8080/ipfs/';
+
+/// 解析消息内容，渲染图片/视频/音频
+const renderMessageContent = (content: string) => {
+  // 正则匹配媒体标签
+  const mediaPattern = /\[(IMG|VIDEO|AUDIO):([^\]]+)\]/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mediaPattern.exec(content)) !== null) {
+    // 添加媒体标签之前的文本
+    if (match.index > lastIndex) {
+      const textBefore = content.substring(lastIndex, match.index).trim();
+      if (textBefore) {
+        parts.push(<span key={`text-${lastIndex}`}>{textBefore}</span>);
+      }
+    }
+
+    const mediaType = match[1];
+    const mediaData = match[2];
+
+    if (mediaType === 'IMG') {
+      // 图片可能有多个 CID，用逗号分隔
+      const cids = mediaData.split(',').map(cid => cid.trim());
+      const imageUrls = cids.map(cid => `${IPFS_GATEWAY}${cid}`);
+      parts.push(
+        <div key={`img-${match.index}`} className="flex flex-wrap gap-2 my-2">
+          <Image.PreviewGroup
+            items={imageUrls}
+            preview={{
+              onChange: (current) => console.log('当前预览:', current),
+            }}
+          >
+            {cids.map((cid, idx) => (
+              <Image
+                key={`${cid}-${idx}`}
+                src={`${IPFS_GATEWAY}${cid}`}
+                alt={`图片 ${idx + 1}`}
+                width={120}
+                height={120}
+                className="rounded-lg object-cover cursor-pointer"
+                style={{ objectFit: 'cover' }}
+                preview={{
+                  mask: false,
+                }}
+                fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMIAAADDCAYAAADQvc6UAAABRWlDQ1BJQ0MgUHJvZmlsZQAAKJFjYGASSSwoyGFhYGDIzSspCnJ3UoiIjFJgf8LAwSDCIMogwMCcmFxc4BgQ4ANUwgCjUcG3awyMIPqyLsis7PPOq3QdDFcvjV3jOD1boQVTPQrgSkktTgbSf4A4LbmgqISBgTEFyFYuLykAsTuAbJEioKOA7DkgdjqEvQHEToKwj4DVhAQ5A9k3gGyB5IxEoBmML4BsnSQk8XQkNtReEOBxcfXxUQg1Mjc0dyHgXNJBSWpFCYh2zi+oLMpMzyhRcASGUqqCZ16yno6CkYGRAQMDKMwhqj/fAIcloxgHQqxAjIHBEugw5sUIsSQpBobtQPdLciLEVJYzMPBHMDBsayhILEqEO4DxG0txmrERhM29nYGBddr//5/DGRjYNRkY/l7////39v///y4Dmn+LgesACMBFIHE4oAAAAABJRU5ErkJggg=="
+              />
+            ))}
+          </Image.PreviewGroup>
+        </div>
+      );
+    } else if (mediaType === 'VIDEO') {
+      const videoUrl = `${IPFS_GATEWAY}${mediaData}`;
+      parts.push(
+        <div key={`video-${match.index}`} className="my-2">
+          <div
+            className="relative inline-block cursor-pointer group video-preview-trigger"
+            data-video-url={videoUrl}
+          >
+            <video
+              src={videoUrl}
+              className="w-[180px] h-[120px] rounded-lg object-cover bg-gray-200"
+              muted
+              preload="metadata"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
+              <div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center">
+                <span className="text-gray-800 text-lg ml-0.5">▶</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    } else if (mediaType === 'AUDIO') {
+      parts.push(
+        <div key={`audio-${match.index}`} className="my-2">
+          <audio
+            src={`${IPFS_GATEWAY}${mediaData}`}
+            controls
+            className="w-full"
+          />
+        </div>
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // 添加剩余的文本
+  if (lastIndex < content.length) {
+    const remainingText = content.substring(lastIndex).trim();
+    if (remainingText) {
+      parts.push(<span key={`text-end`}>{remainingText}</span>);
+    }
+  }
+
+  // 如果没有匹配到媒体，直接返回原文本
+  if (parts.length === 0) {
+    return content;
+  }
+
+  return <>{parts}</>;
+};
 
 interface OptimisticMessageProps {
   message: OptimisticMessage;
@@ -188,7 +336,7 @@ export const OptimisticMessageComponent: React.FC<OptimisticMessageProps> = ({
               <Button
                 type="link"
                 size="small"
-                icon={<RetryOutlined />}
+                icon={<ReloadOutlined />}
                 onClick={() => onRetry?.(message.tempId)}
                 className="text-red-600 hover:text-red-700 p-0"
               >
@@ -202,7 +350,7 @@ export const OptimisticMessageComponent: React.FC<OptimisticMessageProps> = ({
         return (
           <div className="flex items-center space-x-2">
             <Tooltip title="重试中">
-              <Spin indicator={<RetryOutlined className="text-yellow-500" spin />} />
+              <Spin indicator={<ReloadOutlined className="text-yellow-500" spin />} />
             </Tooltip>
             <span className="text-xs text-yellow-600">
               {message.errorInfo || '重试中...'}
@@ -333,7 +481,7 @@ export const OptimisticMessageComponent: React.FC<OptimisticMessageProps> = ({
             </span>
           </div>
           <div className="text-gray-800 leading-relaxed">
-            {message.content}
+            {renderMessageContent(message.content)}
           </div>
           {message.errorInfo && (
             <Alert
@@ -491,22 +639,363 @@ export const OptimisticSendMessage: React.FC<SendMessageProps> = ({
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [sendingCount, setSendingCount] = useState(0);
+  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
+  const [emojiCategory, setEmojiCategory] = useState<string>('常用');
+  const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioPreview, setAudioPreview] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 加载最近使用的表情
+  useEffect(() => {
+    setRecentEmojis(getRecentEmojis());
+  }, []);
+
+  // 清理图片预览URL
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [imagePreviews]);
+
+  // 清理视频预览URL
+  useEffect(() => {
+    return () => {
+      if (videoPreview) URL.revokeObjectURL(videoPreview);
+    };
+  }, [videoPreview]);
+
+  // 清理音频预览URL
+  useEffect(() => {
+    return () => {
+      if (audioPreview) URL.revokeObjectURL(audioPreview);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, [audioPreview]);
+
+  // 插入表情到消息
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    setMessage(prev => prev + emoji);
+    saveRecentEmoji(emoji);
+    setRecentEmojis(getRecentEmojis());
+    // 聚焦回输入框
+    textareaRef.current?.focus();
+  }, []);
+
+  // 处理图片选择
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // 限制最多选择9张图片
+    const maxImages = 9;
+    const newFiles = files.slice(0, maxImages - selectedImages.length);
+
+    if (files.length > newFiles.length) {
+      alert(`最多只能选择${maxImages}张图片`);
+    }
+
+    // 验证文件类型和大小
+    const validFiles = newFiles.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        alert(`${file.name} 不是有效的图片文件`);
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) { // 10MB限制
+        alert(`${file.name} 超过10MB大小限制`);
+        return false;
+      }
+      return true;
+    });
+
+    // 生成预览
+    const newPreviews = validFiles.map(file => URL.createObjectURL(file));
+
+    setSelectedImages(prev => [...prev, ...validFiles]);
+    setImagePreviews(prev => [...prev, ...newPreviews]);
+
+    // 重置input
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  }, [selectedImages.length]);
+
+  // 移除已选图片
+  const handleRemoveImage = useCallback((index: number) => {
+    URL.revokeObjectURL(imagePreviews[index]);
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  }, [imagePreviews]);
+
+  // 处理视频选择
+  const handleVideoSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('video/')) {
+      alert('请选择有效的视频文件');
+      return;
+    }
+
+    // 限制视频大小为50MB
+    if (file.size > 50 * 1024 * 1024) {
+      alert('视频大小不能超过50MB');
+      return;
+    }
+
+    // 清除之前的预览
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview);
+    }
+
+    // 生成预览
+    const preview = URL.createObjectURL(file);
+    setSelectedVideo(file);
+    setVideoPreview(preview);
+
+    // 重置input
+    if (videoInputRef.current) {
+      videoInputRef.current.value = '';
+    }
+  }, [videoPreview]);
+
+  // 移除已选视频
+  const handleRemoveVideo = useCallback(() => {
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview);
+    }
+    setSelectedVideo(null);
+    setVideoPreview(null);
+  }, [videoPreview]);
+
+  // 开始录音
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setAudioBlob(audioBlob);
+        setAudioPreview(audioUrl);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // 开始计时
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          // 最长60秒
+          if (prev >= 60) {
+            stopRecording();
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (error) {
+      console.error('无法访问麦克风:', error);
+      alert('无法访问麦克风，请检查权限设置');
+    }
+  }, []);
+
+  // 停止录音
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+  }, [isRecording]);
+
+  // 取消录音
+  const cancelRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+    if (audioPreview) {
+      URL.revokeObjectURL(audioPreview);
+    }
+    setAudioBlob(null);
+    setAudioPreview(null);
+    setRecordingTime(0);
+  }, [isRecording, audioPreview]);
+
+  // 移除已录音频
+  const handleRemoveAudio = useCallback(() => {
+    if (audioPreview) {
+      URL.revokeObjectURL(audioPreview);
+    }
+    setAudioBlob(null);
+    setAudioPreview(null);
+    setRecordingTime(0);
+  }, [audioPreview]);
+
+  // 格式化录音时间
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // 渲染表情选择器内容
+  const renderEmojiPicker = () => (
+    <div className="w-64 max-h-72 overflow-hidden">
+      {/* 类别标签 */}
+      <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b border-gray-100">
+        {recentEmojis.length > 0 && (
+          <button
+            onClick={() => setEmojiCategory('最近')}
+            className={`px-2 py-0.5 text-xs rounded ${
+              emojiCategory === '最近'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            最近
+          </button>
+        )}
+        {Object.keys(EMOJI_CATEGORIES).map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setEmojiCategory(cat)}
+            className={`px-2 py-0.5 text-xs rounded ${
+              emojiCategory === cat
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* 表情网格 */}
+      <div className="grid grid-cols-7 gap-1 max-h-48 overflow-y-auto">
+        {(emojiCategory === '最近' ? recentEmojis : EMOJI_CATEGORIES[emojiCategory as keyof typeof EMOJI_CATEGORIES] || []).map((emoji, index) => (
+          <button
+            key={`${emoji}-${index}`}
+            onClick={() => handleEmojiSelect(emoji)}
+            className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded transition-colors"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   // 发送消息
   const handleSend = useCallback(async () => {
-    if (!message.trim() || sending) return;
+    if ((!message.trim() && selectedImages.length === 0 && !selectedVideo && !audioBlob) || sending) return;
 
     const messageToSend = message.trim();
+    const imagesToSend = [...selectedImages];
+    const videoToSend = selectedVideo;
+    const audioToSend = audioBlob;
+
     setMessage('');
+    setSelectedImages([]);
+    setImagePreviews([]);
+    setSelectedVideo(null);
+    setVideoPreview(null);
+    setAudioBlob(null);
+    setAudioPreview(null);
+    setRecordingTime(0);
     setSending(true);
     setSendingCount(prev => prev + 1);
 
     try {
+      // 构建消息内容
+      let finalContent = messageToSend;
+
+      // 上传图片到 IPFS
+      if (imagesToSend.length > 0) {
+        const imageCids: string[] = [];
+        for (const file of imagesToSend) {
+          try {
+            const cid = await uploadToIpfs(file);
+            imageCids.push(cid);
+            console.log('图片上传成功, CID:', cid);
+          } catch (error) {
+            console.error('图片上传失败:', error);
+            alert(`图片上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+            throw error;
+          }
+        }
+        // 格式：[IMG:cid1,cid2,cid3]
+        const imageContent = `[IMG:${imageCids.join(',')}]`;
+        finalContent = finalContent ? `${finalContent}\n${imageContent}` : imageContent;
+      }
+
+      // 上传视频到 IPFS
+      if (videoToSend) {
+        try {
+          const cid = await uploadToIpfs(videoToSend);
+          console.log('视频上传成功, CID:', cid);
+          // 格式：[VIDEO:cid]
+          const videoContent = `[VIDEO:${cid}]`;
+          finalContent = finalContent ? `${finalContent}\n${videoContent}` : videoContent;
+        } catch (error) {
+          console.error('视频上传失败:', error);
+          alert(`视频上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+          throw error;
+        }
+      }
+
+      // 上传音频到 IPFS
+      if (audioToSend) {
+        try {
+          // 将 Blob 转换为 File
+          const audioFile = new File([audioToSend], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+          const cid = await uploadToIpfs(audioFile);
+          console.log('音频上传成功, CID:', cid);
+          // 格式：[AUDIO:cid]
+          const audioContent = `[AUDIO:${cid}]`;
+          finalContent = finalContent ? `${finalContent}\n${audioContent}` : audioContent;
+        } catch (error) {
+          console.error('音频上传失败:', error);
+          alert(`音频上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+          throw error;
+        }
+      }
+
       const result = await optimisticManager.sendMessageOptimistic(
         receiver || null,
         groupId || null,
-        messageToSend,
+        finalContent,
         {
           priority: 'normal',
           enableRetry: true,
@@ -525,7 +1014,7 @@ export const OptimisticSendMessage: React.FC<SendMessageProps> = ({
       setSending(false);
       setSendingCount(prev => prev - 1);
     }
-  }, [message, sending, optimisticManager, receiver, groupId, onMessageSent]);
+  }, [message, selectedImages, selectedVideo, audioBlob, sending, optimisticManager, receiver, groupId, onMessageSent]);
 
   // 键盘事件处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -544,8 +1033,176 @@ export const OptimisticSendMessage: React.FC<SendMessageProps> = ({
   }, [message]);
 
   return (
-    <div className="border-t bg-white p-4">
-      <div className="flex space-x-3">
+    <div className="p-3 bg-white">
+      {/* 图片预览区域 */}
+      {imagePreviews.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {imagePreviews.map((preview, index) => (
+            <div key={index} className="relative group">
+              <Image
+                src={preview}
+                alt={`预览 ${index + 1}`}
+                width={60}
+                height={60}
+                className="rounded-lg object-cover"
+                preview={{
+                  mask: '查看'
+                }}
+              />
+              <button
+                onClick={() => handleRemoveImage(index)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <DeleteOutlined />
+              </button>
+            </div>
+          ))}
+          {selectedImages.length < 9 && (
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              className="w-[60px] h-[60px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 hover:border-green-400 hover:text-green-500 transition-colors"
+            >
+              <PictureOutlined className="text-xl" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 视频预览区域 */}
+      {videoPreview && (
+        <div className="mb-2">
+          <div className="relative inline-block group">
+            <video
+              src={videoPreview}
+              className="w-32 h-20 rounded-lg object-cover bg-black"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
+              <PlayCircleOutlined className="text-white text-2xl" />
+            </div>
+            <button
+              onClick={handleRemoveVideo}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <DeleteOutlined />
+            </button>
+            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">
+              {(selectedVideo!.size / 1024 / 1024).toFixed(1)}MB
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 录音中状态 */}
+      {isRecording && (
+        <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></span>
+              <span className="text-red-600 font-medium text-sm">录音中</span>
+              <span className="text-red-500 text-sm">{formatRecordingTime(recordingTime)}</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={cancelRecording}
+                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800 bg-white rounded border border-gray-300"
+              >
+                取消
+              </button>
+              <button
+                onClick={stopRecording}
+                className="px-2 py-1 text-xs text-white bg-red-500 hover:bg-red-600 rounded"
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 音频预览区域 */}
+      {audioPreview && !isRecording && (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+            <AudioOutlined className="text-green-600" />
+            <audio src={audioPreview} controls className="flex-1 h-8" />
+            <span className="text-xs text-green-600">{formatRecordingTime(recordingTime)}</span>
+            <button
+              onClick={handleRemoveAudio}
+              className="p-1 text-red-500 hover:text-red-600"
+            >
+              <DeleteOutlined />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 items-end">
+        {/* 表情按钮 */}
+        <Popover
+          content={renderEmojiPicker()}
+          trigger="click"
+          open={emojiPickerVisible}
+          onOpenChange={setEmojiPickerVisible}
+          placement="topLeft"
+          overlayClassName="emoji-picker-popover"
+        >
+          <button
+            className="p-2.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
+            title="表情"
+          >
+            <SmileOutlined className="text-xl" />
+          </button>
+        </Popover>
+
+        {/* 图片按钮 */}
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          className="p-2.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
+          title="图片"
+        >
+          <PictureOutlined className="text-xl" />
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageSelect}
+          className="hidden"
+        />
+
+        {/* 视频按钮 */}
+        <button
+          onClick={() => videoInputRef.current?.click()}
+          className={`p-2.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0 ${selectedVideo ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title="视频"
+          disabled={!!selectedVideo}
+        >
+          <VideoCameraOutlined className="text-xl" />
+        </button>
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          onChange={handleVideoSelect}
+          className="hidden"
+        />
+
+        {/* 语音按钮 */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          className={`p-2.5 rounded-lg transition-colors flex-shrink-0 ${
+            isRecording
+              ? 'text-red-500 bg-red-50 hover:bg-red-100'
+              : audioBlob
+                ? 'text-green-600 bg-green-50'
+                : 'text-gray-500 hover:text-green-600 hover:bg-green-50'
+          }`}
+          title={isRecording ? '停止录音' : '语音'}
+        >
+          {isRecording ? <PauseOutlined className="text-xl" /> : <AudioOutlined className="text-xl" />}
+        </button>
+
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -554,33 +1211,37 @@ export const OptimisticSendMessage: React.FC<SendMessageProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             maxLength={maxLength}
-            className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            style={{ maxHeight: '120px', minHeight: '44px' }}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all bg-gray-50 text-sm"
+            style={{ maxHeight: '100px', minHeight: '44px' }}
             disabled={sending}
           />
 
-          <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
-            <span>
+          <div className="flex justify-between items-center mt-1.5 px-1">
+            <span className={`text-xs ${message.length > maxLength * 0.9 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
               {message.length} / {maxLength}
             </span>
             {sendingCount > 0 && (
-              <span className="text-blue-600">
-                正在发送 {sendingCount} 条消息...
+              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse"></span>
+                发送中...
               </span>
             )}
           </div>
         </div>
 
-        <Button
-          type="primary"
-          size="large"
-          loading={sending}
-          disabled={!message.trim() || message.length > maxLength}
+        <button
           onClick={handleSend}
-          className="px-6"
+          disabled={(!message.trim() && selectedImages.length === 0 && !selectedVideo && !audioBlob) || message.length > maxLength || sending || isRecording}
+          className="px-4 py-2.5 bg-gradient-to-r from-[#4CAF50] to-[#66BB6A] text-white font-medium rounded-xl hover:from-[#43A047] hover:to-[#5CB860] disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md disabled:shadow-none text-sm flex-shrink-0"
         >
-          {sending ? '发送中' : '发送'}
-        </Button>
+          {sending ? (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            </span>
+          ) : (
+            '发送'
+          )}
+        </button>
       </div>
     </div>
   );

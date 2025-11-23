@@ -5,7 +5,7 @@
 use crate as pallet_chat;
 use frame_support::{
 	parameter_types,
-	traits::{ConstU32, ConstU64},
+	traits::{ConstU32, ConstU64, Randomness, UnixTime},
 };
 use sp_runtime::{
 	traits::{BlakeTwo256, IdentityLookup},
@@ -73,6 +73,35 @@ parameter_types! {
 	pub const MessageExpirationTime: u64 = 1000;
 }
 
+/// 简单的测试用随机数生成器
+pub struct TestRandomness;
+impl Randomness<sp_core::H256, u64> for TestRandomness {
+	fn random(subject: &[u8]) -> (sp_core::H256, u64) {
+		// 简单的伪随机实现用于测试
+		let mut seed = [0u8; 32];
+		for (i, byte) in subject.iter().enumerate() {
+			if i < 32 {
+				seed[i] = *byte;
+			}
+		}
+		// 使用简单的变换生成不同的随机值
+		for i in 0..32 {
+			seed[i] = seed[i].wrapping_add(i as u8).wrapping_add(1);
+		}
+		(sp_core::H256::from(seed), frame_system::Pallet::<Test>::block_number())
+	}
+}
+
+/// 简单的测试用时间戳
+pub struct TestTime;
+impl UnixTime for TestTime {
+	fn now() -> core::time::Duration {
+		// 返回基于区块号的简单时间戳
+		let block_number = frame_system::Pallet::<Test>::block_number();
+		core::time::Duration::from_secs(block_number * 6) // 6秒/块
+	}
+}
+
 impl pallet_chat::Config for Test {
 	type RuntimeEvent = RuntimeEvent;
 	type WeightInfo = pallet_chat::SubstrateWeight<Test>;
@@ -82,6 +111,11 @@ impl pallet_chat::Config for Test {
 	type RateLimitWindow = RateLimitWindow;
 	type MaxMessagesPerWindow = MaxMessagesPerWindow;
 	type MessageExpirationTime = MessageExpirationTime;
+	// ChatUserId相关配置
+	type Randomness = TestRandomness;
+	type UnixTime = TestTime;
+	type MaxNicknameLength = frame_support::traits::ConstU32<64>;
+	type MaxSignatureLength = frame_support::traits::ConstU32<256>;
 }
 
 /// 函数级详细中文注释：构建测试存储

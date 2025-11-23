@@ -29,9 +29,26 @@ const AuthEntryPage: React.FC = () => {
 
   useEffect(() => {
     const s = sessionManager.init()
+
     if (s) {
-      console.log('已有会话，跳转到 home');
-      setActive('home')
+      console.log('已有会话，检查当前路由...');
+
+      // 检查URL是否包含特殊参数，如果有则不强制跳转
+      const hash = window.location.hash;
+      const hasSpecialParams = hash.includes('?') && (
+        hash.includes('groupId=') ||  // 群聊参数
+        hash.includes('deceasedId=') || // 纪念馆参数
+        hash.includes('transferTo=') || // 转账参数
+        hash.includes('inviteCode=')    // 邀请码参数
+      );
+
+      if (hasSpecialParams) {
+        console.log('检测到特殊URL参数，保持当前路由:', hash);
+        // 不强制跳转到home，让路由系统自然处理
+      } else {
+        console.log('无特殊参数，跳转到 home');
+        setActive('home');
+      }
     } else {
       console.log('无会话，显示欢迎页面');
     }

@@ -1,3 +1,8 @@
+/* Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* MemoPark 纪念主题样式 */
 
 /* CSS变量 - 祭祀文化配色系统 */
