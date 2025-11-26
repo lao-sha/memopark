@@ -27,6 +27,8 @@ sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "st
 # 本地依赖 (其他pallets)
 pallet-chat = { path = "../chat", default-features = false }
 pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
+# 共享媒体工具库
+stardust-media-common = { path = "../../stardust-media-common", default-features = false }
 
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
@@ -47,6 +49,7 @@ std = [
     "sp-core/std",
     "pallet-chat/std",
     "pallet-stardust-ipfs/std",
+    "stardust-media-common/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking/runtime-benchmarks",

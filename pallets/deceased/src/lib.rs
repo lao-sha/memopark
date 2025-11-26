@@ -8776,6 +8776,9 @@ pub mod pallet {
                 created: now,
                 updated: now,
                 version: 1,
+                file_size: None, // 可后续添加文件大小
+                mime_type: None, // 可后续添加MIME类型检测
+                bitrate: None, // 可后续添加比特率检测
             };
 
             // 9. 存储Media记录

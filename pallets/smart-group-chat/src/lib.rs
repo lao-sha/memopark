@@ -26,6 +26,11 @@ use sp_runtime::{
 };
 use sp_std::vec::Vec;
 
+// 函数级中文注释：导入共享媒体工具库用于媒体验证和哈希计算
+use stardust_media_common::{
+    ImageValidator, VideoValidator, AudioValidator, MediaError
+};
+
 /// 加密模式枚举
 #[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[codec(mel_bound())]
@@ -334,6 +339,14 @@ pub mod pallet {
         NotMember,
         /// 群组ID生成失败（重试次数过多）
         GroupIdGenerationFailed,
+        /// 函数级中文注释：媒体验证错误 - 无效的媒体格式
+        InvalidMediaFormat,
+        /// 函数级中文注释：媒体验证错误 - 文件太大
+        MediaFileTooLarge,
+        /// 函数级中文注释：媒体验证错误 - 文件太小
+        MediaFileTooSmall,
+        /// 函数级中文注释：媒体验证错误 - 不支持的媒体类型
+        UnsupportedMediaType,
     }
 
     #[pallet::call]
@@ -652,6 +665,75 @@ pub mod pallet {
             Self::deposit_event(Event::GroupDisbanded { group_id });
 
             Ok(())
+        }
+
+        /// 函数级详细中文注释：验证媒体内容
+        ///
+        /// 根据消息类型验证媒体文件格式和完整性：
+        /// - Image: 使用 ImageValidator 验证图片格式
+        /// - Voice: 使用 AudioValidator 验证音频格式
+        /// - File: 根据实际格式选择验证器
+        /// - Text: 不需要验证
+        ///
+        /// # 参数
+        /// - `content`: 媒体文件的二进制数据
+        /// - `message_type`: 消息类型
+        ///
+        /// # 返回
+        /// - `Ok(())`: 验证成功
+        /// - `Err(Error)`: 验证失败
+        pub fn validate_media_content(
+            content: &[u8],
+            message_type: &MessageType,
+        ) -> Result<(), Error<T>> {
+            match message_type {
+                MessageType::Text => {
+                    // 文本消息不需要媒体验证
+                    Ok(())
+                },
+                MessageType::Image => {
+                    // 验证图片格式
+                    ImageValidator::validate(content)
+                        .map(|_| ())
+                        .map_err(Self::convert_media_error)
+                },
+                MessageType::Voice => {
+                    // 验证音频格式
+                    AudioValidator::validate(content)
+                        .map(|_| ())
+                        .map_err(Self::convert_media_error)
+                },
+                MessageType::File => {
+                    // 文件类型需要根据实际内容判断
+                    // 先尝试图片验证
+                    if ImageValidator::validate(content).is_ok() {
+                        return Ok(());
+                    }
+                    // 再尝试视频验证
+                    if VideoValidator::validate(content).is_ok() {
+                        return Ok(());
+                    }
+                    // 最后尝试音频验证
+                    if AudioValidator::validate(content).is_ok() {
+                        return Ok(());
+                    }
+                    // 都不匹配则返回错误
+                    Err(Error::<T>::UnsupportedMediaType)
+                },
+            }
+        }
+
+        /// 函数级中文注释：将 MediaError 转换为 pallet Error
+        fn convert_media_error(err: MediaError) -> Error<T> {
+            match err {
+                MediaError::FileTooSmall => Error::<T>::MediaFileTooSmall,
+                MediaError::FileTooLarge => Error::<T>::MediaFileTooLarge,
+                MediaError::UnsupportedFormat => Error::<T>::UnsupportedMediaType,
+                MediaError::UnsupportedMimeType => Error::<T>::UnsupportedMediaType,
+                MediaError::InvalidHeader => Error::<T>::InvalidMediaFormat,
+                MediaError::InvalidPngHeader => Error::<T>::InvalidMediaFormat,
+                _ => Error::<T>::InvalidMediaFormat,
+            }
         }
     }
 }

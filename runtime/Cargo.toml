@@ -97,6 +97,9 @@ pallet-credit = { path = "../pallets/credit", default-features = false }
 # pallet-deposits = { path = "../pallets/deposits", default-features = false }
 pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
 
+# 🆕 2025-11-25 八字排盘系统（中国传统命理计算）
+pallet-bazi-chart = { path = "../pallets/bazi-chart", default-features = false }
+
 # 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
 # pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
 
@@ -196,6 +199,7 @@ std = [
     "pallet-credit/std",
     # "pallet-deposits/std",  # [已归档 2025-11-03]
     "pallet-storage-treasury/std",
+	"pallet-bazi-chart/std",  # 🆕 2025-11-25：八字排盘系统
     # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
     "pallet-chat/std",
 	"pallet-social/std",  # 🆕 2025-11-17: 多类型目标关注系统

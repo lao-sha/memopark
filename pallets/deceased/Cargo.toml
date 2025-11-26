@@ -19,6 +19,8 @@ log = { workspace = true, default-features = false }
 pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
 # 函数级中文注释：pallet-social依赖用于关注功能迁移
 pallet-social = { path = "../social", default-features = false }
+# 函数级中文注释：stardust-media-common依赖用于媒体验证和哈希工具
+stardust-media-common = { path = "../../stardust-media-common", default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }
@@ -36,6 +38,7 @@ std = [
   "log/std",
   "pallet-stardust-ipfs/std",
   "pallet-social/std",
+  "stardust-media-common/std",
 ]
 
 

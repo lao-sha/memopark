@@ -7,6 +7,7 @@ edition = "2021"
 
 [workspace]
 members = [
+    "pallets/bazi-chart",
     "node",
     "pallets/template",
     "pallets/identity",
@@ -73,6 +74,11 @@ members = [
     # 🆕 2025-11-21: 通讯录管理模块
     "pallets/contacts",        # 联系人、分组、黑名单、好友申请
 
+    # 🆕 2025-11-25: 智能群聊系统
+    "pallets/smart-group-chat",  # 四种加密模式的群聊系统
+
+    # 🆕 2025-01-25: 共享媒体工具库
+    "stardust-media-common",   # 通用媒体验证、哈希、IPFS工具库
 
     "runtime",
 ]

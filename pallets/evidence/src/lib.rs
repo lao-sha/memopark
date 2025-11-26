@@ -37,6 +37,12 @@ pub mod pallet {
     use sp_core::blake2_256;
     use sp_core::H256;
     use sp_runtime::traits::{Saturating, AtLeast32BitUnsigned};
+    // 导入共享媒体工具库
+    use stardust_media_common::{
+        HashHelper, IpfsHelper, MediaError
+    };
+    // 导入CID验证器trait
+    use crate::cid_validator::{CidValidator, DefaultCidValidator};
 
     /// Phase 1.5优化：证据内容类型枚举
     /// 
@@ -788,6 +794,19 @@ pub mod pallet {
                 Error::<T>::NotAuthorized
             );
 
+            // 私密内容必须使用加密CID验证
+            let cid_bytes: &[u8] = cid.as_slice();
+            ensure!(
+                crate::cid_validator::DefaultCidValidator::is_encrypted(cid_bytes),
+                Error::<T>::InvalidCidFormat
+            );
+
+            // CID格式验证（使用IPFS规范）
+            let cid_str = core::str::from_utf8(cid_bytes)
+                .map_err(|_| Error::<T>::InvalidCidFormat)?;
+            IpfsHelper::validate_cid(cid_str)
+                .map_err(|_| Error::<T>::InvalidCidFormat)?;
+
             // CID 去重检查
             ensure!(
                 PrivateContentByCid::<T>::get(&cid).is_none(),
@@ -1021,6 +1040,77 @@ pub mod pallet {
         // 只读接口应放置在 inherent impl 中，而非 extrinsics 块。
     }
 
+    /// 承诺哈希和验证工具函数
+    impl<T: Config> Pallet<T> {
+        /// 计算 Evidence 承诺哈希
+        ///
+        /// 使用 stardust-media-common 的 HashHelper 计算标准格式的承诺哈希:
+        /// H(ns || subject_id || cid || salt || version)
+        ///
+        /// # 参数
+        /// - `ns`: 8字节命名空间
+        /// - `subject_id`: 主体ID
+        /// - `cid`: IPFS CID数据
+        /// - `salt`: 盐值
+        /// - `version`: 版本号（通常为1）
+        ///
+        /// # 返回
+        /// - 计算得到的 H256 承诺哈希
+        pub fn compute_evidence_commitment(
+            ns: &[u8; 8],
+            subject_id: u64,
+            cid: &[u8],
+            salt: &[u8],
+            version: u32,
+        ) -> H256 {
+            HashHelper::evidence_commitment(ns, subject_id, cid, salt, version)
+        }
+
+        /// 验证承诺哈希是否正确
+        ///
+        /// # 参数
+        /// - `ns`: 8字节命名空间
+        /// - `subject_id`: 主体ID
+        /// - `cid`: IPFS CID数据
+        /// - `salt`: 盐值
+        /// - `version`: 版本号
+        /// - `expected_commit`: 期望的承诺哈希
+        ///
+        /// # 返回
+        /// - `true`: 验证通过
+        /// - `false`: 验证失败
+        pub fn verify_evidence_commitment(
+            ns: &[u8; 8],
+            subject_id: u64,
+            cid: &[u8],
+            salt: &[u8],
+            version: u32,
+            expected_commit: &H256,
+        ) -> bool {
+            let computed = Self::compute_evidence_commitment(ns, subject_id, cid, salt, version);
+            &computed == expected_commit
+        }
+
+        /// 验证 CID 格式（单个）
+        ///
+        /// 使用 stardust-media-common 的 IpfsHelper 验证单个 CID 格式。
+        pub fn validate_single_cid(cid: &[u8]) -> Result<(), Error<T>> {
+            let cid_str = core::str::from_utf8(cid)
+                .map_err(|_| Error::<T>::InvalidCidFormat)?;
+
+            IpfsHelper::validate_cid(cid_str)
+                .map_err(|_| Error::<T>::InvalidCidFormat)
+        }
+
+        /// 验证内容完整性
+        ///
+        /// 使用 stardust-media-common 的 IpfsHelper 验证内容与 CID 的对应关系。
+        /// 注意：此函数仅在有实际内容数据时使用。
+        pub fn verify_content_integrity(content_data: &[u8], cid: &str) -> bool {
+            IpfsHelper::verify_content(content_data, cid)
+        }
+    }
+
     /// 授权适配接口：由 runtime 实现并桥接到 `pallet-authorizer`，以保持低耦合。
     pub trait EvidenceAuthorizer<AccountId> {
         /// 校验某账户是否在给定命名空间下被授权提交/链接证据
@@ -1144,18 +1234,24 @@ pub mod pallet {
         }
 
         /// 函数级中文注释：校验一组 CID 的格式与去重要求。
-        /// 规则：每个 CID 必须非空、全部为可见 ASCII（0x21..=0x7E）；组内不得重复。
+        /// 规则：每个 CID 必须非空、符合IPFS格式规范；组内不得重复。
+        /// 使用 stardust-media-common 的 IpfsHelper 进行规范验证。
         fn validate_cid_vec(list: &Vec<BoundedVec<u8, T::MaxCidLen>>) -> Result<(), Error<T>> {
             let mut set: BTreeSet<Vec<u8>> = BTreeSet::new();
             for cid in list.iter() {
                 if cid.is_empty() {
                     return Err(Error::<T>::InvalidCidFormat);
                 }
-                for b in cid.iter() {
-                    if *b < 0x21 || *b > 0x7E {
-                        return Err(Error::<T>::InvalidCidFormat);
-                    }
-                }
+
+                // 转换为字符串进行IPFS规范验证
+                let cid_str = core::str::from_utf8(cid.as_slice())
+                    .map_err(|_| Error::<T>::InvalidCidFormat)?;
+
+                // 使用 stardust-media-common 的 IpfsHelper 进行规范验证
+                IpfsHelper::validate_cid(cid_str)
+                    .map_err(|_| Error::<T>::InvalidCidFormat)?;
+
+                // 检查重复
                 let v: Vec<u8> = cid.clone().into_inner();
                 if !set.insert(v) {
                     return Err(Error::<T>::DuplicateCid);

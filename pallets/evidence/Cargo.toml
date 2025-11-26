@@ -17,6 +17,8 @@ log = { workspace = true, default-features = false }
 
 # 函数级中文注释：pallet-stardust-ipfs依赖用于IpfsPinner trait
 pallet-stardust-ipfs = { path = "../stardust-ipfs", default-features = false }
+# 函数级中文注释：stardust-media-common依赖用于承诺哈希计算和CID验证
+stardust-media-common = { path = "../../stardust-media-common", default-features = false }
 ## 已移除：pallet-authorizer 依赖
 
 [features]
@@ -31,6 +33,7 @@ std = [
   "frame-benchmarking/std",
   "log/std",
   "pallet-stardust-ipfs/std",
+  "stardust-media-common/std",
 ]
 
 # 启用运行时基准
