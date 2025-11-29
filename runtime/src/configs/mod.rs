@@ -25,7 +25,7 @@
 
 // Substrate and Polkadot dependencies
 // 移除重复导入，避免与下方 `use super::{ ... Runtime, RuntimeCall, RuntimeEvent, ... }` 冲突
-use frame_support::traits::{Contains, EnsureOrigin};
+use frame_support::traits::{Contains, EnsureOrigin, OriginTrait};
 use frame_support::{
     derive_impl, parameter_types,
     traits::{ConstBool, ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, VariantCountOf},
@@ -454,7 +454,7 @@ use alloc::vec;
 use super::{
     AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, StardustIpfs, Nonce, PalletInfo, Runtime,
     RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
-    System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
+    System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION, ChatPermission,
 };
 use sp_runtime::traits::IdentityLookup;
 
@@ -476,6 +476,55 @@ impl frame_support::traits::Randomness<Hash, BlockNumber> for SimpleRandomness {
         (Hash::from(hash), block_number)
     }
 }
+
+// =================== 🆕 2025-11-26: Sudo特权签名Origin ===================
+/// 函数级详细中文注释：Sudo账户特权Origin实现
+///
+/// ### 功能说明
+/// - 允许Sudo账户作为特权签名用户调用受保护的函数
+/// - 绕过频率限制、数量限制等普通用户限制
+///
+/// ### 设计理念
+/// - 从pallet_sudo读取当前Sudo账户
+/// - 验证调用者是否为Sudo账户
+/// - 返回Sudo账户作为Success类型，供ensure_signed后续使用
+///
+/// ### 使用场景
+/// - Root账户创建逝者（无数量/时间限制）
+/// - 其他需要特权操作的场景
+pub struct EnsureSudo;
+
+impl EnsureOrigin<RuntimeOrigin> for EnsureSudo {
+    type Success = AccountId;
+
+    fn try_origin(o: RuntimeOrigin) -> Result<Self::Success, RuntimeOrigin> {
+        // 1. 尝试获取签名者
+        let signed = o.clone().into_signer();
+
+        if let Some(who) = signed {
+            // 2. 获取当前Sudo账户（使用 Key::<T>::get() 而非 Pallet::key()）
+            if let Some(sudo_key) = pallet_sudo::Key::<Runtime>::get() {
+                // 3. 验证是否为Sudo账户
+                if who == sudo_key {
+                    return Ok(who);
+                }
+            }
+        }
+
+        Err(o)
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<RuntimeOrigin, ()> {
+        // 基准测试用：返回Sudo账户的签名Origin
+        if let Some(sudo_key) = pallet_sudo::Key::<Runtime>::get() {
+            Ok(RuntimeOrigin::signed(sudo_key))
+        } else {
+            Err(())
+        }
+    }
+}
+// ==========================================================================
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -503,6 +552,32 @@ parameter_types! {
     pub const MediaCreateFee: Balance = 1_000_000_000_000;
     /// 投诉观察/成熟期：365 天。直接复用 DAYS 常量，避免类型不匹配。
     pub const MediaComplaintPeriod: BlockNumber = 365 * DAYS;
+
+    // ========== 留言免押金配置 ==========
+    /// 函数级中文注释：文本/留言押金 - 设为0实现免押金
+    /// - 原值：5_000_000_000_000 (5 DUST)
+    /// - 新值：0（免押金）
+    /// - 日期：2025-11-26
+    pub const TextDepositZero: Balance = 0;
+
+    /// 函数级中文注释：每日最大留言数（全局）
+    pub const MaxMessagesPerUserDaily: u32 = 20;
+
+    /// 函数级中文注释：每日对单个逝者最大留言数
+    pub const MaxMessagesPerDeceasedDaily: u32 = 5;
+
+    // ========== 🆕 2025-11-26: 留言付费配置 ==========
+    /// 函数级详细中文注释：留言费用金额（固定 10,000 DUST）
+    ///
+    /// ### 配置说明
+    /// - 金额：10,000 DUST（10^12 * 10,000 = 10_000_000_000_000_000）
+    /// - 用途：用户给逝者留言需支付此费用
+    /// - 资金流向：与供奉品一致（通过 pallet-affiliate 分配）
+    ///   - 5% 销毁（通缩）
+    ///   - 2% 国库（平台运营）
+    ///   - 3% 存储（IPFS 费用）
+    ///   - 90% 推荐链（15层，每层6%）
+    pub const MessageFee: Balance = 10_000_000_000_000_000; // 10,000 DUST
 }
 
 /// The default types are being injected by [`derive_impl`](`frame_support::derive_impl`) from
@@ -800,6 +875,43 @@ parameter_types! {
     /// - 建议值：10000（防止状态膨胀）
     /// - 可根据实际需求调整
     pub const DeceasedMaxFollowers: u32 = 10000;
+
+    // ========== 🆕 2025-11-26: 逝者创建频率限制配置 ==========
+    /// 函数级中文注释：每日最大逝者创建数（每用户）
+    /// - 用于防止批量创建攻击
+    /// - 建议值：3（满足绝大多数正常用户需求）
+    pub const MaxDeceasedCreationsPerUserDaily: u32 = 3;
+
+    /// 函数级中文注释：用户最大逝者总数
+    /// - 用于防止单用户创建过多逝者
+    /// - 建议值：20（足够创建整个家庭树）
+    pub const MaxDeceasedPerUser: u32 = 20;
+
+    /// 函数级中文注释：创建最小间隔（区块数）
+    /// - 用于防止短时间内连续创建
+    /// - 建议值：100块（约10分钟，假设6秒/块）
+    pub const MinCreationIntervalBlocks: BlockNumber = 100;
+    // ==========================================================
+
+    // ========== 🆕 2025-11-26: Article押金机制配置 ==========
+    /// 函数级详细中文注释：非拥有者创建 Article 的押金（USDT，精度 10^6）
+    /// - 默认值：1_000_000 (1 USDT)
+    /// - 可通过治理调整
+    /// - 用于防止非拥有者滥用创建文章权限
+    pub const ArticleDepositUsdt: u64 = 1_000_000;
+
+    /// 函数级详细中文注释：Article 押金锁定期（区块数）
+    /// - 默认值：288_000 (约 20 天，6秒/块)
+    /// - 计算：20 * 24 * 60 * 60 / 6 = 288_000
+    /// - 到期后自动退还押金
+    pub const ArticleDepositLockPeriod: BlockNumber = 288_000;
+
+    /// 函数级详细中文注释：每块最大处理到期文章数
+    /// - 默认值：50
+    /// - 防止 on_initialize 权重过大导致区块超重
+    /// - 可根据链上负载调整
+    pub const MaxExpiringArticlesPerBlock: u32 = 50;
+    // ==========================================================
 }
 
 impl pallet_deceased::Config for Runtime {
@@ -839,13 +951,33 @@ impl pallet_deceased::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
 
     // ========== 🆕 2025-10-28: Text 模块配置（整合自 deceased-text）==========
+    // ========== 🔄 2025-11-26: 留言免押金改革 ==========
     type TextId = u64;
     type MaxMessagesPerDeceased = DataMaxMessagesPerDeceased;
     type MaxEulogiesPerDeceased = DataMaxEulogiesPerDeceased;
-    type TextDeposit = DataMediaDeposit;
+    /// 函数级中文注释：文本/留言押金 - 改为0实现免押金
+    /// - 修改前：DataMediaDeposit (5 DUST)
+    /// - 修改后：TextDepositZero (0)
+    /// - 日期：2025-11-26
+    type TextDeposit = TextDepositZero;
     type ComplaintDeposit = DataMediaDeposit;
     type ComplaintPeriod = MediaComplaintPeriod;
     type ArbitrationAccount = TreasuryAccount;
+    /// 函数级中文注释：每日最大留言数（全局）
+    type MaxMessagesPerUserDaily = MaxMessagesPerUserDaily;
+    /// 函数级中文注释：每日对单个逝者最大留言数
+    type MaxMessagesPerDeceasedDaily = MaxMessagesPerDeceasedDaily;
+
+    // ========== 🆕 2025-11-26: 留言付费配置 ==========
+    /// 函数级详细中文注释：留言费用金额（固定 10,000 DUST）
+    /// - 用户给逝者留言需支付此费用
+    /// - 资金流向与供奉品一致
+    type MessageFee = ConstU128<{ 10_000 * crate::UNIT }>;  // 10,000 DUST
+
+    /// 函数级详细中文注释：留言费用分配器
+    /// - 复用 pallet-affiliate 的 do_distribute_rewards
+    /// - 资金分配：5%销毁 + 2%国库 + 3%存储 + 90%推荐链
+    type MessageFeeDistributor = MessageFeeDistributorImpl;
 
     // ========== 🆕 2025-10-28: Media 模块配置（整合自 deceased-media）==========
     type AlbumId = u64;
@@ -879,8 +1011,11 @@ impl pallet_deceased::Config for Runtime {
     type RuntimeHoldReason = RuntimeHoldReason;
 
     // ========== 随机数和时间配置 ==========
-    /// 函数级中文注释：特权起源 - 用于敏感操作（如强制删除）
-    type PrivilegedOrigin = frame_system::EnsureRoot<AccountId>;
+    /// 函数级中文注释：特权起源 - Sudo账户可作为特权签名用户
+    /// - 🆕 2025-11-26：从EnsureRoot改为EnsureSudo
+    /// - 允许Sudo账户创建逝者时绕过频率限制
+    /// - Sudo账户无数量限制、无时间间隔限制
+    type PrivilegedOrigin = EnsureSudo;
 
     /// 函数级中文注释：随机数源 - 用于生成唯一ID
     /// 注意：使用SimpleRandomness,基于区块哈希,仅用于ID生成的辅助随机性
@@ -888,6 +1023,39 @@ impl pallet_deceased::Config for Runtime {
 
     /// 函数级中文注释：Unix时间提供器 - 用于时间戳相关功能
     type UnixTime = pallet_timestamp::Pallet<Runtime>;
+
+    // ========== 🆕 2025-11-26: 逝者创建频率限制配置 ==========
+    /// 函数级中文注释：每日最大逝者创建数（每用户）
+    /// - 替代押金机制的防滥用措施
+    /// - 配合投诉治理机制使用
+    type MaxDeceasedCreationsPerUserDaily = MaxDeceasedCreationsPerUserDaily;
+
+    /// 函数级中文注释：用户最大逝者总数
+    /// - 防止单用户创建过多逝者导致的状态膨胀
+    type MaxDeceasedPerUser = MaxDeceasedPerUser;
+
+    /// 函数级中文注释：创建最小间隔（区块数）
+    /// - 用于防止短时间内连续创建
+    type MinCreationIntervalBlocks = MinCreationIntervalBlocks;
+    // ==========================================================
+
+    // ========== 🆕 2025-11-26: Article押金机制配置 ==========
+    /// 函数级详细中文注释：非拥有者创建 Article 的押金（USDT，精度 10^6）
+    /// - 1_000_000 = 1 USDT
+    /// - 非拥有者创建文章时需缴纳此押金
+    /// - 押金到期后自动退还
+    type ArticleDepositUsdt = ArticleDepositUsdt;
+
+    /// 函数级详细中文注释：Article 押金锁定期（区块数）
+    /// - 288_000 = 约20天（6秒/块）
+    /// - 到期后 on_initialize 自动释放押金
+    type ArticleDepositLockPeriod = ArticleDepositLockPeriod;
+
+    /// 函数级详细中文注释：每块最大处理到期文章数
+    /// - 50 = 每块最多处理50篇到期文章
+    /// - 防止 on_initialize 权重过大
+    type MaxExpiringArticlesPerBlock = MaxExpiringArticlesPerBlock;
+    // ==========================================================
 }
 
 /// 函数级详细中文注释：Real Pricing Provider 实现（连接 pallet-pricing）
@@ -916,6 +1084,42 @@ impl pallet_deceased::governance::PricingProvider for RealPricingProvider {
         }
 
         Ok(price)
+    }
+}
+
+/// 函数级详细中文注释：留言费用分配器实现（2025-11-26 留言付费功能）
+///
+/// ### 功能说明
+/// - 复用 pallet-affiliate 的 do_distribute_rewards
+/// - 资金流向与供奉品完全一致
+/// - 支持15层推荐链分配
+///
+/// ### 资金分配
+/// - 销毁：5%
+/// - 国库：2%
+/// - 存储：3%
+/// - 推荐链：90%（15层，每层6%）
+///
+/// ### 设计理念
+/// - 与 MemorialOfferingHook 共享相同的分配逻辑
+/// - 确保留言费用与供奉品费用的一致性
+/// - 复用经过验证的联盟分账机制
+pub struct MessageFeeDistributorImpl;
+
+impl pallet_deceased::MessageFeeDistributor<AccountId, Balance>
+    for MessageFeeDistributorImpl
+{
+    fn distribute_message_fee(
+        payer: &AccountId,
+        amount: Balance,
+    ) -> Result<Balance, sp_runtime::DispatchError> {
+        // 直接调用 pallet-affiliate 的分配函数
+        // 资金流向与供奉品完全一致
+        pallet_affiliate::Pallet::<Runtime>::do_distribute_rewards(
+            payer,
+            amount,
+            None,  // 无时长参数（非定时供奉）
+        )
     }
 }
 
@@ -1492,12 +1696,24 @@ impl sp_core::Get<AccountId> for CommitteeAccount {
     }
 }
 // ===== pricing 配置 =====
+// 函数级中文注释：汇率更新间隔（区块数）
+// 14400 个区块 ≈ 24小时（假设6秒出块）
+parameter_types! {
+    pub const ExchangeRateUpdateInterval: u32 = 14400;
+}
+
+// 函数级中文注释：OCW 使用 offchain local storage 存储汇率
+// 不需要 SendTransactionTypes，因为不提交 unsigned 交易
+// 汇率通过 get_cny_usdt_rate() 提供默认值 (7.2)
+
 impl pallet_pricing::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     /// 最大价格偏离：2000 bps = 20%
     /// 订单价格与基准价格的偏离不得超过 ±20%
     /// 例如：基准价 1.0 USDT/DUST，允许范围 0.8 ~ 1.2 USDT/DUST
     type MaxPriceDeviation = ConstU16<2000>;
+    /// 汇率更新间隔：14400 个区块 ≈ 24小时
+    type ExchangeRateUpdateInterval = ExchangeRateUpdateInterval;
 }
 
 // ====== 适配器实现（临时占位：允许 Root/无操作）======
@@ -2041,10 +2257,17 @@ impl pallet_trading::Config for Runtime {
 // 1️⃣ Maker 模块配置（做市商管理）
 /// 函数级中文注释：Maker Pallet 配置实现
 /// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+/// - 🔧 2025-11-27：GovernanceOrigin 配置修复，支持委员会投票审批
 impl pallet_maker::Config for Runtime {
     type Currency = Balances;
     type MakerCredit = pallet_credit::Pallet<Runtime>;
-    type GovernanceOrigin = frame_system::EnsureSigned<AccountId>;
+    /// 治理权限配置：Root 或委员会 2/3 多数
+    /// - EnsureRoot: sudo 账户直接调用（紧急情况）
+    /// - EnsureProportionAtLeast<..., 2, 3>: 主委员会 2/3 成员投票通过
+    type GovernanceOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, pallet_collective::Instance1, 2, 3>,
+    >;
     type Timestamp = pallet_timestamp::Pallet<Runtime>;
     type MakerDepositAmount = MakerDepositAmount;
     type TargetDepositUsd = TargetDepositUsd;
@@ -2216,6 +2439,9 @@ impl pallet_otc_order::Config for Runtime {
     type MinFirstPurchaseDustAmount = MinFirstPurchaseDustAmount;  // 100 DUST
     type MaxFirstPurchaseDustAmount = MaxFirstPurchaseDustAmount;  // 10,000 DUST
     type MaxFirstPurchaseOrdersPerMaker = MaxFirstPurchaseOrdersPerMaker;  // 5
+
+    // 🆕 2025-11-28: 聊天权限管理器
+    type ChatPermission = ChatPermission;
 
     type WeightInfo = ();
 }
@@ -3712,5 +3938,42 @@ impl pallet_bazi_chart::Config for Runtime {
     /// - 命理学固定配置
     /// - 例：辰藏干为 戊（主）、乙（中）、癸（余）
     type MaxCangGan = frame_support::traits::ConstU32<3>;
+}
+
+// ========= 🆕 2025-11-28 Chat Permission（聊天权限系统）=========
+
+/// 函数级详细中文注释：聊天权限系统配置 v4.0
+///
+/// ### 功能定位
+/// - 实现基于场景的多场景共存聊天权限控制
+/// - 支持多种场景类型：做市商、订单、纪念馆、群聊、自定义
+/// - 四层权限判断：黑名单 → 好友 → 场景授权 → 隐私设置
+///
+/// ### 配置参数
+/// - **MaxBlockListSize**: 每个用户最大黑名单数量（100）
+/// - **MaxWhitelistSize**: 每个用户最大白名单数量（100）
+/// - **MaxScenesPerPair**: 每对用户间最大场景授权数量（20）
+///
+/// ### 设计理念
+/// - 场景授权：业务 pallet 在创建订单/纪念馆时自动授予聊天权限
+/// - 双向存储：使用排序后的用户对作为 key，保证一致性
+/// - 过期清理：支持场景授权自动过期
+/// - 低耦合：通过 trait 与业务 pallet 解耦
+/// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式设置
+impl pallet_chat_permission::Config for Runtime {
+    /// 函数级中文注释：每个用户最大黑名单数量（100）
+    /// - 防止存储膨胀
+    /// - 100 个黑名单对普通用户完全足够
+    type MaxBlockListSize = frame_support::traits::ConstU32<100>;
+
+    /// 函数级中文注释：每个用户最大白名单数量（100）
+    /// - 仅在 Whitelist 模式下生效
+    /// - 控制存储开销
+    type MaxWhitelistSize = frame_support::traits::ConstU32<100>;
+
+    /// 函数级中文注释：每对用户间最大场景授权数量（20）
+    /// - 同一对用户可以有多个场景授权（如订单+做市商）
+    /// - 20 个授权足够覆盖所有业务场景
+    type MaxScenesPerPair = frame_support::traits::ConstU32<20>;
 }
 

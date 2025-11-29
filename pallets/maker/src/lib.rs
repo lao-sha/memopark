@@ -255,7 +255,9 @@ pub mod pallet {
         type MakerCredit: pallet_credit::MakerCreditInterface<Self::AccountId>;
         
         /// 治理权限（用于审批做市商）
-        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
+        /// 注意：移除 Success = AccountId 约束，以兼容委员会集体 Origin
+        /// 委员会提案执行时使用 Collective Origin，其 Success 类型为 ()
+        type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         
         /// Timestamp（用于获取当前时间）
         type Timestamp: UnixTime;
@@ -373,9 +375,11 @@ pub mod pallet {
         /// 资料已提交
         MakerInfoSubmitted { maker_id: u64, who: T::AccountId },
         /// 做市商已批准
-        MakerApproved { maker_id: u64, approved_by: T::AccountId },
+        /// 注意：由于委员会集体 Origin 不返回具体账户，approved_by 为 None 表示通过委员会投票批准
+        MakerApproved { maker_id: u64, approved_by: Option<T::AccountId> },
         /// 做市商已驳回
-        MakerRejected { maker_id: u64, rejected_by: T::AccountId },
+        /// 注意：由于委员会集体 Origin 不返回具体账户，rejected_by 为 None 表示通过委员会投票驳回
+        MakerRejected { maker_id: u64, rejected_by: Option<T::AccountId> },
         /// 做市商申请已取消
         MakerCancelled { maker_id: u64, who: T::AccountId },
         /// 提现已申请
@@ -557,31 +561,41 @@ pub mod pallet {
         /// 函数级详细中文注释：审批做市商申请
         ///
         /// # 参数
-        /// - `origin`: 调用者（必须是治理权限）
+        /// - `origin`: 调用者（必须是治理权限：Root 或委员会 2/3 多数）
         /// - `maker_id`: 做市商 ID
         ///
         /// # 返回
         /// - `DispatchResult`: 成功或错误
+        ///
+        /// # 说明
+        /// - 支持 Root 直接调用
+        /// - 支持委员会提案投票通过后执行
+        /// - 委员会集体 Origin 不返回具体账户，事件中 approved_by 为 None
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::lock_deposit())]
         pub fn approve_maker(origin: OriginFor<T>, maker_id: u64) -> DispatchResult {
-            let approved_by = T::GovernanceOrigin::ensure_origin(origin)?;
-            Self::do_approve_maker(maker_id, &approved_by)
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::do_approve_maker(maker_id)
         }
         
         /// 函数级详细中文注释：驳回做市商申请
         ///
         /// # 参数
-        /// - `origin`: 调用者（必须是治理权限）
+        /// - `origin`: 调用者（必须是治理权限：Root 或委员会 2/3 多数）
         /// - `maker_id`: 做市商 ID
         ///
         /// # 返回
         /// - `DispatchResult`: 成功或错误
+        ///
+        /// # 说明
+        /// - 支持 Root 直接调用
+        /// - 支持委员会提案投票通过后执行
+        /// - 驳回后将解锁申请人的押金
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::lock_deposit())]
         pub fn reject_maker(origin: OriginFor<T>, maker_id: u64) -> DispatchResult {
-            let rejected_by = T::GovernanceOrigin::ensure_origin(origin)?;
-            Self::do_reject_maker(maker_id, &rejected_by)
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            Self::do_reject_maker(maker_id)
         }
         
         /// 函数级详细中文注释：取消做市商申请
@@ -905,71 +919,77 @@ pub mod pallet {
         }
         
         /// 函数级详细中文注释：审批做市商申请
-        /// 
+        ///
         /// # 参数
         /// - maker_id: 做市商ID
-        /// - approved_by: 审批人账户
-        /// 
+        ///
         /// # 返回
         /// - DispatchResult
-        pub fn do_approve_maker(maker_id: u64, approved_by: &T::AccountId) -> DispatchResult {
+        ///
+        /// # 说明
+        /// - 由于委员会集体 Origin 不返回具体账户，事件中 approved_by 设为 None
+        /// - 审批记录可通过链上事件追溯（提案发起者、投票者等）
+        pub fn do_approve_maker(maker_id: u64) -> DispatchResult {
             MakerApplications::<T>::try_mutate(maker_id, |maybe_app| -> DispatchResult {
                 let app = maybe_app.as_mut().ok_or(Error::<T>::MakerNotFound)?;
-                
+
                 // 检查状态
                 ensure!(
                     app.status == ApplicationStatus::PendingReview,
                     Error::<T>::InvalidMakerStatus
                 );
-                
+
                 // 更新状态
                 app.status = ApplicationStatus::Active;
-                
+
                 Ok(())
             })?;
-            
-            // 触发事件
+
+            // 触发事件（approved_by 为 None，表示通过治理流程批准）
             Self::deposit_event(Event::MakerApproved {
                 maker_id,
-                approved_by: approved_by.clone(),
+                approved_by: None,
             });
-            
+
             Ok(())
         }
         
         /// 函数级详细中文注释：驳回做市商申请
-        /// 
+        ///
         /// # 参数
         /// - maker_id: 做市商ID
-        /// - rejected_by: 驳回人账户
-        /// 
+        ///
         /// # 返回
         /// - DispatchResult
-        pub fn do_reject_maker(maker_id: u64, rejected_by: &T::AccountId) -> DispatchResult {
+        ///
+        /// # 说明
+        /// - 由于委员会集体 Origin 不返回具体账户，事件中 rejected_by 设为 None
+        /// - 驳回后将解锁申请人的押金
+        pub fn do_reject_maker(maker_id: u64) -> DispatchResult {
             MakerApplications::<T>::try_mutate(maker_id, |maybe_app| -> DispatchResult {
                 let app = maybe_app.as_mut().ok_or(Error::<T>::MakerNotFound)?;
-                
+
                 // 检查状态
                 ensure!(
                     app.status == ApplicationStatus::PendingReview,
                     Error::<T>::InvalidMakerStatus
                 );
-                
+
                 // 更新状态
                 app.status = ApplicationStatus::Rejected;
-                
+
                 // 解锁押金
                 T::Currency::unreserve(&app.owner, app.deposit);
-                
+
                 Ok(())
             })?;
-            
-            // 触发事件
+
+            // 触发事件（rejected_by 为 None，表示通过治理流程驳回）
             Self::deposit_event(Event::MakerRejected {
                 maker_id,
-                rejected_by: rejected_by.clone(),
+                rejected_by: None,
             });
-            
+
             Ok(())
         }
         

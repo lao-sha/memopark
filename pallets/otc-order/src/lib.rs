@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 //! # OTC Order Pallet (场外交易订单模块 - 集成KYC认证)
 //!
 //! ## 概述
@@ -23,6 +21,11 @@
 //!
 //! - v0.1.0 (2025-11-03): 从 pallet-trading 拆分而来
 //! - v0.2.0 (2025-11-13): 集成KYC认证功能
+//! - v0.3.0 (2025-11-28): 集成聊天权限系统
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
 
 pub use pallet::*;
 
@@ -56,6 +59,7 @@ pub mod pallet {
     };
     use sp_core::H256;
     use pallet_escrow::Escrow as EscrowTrait;
+    use pallet_chat_permission::SceneAuthorizationManager;
 
     /// 函数级详细中文注释：Balance 类型别名
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<
@@ -159,6 +163,7 @@ pub mod pallet {
     /// 函数级中文注释：OtcOrder Pallet 配置 trait
     /// - 🔴 stable2506 API 变更：RuntimeEvent 自动继承，无需显式声明
     /// - 🆕 集成KYC认证配置（不再继承 pallet_identity::Config，使用数值表示等级）
+    /// - 🆕 2025-11-28: 集成聊天权限系统
     pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
 
         /// 货币类型
@@ -188,6 +193,13 @@ pub mod pallet {
 
         /// 🆕 Identity Provider（用于KYC验证）
         type IdentityProvider: IdentityVerificationProvider<Self::AccountId>;
+
+        /// 🆕 2025-11-28: 聊天权限管理器
+        /// 用于在订单创建时自动授予买卖双方聊天权限
+        type ChatPermission: pallet_chat_permission::SceneAuthorizationManager<
+            Self::AccountId,
+            BlockNumberFor<Self>,
+        >;
 
         /// 订单超时时间（默认 1 小时，毫秒）
         #[pallet::constant]
@@ -965,7 +977,24 @@ pub mod pallet {
                 dust_amount,
                 is_first_purchase: false,
             });
-            
+
+            // 16. 🆕 2025-11-28: 授予买卖双方聊天权限
+            // 订单创建后，买家和做市商之间自动获得基于订单场景的聊天权限
+            // 有效期：30天（30 * 24 * 60 * 10 个区块，假设 6 秒/区块）
+            let chat_duration = 30u32 * 24 * 60 * 10; // 30天
+            let order_metadata = sp_std::vec::Vec::from(
+                alloc::format!("OTC订单#{}", order_id).as_bytes()
+            );
+            let _ = T::ChatPermission::grant_bidirectional_scene_authorization(
+                *b"otc_ordr",
+                buyer,
+                &maker_app.account,
+                pallet_chat_permission::SceneType::Order,
+                pallet_chat_permission::SceneId::Numeric(order_id),
+                Some(chat_duration.into()),
+                order_metadata,
+            );
+
             Ok(order_id)
         }
         
@@ -1140,7 +1169,24 @@ pub mod pallet {
                 usd_value,
                 dust_amount,
             });
-            
+
+            // 19. 🆕 2025-11-28: 授予买卖双方聊天权限
+            // 首购订单创建后，买家和做市商之间自动获得基于订单场景的聊天权限
+            // 有效期：30天（30 * 24 * 60 * 10 个区块，假设 6 秒/区块）
+            let chat_duration = 30u32 * 24 * 60 * 10; // 30天
+            let order_metadata = sp_std::vec::Vec::from(
+                alloc::format!("首购订单#{}", order_id).as_bytes()
+            );
+            let _ = T::ChatPermission::grant_bidirectional_scene_authorization(
+                *b"otc_ordr",
+                buyer,
+                &maker_app.account,
+                pallet_chat_permission::SceneType::Order,
+                pallet_chat_permission::SceneId::Numeric(order_id),
+                Some(chat_duration.into()),
+                order_metadata,
+            );
+
             Ok(order_id)
         }
         

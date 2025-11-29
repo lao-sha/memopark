@@ -76,7 +76,9 @@ export class SmartChatService {
     isPublic: boolean = false
   ): Promise<string> {
     try {
+      console.log('创建群组开始，参数:', { address, name, description, encryptionMode, isPublic });
       const api = await this.ensureApi();
+      console.log('API已初始化');
 
       // 转换加密模式为 u8
       const encryptionModeMap = {

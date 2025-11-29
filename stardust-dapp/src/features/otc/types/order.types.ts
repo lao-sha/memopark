@@ -10,8 +10,8 @@
 
 /**
  * 函数级详细中文注释：做市商信息接口
- * 
- * 从链上activeMarketMakers存储查询得到的做市商详细信息。
+ *
+ * 从链上makerApplications存储查询得到的做市商详细信息。
  * 包含费率、EPAY配置、TRON地址等完整字段。
  */
 export interface MarketMaker {

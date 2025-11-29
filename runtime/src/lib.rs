@@ -706,6 +706,32 @@ pub mod runtime {
 	#[runtime::pallet_index(71)]
 	pub type BaziChart = pallet_bazi_chart;
 
+	/// 函数级详细中文注释：聊天权限系统 v4.0 (Chat Permission Pallet)
+	///
+	/// 🆕 2025-11-28：基于场景的多场景共存聊天权限控制系统
+	///
+	/// **核心功能**：
+	/// - ✅ 场景类型：做市商（MarketMaker）、订单（Order）、纪念馆（Memorial）、群聊（Group）、自定义
+	/// - ✅ 场景授权管理：授予/撤销/延期场景授权
+	/// - ✅ 双向授权：自动处理双向聊天权限
+	/// - ✅ 隐私设置：Open/FriendsOnly/Whitelist/Closed 四种权限级别
+	/// - ✅ 好友系统：互加好友关系管理
+	/// - ✅ 黑白名单：屏蔽和白名单功能
+	/// - ✅ Runtime API：前端权限查询接口
+	///
+	/// **四层权限判断**：
+	/// 1. 黑名单检查（最高优先级）
+	/// 2. 好友关系检查
+	/// 3. 场景授权检查
+	/// 4. 隐私设置检查
+	///
+	/// **设计理念**：
+	/// - 业务 pallet 通过 SceneAuthorizationManager trait 自动授予聊天权限
+	/// - 场景可自动过期，支持有效期设置
+	/// - 低耦合设计，通过 trait 与业务模块解耦
+	#[runtime::pallet_index(72)]
+	pub type ChatPermission = pallet_chat_permission;
+
 	// 🆕 2025-11-03 Frontier: 以太坊兼容层（官方 Parity Pallet）
 	// ⚠️ 临时禁用以排查 runtime 启动问题
 	// /// 函数级中文注释：EVM 虚拟机（执行以太坊智能合约）

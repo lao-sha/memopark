@@ -73,3 +73,31 @@ pub struct ComplaintCase<T: Config> {
     pub status: ComplaintStatus,
 }
 
+/// 🆕 2025-11-26: Article押金记录（非拥有者创建文章的保证金）
+///
+/// ### 功能说明
+/// - 记录非拥有者创建Article时缴纳的押金信息
+/// - 押金到期后自动退还
+/// - 使用Fungible::hold机制锁定资金
+///
+/// ### 字段说明
+/// - `depositor`: 押金缴纳人（文章作者）
+/// - `amount`: 押金金额（DUST单位）
+/// - `locked_at`: 锁定时的区块号
+/// - `expiry_block`: 到期区块号（锁定后365天）
+/// - `deceased_id`: 关联的逝者ID
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct ArticleDepositRecord<T: Config> {
+    /// 押金缴纳人（文章作者）
+    pub depositor: T::AccountId,
+    /// 押金金额（DUST）
+    pub amount: BalanceOf<T>,
+    /// 锁定区块
+    pub locked_at: BlockNumberFor<T>,
+    /// 到期区块（自动退还）
+    pub expiry_block: BlockNumberFor<T>,
+    /// 关联逝者ID
+    pub deceased_id: T::DeceasedId,
+}
+

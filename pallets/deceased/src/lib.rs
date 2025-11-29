@@ -456,6 +456,62 @@ pub struct Deceased<T: Config> {
     pub version: u32,
 }
 
+/// 函数级中文注释：用户逝者创建统计结构（2025-11-26 逝者免押金）
+///
+/// ### 功能说明
+/// - 记录用户创建逝者的频率统计信息
+/// - 用于实现免押金后的频率限制机制
+/// - 替代原有的押金机制作为防滥用手段
+///
+/// ### 限制策略
+/// - 每日创建上限：MaxDeceasedCreationsPerUserDaily（建议3个）
+/// - 总创建上限：MaxDeceasedPerUser（建议20个）
+/// - 最小间隔：MinCreationIntervalBlocks（建议100块≈10分钟）
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct CreationStats<T: Config> {
+    /// 今日已创建数量
+    pub daily_count: u32,
+    /// 今日索引（基于区块号计算的日期）
+    pub last_day_index: u32,
+    /// 总创建数量（累计）
+    pub total_count: u32,
+    /// 最后创建时间（区块号）
+    pub last_created_at: BlockNumberFor<T>,
+}
+
+/// 函数级详细中文注释：留言费用分配器接口（2025-11-26 留言付费功能）
+///
+/// ### 功能说明
+/// - 将留言费用分配到推荐链
+/// - 资金流向与供奉品完全一致
+/// - 复用 pallet-affiliate 实现
+///
+/// ### 资金分配
+/// - 销毁：5%
+/// - 国库：2%
+/// - 存储：3%
+/// - 推荐链：90%（15层，每层6%）
+///
+/// ### 使用场景
+/// - 用户创建 Message 类型留言时，支付 10,000 DUST
+/// - Article 类型保持免费
+pub trait MessageFeeDistributor<AccountId, Balance> {
+    /// 函数级中文注释：分配留言费用
+    ///
+    /// ### 参数
+    /// - `payer`: 留言者（付款人）
+    /// - `amount`: 费用金额
+    ///
+    /// ### 返回
+    /// - Ok(distributed): 实际分配金额
+    /// - Err: 分配失败
+    fn distribute_message_fee(
+        payer: &AccountId,
+        amount: Balance,
+    ) -> Result<Balance, sp_runtime::DispatchError>;
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -582,6 +638,72 @@ pub mod pallet {
         
         /// 函数级中文注释：仲裁费用接收账户（5%）
         type ArbitrationAccount: Get<Self::AccountId>;
+
+        // ========== 🆕 2025-11-26: 留言频率限制配置 ==========
+        /// 函数级中文注释：每日最大留言数（全局）
+        /// - 用于防止用户刷屏
+        /// - 建议值：20
+        #[pallet::constant]
+        type MaxMessagesPerUserDaily: Get<u32>;
+
+        /// 函数级中文注释：每日对单个逝者最大留言数
+        /// - 用于防止针对特定逝者的刷屏
+        /// - 建议值：5
+        #[pallet::constant]
+        type MaxMessagesPerDeceasedDaily: Get<u32>;
+
+        // ========== 🆕 2025-11-26: 留言付费配置 ==========
+        /// 函数级中文注释：留言费用金额（固定）
+        /// - 默认值：10,000 DUST
+        /// - 仅对 Message 类型收费，Article 免费
+        /// - 资金流向与供奉品完全一致
+        #[pallet::constant]
+        type MessageFee: Get<BalanceOf<Self>>;
+
+        /// 函数级中文注释：留言费用分配器
+        /// - 复用 pallet-affiliate 的分配逻辑
+        /// - 资金分配：5%销毁 + 2%国库 + 3%存储 + 90%推荐链
+        type MessageFeeDistributor: crate::MessageFeeDistributor<Self::AccountId, BalanceOf<Self>>;
+
+        // ========== 🆕 2025-11-26: Article押金配置 ==========
+        /// 函数级中文注释：非拥有者创建 Article 的押金金额（USDT，精度 10^6）
+        /// - 默认值：1_000_000 (1 USDT)
+        /// - 动态换算为 DUST（使用 PricingProvider）
+        /// - 仅对非拥有者收取
+        #[pallet::constant]
+        type ArticleDepositUsdt: Get<u64>;
+
+        /// 函数级中文注释：Article 押金锁定期（区块数）
+        /// - 默认值：5_256_000（约 365 天，6秒/块）
+        /// - 到期后自动退还押金
+        #[pallet::constant]
+        type ArticleDepositLockPeriod: Get<BlockNumberFor<Self>>;
+
+        /// 函数级中文注释：每块最大处理到期文章数
+        /// - 默认值：50
+        /// - 防止 on_initialize 权重过大
+        /// - 超出部分延迟到下一区块处理
+        #[pallet::constant]
+        type MaxExpiringArticlesPerBlock: Get<u32>;
+
+        // ========== 🆕 2025-11-26: 逝者创建频率限制配置 ==========
+        /// 函数级中文注释：每日最大逝者创建数（每用户）
+        /// - 用于防止批量创建攻击
+        /// - 建议值：3
+        #[pallet::constant]
+        type MaxDeceasedCreationsPerUserDaily: Get<u32>;
+
+        /// 函数级中文注释：用户最大逝者总数
+        /// - 用于防止单用户创建过多逝者
+        /// - 建议值：20
+        #[pallet::constant]
+        type MaxDeceasedPerUser: Get<u32>;
+
+        /// 函数级中文注释：创建最小间隔（区块数）
+        /// - 用于防止短时间内连续创建
+        /// - 建议值：100块（约10分钟）
+        #[pallet::constant]
+        type MinCreationIntervalBlocks: Get<BlockNumberFor<Self>>;
 
         // ========== Media 模块相关类型 ==========
         /// 函数级中文注释：相册ID类型
@@ -965,6 +1087,49 @@ pub mod pallet {
         Blake2_128Concat,
         u64, // deceased_id (10-digit range)
         bool,
+        OptionQuery,
+    >;
+
+    // ========== 🆕 2025-11-26: 留言频率限制存储 ==========
+
+    /// 函数级中文注释：用户每日留言计数
+    /// - Key: (AccountId, day_index)
+    /// - Value: 当日已发送留言数
+    /// - 用于防止用户刷屏
+    #[pallet::storage]
+    pub type UserDailyMessageCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (T::AccountId, u32),  // (user, day_index)
+        u32,
+        ValueQuery,
+    >;
+
+    /// 函数级中文注释：用户对特定逝者的每日留言计数
+    /// - Key: (AccountId, DeceasedId, day_index)
+    /// - Value: 当日对该逝者的留言数
+    /// - 用于防止针对特定逝者的刷屏
+    #[pallet::storage]
+    pub type UserDeceasedDailyMessageCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (T::AccountId, T::DeceasedId, u32),  // (user, deceased_id, day_index)
+        u32,
+        ValueQuery,
+    >;
+
+    // =================== 🆕 2025-11-26: 逝者创建频率限制存储 ===================
+
+    /// 函数级中文注释：用户逝者创建统计
+    /// - Key: AccountId
+    /// - Value: 创建统计（每日计数、总计数、最后创建时间等）
+    /// - 用于防止批量创建攻击
+    #[pallet::storage]
+    pub type UserCreationStats<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        CreationStats<T>,
         OptionQuery,
     >;
 
@@ -1449,6 +1614,60 @@ pub mod pallet {
             deceased_id: T::DeceasedId,
             author: T::AccountId,
             kind: u8, // 0=Article, 1=Message
+        },
+
+        /// 函数级详细中文注释：留言费用已支付（2025-11-26 留言付费功能）
+        ///
+        /// ### 事件说明
+        /// - 用户创建留言时支付的费用
+        /// - 费用通过 pallet-affiliate 系统分配
+        /// - 与供奉品资金流向一致
+        ///
+        /// ### 参数说明
+        /// - `payer`: 付款人（留言者）
+        /// - `deceased_id`: 逝者ID
+        /// - `amount`: 支付金额（固定 10,000 DUST）
+        MessageFeePaid {
+            payer: T::AccountId,
+            deceased_id: T::DeceasedId,
+            amount: BalanceOf<T>,
+        },
+
+        /// 🆕 2025-11-26: 非拥有者创建文章，押金已锁定
+        ///
+        /// ### 事件说明
+        /// - 非逝者拥有者创建 Article 时触发
+        /// - 押金使用 Fungible::hold 机制锁定
+        /// - 到期后自动释放
+        ///
+        /// ### 参数说明
+        /// - `text_id`: 文章ID
+        /// - `depositor`: 押金缴纳人（文章作者）
+        /// - `deceased_id`: 关联逝者ID
+        /// - `amount`: 押金金额（DUST）
+        /// - `expiry_block`: 到期区块号（锁定后365天）
+        ArticleDepositLocked {
+            text_id: T::TextId,
+            depositor: T::AccountId,
+            deceased_id: T::DeceasedId,
+            amount: BalanceOf<T>,
+            expiry_block: BlockNumberFor<T>,
+        },
+
+        /// 🆕 2025-11-26: 文章押金已退还（到期自动释放）
+        ///
+        /// ### 事件说明
+        /// - 文章押金到期后在 on_initialize 中自动释放
+        /// - 使用 Fungible::release 释放锁定资金
+        ///
+        /// ### 参数说明
+        /// - `text_id`: 文章ID
+        /// - `depositor`: 押金缴纳人
+        /// - `amount`: 退还金额（DUST）
+        ArticleDepositReleased {
+            text_id: T::TextId,
+            depositor: T::AccountId,
+            amount: BalanceOf<T>,
         },
 
         /// 函数级详细中文注释：更新文本记录
@@ -2200,6 +2419,60 @@ pub mod pallet {
         /// 函数级中文注释：不符合申请资格
         /// - 场景：Token修改次数未达到上限就申请治理扩展
         NotEligibleForExtension,
+
+        // =================== 🆕 2025-11-26: 留言频率限制错误 ===================
+
+        /// 函数级中文注释：每日留言数已达上限
+        /// - 场景：用户当天的留言总数已达到 MaxMessagesPerUserDaily 限制
+        /// - 默认限制：20条/天
+        /// - 解决：等待次日重置后再发送
+        DailyMessageLimitExceeded,
+
+        /// 函数级中文注释：对该逝者的每日留言数已达上限
+        /// - 场景：用户当天对特定逝者的留言数已达到 MaxMessagesPerDeceasedDaily 限制
+        /// - 默认限制：5条/天/逝者
+        /// - 解决：对其他逝者留言，或等待次日重置
+        DeceasedDailyMessageLimitExceeded,
+
+        // =================== 🆕 2025-11-26: 逝者创建频率限制错误 ===================
+
+        /// 函数级中文注释：创建过于频繁（未达到最小间隔）
+        /// - 场景：用户在 MinCreationIntervalBlocks 内连续创建逝者
+        /// - 默认限制：100块（约10分钟）
+        /// - 解决：等待间隔时间后再创建
+        CreationTooFrequent,
+
+        /// 函数级中文注释：每日创建数已达上限
+        /// - 场景：用户当天创建的逝者数已达到 MaxDeceasedCreationsPerUserDaily 限制
+        /// - 默认限制：3个/天
+        /// - 解决：等待次日重置后再创建
+        DailyCreationLimitExceeded,
+
+        /// 函数级中文注释：总创建数已达上限
+        /// - 场景：用户累计创建的逝者数已达到 MaxDeceasedPerUser 限制
+        /// - 默认限制：20个
+        /// - 解决：联系管理员申请扩展配额，或转让现有逝者
+        TotalCreationLimitExceeded,
+
+        // =================== 🆕 2025-11-26: Article押金机制错误 ===================
+
+        /// 函数级中文注释：价格不可用
+        /// - 场景：无法从 PricingProvider 获取 DUST/USDT 汇率
+        /// - 原因：市场数据不足或 pricing 服务不可用
+        /// - 解决：稍后重试，或联系管理员检查定价服务
+        ArticlePriceUnavailable,
+
+        /// 函数级中文注释：押金计算溢出
+        /// - 场景：USDT 到 DUST 换算时发生数学溢出
+        /// - 原因：汇率异常或金额过大
+        /// - 解决：检查当前汇率是否正常
+        ArticleCalculationOverflow,
+
+        /// 函数级中文注释：到期列表已满
+        /// - 场景：当前区块的到期文章列表已达到 MaxExpiringArticlesPerBlock 上限
+        /// - 原因：同一区块有过多文章到期
+        /// - 解决：等待几个区块后重试，让系统分散到期处理
+        ExpiringArticleListFull,
     }
 
     /// 函数级详细中文注释：Hold Reason - 资金锁定原因枚举
@@ -2229,6 +2502,11 @@ pub mod pallet {
         OwnerOperationDeposit,
         /// 操作投诉押金（内容级治理）
         OperationComplaintDeposit,
+        /// 🆕 2025-11-26: Article押金（非拥有者创建文章的保证金）
+        /// - 押金金额：1 USDT（动态换算为DUST）
+        /// - 锁定期：365天
+        /// - 到期自动退还
+        ArticleDeposit,
     }
 
     // 存储版本常量（用于 FRAME v2 storage_version 宏传参）
@@ -2822,6 +3100,48 @@ pub mod pallet {
     #[pallet::storage]
     pub type NextTextComplaintId<T: Config> = StorageValue<_, u64, ValueQuery>;
 
+    // =================== 🆕 2025-11-26: Article押金存储 ===================
+
+    /// 函数级详细中文注释：文章押金记录存储
+    ///
+    /// ### 功能说明
+    /// - 存储非拥有者创建Article时的押金记录
+    /// - Key: TextId（文章ID）
+    /// - Value: ArticleDepositRecord（押金详情）
+    ///
+    /// ### 使用场景
+    /// - 创建文章时写入押金记录
+    /// - 到期释放时读取并删除记录
+    /// - 查询某篇文章的押金状态
+    #[pallet::storage]
+    pub type ArticleDepositRecords<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::TextId,
+        text::ArticleDepositRecord<T>,
+        OptionQuery,
+    >;
+
+    /// 函数级详细中文注释：到期文章索引（按区块号）
+    ///
+    /// ### 功能说明
+    /// - 按到期区块号索引文章ID列表
+    /// - 用于on_initialize高效查询当前块需处理的到期文章
+    /// - BoundedVec限制每块最大处理数量，防止权重过大
+    ///
+    /// ### 性能考量
+    /// - O(1) 查询：直接按区块号读取
+    /// - 批量处理：一次性获取该块所有到期文章
+    /// - 权重可控：MaxExpiringArticlesPerBlock 限制上限
+    #[pallet::storage]
+    pub type ExpiringArticles<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BlockNumberFor<T>,
+        BoundedVec<T::TextId, T::MaxExpiringArticlesPerBlock>,
+        ValueQuery,
+    >;
+
     // =================== Media 模块存储定义 ===================
 
     /// 函数级详细中文注释：相册存储
@@ -3052,6 +3372,268 @@ pub mod pallet {
             Ok(deceased)
         }
 
+        // =================== 🆕 2025-11-26: 留言频率限制辅助函数 ===================
+
+        /// 函数级详细中文注释：获取当前日期索引（基于区块号）
+        ///
+        /// ### 功能说明
+        /// - 将当前区块号转换为日期索引
+        /// - 用于留言频率限制的日期判断
+        /// - 假设6秒/块，1天 = 14400块
+        ///
+        /// ### 返回值
+        /// - u32: 当前日期索引（从创世区块开始的天数）
+        ///
+        /// ### 计算公式
+        /// day_index = block_number / 14400
+        fn current_day_index() -> u32 {
+            let now = <frame_system::Pallet<T>>::block_number();
+            let blocks_per_day: u64 = 14400; // 6秒/块 × 60 × 60 × 24 = 14400块/天
+            (now.saturated_into::<u64>() / blocks_per_day) as u32
+        }
+
+        /// 函数级详细中文注释：检查留言频率限制
+        ///
+        /// ### 功能说明
+        /// - 检查用户是否超过每日留言限制
+        /// - 两级限制：全局每日限制 + 单个逝者每日限制
+        ///
+        /// ### 参数
+        /// - `who`: 发送留言的用户账户
+        /// - `deceased_id`: 目标逝者ID
+        ///
+        /// ### 返回值
+        /// - `Ok(())`: 未超过限制，可以发送留言
+        /// - `Err(DailyMessageLimitExceeded)`: 超过每日全局留言限制
+        /// - `Err(DeceasedDailyMessageLimitExceeded)`: 超过对该逝者的每日留言限制
+        ///
+        /// ### 限制说明
+        /// - 每日全局限制：MaxMessagesPerUserDaily（建议20条）
+        /// - 单个逝者限制：MaxMessagesPerDeceasedDaily（建议5条）
+        /// - 日期重置：每14400块（约24小时）自动重置计数
+        pub(crate) fn check_message_rate_limit(
+            who: &T::AccountId,
+            deceased_id: T::DeceasedId,
+        ) -> DispatchResult {
+            let day_index = Self::current_day_index();
+
+            // 检查每日全局限制
+            let daily_count = UserDailyMessageCount::<T>::get((who.clone(), day_index));
+            ensure!(
+                daily_count < T::MaxMessagesPerUserDaily::get(),
+                Error::<T>::DailyMessageLimitExceeded
+            );
+
+            // 检查对单个逝者的每日限制
+            let deceased_daily_count = UserDeceasedDailyMessageCount::<T>::get(
+                (who.clone(), deceased_id, day_index)
+            );
+            ensure!(
+                deceased_daily_count < T::MaxMessagesPerDeceasedDaily::get(),
+                Error::<T>::DeceasedDailyMessageLimitExceeded
+            );
+
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：更新留言计数
+        ///
+        /// ### 功能说明
+        /// - 在留言创建成功后调用
+        /// - 更新用户的每日留言计数和对特定逝者的留言计数
+        ///
+        /// ### 参数
+        /// - `who`: 发送留言的用户账户
+        /// - `deceased_id`: 目标逝者ID
+        ///
+        /// ### 存储更新
+        /// - UserDailyMessageCount: (who, day_index) => count + 1
+        /// - UserDeceasedDailyMessageCount: (who, deceased_id, day_index) => count + 1
+        ///
+        /// ### 设计说明
+        /// - 使用 saturating_add 防止溢出
+        /// - 日期索引自动按天分区，旧数据自然淘汰
+        pub(crate) fn increment_message_count(who: &T::AccountId, deceased_id: T::DeceasedId) {
+            let day_index = Self::current_day_index();
+
+            // 更新全局每日计数
+            UserDailyMessageCount::<T>::mutate((who.clone(), day_index), |count| {
+                *count = count.saturating_add(1);
+            });
+
+            // 更新对该逝者的每日计数
+            UserDeceasedDailyMessageCount::<T>::mutate(
+                (who.clone(), deceased_id, day_index),
+                |count| {
+                    *count = count.saturating_add(1);
+                }
+            );
+        }
+
+        // =================== 🆕 2025-11-26: Article押金辅助函数 ===================
+
+        /// 函数级详细中文注释：计算 Article 押金金额（USDT → DUST）
+        ///
+        /// ### 功能说明
+        /// - 将配置的 USDT 押金金额换算为 DUST
+        /// - 使用 PricingProvider 获取实时汇率
+        /// - 应用安全边界防止极端价格导致异常押金
+        ///
+        /// ### 计算公式
+        /// DUST数量 = USDT金额 × DUST精度 / DUST价格（USDT）
+        ///
+        /// ### 安全边界
+        /// - 最低押金：100 DUST（防止价格过高导致押金过低）
+        /// - 最高押金：100,000 DUST（防止价格过低导致押金过高）
+        ///
+        /// ### 返回值
+        /// - `Ok(BalanceOf<T>)`: 计算成功，返回 DUST 数量
+        /// - `Err(ArticlePriceUnavailable)`: 无法获取汇率
+        /// - `Err(ArticleCalculationOverflow)`: 计算溢出
+        pub(crate) fn calculate_article_deposit_dust() -> Result<BalanceOf<T>, DispatchError> {
+            use sp_runtime::traits::SaturatedConversion;
+            use crate::governance::PricingProvider;
+
+            // 获取配置的 USDT 押金金额（精度 10^6）
+            let usdt_amount = T::ArticleDepositUsdt::get() as u128;
+
+            // 从 PricingProvider 获取 DUST/USDT 汇率
+            let dust_price = T::PricingProvider::get_current_exchange_rate()
+                .map_err(|_| Error::<T>::ArticlePriceUnavailable)?;
+
+            // 防止除零
+            if dust_price == 0u64 {
+                return Err(Error::<T>::ArticlePriceUnavailable.into());
+            }
+
+            // 计算 DUST 数量
+            // DUST精度：10^12
+            // USDT精度：10^6
+            // 公式：dust_amount = usdt_amount * 10^12 / dust_price
+            const DUST_PRECISION: u128 = 1_000_000_000_000u128;
+
+            let dust_amount = usdt_amount
+                .checked_mul(DUST_PRECISION)
+                .ok_or(Error::<T>::ArticleCalculationOverflow)?
+                .checked_div(dust_price as u128)
+                .ok_or(Error::<T>::ArticleCalculationOverflow)?;
+
+            // 安全边界
+            const MIN_DEPOSIT: u128 = 100 * DUST_PRECISION;        // 100 DUST
+            const MAX_DEPOSIT: u128 = 100_000 * DUST_PRECISION;    // 100,000 DUST
+
+            let safe_amount = dust_amount.clamp(MIN_DEPOSIT, MAX_DEPOSIT);
+
+            Ok(safe_amount.saturated_into())
+        }
+
+        // =================== 🆕 2025-11-26: 逝者创建频率限制辅助函数 ===================
+
+        /// 函数级详细中文注释：检查逝者创建频率限制
+        ///
+        /// ### 功能说明
+        /// - 在创建逝者前检查用户是否满足频率限制
+        /// - 三级限制：最小间隔 + 每日限制 + 总数限制
+        ///
+        /// ### 参数
+        /// - `who`: 创建逝者的用户账户
+        ///
+        /// ### 返回值
+        /// - `Ok(())`: 满足所有限制，可以创建
+        /// - `Err(CreationTooFrequent)`: 两次创建间隔过短
+        /// - `Err(DailyCreationLimitExceeded)`: 超过每日创建限制
+        /// - `Err(TotalCreationLimitExceeded)`: 超过总创建数限制
+        ///
+        /// ### 限制说明
+        /// - 最小间隔：MinCreationIntervalBlocks（建议100块，约10分钟）
+        /// - 每日限制：MaxDeceasedCreationsPerUserDaily（建议3个）
+        /// - 总数限制：MaxDeceasedPerUser（建议20个）
+        ///
+        /// ### 设计理念
+        /// - 替代押金机制的防滥用措施
+        /// - 配合投诉治理机制使用
+        /// - 特权用户可跳过此检查
+        pub(crate) fn check_creation_rate_limit(who: &T::AccountId) -> DispatchResult {
+            let now = <frame_system::Pallet<T>>::block_number();
+            let day_index = Self::current_day_index();
+
+            // 获取用户的创建统计
+            if let Some(stats) = UserCreationStats::<T>::get(who) {
+                // 1. 检查最小间隔
+                let interval = now.saturating_sub(stats.last_created_at);
+                ensure!(
+                    interval >= T::MinCreationIntervalBlocks::get(),
+                    Error::<T>::CreationTooFrequent
+                );
+
+                // 2. 检查每日限制（如果是新的一天，daily_count 应为 0）
+                let daily_count = if stats.last_day_index == day_index {
+                    stats.daily_count
+                } else {
+                    0 // 新的一天，计数重置
+                };
+                ensure!(
+                    daily_count < T::MaxDeceasedCreationsPerUserDaily::get(),
+                    Error::<T>::DailyCreationLimitExceeded
+                );
+
+                // 3. 检查总数限制
+                ensure!(
+                    stats.total_count < T::MaxDeceasedPerUser::get(),
+                    Error::<T>::TotalCreationLimitExceeded
+                );
+            }
+            // 如果没有统计记录，说明是首次创建，允许通过
+
+            Ok(())
+        }
+
+        /// 函数级详细中文注释：更新逝者创建计数
+        ///
+        /// ### 功能说明
+        /// - 在逝者创建成功后调用
+        /// - 更新用户的创建统计信息
+        ///
+        /// ### 参数
+        /// - `who`: 创建逝者的用户账户
+        ///
+        /// ### 存储更新
+        /// - UserCreationStats: who => CreationStats { daily_count, total_count, last_created_at, ... }
+        ///
+        /// ### 设计说明
+        /// - 使用 saturating_add 防止溢出
+        /// - 自动处理日期切换（重置日计数）
+        /// - 记录最后创建时间用于间隔检查
+        pub(crate) fn increment_creation_count(who: &T::AccountId) {
+            let now = <frame_system::Pallet<T>>::block_number();
+            let day_index = Self::current_day_index();
+
+            UserCreationStats::<T>::mutate(who, |maybe_stats| {
+                match maybe_stats {
+                    Some(stats) => {
+                        // 如果是新的一天，重置日计数
+                        if stats.last_day_index != day_index {
+                            stats.daily_count = 0;
+                            stats.last_day_index = day_index;
+                        }
+                        stats.daily_count = stats.daily_count.saturating_add(1);
+                        stats.total_count = stats.total_count.saturating_add(1);
+                        stats.last_created_at = now;
+                    }
+                    None => {
+                        // 首次创建，初始化统计
+                        *maybe_stats = Some(CreationStats {
+                            daily_count: 1,
+                            last_day_index: day_index,
+                            total_count: 1,
+                            last_created_at: now,
+                        });
+                    }
+                }
+            });
+        }
+
+        // =================================================================================
 
         /// 函数级详细中文注释：治理起源统一校验入口。
         /// - 目的：将所有治理专用 extrinsic 的起源校验统一在本函数，避免各处散落导致错误不一致；
@@ -4540,6 +5122,12 @@ pub mod pallet {
             let is_privileged = T::PrivilegedOrigin::try_origin(origin.clone()).is_ok();
 
             let who = ensure_signed(origin)?;
+
+            // ========== 🆕 2025-11-26: 逝者创建频率限制检查 ==========
+            // 特权用户跳过频率限制
+            if !is_privileged {
+                Self::check_creation_rate_limit(&who)?;
+            }
             
             // 删除冗余检查：容量上限由 BoundedVec::try_push 自动管理（硬上限6）
             // 不再需要手动检查软上限和缓存校验
@@ -4656,65 +5244,24 @@ pub mod pallet {
             Self::add_to_creation_time_index(current_block, id_u64);
             // =========================================================
 
-            // ========== 🆕 Phase 1.4: 永久质押押金锁定（条件式） ==========
-            // (deceased_id_u64 已在上面定义)
-
-            // 特权用户跳过押金机制
+            // ========== 🆕 2025-11-26: 免押金改革 ==========
+            // 原押金逻辑已移除（Phase 1.4 永久质押押金）
+            // 替代机制：频率限制（在函数开始处检查）
+            //
+            // ❌ 已移除功能：
+            // - 10 USDT 永久质押押金
+            // - OwnerDepositRecord 记录创建
+            // - DeceasedCreatedWithDeposit 事件
+            //
+            // ✅ 替代机制：
+            // - check_creation_rate_limit()（每日限制 + 总数限制 + 间隔限制）
+            // - 投诉治理机制（ComplaintCase）
+            // - 委员会审核权限
+            //
+            // 更新创建统计（仅非特权用户）
             if !is_privileged {
-                // 普通用户：需要锁定押金
-
-                // 使用默认内容规模（Medium），后续可通过接口修改
-                let expected_scale = ContentScale::Medium;
-
-                // 计算押金金额（USDT）
-                let deposit_usdt = governance::DepositCalculator::<T>::calculate_creation_deposit_usdt(
-                    &who,
-                    expected_scale.clone(),
-                );
-
-                // 通过PricingProvider获取汇率并转换为DUST
-                let deposit_dust = governance::ExchangeRateHelper::<T>::convert_usdt_to_dust(deposit_usdt)?;
-
-                // 锁定押金（使用hold机制）
-                T::Fungible::hold(
-                    &T::RuntimeHoldReason::from(crate::HoldReason::DeceasedOwnerDeposit),
-                    &who,
-                    deposit_dust,
-                )?;
-
-                // 创建押金记录（方案3：动态调整押金）
-                let deposit_record = OwnerDepositRecord {
-                    owner: who.clone(),
-                    deceased_id: id_u64,
-                    target_deposit_usdt: deposit_usdt,  // 方案3：目标押金，默认等于初始押金
-                    initial_deposit_usdt: deposit_usdt,
-                    initial_deposit_dust: deposit_dust,
-                    current_locked_dust: deposit_dust,
-                    available_usdt: deposit_usdt,
-                    available_dust: deposit_dust,
-                    deducted_usdt: 0,
-                    deducted_dust: BalanceOf::<T>::zero(),
-                    exchange_rate: governance::ExchangeRateHelper::<T>::get_cached_rate()?,
-                    locked_at: now,
-                    expected_scale: expected_scale.clone(),
-                    status: DepositStatus::Active,
-                    adjustments: BoundedVec::default(),  // 方案3：调整历史，初始为空
-                    supplement_warning: None,  // 方案3：补充警告，初始为None
-                };
-
-                // 存储押金记录
-                OwnerDepositRecords::<T>::insert(id_u64, deposit_record);
-
-                // 发出押金锁定事件
-                Self::deposit_event(Event::DeceasedCreatedWithDeposit {
-                    deceased_id: id_u64,
-                    owner: who.clone(),
-                    deposit_usdt,
-                    deposit_dust,
-                    expected_scale: expected_scale.as_u8(),
-                });
+                Self::increment_creation_count(&who);
             }
-            // 特权用户：跳过押金锁定，不创建押金记录，不发送押金事件
             // =================================================
 
             // 由运行时或外部服务初始化 Life（去耦合：本 pallet 不直接依赖 deceased-data）。
@@ -8210,14 +8757,55 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // 🔐 Phase 3 优化：统一权限检查并获取数据
-            let deceased = Self::ensure_owner_and_get(deceased_id, &who)?;
-
             // 3. 转换kind为TextKind枚举
             let kind_enum = match kind {
                 0 => text::TextKind::Article,
                 1 => text::TextKind::Message,
                 _ => return Err(Error::<T>::BadInput.into()),
+            };
+
+            // 🆕 2025-11-26: 根据类型区分权限检查
+            // - Article: owner免押金，非owner需缴纳1 USDT押金（365天后退还）
+            // - Message: 任何人都可以留言，但需付费 + 频率限制
+            let (deceased, is_owner) = match kind_enum {
+                text::TextKind::Article => {
+                    // 🆕 2025-11-26: Article允许非拥有者创建（需缴纳押金）
+                    let deceased = DeceasedOf::<T>::get(deceased_id)
+                        .ok_or(Error::<T>::DeceasedNotFound)?;
+                    let is_owner = deceased.owner == who;
+                    (deceased, is_owner)
+                },
+                text::TextKind::Message => {
+                    // 留言：任何人都可以创建，检查频率限制
+                    let deceased = DeceasedOf::<T>::get(deceased_id)
+                        .ok_or(Error::<T>::DeceasedNotFound)?;
+
+                    // 🆕 检查留言频率限制（防刷机制）
+                    Self::check_message_rate_limit(&who, deceased_id)?;
+
+                    // 🆕 2025-11-26: 留言付费功能
+                    // - 收取固定费用 10,000 DUST
+                    // - 资金流向与供奉品一致（通过 pallet-affiliate 分配）
+                    let fee = T::MessageFee::get();
+                    if fee > Zero::zero() {
+                        // 检查余额
+                        use frame_support::traits::fungible::Inspect;
+                        let balance = T::Fungible::balance(&who);
+                        ensure!(balance >= fee, Error::<T>::InsufficientBalance);
+
+                        // 分配费用（复用 Affiliate 系统）
+                        T::MessageFeeDistributor::distribute_message_fee(&who, fee)?;
+
+                        // 发出付费事件
+                        Self::deposit_event(Event::MessageFeePaid {
+                            payer: who.clone(),
+                            deceased_id,
+                            amount: fee,
+                        });
+                    }
+
+                    (deceased, true)  // Message不区分owner，标记为true跳过押金逻辑
+                },
             };
 
             // 4. 转换参数为BoundedVec
@@ -8248,7 +8836,7 @@ pub mod pallet {
                 deceased_id,
                 deceased_token: deceased.deceased_token.clone(),
                 author: who.clone(),
-                kind: kind_enum,
+                kind: kind_enum.clone(),
                 cid: cid_bounded,
                 title: title_bounded,
                 summary: summary_bounded,
@@ -8265,7 +8853,61 @@ pub mod pallet {
                     .map_err(|_| Error::<T>::TooManyItems)
             })?;
 
-            // 10. 发出事件
+            // 🆕 2025-11-26: Article押金处理（非拥有者需缴纳押金）
+            if matches!(kind_enum, text::TextKind::Article) && !is_owner {
+                // 计算押金金额（1 USDT → DUST）
+                let deposit_amount = Self::calculate_article_deposit_dust()?;
+
+                // 检查余额
+                use frame_support::traits::fungible::Inspect;
+                let balance = T::Fungible::balance(&who);
+                ensure!(balance >= deposit_amount, Error::<T>::InsufficientBalance);
+
+                // 锁定押金（使用 Fungible::hold）
+                use frame_support::traits::fungible::MutateHold;
+                T::Fungible::hold(
+                    &T::RuntimeHoldReason::from(HoldReason::ArticleDeposit),
+                    &who,
+                    deposit_amount,
+                )?;
+
+                // 计算到期区块
+                let expiry_block = now.saturating_add(T::ArticleDepositLockPeriod::get());
+
+                // 创建押金记录
+                let deposit_record = text::ArticleDepositRecord {
+                    depositor: who.clone(),
+                    amount: deposit_amount,
+                    locked_at: now,
+                    expiry_block,
+                    deceased_id,
+                };
+
+                // 存储押金记录
+                ArticleDepositRecords::<T>::insert(text_id, deposit_record);
+
+                // 添加到到期索引
+                ExpiringArticles::<T>::try_mutate(expiry_block, |articles| {
+                    articles.try_push(text_id)
+                        .map_err(|_| Error::<T>::ExpiringArticleListFull)
+                })?;
+
+                // 发出押金锁定事件
+                Self::deposit_event(Event::ArticleDepositLocked {
+                    text_id,
+                    depositor: who.clone(),
+                    deceased_id,
+                    amount: deposit_amount,
+                    expiry_block,
+                });
+            }
+
+            // 🆕 10. 更新留言计数（仅 Message 类型）
+            if matches!(kind_enum, text::TextKind::Message) {
+                Self::increment_message_count(&who, deceased_id);
+            }
+
+            // 11. 发出事件
             Self::deposit_event(Event::TextCreated {
                 text_id,
                 deceased_id,
@@ -10825,6 +11467,80 @@ pub mod pallet {
         fn on_runtime_upgrade() -> Weight {
             STORAGE_VERSION.put::<Pallet<T>>();
             Weight::from_parts(10_000, 0)
+        }
+
+        /// 函数级详细中文注释：区块初始化钩子 - Article押金到期自动退还
+        ///
+        /// ### 功能说明
+        /// 在每个区块开始时，检查当前区块是否有到期的 Article 押金：
+        /// - 从 ExpiringArticles 存储中读取当前区块到期的文章列表
+        /// - 遍历到期文章，释放对应的押金
+        /// - 删除押金记录
+        /// - 发出 ArticleDepositReleased 事件
+        ///
+        /// ### 执行流程
+        /// 1. 获取当前区块到期的文章列表
+        /// 2. 遍历每个到期文章 ID
+        /// 3. 读取押金记录
+        /// 4. 调用 Fungible::release 释放押金
+        /// 5. 删除 ArticleDepositRecords 中的记录
+        /// 6. 发出事件
+        /// 7. 清理 ExpiringArticles 中的当前区块条目
+        ///
+        /// ### 权重计算
+        /// - 基础权重 + 每处理一条记录的读写权重
+        /// - 限制每块最多处理 MaxExpiringArticlesPerBlock 条
+        ///
+        /// ### 安全考虑
+        /// - 使用 take 一次性获取并清理当前区块的到期列表
+        /// - 释放失败时记录日志但不阻断处理（防止单条失败影响其他）
+        fn on_initialize(now: BlockNumberFor<T>) -> Weight {
+            use frame_support::traits::fungible::MutateHold;
+            use frame_support::traits::tokens::Precision;
+
+            let mut weight = Weight::zero();
+
+            // 获取并清理当前区块的到期文章列表
+            let expiring = ExpiringArticles::<T>::take(&now);
+            weight = weight.saturating_add(T::DbWeight::get().reads_writes(1, 1));
+
+            // 遍历到期文章
+            for text_id in expiring.iter() {
+                // 读取押金记录
+                if let Some(record) = ArticleDepositRecords::<T>::take(text_id) {
+                    weight = weight.saturating_add(T::DbWeight::get().reads_writes(1, 1));
+
+                    // 释放押金
+                    let release_result = T::Fungible::release(
+                        &T::RuntimeHoldReason::from(HoldReason::ArticleDeposit),
+                        &record.depositor,
+                        record.amount,
+                        Precision::Exact,
+                    );
+
+                    // 处理释放结果
+                    match release_result {
+                        Ok(_) => {
+                            // 发出押金释放事件
+                            Self::deposit_event(Event::ArticleDepositReleased {
+                                text_id: *text_id,
+                                depositor: record.depositor,
+                                amount: record.amount,
+                            });
+                        },
+                        Err(e) => {
+                            // 释放失败，记录日志但不阻断
+                            log::warn!(
+                                target: "pallet-deceased",
+                                "Failed to release Article deposit for text_id {:?}: {:?}",
+                                text_id, e
+                            );
+                        }
+                    }
+                }
+            }
+
+            weight
         }
 
         /// 函数级详细中文注释：区块结束钩子 - 自动过期处理

@@ -232,6 +232,56 @@
   margin-bottom: 16px;
 }
 
+.latest-memorial-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.latest-memorial-image {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.latest-memorial-info {
+  flex: 1;
+  text-align: left;
+}
+
+.latest-memorial-title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.latest-memorial-title h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.latest-memorial-info p {
+  margin: 6px 0;
+  color: #666;
+  font-size: 15px;
+}
+
+.latest-memorial-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  color: #999;
+}
+
 .function-item {
   background: white;
   border-radius: 12px;

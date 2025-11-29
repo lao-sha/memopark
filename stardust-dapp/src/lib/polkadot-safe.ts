@@ -10,6 +10,7 @@ import { decryptWithPassword, loadCurrentKeystore, getCurrentAddress } from './k
 import { Keyring } from '@polkadot/keyring'
 import { appendTx } from './txHistory'
 import { cryptoWaitReady } from '@polkadot/util-crypto'
+import { createSessionSignerAdapter } from './sessionSignerAdapter'
 
 let api: ApiPromise | null = null
 let isConnecting = false
@@ -61,6 +62,11 @@ export async function getApi(): Promise<ApiPromise> {
     // 函数级中文注释：增加超时时间到 30 秒，避免节点启动慢时超时
     const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('区块链连接超时（30秒无响应）')), 30_000))
     api = await Promise.race([connect, timeout])
+    try {
+      api.setSigner(createSessionSignerAdapter(api.registry))
+    } catch (error) {
+      console.warn('[polkadot-safe] 设置本地签名器失败:', error)
+    }
     
     // 函数级中文注释：监听断开事件，自动清理 api 实例
     api.on('disconnected', () => {

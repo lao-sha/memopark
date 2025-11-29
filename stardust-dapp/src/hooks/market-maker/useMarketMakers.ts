@@ -58,11 +58,11 @@ export function useMarketMakers(): UseMarketMakersReturn {
 
   /**
    * 函数级详细中文注释：从链上加载做市商列表
-   * 
+   *
    * 执行步骤：
    * 1. 检查pallet是否存在
-   * 2. 查询activeMarketMakers.entries()
-   * 3. 解析每个做市商的详细信息
+   * 2. 查询makerApplications.entries()（所有做市商申请）
+   * 3. 过滤出状态为Active的做市商
    * 4. 解码EPAY字段（十六进制→UTF-8）
    * 5. 按sell溢价升序排序
    */
@@ -70,25 +70,42 @@ export function useMarketMakers(): UseMarketMakersReturn {
     try {
       setLoading(true)
       setError('')
-      
+
       const api = await getApi()
-      
+
       // 检查pallet是否存在
-      if (!(api.query as any).trading) {
+      if (!(api.query as any).maker) {
         throw new Error('做市商模块尚未在链上注册')
       }
 
-      // 查询所有活跃做市商
-      const entries = await (api.query as any).trading.activeMarketMakers.entries()
-      
-      // 解析做市商数据
+      // 查询所有做市商申请（使用正确的存储项 makerApplications）
+      const entries = await (api.query as any).maker.makerApplications.entries()
+
+      // 解析做市商数据，只保留Active状态的
       const makers: MarketMaker[] = []
       for (const [key, value] of entries) {
         if (value.isSome) {
           const app = value.unwrap()
           const appData = app.toJSON() as any
           const mmId = key.args[0].toNumber()
-          
+
+          // 解析状态（处理 Substrate 枚举返回的各种格式）
+          const rawStatus = appData.status
+          let isActive = false
+          if (typeof rawStatus === 'string') {
+            isActive = rawStatus.toLowerCase() === 'active'
+          } else if (typeof rawStatus === 'object' && rawStatus !== null) {
+            const keys = Object.keys(rawStatus)
+            if (keys.length > 0) {
+              isActive = keys[0].toLowerCase() === 'active'
+            }
+          }
+
+          // 只添加状态为Active的做市商
+          if (!isActive) {
+            continue
+          }
+
           makers.push({
             mmId,
             owner: appData.owner || '',

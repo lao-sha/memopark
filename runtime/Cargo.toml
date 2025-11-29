@@ -105,6 +105,7 @@ pallet-bazi-chart = { path = "../pallets/bazi-chart", default-features = false }
 
 pallet-chat = { path = "../pallets/chat", default-features = false }
 pallet-social = { path = "../pallets/social", default-features = false }  # 🆕 2025-11-17: 多类型目标关注系统
+pallet-chat-permission = { path = "../pallets/chat-permission", default-features = false }  # 🆕 2025-11-28: 聊天权限系统
 pallet-sudo.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -203,6 +204,7 @@ std = [
     # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
     "pallet-chat/std",
 	"pallet-social/std",  # 🆕 2025-11-17: 多类型目标关注系统
+	"pallet-chat-permission/std",  # 🆕 2025-11-28: 聊天权限系统
 	"pallet-sudo/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",

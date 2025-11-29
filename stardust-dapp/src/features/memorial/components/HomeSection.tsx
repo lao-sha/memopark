@@ -20,6 +20,7 @@ import {
 } from '@ant-design/icons'
 import { DeceasedInfo } from '../../../services/deceasedService'
 import { MemorialColors } from '../../../theme/colors'
+import { buildIpfsUrl } from '../../../utils/ipfsUrl'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -32,32 +33,35 @@ interface HomeSectionProps {
 
 /**
  * 函数级详细中文注释：格式化日期
+ * 🔧 修复：日期格式从区块号改为 YYYYMMDD 字符串
  */
-const formatDate = (blockNumber: number): string => {
-  const estimatedDate = new Date(Date.now() - (Date.now() / 1000 - blockNumber * 6) * 1000)
-  return estimatedDate.toLocaleDateString('zh-CN', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  })
+const formatDate = (dateStr: string): string => {
+  if (!dateStr || dateStr.length !== 8) return dateStr || '未知'
+  const year = dateStr.slice(0, 4)
+  const month = dateStr.slice(4, 6)
+  const day = dateStr.slice(6, 8)
+  return `${year}年${parseInt(month, 10)}月${parseInt(day, 10)}日`
 }
 
 /**
  * 函数级详细中文注释：计算享年
+ * 🔧 修复：基于 YYYYMMDD 字符串计算
  */
 const calculateAge = (deceased: DeceasedInfo): number => {
-  if (deceased.lifeYears !== undefined) return deceased.lifeYears
-  const blocksPerYear = 5_256_000
-  return Math.floor((deceased.deathDate - deceased.birthDate) / blocksPerYear)
+  if (!deceased.birthTs || !deceased.deathTs) return 0
+  const birthYear = parseInt(deceased.birthTs.slice(0, 4), 10)
+  const deathYear = parseInt(deceased.deathTs.slice(0, 4), 10)
+  return deathYear - birthYear
 }
 
 /**
  * 函数级详细中文注释：纪念馆首页内容组件
  */
 export const HomeSection: React.FC<HomeSectionProps> = ({ deceased, onNavigate }) => {
-  const birthDate = formatDate(deceased.birthDate)
-  const deathDate = formatDate(deceased.deathDate)
+  const birthDate = formatDate(deceased.birthTs)  // 🔧 修复：birthDate -> birthTs
+  const deathDate = formatDate(deceased.deathTs)  // 🔧 修复：deathDate -> deathTs
   const age = calculateAge(deceased)
+  const portraitUrl = buildIpfsUrl(deceased.mainImageCid)
 
   return (
     <div style={{ padding: '16px 12px' }}>
@@ -159,7 +163,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({ deceased, onNavigate }
         }}
         bodyStyle={{ padding: '20px' }}
       >
-        {deceased.bio ? (
+        {deceased.nameFullCid ? (  /* 🔧 修复：bio -> nameFullCid */
           <Paragraph
             ellipsis={{ rows: 3, expandable: false }}
             style={{
@@ -169,7 +173,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({ deceased, onNavigate }
               marginBottom: 0,
             }}
           >
-            {deceased.bio}
+            {deceased.nameFullCid}
           </Paragraph>
         ) : (
           <Empty
@@ -207,9 +211,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({ deceased, onNavigate }
         }}
         bodyStyle={{ padding: '16px' }}
       >
-        {deceased.mainImageCid ? (
+        {portraitUrl ? (
           <Image
-            src={`https://ipfs.io/ipfs/${deceased.mainImageCid}`}
+            src={portraitUrl}
             alt="遗像"
             style={{
               width: '100%',
@@ -274,4 +278,3 @@ export const HomeSection: React.FC<HomeSectionProps> = ({ deceased, onNavigate }
     </div>
   )
 }
-

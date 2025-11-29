@@ -1,39 +1,42 @@
 /**
  * 逝者信息卡片组件
- * 
+ *
  * 功能说明：
  * 1. 展示逝者基本信息
  * 2. 显示主图和生平简介
- * 3. Pin状态指示器
- * 4. 生命周期时间轴
- * 5. 所有权信息
- * 6. 快捷操作（编辑/转移/删除）
- * 
+ * 3. 生命周期时间轴
+ * 4. 所有权信息
+ * 5. 快捷操作（编辑/转移/删除）
+ *
+ * 🔧 修复：字段名与链上结构对齐
+ * - fullName -> name
+ * - birthDate/deathDate -> birthTs/deathTs (YYYYMMDD 字符串)
+ * - createdAt/updatedAt -> created/updated (区块号)
+ * - 移除已删除字段：bio, bioCid, fullNamePinStatus, mainImagePinStatus, bioPinStatus, lifeYears
+ *
  * 创建日期：2025-10-28
+ * 修改日期：2025-11-26
  */
 
 import React, { useState } from 'react'
-import { Card, Space, Typography, Tag, Avatar, Badge, Tooltip, Row, Col, Button, Modal, message } from 'antd'
-import { 
-  UserOutlined, 
+import { Card, Space, Typography, Tag, Avatar, Tooltip, Row, Col, Button, Modal, message } from 'antd'
+import {
+  UserOutlined,
   CalendarOutlined,
   EditOutlined,
   DeleteOutlined,
-  SwapOutlined,
-  PushpinOutlined,
   HeartOutlined,
   ManOutlined,
   WomanOutlined,
 } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot-safe'
-import { 
-  createDeceasedService, 
+import {
+  createDeceasedService,
   type DeceasedInfo,
   Gender,
-  PinStatus,
 } from '../../services/deceasedService'
 
-const { Text, Title, Paragraph } = Typography
+const { Text, Title } = Typography
 
 interface DeceasedInfoCardProps {
   /** 逝者信息 */
@@ -49,16 +52,6 @@ interface DeceasedInfoCardProps {
 }
 
 /**
- * 函数级详细中文注释：Pin状态配置
- */
-const pinStatusConfig = {
-  [PinStatus.Unpinned]: { label: '未固定', color: 'default', icon: '○' },
-  [PinStatus.Pinning]: { label: '固定中', color: 'processing', icon: '⟳' },
-  [PinStatus.Pinned]: { label: '已固定', color: 'success', icon: '✓' },
-  [PinStatus.PinFailed]: { label: '固定失败', color: 'error', icon: '✗' },
-}
-
-/**
  * 函数级详细中文注释：性别图标配置
  */
 const genderConfig = {
@@ -68,12 +61,34 @@ const genderConfig = {
 }
 
 /**
- * 函数级详细中文注释：格式化日期（区块号 → 日期字符串）
+ * 函数级详细中文注释：格式化日期（YYYYMMDD → 日期字符串）
+ * 🔧 修复：从区块号改为 YYYYMMDD 字符串格式
  */
-const formatDate = (blockNumber: number): string => {
+const formatDate = (dateStr: string): string => {
+  if (!dateStr || dateStr.length !== 8) return dateStr || '未知'
+  const year = dateStr.slice(0, 4)
+  const month = dateStr.slice(4, 6)
+  const day = dateStr.slice(6, 8)
+  return `${year}年${parseInt(month, 10)}月${parseInt(day, 10)}日`
+}
+
+/**
+ * 函数级详细中文注释：格式化区块号时间
+ */
+const formatBlockTime = (blockNumber: number): string => {
   // 假设6秒/块，估算日期
   const timestamp = Date.now() - (Date.now() / 1000 - blockNumber * 6) * 1000
   return new Date(timestamp).toLocaleDateString('zh-CN')
+}
+
+/**
+ * 函数级详细中文注释：计算享年
+ */
+const calculateAge = (birthTs: string, deathTs: string): number => {
+  if (!birthTs || !deathTs) return 0
+  const birthYear = parseInt(birthTs.slice(0, 4), 10)
+  const deathYear = parseInt(deathTs.slice(0, 4), 10)
+  return deathYear - birthYear
 }
 
 /**
@@ -87,18 +102,19 @@ const formatAddress = (address: string): string => {
 /**
  * 函数级详细中文注释：逝者信息卡片组件
  */
-export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({ 
-  deceased, 
+export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
+  deceased,
   currentAccount,
   onRefresh,
   onEdit,
   detailed = true,
 }) => {
   const [loading, setLoading] = useState(false)
-  
+
   const isOwner = currentAccount === deceased.owner
   const isCreator = currentAccount === deceased.creator
   const genderInfo = genderConfig[deceased.gender]
+  const lifeYears = calculateAge(deceased.birthTs, deceased.deathTs)
 
   /**
    * 函数级详细中文注释：删除逝者
@@ -111,7 +127,7 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
 
     Modal.confirm({
       title: '确认删除',
-      content: `确定要删除逝者"${deceased.fullName}"吗？此操作不可撤销。`,
+      content: `确定要删除逝者"${deceased.name}"吗？此操作不可撤销。`,
       okText: '确认删除',
       okType: 'danger',
       cancelText: '取消',
@@ -120,7 +136,7 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         try {
           const api = await getApi()
           const service = createDeceasedService(api)
-          
+
           const tx = service.buildDeleteDeceasedTx(deceased.id)
 
           const { web3FromAddress } = await import('@polkadot/extension-dapp')
@@ -143,21 +159,6 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         }
       },
     })
-  }
-
-  /**
-   * 函数级详细中文注释：渲染Pin状态指示器
-   */
-  const renderPinStatus = (status: PinStatus, label: string) => {
-    const config = pinStatusConfig[status]
-    return (
-      <Tooltip title={`${label}: ${config.label}`}>
-        <Badge 
-          status={config.color as any} 
-          text={config.icon}
-        />
-      </Tooltip>
-    )
   }
 
   /**
@@ -205,7 +206,7 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
 
   return (
     <Card
-      style={{ 
+      style={{
         borderRadius: 12,
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
       }}
@@ -213,16 +214,15 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         deceased.mainImageCid && (
           <div style={{ position: 'relative' }}>
             <img
-              alt={deceased.fullName}
+              alt={deceased.name}
               src={`https://ipfs.io/ipfs/${deceased.mainImageCid}`}
-              style={{ 
-                width: '100%', 
-                height: 300, 
+              style={{
+                width: '100%',
+                height: 300,
                 objectFit: 'cover',
                 borderRadius: '12px 12px 0 0',
               }}
             />
-            {renderPinStatus(deceased.mainImagePinStatus, '主图')}
           </div>
         )
       }
@@ -231,15 +231,14 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         {/* 头部：姓名和性别 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            <Avatar 
-              size={48} 
-              icon={genderInfo.icon} 
+            <Avatar
+              size={48}
+              icon={genderInfo.icon}
               style={{ backgroundColor: genderInfo.color }}
             />
             <div>
               <Title level={4} style={{ margin: 0 }}>
-                {deceased.fullName}
-                {renderPinStatus(deceased.fullNamePinStatus, '姓名')}
+                {deceased.name}
               </Title>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 ID: {deceased.id}
@@ -252,9 +251,9 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         </div>
 
         {/* 生命周期 */}
-        <div style={{ 
-          background: '#f5f5f5', 
-          padding: 16, 
+        <div style={{
+          background: '#f5f5f5',
+          padding: 16,
           borderRadius: 8,
         }}>
           <Row gutter={16}>
@@ -262,7 +261,7 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
               <Space direction="vertical" size="small">
                 <Text type="secondary" style={{ fontSize: 12 }}>出生日期</Text>
                 <Text strong>
-                  <CalendarOutlined /> {formatDate(deceased.birthDate)}
+                  <CalendarOutlined /> {formatDate(deceased.birthTs)}
                 </Text>
               </Space>
             </Col>
@@ -270,35 +269,19 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
               <Space direction="vertical" size="small">
                 <Text type="secondary" style={{ fontSize: 12 }}>逝世日期</Text>
                 <Text strong>
-                  <HeartOutlined /> {formatDate(deceased.deathDate)}
+                  <HeartOutlined /> {formatDate(deceased.deathTs)}
                 </Text>
               </Space>
             </Col>
           </Row>
-          {deceased.lifeYears !== undefined && (
+          {lifeYears > 0 && (
             <div style={{ marginTop: 8, textAlign: 'center' }}>
               <Tag color="purple" style={{ fontSize: 14 }}>
-                享年 {deceased.lifeYears} 岁
+                享年 {lifeYears} 岁
               </Tag>
             </div>
           )}
         </div>
-
-        {/* 生平简介 */}
-        {detailed && deceased.bio && (
-          <div>
-            <Space>
-              <Text strong>生平简介</Text>
-              {renderPinStatus(deceased.bioPinStatus, '简介')}
-            </Space>
-            <Paragraph 
-              style={{ marginTop: 8 }}
-              ellipsis={{ rows: 3, expandable: true }}
-            >
-              {deceased.bio}
-            </Paragraph>
-          </div>
-        )}
 
         {/* 所有权信息 */}
         {detailed && (
@@ -329,14 +312,14 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
         {/* 时间信息 */}
         <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
           <Space size="large" wrap>
-            <Tooltip title={`区块 #${deceased.createdAt}`}>
+            <Tooltip title={`区块 #${deceased.created}`}>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                <CalendarOutlined /> 创建于: {formatDate(deceased.createdAt)}
+                <CalendarOutlined /> 创建于: {formatBlockTime(deceased.created)}
               </Text>
             </Tooltip>
-            <Tooltip title={`区块 #${deceased.updatedAt}`}>
+            <Tooltip title={`区块 #${deceased.updated}`}>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                更新于: {formatDate(deceased.updatedAt)}
+                更新于: {formatBlockTime(deceased.updated)}
               </Text>
             </Tooltip>
           </Space>
@@ -348,4 +331,3 @@ export const DeceasedInfoCard: React.FC<DeceasedInfoCardProps> = ({
     </Card>
   )
 }
-

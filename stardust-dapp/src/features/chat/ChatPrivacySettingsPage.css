@@ -1,0 +1,65 @@
+/**
+ * 聊天隐私设置页面样式
+ *
+ * 创建日期：2025-11-28
+ * 版本：v4.0
+ */
+
+/* ==================== 主容器 ==================== */
+.chat-privacy-settings-page {
+  min-height: 100vh;
+  background: #f5f5f5;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ==================== 顶部导航栏 ==================== */
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #4CAF50, #66BB6A);
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.back-btn {
+  color: white !important;
+  font-size: 18px;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.header-placeholder {
+  width: 32px;
+}
+
+/* ==================== 设置内容 ==================== */
+.settings-content {
+  padding-bottom: 80px;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 360px) {
+  .settings-header {
+    padding: 10px 12px;
+  }
+
+  .header-title {
+    font-size: 16px;
+  }
+}

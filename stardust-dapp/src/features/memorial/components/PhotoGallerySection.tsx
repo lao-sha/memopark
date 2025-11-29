@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons'
 import { DeceasedInfo } from '../../../services/deceasedService'
 import { MemorialColors } from '../../../theme/colors'
+import { buildIpfsUrl } from '../../../utils/ipfsUrl'
 import type { UploadFile } from 'antd/es/upload/interface'
 
 interface PhotoGallerySectionProps {
@@ -41,10 +42,12 @@ export const PhotoGallerySection: React.FC<PhotoGallerySectionProps> = ({
   const [uploading, setUploading] = useState(false)
   const [fileList, setFileList] = useState<UploadFile[]>([])
 
+  const portraitUrl = buildIpfsUrl(deceased.mainImageCid)
+
   // 模拟照片数据（实际应从IPFS获取）
-  const photos = deceased.mainImageCid
+  const photos = portraitUrl
     ? [
-        { cid: deceased.mainImageCid, title: '遗像' },
+        { url: portraitUrl, title: '遗像' },
         // 这里可以扩展更多照片
       ]
     : []
@@ -113,7 +116,7 @@ export const PhotoGallerySection: React.FC<PhotoGallerySectionProps> = ({
                 {photos.map((photo, index) => (
                   <Col span={8} key={index}>
                     <Image
-                      src={`https://ipfs.io/ipfs/${photo.cid}`}
+                      src={photo.url}
                       alt={photo.title}
                       style={{
                         width: '100%',
@@ -217,4 +220,3 @@ export const PhotoGallerySection: React.FC<PhotoGallerySectionProps> = ({
     </div>
   )
 }
-

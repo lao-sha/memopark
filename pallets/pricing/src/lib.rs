@@ -1,12 +1,28 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+//! # Pricing Pallet (定价模块)
+//!
+//! ## 概述
+//! 本模块负责：
+//! 1. DUST/USDT 市场价格聚合（OTC + Bridge）
+//! 2. CNY/USDT 汇率获取（通过 Offchain Worker）
+//! 3. 价格偏离检查
+//!
+//! ## Offchain Worker
+//! - 每24小时自动从 Exchange Rate API 获取 CNY/USD 汇率
+//! - API: https://api.exchangerate-api.com/v4/latest/USD
+//! - 汇率存储在 offchain local storage 中，供链上查询使用
+
 pub use pallet::*;
+pub use pallet::ExchangeRateData;
 
 #[cfg(test)]
 mod mock;
 
 #[cfg(test)]
 mod tests;
+
+mod ocw;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -25,6 +41,11 @@ pub mod pallet {
         /// 目的：防止极端价格订单，保护买卖双方利益
         #[pallet::constant]
         type MaxPriceDeviation: Get<u16>;
+
+        /// 函数级中文注释：汇率更新间隔（区块数）
+        /// 默认 14400 个区块（约24小时，假设6秒出块）
+        #[pallet::constant]
+        type ExchangeRateUpdateInterval: Get<u32>;
     }
 
     /// 函数级中文注释：订单快照（用于循环缓冲区）
@@ -77,6 +98,17 @@ pub mod pallet {
         pub otc_order_count: u32,
         /// Bridge 兑换数
         pub bridge_swap_count: u32,
+    }
+
+    /// 函数级中文注释：汇率数据结构
+    /// 存储 CNY/USDT 汇率（通过 OCW 从外部 API 获取）
+    #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+    pub struct ExchangeRateData {
+        /// CNY/USD 汇率（精度 10^6，即 7.2345 → 7_234_500）
+        /// 注意：假设 USDT = USD，因此 CNY/USDT ≈ CNY/USD
+        pub cny_rate: u64,
+        /// 更新时间戳（Unix 秒）
+        pub updated_at: u64,
     }
 
     /// 函数级中文注释：OTC 订单价格聚合数据
@@ -144,6 +176,20 @@ pub mod pallet {
     #[pallet::getter(fn cold_start_exited)]
     pub type ColdStartExited<T> = StorageValue<_, bool, ValueQuery>;
 
+    // ===== CNY/USDT 汇率相关存储 =====
+
+    /// 函数级中文注释：CNY/USDT 汇率数据
+    /// 由 Offchain Worker 每24小时从外部 API 获取并更新
+    #[pallet::storage]
+    #[pallet::getter(fn cny_usdt_rate)]
+    pub type CnyUsdtRate<T> = StorageValue<_, ExchangeRateData, ValueQuery>;
+
+    /// 函数级中文注释：上次汇率更新的区块号
+    /// 用于判断是否需要触发 OCW 更新
+    #[pallet::storage]
+    #[pallet::getter(fn last_rate_update_block)]
+    pub type LastRateUpdateBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -177,6 +223,16 @@ pub mod pallet {
         ColdStartReset {
             reason: BoundedVec<u8, ConstU32<256>>,
         },
+        /// 函数级中文注释：CNY/USDT 汇率更新事件
+        /// 由 Offchain Worker 触发
+        ExchangeRateUpdated {
+            /// CNY/USD 汇率（精度 10^6）
+            cny_rate: u64,
+            /// 更新时间戳（Unix 秒）
+            updated_at: u64,
+            /// 更新时的区块号
+            block_number: BlockNumberFor<T>,
+        },
     }
 
     #[pallet::error]
@@ -190,6 +246,8 @@ pub mod pallet {
         InvalidBasePrice,
         /// M-3修复：冷启动未退出，无法重置
         ColdStartNotExited,
+        /// 函数级中文注释：汇率无效（为0或格式错误）
+        InvalidExchangeRate,
     }
 
     #[pallet::pallet]
@@ -661,26 +719,26 @@ pub mod pallet {
         }
         
         /// M-3修复：治理紧急重置冷启动状态
-        /// 
+        ///
         /// 函数级详细中文注释：在极端市场条件下，允许治理重新进入冷启动状态
-        /// 
+        ///
         /// # 使用场景
         /// - 市场崩盘，价格长期失真
         /// - 系统维护，需要暂停市场定价
         /// - 数据异常，需要重新校准
-        /// 
+        ///
         /// # 参数
         /// - `origin`: 必须是 Root 权限
         /// - `reason`: 重置原因（最多256字节，用于审计和追溯）
-        /// 
+        ///
         /// # 效果
         /// - 将 `ColdStartExited` 设置为 false
         /// - 系统将重新使用 `DefaultPrice` 直到市场恢复
         /// - 发出 `ColdStartReset` 事件
-        /// 
+        ///
         /// # 错误
         /// - `ColdStartNotExited`: 当前未退出冷启动，无需重置
-        /// 
+        ///
         /// # 安全考虑
         /// - 仅限 Root 权限（通常需要治理投票）
         /// - 不清理历史数据，保留市场记录
@@ -692,20 +750,92 @@ pub mod pallet {
             reason: BoundedVec<u8, ConstU32<256>>,
         ) -> DispatchResult {
             frame_system::EnsureRoot::<T::AccountId>::ensure_origin(origin)?;
-            
+
             // 验证：只有已退出冷启动才能重置
             ensure!(
                 ColdStartExited::<T>::get(),
                 Error::<T>::ColdStartNotExited
             );
-            
+
             // 重置冷启动状态
             ColdStartExited::<T>::put(false);
-            
+
             // 发出事件
             Self::deposit_event(Event::ColdStartReset { reason });
-            
+
             Ok(())
+        }
+    }
+
+    // ===== Offchain Worker 钩子 =====
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Offchain Worker 入口点
+        ///
+        /// 每个区块执行一次，检查是否需要更新汇率
+        /// 汇率数据存储在 offchain local storage 中
+        fn offchain_worker(block_number: BlockNumberFor<T>) {
+            Self::offchain_worker(block_number);
+        }
+    }
+
+    // ===== 辅助方法：获取 CNY/USDT 汇率 =====
+
+    impl<T: Config> Pallet<T> {
+        /// 函数级详细中文注释：获取当前 CNY/USDT 汇率
+        ///
+        /// # 返回
+        /// - `u64`: CNY/USD 汇率（精度 10^6），如果未设置则返回默认值 7_200_000（7.2）
+        pub fn get_cny_usdt_rate() -> u64 {
+            let rate_data = CnyUsdtRate::<T>::get();
+            if rate_data.cny_rate > 0 {
+                rate_data.cny_rate
+            } else {
+                // 默认汇率：7.2 CNY/USD
+                7_200_000
+            }
+        }
+
+        /// 函数级详细中文注释：将 USDT 金额转换为 CNY
+        ///
+        /// # 参数
+        /// - `usdt_amount`: USDT 金额（精度 10^6）
+        ///
+        /// # 返回
+        /// - `u64`: CNY 金额（精度 10^6）
+        ///
+        /// # 计算公式
+        /// CNY = USDT × 汇率
+        pub fn usdt_to_cny(usdt_amount: u64) -> u64 {
+            let rate = Self::get_cny_usdt_rate();
+            // CNY = USDT * rate / 1_000_000
+            (usdt_amount as u128)
+                .saturating_mul(rate as u128)
+                .saturating_div(1_000_000)
+                as u64
+        }
+
+        /// 函数级详细中文注释：将 CNY 金额转换为 USDT
+        ///
+        /// # 参数
+        /// - `cny_amount`: CNY 金额（精度 10^6）
+        ///
+        /// # 返回
+        /// - `u64`: USDT 金额（精度 10^6）
+        ///
+        /// # 计算公式
+        /// USDT = CNY / 汇率
+        pub fn cny_to_usdt(cny_amount: u64) -> u64 {
+            let rate = Self::get_cny_usdt_rate();
+            if rate == 0 {
+                return 0;
+            }
+            // USDT = CNY * 1_000_000 / rate
+            (cny_amount as u128)
+                .saturating_mul(1_000_000)
+                .saturating_div(rate as u128)
+                as u64
         }
     }
 }

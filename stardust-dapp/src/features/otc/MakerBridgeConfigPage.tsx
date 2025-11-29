@@ -122,7 +122,7 @@ export default function MakerBridgeConfigPage() {
       setLocalError('')
       
       // 查询桥接服务配置
-      const bridgeData = await (api.query as any).trading.bridgeServices(mmId)
+      const bridgeData = await (api.query as any).bridge.bridgeServices(mmId)
       
       if (bridgeData.isSome) {
         const bridge = bridgeData.unwrap().toJSON() as any
@@ -253,7 +253,7 @@ export default function MakerBridgeConfigPage() {
       message.loading({ content: '正在签名并更新桥接服务配置...', key: 'update', duration: 0 })
 
       // 签名并发送交易
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateBridgeService', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'updateBridgeService', [
         marketMakerInfo.mmId,
         tronAddressParam,
         maxSwapAmountParam,
@@ -308,7 +308,7 @@ export default function MakerBridgeConfigPage() {
         try {
           message.loading({ content: '正在签名并重新启用桥接服务...', key: 'enable', duration: 0 })
 
-          const hash = await signAndSendLocalFromKeystore('marketMaker', 'reEnableBridgeService', [
+          const hash = await signAndSendLocalFromKeystore('maker', 'reEnableBridgeService', [
             marketMakerInfo.mmId
           ])
 
@@ -360,7 +360,7 @@ export default function MakerBridgeConfigPage() {
         try {
           message.loading({ content: '正在签名并禁用桥接服务...', key: 'disable', duration: 0 })
 
-          const hash = await signAndSendLocalFromKeystore('marketMaker', 'disableBridgeService', [
+          const hash = await signAndSendLocalFromKeystore('maker', 'disableBridgeService', [
             marketMakerInfo.mmId
           ])
 
@@ -467,7 +467,7 @@ export default function MakerBridgeConfigPage() {
       message.loading({ content: '正在签名并更新业务配置...', key: 'update', duration: 0 })
 
       // 签名并发送交易（🆕 2025-10-19：添加溢价参数和TRON地址参数）
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateMakerInfo', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'updateMakerInfo', [
         marketMakerInfo.        mmId,
         publicCidParam,
         privateCidParam,
@@ -523,7 +523,7 @@ export default function MakerBridgeConfigPage() {
       })
 
       // 签名并发送交易
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateDirection', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'updateDirection', [
         marketMakerInfo.mmId,
         newDirection
       ])

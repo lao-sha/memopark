@@ -1,18 +1,20 @@
 /**
  * 逝者纪念馆主页面组件
- * 
+ *
  * 功能说明：
  * 1. 展示逝者纪念馆完整内容
- * 2. 集成头部横幅、导航标签、统计卡片、动态流等所有模块
+ * 2. 集成封面、导航标签、统计卡片、动态流等所有模块
  * 3. 支持祭拜操作（献花、蜡烛、敬香、祭品、留言）
  * 4. 移动端优先，响应式设计
  * 5. 路由参数：#/memorial/{deceasedId}
- * 
+ *
  * 创建日期：2025-11-02
+ * 修改日期：2025-11-26 - 添加云上思念风格封面
  */
 
 import React, { useState, useEffect } from 'react'
-import { Spin, message, Modal, Form, Input, InputNumber, Space, Button } from 'antd'
+import type { SubmittableExtrinsic } from '@polkadot/api/types'
+import { Spin, message, Button } from 'antd'
 import { HeaderBanner } from './components/HeaderBanner'
 import { NavigationTabs, TabKey } from './components/NavigationTabs'
 import { StatisticsCards } from './components/StatisticsCards'
@@ -22,6 +24,8 @@ import { HomeSection } from './components/HomeSection'
 import { BiographySection } from './components/BiographySection'
 import { PhotoGallerySection } from './components/PhotoGallerySection'
 import { MessageBoardSection } from './components/MessageBoardSection'
+import { OfferingModal } from './components/OfferingModal'
+import { DeceasedInfo } from '../../services/deceasedService'
 import {
   useDeceasedInfo,
   useOfferingsData,
@@ -31,16 +35,6 @@ import { useAccount } from '../../hooks/useAccount'
 import { getApi } from '../../lib/polkadot-safe'
 import { createMemorialService } from '../../services/memorialService'
 import { MemorialColors } from '../../theme/colors'
-
-/**
- * 函数级详细中文注释：供奉表单数据类型
- */
-interface OfferingFormData {
-  kindCode: number
-  amount: number
-  duration?: number
-  message?: string
-}
 
 /**
  * 函数级详细中文注释：纪念馆主页面组件
@@ -61,34 +55,28 @@ const MemorialHallDetailPage: React.FC = () => {
 
   const [deceasedId, setDeceasedId] = useState<number | undefined>(parseDeceasedId())
   const account = useAccount()
-  const [form] = Form.useForm()
 
   // 状态管理
   const [activeTab, setActiveTab] = useState<TabKey>('home')
   const [currentBlock, setCurrentBlock] = useState(0)
   const [offeringModalVisible, setOfferingModalVisible] = useState(false)
-  const [selectedActionType, setSelectedActionType] = useState<ActionType>()
   const [submitting, setSubmitting] = useState(false)
 
   // 数据获取
   const { deceased, loading: deceasedLoading, error: deceasedError } = useDeceasedInfo(deceasedId)
 
-// ⚠️ TODO（方案A适配）：供奉功能需要迁移到纪念馆页面
+// 供奉目标配置说明：
   //
-  // 当前问题：
-// - 方案A要求供奉必须针对纪念馆，domain=0
-// - 此页面展示的是逝者（Deceased）纪念馆，没有 memorialId
-  // - 旧代码使用 domain=1（已废弃，原为Deceased，现为Pet）
+  // targetType 定义（pallet-memorial TargetType 枚举）：
+  // - 0 = Deceased（逝者）
+  // - 1 = Pet（宠物）
+  // - 2 = Memorial（纪念馆）
+  // - 3 = Event（事件）
   //
-  // 解决方案：
-// 1. 推荐：查询逝者关联的纪念馆 ID，使用纪念馆进行供奉
-// 2. 或者：将供奉功能迁移到纪念馆详情页
-// 3. 临时：禁用此页面的供奉功能，引导用户到纪念馆页面
-  //
-  // 当前实现（临时兼容）：
-  // - 暂时保留旧的 target 定义，但供奉功能可能不可用
-// - 建议用户访问纪念馆页面进行供奉
-const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : undefined // 🔧 临时：domain=0（纪念馆）
+  // 当前实现：
+  // - 此页面展示的是逝者（Deceased）纪念馆
+  // - target = [0, deceasedId] 表示向 ID 为 deceasedId 的逝者供奉
+  const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : undefined
   const { offerings, loading: offeringsLoading } = useOfferingsData(target, 50)
   const statistics = useMemorialStatistics(deceasedId, offerings)
 
@@ -145,8 +133,8 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: `${deceased?.fullName}的纪念馆`,
-        text: `缅怀${deceased?.fullName}`,
+        title: `${deceased?.name}的纪念馆`,
+        text: `缅怀${deceased?.name}`,
         url: window.location.href,
       }).catch(() => {
         // 用户取消分享
@@ -183,20 +171,6 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
   }
 
   /**
-   * 函数级详细中文注释：获取供奉类型代码
-   */
-  const getKindCodeByAction = (action: ActionType): number => {
-    const mapping: Record<ActionType, number> = {
-      flower: 1,
-      candle: 2,
-      incense: 3,
-      offering: 4,
-      message: 0, // 留言不需要kindCode
-    }
-    return mapping[action]
-  }
-
-  /**
    * 函数级详细中文注释：处理快捷操作
    */
   const handleAction = (action: ActionType) => {
@@ -210,78 +184,118 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
       return
     }
 
-    setSelectedActionType(action)
-    form.setFieldsValue({
-      kindCode: getKindCodeByAction(action),
-      amount: 10, // 默认金额
-      duration: action === 'candle' ? 1 : undefined, // 蜡烛默认1周
-    })
+    // 打开供奉弹窗
     setOfferingModalVisible(true)
   }
 
   /**
-   * 函数级详细中文注释：提交供奉
+   * 函数级详细中文注释：处理供奉提交
    *
-   * ⚠️ TODO（方案A适配）：此功能需要重构
-   * - 方案A要求供奉必须传入纪念馆 ID，而不是 target
-   * - 当前页面基于 deceasedId，需要先查询关联的纪念馆 ID
-   * - 建议将此功能迁移到纪念馆详情页
+   * 实现流程：
+   * 1. 检查钱包连接状态
+   * 2. 构建供奉交易（单个或批量）
+   * 3. 签名并提交到链上
+   * 4. 等待交易确认
+   * 5. 显示结果反馈
    */
-  const handleSubmitOffering = async () => {
-    if (!account || !deceased || !target) {
-      message.error('当前页面不支持供奉功能，请访问纪念馆页面进行供奉')
+  const handleOfferSubmit = async (offerings: any[]) => {
+    if (!account || !deceased) {
+      message.error('请先连接钱包')
       return
     }
 
-    try {
-      const values = await form.validateFields()
-      setSubmitting(true)
+    if (!deceasedId) {
+      message.error('无效的纪念馆ID')
+      return
+    }
 
+    setSubmitting(true)
+    const messageKey = 'offering'
+    try {
       const api = await getApi()
       const service = createMemorialService(api)
 
-      // ⚠️ TODO（方案A适配）：需要改为传入纪念馆 ID
-      // 当前实现可能不可用，需要从 deceased 查询关联的纪念馆 ID
-      //
-      // 临时方案（可能不工作）：
-      // const memorialId = target[1]
-      // const tx = service.buildOfferTx({
-      //   memorialId,
-      //   kindCode: values.kindCode,
-      //   media: [],
-      //   duration: values.duration,
-      // })
+      // 计算总价（用于显示）
+      const totalPrice = offerings.reduce((sum, { item, quantity }) => sum + item.price * quantity, 0)
+      const totalQuantity = offerings.reduce((sum, { quantity }) => sum + quantity, 0)
 
-      message.warning('供奉功能暂时不可用，请访问纪念馆页面进行供奉')
+      // 构建供奉交易列表
+      // targetType: 0 = Deceased（逝者）
+      const offeringParams = offerings.map(({ item, quantity }) => ({
+        sacrificeId: item.sacrificeId || 1, // 默认使用通用祭品ID
+        quantity: quantity,
+        media: [], // 暂无媒体附件
+        durationWeeks: undefined, // 一次性供奉，无需时长
+      }))
+
+      const submitExtrinsic = async (tx: SubmittableExtrinsic<'promise'>) => {
+        await new Promise<void>((resolve, reject) => {
+          let unsub: (() => void) | undefined
+          tx
+            .signAndSend(
+              account.address,
+              { signer: account.signer as any },
+              ({ status, dispatchError }) => {
+                if (status.isInBlock) {
+                  if (dispatchError) {
+                    let errorMsg = '供奉失败'
+                    if (dispatchError.isModule) {
+                      const decoded = api.registry.findMetaError(dispatchError.asModule)
+                      errorMsg = `${decoded.section}.${decoded.name}: ${decoded.docs.join(' ')}`
+                    } else {
+                      errorMsg = dispatchError.toString()
+                    }
+                    unsub?.()
+                    reject(new Error(errorMsg))
+                    return
+                  }
+                  unsub?.()
+                  resolve()
+                } else if (status.isFinalized) {
+                  console.log('供奉交易已最终确认:', status.asFinalized.toString())
+                }
+              }
+            )
+            .then(unsubHandler => {
+              unsub = unsubHandler
+            })
+            .catch(reject)
+        })
+      }
+
+      const supportsBatch = service.supportsBatchOffer()
+      if (offeringParams.length > 1 && !supportsBatch) {
+        message.warning('当前链暂未启用批量供奉，请分多次提交不同祭品')
+        return
+      }
+
+      let tx: SubmittableExtrinsic<'promise'>
+      if (supportsBatch) {
+        tx = service.buildBatchOfferTx(offeringParams, 0, deceasedId)
+      } else {
+        const single = offeringParams[0]
+        tx = service.buildOfferToTargetTx({
+          targetType: 0,
+          targetId: deceasedId,
+          sacrificeId: single.sacrificeId,
+          quantity: single.quantity,
+          media: single.media,
+          durationWeeks: single.durationWeeks,
+        })
+      }
+
+      message.loading({ content: '正在提交供奉交易...', key: messageKey })
+      await submitExtrinsic(tx)
+
+      message.success({
+        content: `供奉成功！共供奉 ${offerings.length} 种祭品（${totalQuantity}件），合计 ${totalPrice} DUST`,
+        key: messageKey,
+        duration: 3,
+      })
       setOfferingModalVisible(false)
-
-      // 旧的实现（已禁用）
-      // const tx = service.buildOfferTx({
-      //   target,
-      //   kindCode: values.kindCode,
-      //   amount: values.amount * 1_000_000,
-      //   media: [],
-      //   duration: values.duration,
-      // })
-      //
-      // const { web3FromAddress } = await import('@polkadot/extension-dapp')
-      // const injector = await web3FromAddress(account)
-      //
-      // await tx.signAndSend(
-      //   account,
-      //   { signer: injector.signer },
-      //   ({ status, events }) => {
-      //     if (status.isFinalized) {
-      //       message.success('供奉成功！')
-      //       setOfferingModalVisible(false)
-      //       form.resetFields()
-      //       window.location.reload()
-      //     }
-      //   }
-      // )
     } catch (error: any) {
       console.error('供奉失败:', error)
-      message.error(error.message || '供奉失败')
+      message.error({ content: error.message || '供奉失败，请重试', key: messageKey })
     } finally {
       setSubmitting(false)
     }
@@ -302,12 +316,12 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
         return (
           <PhotoGallerySection
             deceased={deceased}
-            currentAccount={account}
-            canUpload={account === deceased.owner}
+            currentAccount={account?.address}
+            canUpload={account?.address === deceased.owner}
           />
         )
       case 'messages':
-        return <MessageBoardSection deceasedId={deceased.id} currentAccount={account} />
+        return <MessageBoardSection deceasedId={deceased.id} currentAccount={account?.address} />
       case 'family':
         return <div style={{ padding: 20, textAlign: 'center' }}>家谱功能开发中</div>
       case 'offerings':
@@ -380,7 +394,7 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
       {/* 头部横幅 */}
       <HeaderBanner
         deceased={deceased}
-        currentAccount={account}
+        currentAccount={account?.address}
         onBack={handleBack}
         onShare={handleShare}
         onEdit={handleEdit}
@@ -412,83 +426,15 @@ const target: [number, number] | undefined = deceasedId ? [0, deceasedId] : unde
         unreadMessages={0}
       />
 
-      {/* 供奉表单Modal */}
-      <Modal
-        title={`${selectedActionType === 'flower' ? '献花' : selectedActionType === 'candle' ? '点蜡烛' : selectedActionType === 'incense' ? '敬香' : '供祭品'}`}
+      {/* 供奉弹窗 */}
+      <OfferingModal
         open={offeringModalVisible}
-        onCancel={() => {
-          setOfferingModalVisible(false)
-          form.resetFields()
-        }}
-        footer={null}
-        width={400}
-        centered
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmitOffering}
-          style={{ marginTop: 20 }}
-        >
-          <Form.Item name="kindCode" hidden>
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            label="供奉金额"
-            name="amount"
-            rules={[{ required: true, message: '请输入供奉金额' }]}
-          >
-            <InputNumber
-              min={1}
-              max={10000}
-              style={{ width: '100%' }}
-              addonAfter="DUST"
-              placeholder="请输入金额"
-            />
-          </Form.Item>
-
-          {selectedActionType === 'candle' && (
-            <Form.Item
-              label="持续时长"
-              name="duration"
-              rules={[{ required: true, message: '请输入持续时长' }]}
-            >
-              <InputNumber
-                min={1}
-                max={52}
-                style={{ width: '100%' }}
-                addonAfter="周"
-                placeholder="请输入周数"
-              />
-            </Form.Item>
-          )}
-
-          <Form.Item label="留言" name="message">
-            <Input.TextArea rows={3} placeholder="写下您的祝福与思念..." maxLength={200} />
-          </Form.Item>
-
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button onClick={() => setOfferingModalVisible(false)}>取消</Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={submitting}
-                style={{
-                  backgroundColor: MemorialColors.primary,
-                  borderColor: MemorialColors.primary,
-                }}
-              >
-                确认供奉
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
+        onClose={() => setOfferingModalVisible(false)}
+        onOffer={handleOfferSubmit}
+        loading={submitting}
+      />
     </div>
   )
 }
 
 export default MemorialHallDetailPage
-

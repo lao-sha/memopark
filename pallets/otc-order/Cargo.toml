@@ -34,6 +34,7 @@ pallet-credit = { path = "../credit", default-features = false }
 pallet-pricing = { path = "../pricing", default-features = false }
 pallet-maker = { path = "../maker", default-features = false }
 pallet-trading-common = { path = "../trading-common", default-features = false }
+pallet-chat-permission = { path = "../chat-permission", default-features = false }
 pallet-timestamp = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
 
 [dev-dependencies]
@@ -58,6 +59,7 @@ std = [
     "pallet-pricing/std",
     "pallet-maker/std",
     "pallet-trading-common/std",
+    "pallet-chat-permission/std",
     "pallet-timestamp/std",
 ]
 runtime-benchmarks = [

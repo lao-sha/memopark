@@ -292,7 +292,7 @@ export const MarketMakerPoolPage: React.FC = () => {
       
       message.loading({ content: '正在提交提取申请...', key: 'withdraw', duration: 0 });
 
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'requestWithdrawal', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'requestWithdrawal', [
         poolInfo.mmId,
         amountFormatted,
         pauseService,
@@ -334,7 +334,7 @@ export const MarketMakerPoolPage: React.FC = () => {
       
       message.loading({ content: '正在执行提取...', key: 'execute', duration: 0 });
 
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'executeWithdrawal', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'executeWithdrawal', [
         poolInfo.mmId,
       ]);
 
@@ -371,7 +371,7 @@ export const MarketMakerPoolPage: React.FC = () => {
           
           message.loading({ content: '正在取消提取...', key: 'cancel', duration: 0 });
 
-          const hash = await signAndSendLocalFromKeystore('marketMaker', 'cancelWithdrawal', [
+          const hash = await signAndSendLocalFromKeystore('maker', 'cancelWithdrawal', [
             poolInfo.mmId,
           ]);
 

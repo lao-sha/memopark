@@ -21,24 +21,31 @@ const DeceasedListPage: React.FC = () => {
       const api = await getApi()
       const queryRoot: any = (api.query as any)
       const dq: any = queryRoot.deceased || queryRoot.memoDeceased || queryRoot.memo_deceased || queryRoot.Decesased
-      if (!dq?.nextDeceasedId || !dq?.deceasedOf) throw new Error('运行时未启用 deceased 模块')
-      const next = await dq.nextDeceasedId().then((x:any)=> x?.toNumber? x.toNumber(): 0)
-      const ids = Array.from({ length: next }).map((_,i)=>i)
-      const arr = await Promise.all(ids.map(async (id) => {
-        try {
-          const opt = await dq.deceasedOf(id)
-          if (!opt || !opt.isSome) return null
-          const d = opt.unwrap()
-          let name: string | undefined = undefined
-          try { const u8 = d.name?.toU8a ? d.name.toU8a() : (d.name?.toJSON ? new Uint8Array(d.name.toJSON()) : undefined); if (u8) name = new TextDecoder().decode(u8) } catch {}
-          const owner = d.owner?.toString?.() || String(d.owner)
-          // 旧墓位功能已删除，不再读取相关字段
-          let token: string | undefined = undefined
-          try { const u8 = d.deceasedToken?.toU8a ? d.deceasedToken.toU8a() : (d.deceasedToken?.toJSON ? new Uint8Array(d.deceasedToken.toJSON()) : undefined); if (u8) token = new TextDecoder().decode(u8) } catch {}
-          return { id, name, owner, token }
-        } catch { return null }
-      }))
-      setItems(arr.filter(Boolean) as any[])
+      if (!dq?.deceasedOf) throw new Error('运行时未启用 deceased 模块')
+
+      // 🔧 修复：使用 entries() 查询所有逝者（支持随机ID）
+      // 原代码依赖 nextDeceasedId 顺序遍历，但链上已改为随机ID生成
+      const entries = await dq.deceasedOf.entries()
+      const arr = entries
+        .filter(([_, opt]: any) => opt && opt.isSome)
+        .map(([key, opt]: any) => {
+          try {
+            const id = key.args[0].toNumber?.() ?? key.args[0].toString()
+            const d = opt.unwrap()
+            let name: string | undefined = undefined
+            try { const u8 = d.name?.toU8a ? d.name.toU8a() : (d.name?.toJSON ? new Uint8Array(d.name.toJSON()) : undefined); if (u8) name = new TextDecoder().decode(u8) } catch {}
+            const owner = d.owner?.toString?.() || String(d.owner)
+            let token: string | undefined = undefined
+            try { const u8 = d.deceasedToken?.toU8a ? d.deceasedToken.toU8a() : (d.deceasedToken?.toJSON ? new Uint8Array(d.deceasedToken.toJSON()) : undefined); if (u8) token = new TextDecoder().decode(u8) } catch {}
+            const created = d.created?.toNumber?.() || 0
+            return { id, name, owner, token, created }
+          } catch { return null }
+        })
+        .filter(Boolean)
+        // 按创建时间倒序排列
+        .sort((a: any, b: any) => b.created - a.created)
+
+      setItems(arr as any[])
     } catch (e:any) {
       setError(e?.message || '加载失败')
       setItems([])

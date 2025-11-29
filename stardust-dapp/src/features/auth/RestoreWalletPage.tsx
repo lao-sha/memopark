@@ -133,8 +133,13 @@ const RestoreWalletPage: React.FC<RestoreWalletPageProps> = ({
         }
       }
 
-      // 成功回调
-      onSuccess?.(addr);
+      // 成功回调，或跳转到钱包管理页面
+      if (onSuccess) {
+        onSuccess(addr);
+      } else {
+        // 独立路由访问时，跳转到钱包管理页面
+        window.location.hash = '#/wallet';
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -172,13 +177,18 @@ const RestoreWalletPage: React.FC<RestoreWalletPageProps> = ({
       }}
     >
       {/* 返回按钮 */}
-      {onBack && (
-        <div style={{ position: 'absolute', top: '20px', left: '20px' }}>
-          <Button type="text" onClick={onBack}>
-            &lt; 恢复钱包
-          </Button>
-        </div>
-      )}
+      <div style={{ position: 'absolute', top: '20px', left: '20px' }}>
+        <Button type="text" onClick={() => {
+          if (onBack) {
+            onBack();
+          } else {
+            // 独立路由访问时，返回钱包管理页面
+            window.location.hash = '#/wallet';
+          }
+        }}>
+          &lt; 返回
+        </Button>
+      </div>
 
       {/* 标题区域 */}
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>

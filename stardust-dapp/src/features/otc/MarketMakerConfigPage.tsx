@@ -182,7 +182,7 @@ export default function MarketMakerConfigPage() {
       message.loading({ content: '正在签名并更新配置...', key: 'update', duration: 0 })
 
       // 签名并发送交易
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateEpayConfig', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'updateEpayConfig', [
         marketMakerInfo.mmId,
         epayGatewayParam,
         epayPortParam,
@@ -239,7 +239,7 @@ export default function MarketMakerConfigPage() {
       message.loading({ content: '正在签名并充值...', key: 'deposit', duration: 0 })
 
       // 签名并发送交易
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'depositToFirstPurchasePool', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'depositToFirstPurchasePool', [
         marketMakerInfo.mmId,
         amountFormatted
       ])

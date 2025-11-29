@@ -25,6 +25,45 @@ class SessionSignerManager {
   private expiresAt: number = 0;
   private sessionDuration: number = 10 * 24 * 60 * 60 * 1000; // 默认10天
 
+  /// 确保存在可用的密钥对，如果会话失效则自动提示用户输入密码
+  private async ensureKeyPairReady(expectedAddress?: string): Promise<KeyringPair> {
+    if (!this.isSessionActive() || !this.keyPair) {
+      const success = await this.initSessionWithPrompt();
+      if (!success) {
+        throw new Error('用户取消了签名');
+      }
+    }
+
+    const currentAddr = getCurrentAddress();
+    if (!currentAddr) {
+      this.clearSession();
+      throw new Error('未选择当前账户');
+    }
+
+    if (this.address !== currentAddr) {
+      this.clearSession();
+      const success = await this.initSessionWithPrompt();
+      if (!success) {
+        throw new Error('用户取消了签名');
+      }
+    }
+
+    if (expectedAddress && expectedAddress !== currentAddr) {
+      throw new Error(`签名账户不匹配：当前 ${currentAddr}，请求 ${expectedAddress}`);
+    }
+
+    if (!this.keyPair) {
+      throw new Error('签名会话未就绪');
+    }
+
+    return this.keyPair;
+  }
+
+  /// 供其它模块获取当前密钥对
+  async getKeyPairForAddress(expectedAddress?: string): Promise<KeyringPair> {
+    return this.ensureKeyPairReady(expectedAddress);
+  }
+
   /// 检查会话是否有效
   isSessionActive(): boolean {
     return this.keyPair !== null && Date.now() < this.expiresAt;
@@ -152,30 +191,12 @@ class SessionSignerManager {
   }
 
   /// 签名并发送交易（自动使用缓存的密钥对）
-  async signAndSendTx(tx: any): Promise<string> {
-    // 检查会话是否有效
-    if (!this.isSessionActive()) {
-      // 尝试初始化会话
-      const success = await this.initSessionWithPrompt();
-      if (!success) {
-        throw new Error('用户取消了签名');
-      }
-    }
-
-    // 验证地址匹配
-    const currentAddr = getCurrentAddress();
-    if (currentAddr !== this.address) {
-      // 地址变了，需要重新初始化
-      this.clearSession();
-      const success = await this.initSessionWithPrompt();
-      if (!success) {
-        throw new Error('用户取消了签名');
-      }
-    }
+  async signAndSendTx(tx: any, expectedAddress?: string): Promise<string> {
+    const signerPair = await this.ensureKeyPairReady(expectedAddress);
 
     // 签名并发送
     return new Promise((resolve, reject) => {
-      tx.signAndSend(this.keyPair!, ({ status, dispatchError }: any) => {
+      tx.signAndSend(signerPair, ({ status, dispatchError }: any) => {
         console.log('[SessionSigner] 交易状态:', status.type);
 
         if (status.isInBlock) {

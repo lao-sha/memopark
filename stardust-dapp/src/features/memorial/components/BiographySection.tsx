@@ -1,184 +1,96 @@
 /**
- * 生平简介组件
- * 
- * 功能说明：
- * 1. 展示逝者完整生平简介
- * 2. 显示重要事件时间轴
- * 3. 支持折叠展开
- * 4. 响应式布局
- * 
- * 创建日期：2025-11-02
+ * 生平故事页（云上思念布局）
  */
 
-import React, { useState } from 'react'
-import { Card, Typography, Timeline, Space, Button, Empty } from 'antd'
-import {
-  FileTextOutlined,
-  CalendarOutlined,
-  TrophyOutlined,
-  HeartOutlined,
-} from '@ant-design/icons'
+import React, { useMemo } from 'react'
+import { PlayCircleFilled } from '@ant-design/icons'
+import './BiographySection.css'
 import { DeceasedInfo } from '../../../services/deceasedService'
-import { MemorialColors } from '../../../theme/colors'
-
-const { Title, Paragraph, Text } = Typography
+import { buildIpfsUrl } from '../../../utils/ipfsUrl'
 
 interface BiographySectionProps {
-  /** 逝者信息 */
   deceased: DeceasedInfo
 }
 
-/**
- * 函数级详细中文注释：格式化日期
- */
-const formatDate = (blockNumber: number): string => {
-  const estimatedDate = new Date(Date.now() - (Date.now() / 1000 - blockNumber * 6) * 1000)
-  return estimatedDate.toLocaleDateString('zh-CN', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  })
-}
+const DEFAULT_PHOTOS = [
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&auto=format&fit=crop&sat=-55',
+  'https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1475700268786-1dcff90b0f88?w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1473247034197-1a9e7ed1c143?w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1475180098004-ca77a66827be?w=600&auto=format&fit=crop',
+]
 
-/**
- * 函数级详细中文注释：生平简介组件
- */
+const tabs = ['生平', '回忆相册', '纪念视频', '追忆文章']
+
 export const BiographySection: React.FC<BiographySectionProps> = ({ deceased }) => {
-  const [expanded, setExpanded] = useState(false)
+  const mainImageUrl = buildIpfsUrl(deceased.mainImageCid)
+  const avatar =
+    mainImageUrl || 'https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=800&auto=format&fit=crop'
 
-  // 模拟重要事件时间轴（实际应从IPFS或链下数据库获取）
-  const lifeEvents = [
-    {
-      date: formatDate(deceased.birthDate),
-      title: '出生',
-      description: `生于 ${formatDate(deceased.birthDate)}`,
-      icon: <HeartOutlined />,
-      color: MemorialColors.flower,
-    },
-    // 可以添加更多事件
-    {
-      date: formatDate(deceased.deathDate),
-      title: '逝世',
-      description: `逝于 ${formatDate(deceased.deathDate)}`,
-      icon: <HeartOutlined />,
-      color: MemorialColors.textSecondary,
-    },
-  ]
+  const albumPhotos = useMemo(() => {
+    if (!mainImageUrl) return DEFAULT_PHOTOS
+    return Array.from({ length: 6 }, () => mainImageUrl)
+  }, [mainImageUrl])
+
+  const birth = formatDate(deceased.birthTs)
+  const death = formatDate(deceased.deathTs)
 
   return (
-    <div style={{ padding: '16px 12px' }}>
-      {/* 生平简介卡片 */}
-      <Card
-        bordered={false}
-        style={{
-          borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          marginBottom: 16,
-        }}
-        bodyStyle={{ padding: '20px' }}
-      >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FileTextOutlined style={{ fontSize: 20, color: MemorialColors.primary }} />
-            <Title level={4} style={{ margin: 0 }}>
-              生平简介
-            </Title>
+    <div className="bio-wrapper">
+      <div className="bio-tabs">
+        {tabs.map(tab => (
+          <div key={tab} className={`bio-tab ${tab === '生平' ? 'active' : ''}`}>
+            {tab}
           </div>
+        ))}
+      </div>
 
-          {deceased.bio ? (
-            <>
-              <Paragraph
-                ellipsis={
-                  expanded
-                    ? false
-                    : {
-                        rows: 5,
-                        expandable: false,
-                      }
-                }
-                style={{
-                  fontSize: 15,
-                  lineHeight: 1.8,
-                  color: MemorialColors.textPrimary,
-                  marginBottom: 0,
-                }}
-              >
-                {deceased.bio}
-              </Paragraph>
-              {deceased.bio.length > 200 && (
-                <Button
-                  type="link"
-                  onClick={() => setExpanded(!expanded)}
-                  style={{ padding: 0, height: 'auto' }}
-                >
-                  {expanded ? '收起' : '展开全部'}
-                </Button>
-              )}
-            </>
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无生平简介"
-              style={{ margin: '20px 0' }}
-            />
-          )}
-        </Space>
-      </Card>
+      <section className="bio-section">
+        <div className="bio-text">
+          {generateBioText(deceased.name)}
+        </div>
+      </section>
 
-      {/* 重要事件时间轴 */}
-      <Card
-        bordered={false}
-        style={{
-          borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        }}
-        bodyStyle={{ padding: '20px' }}
-      >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CalendarOutlined style={{ fontSize: 20, color: MemorialColors.primary }} />
-            <Title level={4} style={{ margin: 0 }}>
-              生命历程
-            </Title>
-          </div>
+      <section className="bio-section">
+        <div className="bio-section-header">
+          <span>纪念视频</span>
+          <span className="bio-link">查看全部</span>
+        </div>
+        <div className="bio-video-card">
+          <img src={avatar} alt="纪念视频" />
+          <PlayCircleFilled className="bio-video-play" />
+          <div className="bio-video-title">百年致敬·{deceased.name}</div>
+          <div className="bio-video-desc">{birth} - {death}</div>
+        </div>
+      </section>
 
-          <Timeline
-            mode="left"
-            items={lifeEvents.map(event => ({
-              dot: (
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    background: `linear-gradient(135deg, ${event.color}40 0%, ${event.color}80 100%)`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
-                    color: event.color,
-                    border: `2px solid ${event.color}`,
-                  }}
-                >
-                  {event.icon}
-                </div>
-              ),
-              children: (
-                <div style={{ marginLeft: 8 }}>
-                  <Text strong style={{ fontSize: 15 }}>
-                    {event.title}
-                  </Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 13 }}>
-                    {event.description}
-                  </Text>
-                </div>
-              ),
-            }))}
-          />
-        </Space>
-      </Card>
+      <section className="bio-section">
+        <div className="bio-section-header">
+          <span>回忆相册</span>
+          <span className="bio-link">查看全部</span>
+        </div>
+        <div className="bio-album-grid">
+          {albumPhotos.map((photo, idx) => (
+            <div key={idx} className="bio-album-thumb">
+              <img src={photo} alt={`相册-${idx}`} />
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
 
+const formatDate = (ts: string | undefined): string => {
+  if (!ts || ts.length !== 8) return '未知'
+  const y = ts.slice(0, 4)
+  const m = ts.slice(4, 6)
+  const d = ts.slice(6, 8)
+  return `${y}.${m}.${d}`
+}
+
+const generateBioText = (name: string) =>
+  `世界著名科学家、空气动力学家、${name}被誉为“中国航天之父”和“火箭之王”。他的一生献给祖国的航天事业，创造了无数传奇。`
+
+export default BiographySection

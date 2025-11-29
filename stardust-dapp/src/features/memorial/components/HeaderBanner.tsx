@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons'
 import { DeceasedInfo } from '../../../services/deceasedService'
 import { MemorialColors } from '../../../theme/colors'
+import { buildIpfsUrl } from '../../../utils/ipfsUrl'
 
 const { Title, Text } = Typography
 
@@ -45,28 +46,23 @@ interface HeaderBannerProps {
 
 /**
  * 函数级详细中文注释：格式化日期显示
+ * 🔧 修复：日期格式从区块号改为 YYYYMMDD 字符串
  */
-const formatDateDisplay = (blockNumber: number): string => {
-  // 简单估算：假设区块号代表时间戳
-  // 这里可以根据实际区块时间进行更精确的转换
-  const estimatedDate = new Date(Date.now() - (Date.now() / 1000 - blockNumber * 6) * 1000)
-  return estimatedDate.toLocaleDateString('zh-CN', { 
-    year: 'numeric', 
-    month: '2-digit', 
-    day: '2-digit' 
-  }).replace(/\//g, '.')
+const formatDateDisplay = (dateStr: string): string => {
+  if (!dateStr || dateStr.length !== 8) return dateStr || '未知'
+  // 格式：YYYYMMDD -> YYYY.MM.DD
+  return `${dateStr.slice(0, 4)}.${dateStr.slice(4, 6)}.${dateStr.slice(6, 8)}`
 }
 
 /**
  * 函数级详细中文注释：计算享年
+ * 🔧 修复：基于 YYYYMMDD 字符串计算
  */
 const calculateLifeYears = (deceased: DeceasedInfo): number => {
-  if (deceased.lifeYears !== undefined) {
-    return deceased.lifeYears
-  }
-  // 基于区块号估算（每年约5,256,000个区块）
-  const blocksPerYear = 5_256_000
-  return Math.floor((deceased.deathDate - deceased.birthDate) / blocksPerYear)
+  if (!deceased.birthTs || !deceased.deathTs) return 0
+  const birthYear = parseInt(deceased.birthTs.slice(0, 4), 10)
+  const deathYear = parseInt(deceased.deathTs.slice(0, 4), 10)
+  return deathYear - birthYear
 }
 
 /**
@@ -82,19 +78,16 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({
   onJoinFamily,
 }) => {
   const isOwner = currentAccount === deceased.owner
-  const birthDate = formatDateDisplay(deceased.birthDate)
-  const deathDate = formatDateDisplay(deceased.deathDate)
+  const birthDate = formatDateDisplay(deceased.birthTs)  // 🔧 修复：birthDate -> birthTs
+  const deathDate = formatDateDisplay(deceased.deathTs)  // 🔧 修复：deathDate -> deathTs
   const lifeYears = calculateLifeYears(deceased)
 
   // 获取主图URL
-  const coverImageUrl = deceased.mainImageCid
-    ? `https://ipfs.io/ipfs/${deceased.mainImageCid}`
-    : 'https://picsum.photos/seed/memorial-bg/1200/800'
+  const coverImageUrl =
+    buildIpfsUrl(deceased.mainImageCid) || 'https://picsum.photos/seed/memorial-bg/1200/800'
 
   // 获取头像URL
-  const avatarUrl = deceased.mainImageCid
-    ? `https://ipfs.io/ipfs/${deceased.mainImageCid}`
-    : undefined
+  const avatarUrl = buildIpfsUrl(deceased.mainImageCid)
 
   return (
     <div
@@ -261,7 +254,7 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({
           {avatarUrl ? (
             <img
               src={avatarUrl}
-              alt={deceased.fullName}
+              alt={deceased.name}
               style={{
                 width: '100%',
                 height: '100%',
@@ -280,7 +273,7 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({
                 color: '#fff',
               }}
             >
-              {deceased.fullName.charAt(0)}
+              {deceased.name?.charAt(0) || '?'}
             </div>
           )}
         </div>
@@ -295,7 +288,7 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({
             fontWeight: 600,
           }}
         >
-          {deceased.fullName}
+          {deceased.name}
         </Title>
 
         {/* 生卒日期 */}
@@ -342,4 +335,3 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({
     </div>
   )
 }
-

@@ -1,0 +1,257 @@
+/**
+ * 聊天隐私设置面板样式
+ *
+ * 创建日期：2025-11-28
+ * 版本：v4.0
+ */
+
+/* ==================== 主容器 ==================== */
+.chat-settings-panel {
+  padding: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.chat-settings-panel.compact {
+  padding: 8px;
+}
+
+/* ==================== 加载状态 ==================== */
+.chat-settings-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 16px;
+}
+
+/* ==================== 错误状态 ==================== */
+.chat-settings-error {
+  padding: 24px;
+}
+
+/* ==================== 设置卡片 ==================== */
+.settings-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.settings-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 48px;
+}
+
+.settings-card .ant-card-head-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.settings-card .ant-card-body {
+  padding: 16px;
+}
+
+/* ==================== 权限级别选项 ==================== */
+.permission-level-group {
+  width: 100%;
+}
+
+.permission-level-options {
+  width: 100%;
+}
+
+.permission-level-option {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  margin-bottom: 8px !important;
+  transition: all 0.2s ease;
+}
+
+.permission-level-option:hover {
+  border-color: #1890ff;
+  background: #f6ffed;
+}
+
+.permission-level-option.ant-radio-wrapper-checked {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.permission-level-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.permission-level-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.permission-level-desc {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ==================== Mutation 加载状态 ==================== */
+.mutation-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px;
+  background: #fafafa;
+  border-radius: 4px;
+}
+
+/* ==================== 场景设置 ==================== */
+.scene-setting-hint {
+  font-size: 12px;
+  margin-bottom: 12px !important;
+}
+
+.scene-type-list {
+  border: none;
+}
+
+.scene-type-item {
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.scene-type-item:last-child {
+  border-bottom: none;
+}
+
+.scene-type-item .ant-list-item-meta-title {
+  font-size: 14px;
+  margin-bottom: 2px !important;
+}
+
+.scene-type-item .ant-list-item-meta-description {
+  font-size: 12px;
+}
+
+/* ==================== 名单统计 ==================== */
+.list-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.list-stat-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 18px;
+}
+
+.stat-icon.blacklist {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+.stat-icon.whitelist {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #999;
+}
+
+.add-whitelist-btn {
+  margin-top: 8px;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 360px) {
+  .chat-settings-panel {
+    padding: 12px;
+  }
+
+  .settings-card .ant-card-body {
+    padding: 12px;
+  }
+
+  .permission-level-option {
+    padding: 10px;
+  }
+
+  .list-stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .list-stat-item {
+    padding: 12px;
+  }
+
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+}
+
+/* ==================== 紧凑模式 ==================== */
+.chat-settings-panel.compact .settings-card {
+  margin-bottom: 12px;
+}
+
+.chat-settings-panel.compact .permission-level-option {
+  padding: 8px;
+  margin-bottom: 6px !important;
+}
+
+.chat-settings-panel.compact .permission-level-desc {
+  display: none;
+}
+
+.chat-settings-panel.compact .list-stat-item {
+  padding: 10px;
+}
+
+.chat-settings-panel.compact .stat-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.chat-settings-panel.compact .stat-value {
+  font-size: 18px;
+}

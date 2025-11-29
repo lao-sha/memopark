@@ -97,8 +97,15 @@ export async function getCreditRecord(
   makerId: number
 ): Promise<CreditRecord | null> {
   try {
-    const creditData = await api.query.makerCredit.credits(makerId);
-    
+    // 函数级详细中文注释：pallet 名称是 credit（不是 makerCredit）
+    // 存储项名称是 makerCredits（不是 credits）
+    if (!(api.query as any).credit?.makerCredits) {
+      console.log('[getCreditRecord] pallet-credit.makerCredits 不存在');
+      return null;
+    }
+
+    const creditData = await (api.query as any).credit.makerCredits(makerId);
+
     if (!creditData || creditData.isEmpty) {
       console.log('该做市商没有信用记录');
       return null;
@@ -151,30 +158,41 @@ export async function getDefaultHistory(
   makerId: number
 ): Promise<DefaultRecord[]> {
   try {
-    const historyData = await api.query.makerCredit.defaultHistory(makerId);
-    
-    if (!historyData || historyData.isEmpty) {
+    // 函数级详细中文注释：pallet 名称是 credit（不是 makerCredit）
+    // 存储项名称是 makerDefaultHistory（DoubleMap: maker_id -> order_id -> record）
+    if (!(api.query as any).credit?.makerDefaultHistory) {
+      console.log('[getDefaultHistory] pallet-credit.makerDefaultHistory 不存在');
       return [];
     }
-    
-    const historyJson: any = historyData.toJSON();
-    
-    // BoundedVec 解析
-    const records = Array.isArray(historyJson) ? historyJson : [];
-    
-    return records.map((record: any) => {
-      const typeKey = Object.keys(record.defaultType || {})[0] || 'Timeout';
-      const defaultType = typeKey === 'timeout' ? 'Timeout' : 'DisputeLoss';
-      
-      return {
-        defaultType,
-        orderId: record.orderId || 0,
-        timestamp: record.timestamp || 0,
-        creditDeducted: defaultType === 'Timeout' ? 5 : 15,
-        riskAdded: defaultType === 'Timeout' ? 10 : 30,
-        inCooldown: false, // 需要额外计算
-      };
-    });
+
+    // 查询该 maker 的所有违约记录（使用 entries 遍历 DoubleMap）
+    const entries = await (api.query as any).credit.makerDefaultHistory.entries(makerId);
+
+    if (!entries || entries.length === 0) {
+      return [];
+    }
+
+    const records: DefaultRecord[] = [];
+    for (const [key, value] of entries) {
+      if (value && !value.isEmpty) {
+        const record: any = value.toJSON();
+        const orderId = key.args[1]?.toNumber?.() || 0;
+
+        const typeKey = Object.keys(record.defaultType || {})[0] || 'Timeout';
+        const defaultType = typeKey.toLowerCase() === 'timeout' ? 'Timeout' : 'DisputeLoss';
+
+        records.push({
+          defaultType,
+          orderId,
+          timestamp: record.timestamp || 0,
+          creditDeducted: defaultType === 'Timeout' ? 5 : 15,
+          riskAdded: defaultType === 'Timeout' ? 10 : 30,
+          inCooldown: false,
+        });
+      }
+    }
+
+    return records;
   } catch (error) {
     console.error('查询违约历史失败:', error);
     return [];

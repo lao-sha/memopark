@@ -169,7 +169,6 @@ const CreateDeceasedPage: React.FC = () => {
       }
 
       const args: any[] = [
-        0,
         toBytes(name),
         gender,
         null,

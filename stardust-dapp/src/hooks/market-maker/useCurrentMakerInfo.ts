@@ -117,13 +117,14 @@ export function useCurrentMakerInfo(
   useEffect(() => {
     /**
      * 函数级详细中文注释：加载当前账户的做市商信息
-     * 
+     *
      * 执行流程：
      * 1. 获取当前账户地址（参数 > localStorage）
-     * 2. 检查pallet-trading是否存在
-     * 3. 查询所有activeMarketMakers
-     * 4. 遍历找到owner匹配且status为Active的做市商
-     * 5. 解析并返回完整信息
+     * 2. 检查pallet-maker是否存在
+     * 3. 通过 accountToMaker 查询当前账户的做市商ID
+     * 4. 通过 makerApplications 查询做市商详细信息
+     * 5. 检查状态是否为 Active
+     * 6. 解析并返回完整信息
      */
     const loadCurrentMakerInfo = async () => {
       setLoading(true);
@@ -132,9 +133,9 @@ export function useCurrentMakerInfo(
       try {
         // 1. 获取当前账户地址
         const address = currentAddress || localStorage.getItem('mp.current');
-        
+
         console.log('[useCurrentMakerInfo] 检查登录状态，当前地址:', address);
-        
+
         if (!address) {
           setError('未找到当前登录账户，请先登录');
           setLoading(false);
@@ -145,37 +146,54 @@ export function useCurrentMakerInfo(
         const api = await getApi();
 
         // 3. 检查pallet是否存在
-        if (!(api.query as any).trading) {
-          setError('pallet-trading 不存在');
+        if (!(api.query as any).maker) {
+          setError('pallet-maker 不存在');
           setLoading(false);
           return;
         }
 
-        // 4. 查询所有活跃做市商
-        const entries = await (api.query as any).trading.activeMarketMakers.entries();
-        
+        // 4. 通过 accountToMaker 查询当前账户的做市商ID
+        const makerIdOpt = await (api.query as any).maker.accountToMaker(address);
+
         let foundMmId: number | null = null;
         let foundApp: any = null;
-        
-        // 5. 遍历查找当前账户的做市商
-        for (const [key, value] of entries) {
-          if (value.isSome) {
-            const id = key.args[0].toNumber();
-            const app = value.unwrap();
-            const appData = app.toJSON() as any;
-            
-            // 检查是否属于当前账户且状态为Active
-            if (
-              appData.owner &&
-              appData.owner.toLowerCase() === address.toLowerCase() &&
-              appData.status === 'Active'
-            ) {
-              foundMmId = id;
-              foundApp = appData;
-              console.log('[useCurrentMakerInfo] 找到当前账户的做市商记录:', id, appData);
-              break;
+
+        if (makerIdOpt.isSome) {
+          // 找到了做市商ID，查询详细信息
+          const mmId = makerIdOpt.unwrap().toNumber();
+          const appOpt = await (api.query as any).maker.makerApplications(mmId);
+
+          if (appOpt.isSome) {
+            const appData = appOpt.unwrap().toJSON() as any;
+
+            // 解析状态（处理 Substrate 枚举返回的各种格式）
+            const rawStatus = appData.status;
+            let parsedStatus = 'Unknown';
+            if (typeof rawStatus === 'string') {
+              parsedStatus = rawStatus;
+            } else if (typeof rawStatus === 'object' && rawStatus !== null) {
+              const keys = Object.keys(rawStatus);
+              if (keys.length > 0) {
+                parsedStatus = keys[0];
+              }
+            }
+            // 标准化状态名称
+            const normalizedStatus = parsedStatus.toLowerCase();
+            const isActive = normalizedStatus === 'active';
+
+            console.log('[useCurrentMakerInfo] 状态解析:', { rawStatus, parsedStatus, normalizedStatus, isActive });
+
+            // 检查状态是否为Active
+            if (isActive) {
+              foundMmId = mmId;
+              foundApp = { ...appData, status: 'Active' }; // 使用标准化的状态
+              console.log('[useCurrentMakerInfo] 找到当前账户的活跃做市商:', mmId, appData);
+            } else {
+              console.log('[useCurrentMakerInfo] 找到做市商但状态不是Active:', mmId, parsedStatus);
             }
           }
+        } else {
+          console.log('[useCurrentMakerInfo] 当前账户没有做市商记录');
         }
         
         // 6. 检查是否找到

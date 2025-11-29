@@ -39,11 +39,13 @@ use sp_runtime::{
     ApplyExtrinsicResult,
 };
 use sp_version::RuntimeVersion;
+use pallet_chat_permission::FriendshipChecker;
 
 // Local module imports
 use super::{
     AccountId, Aura, Balance, Block, Executive, Grandpa, InherentDataExt, Nonce, Runtime,
     RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment, VERSION,
+    ChatPermission,
 };
 
 impl_runtime_apis! {
@@ -299,6 +301,98 @@ impl_runtime_apis! {
 
         fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
             crate::genesis_config_presets::preset_names()
+        }
+    }
+
+    // ========= 🆕 2025-11-28 Chat Permission Runtime API =========
+    /// 函数级详细中文注释：聊天权限系统 Runtime API 实现
+    ///
+    /// ### 功能说明
+    /// - 提供前端查询聊天权限的接口
+    /// - 支持权限检查、场景授权查询、好友关系查询、隐私设置摘要
+    ///
+    /// ### 接口列表
+    /// - `check_chat_permission`: 检查两用户之间的聊天权限
+    /// - `get_active_scenes`: 获取两用户间所有场景授权
+    /// - `is_friend`: 检查是否是好友
+    /// - `get_privacy_settings_summary`: 获取用户隐私设置摘要
+    impl pallet_chat_permission::runtime_api::ChatPermissionApi<Block, AccountId> for Runtime {
+        /// 函数级中文注释：检查聊天权限
+        ///
+        /// ### 权限判断优先级
+        /// 1. 黑名单检查（最高优先级拒绝）
+        /// 2. 好友关系检查
+        /// 3. 场景授权检查
+        /// 4. 隐私设置检查
+        ///
+        /// ### 参数
+        /// - `sender`: 消息发送者
+        /// - `receiver`: 消息接收者
+        ///
+        /// ### 返回
+        /// - `PermissionResult`: 权限检查结果（允许/拒绝及原因）
+        fn check_chat_permission(
+            sender: AccountId,
+            receiver: AccountId,
+        ) -> pallet_chat_permission::PermissionResult {
+            ChatPermission::check_permission(&sender, &receiver)
+        }
+
+        /// 函数级中文注释：获取两用户间所有场景授权
+        ///
+        /// ### 功能
+        /// 返回两个用户之间所有的场景授权信息，包括：
+        /// - 场景类型（MarketMaker/Order/Memorial/Group/Custom）
+        /// - 场景ID
+        /// - 是否已过期
+        /// - 过期时间
+        /// - 元数据（如订单号、纪念馆名等）
+        ///
+        /// ### 参数
+        /// - `user1`: 第一个用户
+        /// - `user2`: 第二个用户
+        ///
+        /// ### 返回
+        /// - `Vec<SceneAuthorizationInfo>`: 场景授权信息列表
+        fn get_active_scenes(
+            user1: AccountId,
+            user2: AccountId,
+        ) -> Vec<pallet_chat_permission::SceneAuthorizationInfo> {
+            ChatPermission::get_active_scenes(&user1, &user2)
+        }
+
+        /// 函数级中文注释：检查是否是好友
+        ///
+        /// ### 功能
+        /// 检查两个用户之间是否存在好友关系。
+        /// 好友关系是双向的，互加好友后生效。
+        ///
+        /// ### 参数
+        /// - `user1`: 第一个用户
+        /// - `user2`: 第二个用户
+        ///
+        /// ### 返回
+        /// - `bool`: 如果是好友返回 true
+        fn is_friend(user1: AccountId, user2: AccountId) -> bool {
+            pallet_chat_permission::Pallet::<Runtime>::is_friend(&user1, &user2)
+        }
+
+        /// 函数级中文注释：获取用户隐私设置摘要
+        ///
+        /// ### 功能
+        /// 返回用户的隐私设置概要信息，包括：
+        /// - 权限级别（Open/FriendsOnly/Whitelist/Closed）
+        /// - 黑名单数量
+        /// - 白名单数量
+        /// - 拒绝的场景类型列表
+        ///
+        /// ### 参数
+        /// - `user`: 要查询的用户
+        ///
+        /// ### 返回
+        /// - `PrivacySettingsSummary`: 隐私设置摘要
+        fn get_privacy_settings_summary(user: AccountId) -> pallet_chat_permission::PrivacySettingsSummary {
+            ChatPermission::get_privacy_summary(&user)
         }
     }
 }

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Steps, Form, Input, InputNumber, Button, Space, Typography, Alert, Divider, message, Collapse, Tag, Modal, Descriptions, Spin, Radio } from 'antd'
+import { Card, Steps, Form, Input, InputNumber, Button, Space, Typography, Alert, Divider, message, Collapse, Tag, Modal, Descriptions, Spin } from 'antd'
 import { InfoCircleOutlined, CheckCircleOutlined, WarningOutlined, CopyOutlined, ArrowLeftOutlined, UnlockOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
 import { signAndSendLocalFromKeystore, queryFreeBalance } from '../../lib/polkadot-safe'
@@ -93,8 +93,8 @@ export default function CreateMarketMakerPage() {
       console.log('缓存 step:', savedStep)
 
       try {
-        // 从链上查询真实的 mmId
-        const ownerIndexOpt = await (api.query as any).trading?.ownerIndex(currentAddress)
+        // 从链上查询真实的 mmId（使用正确的存储项 accountToMaker）
+        const ownerIndexOpt = await (api.query as any).maker?.accountToMaker(currentAddress)
         
         if (ownerIndexOpt && ownerIndexOpt.isSome) {
           // 链上有申请记录
@@ -207,13 +207,13 @@ export default function CreateMarketMakerPage() {
    */
   const loadMarketMakerConfig = React.useCallback(async () => {
     if (!api) return
-    
+
     try {
       setLoadingConfig(true)
-      
+
       // 检查 pallet 是否存在
-      if (!(api.query as any).trading) {
-        console.warn('pallet-trading 不存在')
+      if (!(api.query as any).maker) {
+        console.warn('pallet-maker 不存在')
         return
       }
 
@@ -272,19 +272,47 @@ export default function CreateMarketMakerPage() {
 
       // 如果找到当前账户的申请，显示申请详情
       if (userApplication) {
+        // 解析状态（处理 Substrate 枚举返回的各种格式）
+        const rawStatus = userApplication.status
+        let parsedStatus = 'Unknown'
+        if (typeof rawStatus === 'string') {
+          const lower = rawStatus.toLowerCase()
+          if (lower === 'depositlocked') parsedStatus = 'DepositLocked'
+          else if (lower === 'pendingreview') parsedStatus = 'PendingReview'
+          else if (lower === 'active') parsedStatus = 'Active'
+          else if (lower === 'rejected') parsedStatus = 'Rejected'
+          else if (lower === 'cancelled') parsedStatus = 'Cancelled'
+          else if (lower === 'expired') parsedStatus = 'Expired'
+          else parsedStatus = rawStatus
+        } else if (typeof rawStatus === 'object' && rawStatus !== null) {
+          const keys = Object.keys(rawStatus)
+          if (keys.length > 0) {
+            const key = keys[0].toLowerCase()
+            if (key === 'depositlocked') parsedStatus = 'DepositLocked'
+            else if (key === 'pendingreview') parsedStatus = 'PendingReview'
+            else if (key === 'active') parsedStatus = 'Active'
+            else if (key === 'rejected') parsedStatus = 'Rejected'
+            else if (key === 'cancelled') parsedStatus = 'Cancelled'
+            else if (key === 'expired') parsedStatus = 'Expired'
+            else parsedStatus = keys[0]
+          }
+        }
+
+        console.log('[配置] 原始状态:', rawStatus, '解析后状态:', parsedStatus)
+
         const configData: MarketMakerConfig = {
           minDeposit: userApplication.deposit || '0',
           minAmount: userApplication.minAmount || '0',
           reviewEnabled: true,
           isUserApplication: true,
-          applicationStatus: userApplication.status || 'Unknown',
-          applicationMmId: userMmId || undefined
+          applicationStatus: parsedStatus,
+          applicationMmId: userMmId !== null ? userMmId : undefined
         }
-        
+
         setConfig(configData)
-        
+
         // 如果用户已有申请，自动加载详情并跳转到步骤2
-        if (userMmId !== null && userApplication.status === 'DepositLocked') {
+        if (userMmId !== null && parsedStatus === 'DepositLocked') {
           setMmId(userMmId)
           setDeadlineSec(userApplication.infoDeadline || 0)
           setCurrent(1)
@@ -345,13 +373,13 @@ export default function CreateMarketMakerPage() {
    */
   const loadApplicationDetails = React.useCallback(async (id: number) => {
     if (!api) return
-    
+
     try {
       setLoadingDetails(true)
-      
+
       // 检查 pallet 是否存在
-      if (!(api.query as any).trading) {
-        console.warn('pallet-trading 不存在')
+      if (!(api.query as any).maker) {
+        console.warn('pallet-maker 不存在')
         return
       }
 
@@ -420,12 +448,39 @@ export default function CreateMarketMakerPage() {
             }
           }
         }
-        
+
+        // 🆕 解析状态（处理 Substrate 枚举返回的各种格式）
+        const rawStatus = appData.status
+        let parsedStatus = 'Unknown'
+        if (typeof rawStatus === 'string') {
+          const lower = rawStatus.toLowerCase()
+          if (lower === 'depositlocked') parsedStatus = 'DepositLocked'
+          else if (lower === 'pendingreview') parsedStatus = 'PendingReview'
+          else if (lower === 'active') parsedStatus = 'Active'
+          else if (lower === 'rejected') parsedStatus = 'Rejected'
+          else if (lower === 'cancelled') parsedStatus = 'Cancelled'
+          else if (lower === 'expired') parsedStatus = 'Expired'
+          else parsedStatus = rawStatus
+        } else if (typeof rawStatus === 'object' && rawStatus !== null) {
+          const keys = Object.keys(rawStatus)
+          if (keys.length > 0) {
+            const key = keys[0].toLowerCase()
+            if (key === 'depositlocked') parsedStatus = 'DepositLocked'
+            else if (key === 'pendingreview') parsedStatus = 'PendingReview'
+            else if (key === 'active') parsedStatus = 'Active'
+            else if (key === 'rejected') parsedStatus = 'Rejected'
+            else if (key === 'cancelled') parsedStatus = 'Cancelled'
+            else if (key === 'expired') parsedStatus = 'Expired'
+            else parsedStatus = keys[0]
+          }
+        }
+        console.log('🔍 [状态解析] 原始:', rawStatus, '解析后:', parsedStatus)
+
         const details: ApplicationDetails = {
           mmId: id,
           owner: appData.owner || '',
           deposit: appData.deposit || '0',
-          status: appData.status || 'Unknown',
+          status: parsedStatus,
           publicCid,
           privateCid,
           minAmount: appData.minAmount || '0',
@@ -577,6 +632,45 @@ export default function CreateMarketMakerPage() {
   }, [appDetails, form2])
 
   /**
+   * 函数级详细中文注释：解析 Substrate 枚举状态
+   * - 处理 toJSON() 返回的各种格式：字符串 "Active"、对象 {active: null}、大写 "ACTIVE" 等
+   * - 统一返回标准字符串格式：DepositLocked, PendingReview, Active, Rejected, Cancelled, Expired
+   */
+  function parseApplicationStatus(status: any): string {
+    if (!status) return 'Unknown'
+
+    // 情况1：已经是字符串
+    if (typeof status === 'string') {
+      // 标准化处理
+      const lower = status.toLowerCase()
+      if (lower === 'depositlocked') return 'DepositLocked'
+      if (lower === 'pendingreview') return 'PendingReview'
+      if (lower === 'active') return 'Active'
+      if (lower === 'rejected') return 'Rejected'
+      if (lower === 'cancelled') return 'Cancelled'
+      if (lower === 'expired') return 'Expired'
+      return status
+    }
+
+    // 情况2：对象形式 {Active: null} 或 {active: null}
+    if (typeof status === 'object') {
+      const keys = Object.keys(status)
+      if (keys.length > 0) {
+        const key = keys[0].toLowerCase()
+        if (key === 'depositlocked') return 'DepositLocked'
+        if (key === 'pendingreview') return 'PendingReview'
+        if (key === 'active') return 'Active'
+        if (key === 'rejected') return 'Rejected'
+        if (key === 'cancelled') return 'Cancelled'
+        if (key === 'expired') return 'Expired'
+        return keys[0]
+      }
+    }
+
+    return 'Unknown'
+  }
+
+  /**
    * 函数级详细中文注释：CID 合法性校验
    * - CID 必须为 IPFS CID v0/v1 的常见形式（base58btc 或 base32），不可带 enc: 前缀
    * - 只校验格式与长度，不下行取回；私密内容加密但 CID 仍为明文
@@ -615,7 +709,7 @@ export default function CreateMarketMakerPage() {
 
   /**
    * 函数级详细中文注释：提交质押（链上调用）
-   * - 签名调用 pallet-trading::lock_deposit(amount)
+   * - 签名调用 pallet-maker::lock_deposit(amount)
    * - 监听事件获取 mmId 和截止时间
    */
   const onDeposit = async (values: any) => {
@@ -632,26 +726,21 @@ export default function CreateMarketMakerPage() {
       if (!amount || amount <= 0) throw new Error('请输入有效的质押金额')
 
       // 检查 pallet 是否已注册
-      if (!(api.query as any).trading) {
-        throw new Error('pallet-trading 尚未在 runtime 中注册，请联系管理员')
+      if (!(api.query as any).maker) {
+        throw new Error('pallet-maker 尚未在 runtime 中注册，请联系管理员')
       }
 
       // 格式化金额（DUST 使用 12 位小数）
       const depositAmount = formatDustAmount(amount)
-      
+
       console.log('[质押] 原始金额:', amount)
-      console.log('[质押] 格式化后:', depositAmount)
       console.log('[质押] API 可用:', !!api)
-      console.log('[质押] marketMaker pallet 存在:', !!(api.query as any).trading)
+      console.log('[质押] maker pallet 存在:', !!(api.query as any).maker)
 
       message.loading({ content: '正在签名并提交质押...', key: 'deposit', duration: 0 })
 
-      // 🆕 2025-10-19：添加direction参数（0=Buy, 1=Sell, 2=BuyAndSell）
-      const direction = values.direction !== undefined ? values.direction : 2 // 默认双向
-      console.log('[质押] 业务方向:', direction, ['Buy', 'Sell', 'BuyAndSell'][direction])
-
-      // 签名并发送交易（注意：Rust 蛇形命名在 JS 中转为驼峰）
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'lockDeposit', [depositAmount, direction])
+      // 签名并发送交易（链端 lockDeposit 不需要参数，质押金额由链端配置决定）
+      const hash = await signAndSendLocalFromKeystore('maker', 'lockDeposit', [])
 
       message.success({ content: `质押提交成功！交易哈希: ${hash}`, key: 'deposit', duration: 3 })
 
@@ -803,11 +892,9 @@ if (opt.isSome) {
   }
 
   /**
-   * 函数级详细中文注释：提交资料（链上调用）✅ Phase 4优化
-   * - 签名调用 pallet-trading::submit_info(maker_id, public_root_cid, private_root_cid, buy_premium_bps, sell_premium_bps, min_amount, tron_address, full_name, id_card, masked_payment_info_json?)
-   * - ✅ 已删除epay相关参数（首购功能已删除）
-   * - ✅ 新增必填：full_name（完整姓名）、id_card（完整身份证）
-   * - ✅ 新增可选：masked_payment_info_json（脱敏收款方式）
+   * 函数级详细中文注释：提交资料（链上调用）
+   * - 签名调用 pallet-maker::submit_info(real_name, id_card_number, birthday, tron_address, wechat_id, epay_no?, epay_key?)
+   * - 链端需要 7 个参数（最后2个可选）
    */
   const onSubmitInfo = async (values: any) => {
     if (!api) {
@@ -819,117 +906,77 @@ if (opt.isSome) {
     setLoading(true)
 
     try {
-      // 修复：mmId 可以是 0，使用 === null 检查
-      if (mmId === null || mmId === undefined) {
-        throw new Error('请先完成质押步骤（mmId 无效）')
-      }
-      
-      console.log('[提交资料] mmId:', mmId)
-      console.log('[提交资料] mmId 类型:', typeof mmId)
       console.log('[提交资料] 表单值:', values)
 
-      const { 
-        public_root_cid, 
-        private_root_cid, 
-        buy_premium_bps,  // Buy溢价
-        sell_premium_bps, // Sell溢价
-        min_amount,
-        tron_address,     // TRON地址
-        full_name,        // ✅ 新增：完整姓名
-        id_card,          // ✅ 新增：完整身份证
-        masked_payment_info_json  // ✅ 新增：脱敏收款方式（可选）
+      const {
+        real_name,
+        id_card_number,
+        birthday,
+        tron_address,
+        wechat_id,
+        epay_no,
+        epay_key,
       } = values
 
       // ===== 1. 本地校验 =====
-      if (!isValidCid(public_root_cid)) throw new Error('公开资料 CID 非法或疑似加密（禁止 enc: 前缀）')
-      if (!isValidCid(private_root_cid)) throw new Error('私密资料根 CID 非法或疑似加密（禁止 enc: 前缀）')
+      if (!real_name || real_name.trim() === '') {
+        throw new Error('请输入真实姓名')
+      }
 
-      const minAmt = Number(min_amount)
-      if (!(minAmt > 0)) throw new Error('最小下单额必须大于 0')
+      if (!id_card_number || id_card_number.trim() === '') {
+        throw new Error('请输入身份证号')
+      }
+
+      if (!birthday || birthday.trim() === '') {
+        throw new Error('请输入生日')
+      }
 
       // 验证TRON地址
       if (!tron_address || tron_address.trim().length !== 34 || !tron_address.trim().startsWith('T')) {
         throw new Error('TRON地址格式无效（必须34字符，以T开头）')
       }
 
-      // ✅ 验证完整姓名（必填）
-      if (!full_name || full_name.trim() === '') {
-        throw new Error('请输入完整姓名')
-      }
-      if (full_name.trim().length > 64) {
-        throw new Error('姓名长度不能超过64字符')
+      if (!wechat_id || wechat_id.trim() === '') {
+        throw new Error('请输入微信号')
       }
 
-      // ✅ 验证完整身份证号（必填）
-      if (!id_card || id_card.trim() === '') {
-        throw new Error('请输入完整身份证号')
-      }
-      const idCardPattern = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/
-      if (!idCardPattern.test(id_card.trim())) {
-        throw new Error('身份证号格式无效（请输入18位有效身份证号）')
-      }
-
-      // ✅ 验证脱敏收款方式（可选）
-      if (masked_payment_info_json && masked_payment_info_json.trim() !== '') {
-        try {
-          JSON.parse(masked_payment_info_json)
-        } catch (e) {
-          throw new Error('脱敏收款方式必须是有效的JSON格式')
-        }
-        if (masked_payment_info_json.length > 512) {
-          throw new Error('脱敏收款方式JSON长度不能超过512字节')
-        }
-      }
-
-      // ===== 2. 格式化参数 =====
-      const publicCid = Array.from(new TextEncoder().encode(public_root_cid))
-      const privateCid = Array.from(new TextEncoder().encode(private_root_cid))
-      const minAmountFormatted = formatDustAmount(minAmt)
+      // ===== 2. 格式化参数（转为字节数组）=====
+      const realNameBytes = Array.from(new TextEncoder().encode(real_name.trim()))
+      const idCardBytes = Array.from(new TextEncoder().encode(id_card_number.trim()))
+      const birthdayBytes = Array.from(new TextEncoder().encode(birthday.trim()))
       const tronAddressBytes = Array.from(new TextEncoder().encode(tron_address.trim()))
-      const fullNameBytes = Array.from(new TextEncoder().encode(full_name.trim()))
-      const idCardBytes = Array.from(new TextEncoder().encode(id_card.trim()))
-      
-      // 处理可选参数：masked_payment_info_json
-      let maskedPaymentInfoParam = null
-      if (masked_payment_info_json && masked_payment_info_json.trim() !== '') {
-        maskedPaymentInfoParam = Array.from(new TextEncoder().encode(masked_payment_info_json.trim()))
-      }
+      const wechatIdBytes = Array.from(new TextEncoder().encode(wechat_id.trim()))
 
-      // 🔍 调试日志：打印所有参数
-      console.group('📤 [submitInfo] ✅ Phase 4优化版提交参数')
-      console.log('mmId:', mmId)
-      console.log('publicCid length:', publicCid.length, '字节')
-      console.log('privateCid length:', privateCid.length, '字节')
-      console.log('minAmount:', minAmt, 'DUST → formatted:', minAmountFormatted)
-      console.log('tron_address:', tron_address.trim(), '→ bytes:', tronAddressBytes.length)
-      console.log('full_name:', full_name.trim(), '→ bytes:', fullNameBytes.length, '（链端自动脱敏）')
-      console.log('id_card:', id_card.trim().substring(0, 6) + '****', '→ bytes:', idCardBytes.length, '（链端自动脱敏）')
-      console.log('masked_payment_info_json:', maskedPaymentInfoParam ? `${maskedPaymentInfoParam.length} 字节` : 'null（未提供）')
+      // 可选参数
+      const epayNoParam = epay_no && epay_no.trim() !== ''
+        ? Array.from(new TextEncoder().encode(epay_no.trim()))
+        : null
+      const epayKeyParam = epay_key && epay_key.trim() !== ''
+        ? Array.from(new TextEncoder().encode(epay_key.trim()))
+        : null
+
+      // 🔍 调试日志
+      console.group('📤 [submitInfo] 提交参数')
+      console.log('real_name:', real_name.trim())
+      console.log('id_card_number:', id_card_number.trim().substring(0, 6) + '****')
+      console.log('birthday:', birthday.trim())
+      console.log('tron_address:', tron_address.trim())
+      console.log('wechat_id:', wechat_id.trim())
+      console.log('epay_no:', epay_no ? '已填写' : '未填写')
+      console.log('epay_key:', epay_key ? '已填写' : '未填写')
       console.groupEnd()
-
-      // ===== 3. 验证溢价范围 =====
-      const buyPremium = Number(buy_premium_bps)
-      const sellPremium = Number(sell_premium_bps)
-      if (!(buyPremium >= -500 && buyPremium <= 500)) throw new Error('Buy溢价超出范围（-500 ~ 500 bps）')
-      if (!(sellPremium >= -500 && sellPremium <= 500)) throw new Error('Sell溢价超出范围（-500 ~ 500 bps）')
-
-      console.log('[溢价配置] Buy溢价:', buyPremium, 'bps', `(${(buyPremium / 100).toFixed(2)}%)`)
-      console.log('[溢价配置] Sell溢价:', sellPremium, 'bps', `(${(sellPremium / 100).toFixed(2)}%)`)
 
       message.loading({ content: '正在签名并提交资料...', key: 'submit', duration: 0 })
 
-      // ===== 4. ✅ 签名并发送交易（Phase 4优化版）=====
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'submitInfo', [
-        mmId,                    // mm_id
-        publicCid,               // public_root_cid
-        privateCid,              // private_root_cid
-        buyPremium,              // buy_premium_bps
-        sellPremium,             // sell_premium_bps
-        minAmountFormatted,      // min_amount
-        tronAddressBytes,        // tron_address
-        fullNameBytes,           // ✅ full_name（链端自动脱敏）
-        idCardBytes,             // ✅ id_card（链端自动脱敏）
-        maskedPaymentInfoParam   // ✅ masked_payment_info_json（可选）
+      // ===== 3. 签名并发送交易 =====
+      const hash = await signAndSendLocalFromKeystore('maker', 'submitInfo', [
+        realNameBytes,      // real_name
+        idCardBytes,        // id_card_number
+        birthdayBytes,      // birthday
+        tronAddressBytes,   // tron_address
+        wechatIdBytes,      // wechat_id
+        epayNoParam,        // epay_no (可选)
+        epayKeyParam,       // epay_key (可选)
       ])
 
       message.success({
@@ -1010,7 +1057,7 @@ if (opt.isSome) {
 
   /**
    * 函数级详细中文注释：更新申请资料（链上调用）
-   * - 签名调用 pallet-trading::update_info(maker_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
+   * - 签名调用 pallet-maker::update_info(maker_id, public_cid?, private_cid?, buy_premium_bps?, sell_premium_bps?, min_amount?, epay_gateway?, epay_port?, epay_pid?, epay_key?, first_purchase_pool?)
    * - 支持部分更新：只更新用户修改的字段，未修改的字段传 null
    * - 允许在 DepositLocked 或 PendingReview 状态下调用
    */
@@ -1128,7 +1175,7 @@ if (opt.isSome) {
       message.loading({ content: '正在签名并更新资料...', key: 'update', duration: 0 })
 
       // 签名并发送交易
-      const hash = await signAndSendLocalFromKeystore('marketMaker', 'updateInfo', [
+      const hash = await signAndSendLocalFromKeystore('maker', 'updateInfo', [
         mmId,
         publicCidParam,
         privateCidParam,
@@ -1350,7 +1397,7 @@ if (opt.isSome) {
                 form={form1}
                 layout="vertical"
                 onFinish={onDeposit}
-                initialValues={{ deposit_amount: 1000, direction: 2 }}
+                initialValues={{ deposit_amount: 1000 }}
                 className="mm-form"
               >
                 <Form.Item
@@ -1372,51 +1419,6 @@ if (opt.isSome) {
                   />
                 </Form.Item>
 
-                {/* 🆕 2025-10-19：业务方向选择 */}
-                <Form.Item
-                  label="业务方向"
-                  name="direction"
-                  rules={[{ required: true, message: '请选择业务方向' }]}
-                  extra={
-                    <Alert
-                      type="info"
-                      showIcon
-                      className="mm-alert info"
-                      message="业务方向说明"
-                      description={
-                        <div className="mm-text-secondary">
-                          <p style={{ margin: '4px 0' }}><strong>🟢 仅买入（Buy）</strong>：只能做Bridge业务，购买DUST，支付USDT</p>
-                          <p style={{ margin: '4px 0' }}><strong>🔴 仅卖出（Sell）</strong>：只能做OTC业务，出售DUST，收取USDT</p>
-                          <p style={{ margin: '4px 0' }}><strong>🟡 双向（BuyAndSell）</strong>：可以做OTC和Bridge业务（推荐）</p>
-                          <p style={{ margin: '4px 0', fontStyle: 'italic' }}>💡 建议新手选择单向，资金压力小；大型做市商建议选择双向，提高流动性</p>
-                        </div>
-                      }
-                    />
-                  }
-                >
-                  <Radio.Group className="mm-radio-group" disabled={loading}>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Radio value={0} className="mm-radio-option">
-                        <Space>
-                          <Tag color="green">仅买入</Tag>
-                          <span>Bridge - 购买DUST，支付USDT</span>
-                        </Space>
-                      </Radio>
-                      <Radio value={1} className="mm-radio-option">
-                        <Space>
-                          <Tag color="red">仅卖出</Tag>
-                          <span>OTC - 出售DUST，收取USDT</span>
-                        </Space>
-                      </Radio>
-                      <Radio value={2} className="mm-radio-option selected">
-                        <Space>
-                          <Tag color="orange">双向（推荐）</Tag>
-                          <span>OTC + Bridge - 买卖双向</span>
-                        </Space>
-                      </Radio>
-                    </Space>
-                  </Radio.Group>
-                </Form.Item>
 
                 {/* 配置信息展示 */}
                 {loadingConfig && (
@@ -1793,203 +1795,103 @@ if (opt.isSome) {
                 style={{ marginBottom: 16 }}
               />
 
-              <Form 
-                form={form2} 
-                layout="vertical" 
-                onFinish={appDetails && appDetails.publicCid ? onUpdateInfo : onSubmitInfo}
+              <Form
+                form={form2}
+                layout="vertical"
+                onFinish={onSubmitInfo}
               >
-                <Form.Item 
-                  label="公开资料根 CID（public_root_cid）" 
-                  name="public_root_cid" 
-                  rules={
-                    appDetails && appDetails.publicCid 
-                      ? [{ validator: (_, v) => !v || isValidCid(v) ? Promise.resolve() : Promise.reject(new Error('CID 非法或疑似加密')) }]
-                      : [
-                          { required: true, message: '请输入公开资料根 CID' }, 
-                          { validator: (_, v) => isValidCid(v) ? Promise.resolve() : Promise.reject(new Error('CID 非法或疑似加密')) }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.publicCid 
-                      ? `当前值：${appDetails.publicCid.substring(0, 20)}...（留空则不修改）`
-                      : "例如 bafy... 格式，包含 mm.json/logo/banner/fee.json 等公开文件"
-                  }
+                <Divider orientation="left">📋 基本信息</Divider>
+
+                <Form.Item
+                  label="真实姓名"
+                  name="real_name"
+                  rules={[
+                    { required: true, message: '请输入真实姓名' },
+                    { max: 64, message: '姓名不能超过64字符' }
+                  ]}
+                  extra="将用于身份验证和订单交易"
                 >
-                  <Input.TextArea 
-                    placeholder={
-                      appDetails && appDetails.publicCid 
-                        ? "留空则不修改当前 CID"
-                        : "例如 bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"
-                    }
-                    rows={2}
+                  <Input
+                    placeholder="请输入真实姓名"
                     disabled={loading}
+                    maxLength={64}
                   />
                 </Form.Item>
 
-                <Form.Item 
-                  label="私密资料根 CID（private_root_cid）" 
-                  name="private_root_cid" 
-                  rules={
-                    appDetails && appDetails.privateCid
-                      ? [{ validator: (_, v) => !v || isValidCid(v) ? Promise.resolve() : Promise.reject(new Error('CID 非法或疑似加密')) }]
-                      : [
-                          { required: true, message: '请输入私密资料根 CID' }, 
-                          { validator: (_, v) => isValidCid(v) ? Promise.resolve() : Promise.reject(new Error('CID 非法或疑似加密')) }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.privateCid
-                      ? `当前值：${appDetails.privateCid.substring(0, 20)}...（留空则不修改）`
-                      : "例如 bafy... 格式，包含 private.enc/manifest.json 与 *.enc 文件"
-                  }
+                <Form.Item
+                  label="身份证号"
+                  name="id_card_number"
+                  rules={[
+                    { required: true, message: '请输入身份证号' },
+                    { pattern: /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/, message: '请输入有效的18位身份证号' }
+                  ]}
+                  extra="用于身份验证，链上将脱敏存储"
                 >
-                  <Input.TextArea 
-                    placeholder={
-                      appDetails && appDetails.privateCid
-                        ? "留空则不修改当前 CID"
-                        : "例如 bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"
-                    }
-                    rows={2}
+                  <Input
+                    placeholder="请输入18位身份证号"
                     disabled={loading}
+                    maxLength={18}
+                    style={{ fontFamily: 'monospace' }}
                   />
                 </Form.Item>
 
-                {/* 🆕 2025-10-19：溢价定价机制 */}
-                <Divider>🆕 溢价定价配置</Divider>
-
-                <Alert 
-                  type="info" 
-                  showIcon 
-                  style={{ marginBottom: 16 }}
-                  message="溢价定价机制说明"
-                  description={
-                    <div style={{ fontSize: '12px' }}>
-                      <p style={{ margin: '4px 0' }}><strong>基准价</strong>：由pallet-pricing提供的市场加权均价</p>
-                      <p style={{ margin: '4px 0' }}><strong>Buy溢价（Bridge）</strong>：做市商购买MEMO的溢价，通常为负数（低于基准价）</p>
-                      <p style={{ margin: '4px 0' }}><strong>Sell溢价（OTC）</strong>：做市商出售MEMO的溢价，通常为正数（高于基准价）</p>
-                      <p style={{ margin: '4px 0', fontStyle: 'italic' }}>示例：基准价0.01 USDT，Buy溢价-200 bps (-2%) → 买价0.0098 USDT</p>
-                    </div>
-                  }
-                />
-
-                <Form.Item 
-                  label="Buy溢价（Bridge，bps）" 
-                  name="buy_premium_bps" 
-                  rules={
-                    appDetails && appDetails.buyPremiumBps !== undefined
-                      ? [{ type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }]
-                      : [
-                          { required: true, message: '请输入Buy溢价' },
-                          { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.buyPremiumBps !== undefined
-                      ? `当前值：${(appDetails.buyPremiumBps / 100).toFixed(2)}% (${appDetails.buyPremiumBps} bps)（留空则不修改）`
-                      : "做市商购买MEMO的溢价。负数=折价买入（推荐），例如 -200 bps = -2%"
-                  }
+                <Form.Item
+                  label="生日"
+                  name="birthday"
+                  rules={[
+                    { required: true, message: '请输入生日' },
+                    { pattern: /^\d{4}-\d{2}-\d{2}$/, message: '请使用 YYYY-MM-DD 格式' }
+                  ]}
+                  extra="格式：YYYY-MM-DD，例如：1990-01-15"
                 >
-                  <InputNumber 
-                    min={-500} 
-                    max={500} 
-                    step={10} 
-                    style={{ width: '100%' }}
-                    placeholder={
-                      appDetails && appDetails.buyPremiumBps !== undefined
-                        ? `当前 ${appDetails.buyPremiumBps} bps`
-                        : "例如 -200（-2%折价买入），首次申请默认0"
-                    }
+                  <Input
+                    placeholder="例如：1990-01-15"
                     disabled={loading}
+                    maxLength={10}
                   />
                 </Form.Item>
 
-                <Form.Item 
-                  label="Sell溢价（OTC，bps）" 
-                  name="sell_premium_bps" 
-                  rules={
-                    appDetails && appDetails.sellPremiumBps !== undefined
-                      ? [{ type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }]
-                      : [
-                          { required: true, message: '请输入Sell溢价' },
-                          { type: 'number', min: -500, max: 500, message: '溢价范围：-500 ~ 500 bps (-5% ~ +5%)' }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.sellPremiumBps !== undefined
-                      ? `当前值：${(appDetails.sellPremiumBps / 100).toFixed(2)}% (${appDetails.sellPremiumBps} bps)（留空则不修改）`
-                      : "做市商出售MEMO的溢价。正数=溢价卖出（推荐），例如 +200 bps = +2%"
-                  }
-                >
-                  <InputNumber 
-                    min={-500} 
-                    max={500} 
-                    step={10} 
-                    style={{ width: '100%' }}
-                    placeholder={
-                      appDetails && appDetails.sellPremiumBps !== undefined
-                        ? `当前 ${appDetails.sellPremiumBps} bps`
-                        : "例如 +200（+2%溢价卖出），首次申请默认0"
-                    }
-                    disabled={loading}
-                  />
-                </Form.Item>
+                <Divider orientation="left">📱 联系方式</Divider>
 
-                <Form.Item 
-                  label="最小下单额（DUST）" 
-                  name="min_amount" 
-                  rules={
-                    appDetails && appDetails.minAmount
-                      ? [{ type: 'number', min: 0.01, message: '最小下单额必须大于 0' }]
-                      : [
-                          { required: true, message: '请输入最小下单额' },
-                          { type: 'number', min: 0.01, message: '最小下单额必须大于 0' }
-                        ]
-                  }
-                  extra={
-                    appDetails && appDetails.minAmount
-                      ? `当前值：${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST（留空则不修改）`
-                      : "用户单笔交易的最小金额限制"
-                  }
+                <Form.Item
+                  label="微信号"
+                  name="wechat_id"
+                  rules={[
+                    { required: true, message: '请输入微信号' },
+                    { max: 64, message: '微信号不能超过64字符' }
+                  ]}
+                  extra="用于与买家沟通和处理订单问题"
                 >
-                  <InputNumber 
-                    min={0.01} 
-                    precision={2} 
-                    step={10} 
-                    style={{ width: '100%' }}
-                    placeholder={
-                      appDetails && appDetails.minAmount
-                        ? `当前 ${(BigInt(appDetails.minAmount) / BigInt(1e12)).toString()} DUST`
-                        : "例如 100.00"
-                    }
+                  <Input
+                    placeholder="请输入微信号"
                     disabled={loading}
+                    maxLength={64}
                   />
                 </Form.Item>
 
                 <Divider orientation="left">🔐 TRON地址配置</Divider>
 
-                <Alert 
-                  type="info" 
-                  showIcon 
-                  style={{ marginBottom: 16 }} 
-                  message="📌 统一TRON地址说明" 
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="📌 统一TRON地址说明"
                   description={
                     <>
                       <p><strong>用途：</strong>此TRON地址将用于所有USDT业务</p>
                       <p>• <strong>OTC订单</strong>：买家向此地址转账USDT购买DUST</p>
                       <p>• <strong>Bridge订单</strong>：您从此地址向买家发送USDT</p>
                       <p>• <strong>格式要求</strong>：34字符，以'T'开头的TRON主网地址</p>
-                      <p>• <strong>示例</strong>：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS</p>
-                      <p>• <strong>安全提示</strong>：请确保地址准确，避免资金损失</p>
                     </>
                   }
                 />
 
-                <Form.Item 
-                  label="TRON地址" 
-                  name="tron_address" 
+                <Form.Item
+                  label="TRON地址"
+                  name="tron_address"
                   rules={[
-                    { required: !appDetails, message: '请输入TRON地址' },
-                    { 
+                    { required: true, message: '请输入TRON地址' },
+                    {
                       validator: (_, value) => {
                         if (!value || value.trim() === '') {
                           return Promise.reject(new Error('TRON地址不能为空'))
@@ -2000,18 +1902,13 @@ if (opt.isSome) {
                         if (!value.trim().startsWith('T')) {
                           return Promise.reject(new Error('TRON主网地址必须以T开头'))
                         }
-                        // Base58字符验证（简化版）
-                        const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{34}$/
-                        if (!base58Regex.test(value.trim())) {
-                          return Promise.reject(new Error('TRON地址包含非法字符（Base58编码：排除0OIl）'))
-                        }
                         return Promise.resolve()
                       }
                     }
                   ]}
                   extra="您的TRON主网地址（OTC收款 + Bridge发款），34字符，以'T'开头"
                 >
-                  <Input 
+                  <Input
                     placeholder="例如：TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"
                     disabled={loading}
                     maxLength={34}
@@ -2019,126 +1916,49 @@ if (opt.isSome) {
                   />
                 </Form.Item>
 
-                <Divider orientation="left">✅ 做市商信息（Phase 4新增）</Divider>
+                <Divider orientation="left">💳 EPAY配置（可选）</Divider>
 
-                <Alert 
-                  type="info" 
-                  showIcon 
-                  style={{ marginBottom: 16 }} 
-                  message="📌 个人信息说明" 
-                  description={
-                    <>
-                      <p><strong>隐私保护机制：</strong></p>
-                      <p>• <strong>链上自动脱敏</strong>：提交后，姓名和身份证号将在链上自动脱敏存储</p>
-                      <p>• <strong>脱敏规则</strong>：姓名显示为"张×三"，身份证显示为"1101**1234"</p>
-                      <p>• <strong>完整信息存储</strong>：完整信息加密后存储在IPFS（private_cid），仅审核员可见</p>
-                      <p>• <strong>买家可见</strong>：OTC订单创建时，买家可看到脱敏后的姓名和身份证号</p>
-                      <p>• <strong>收款方式</strong>：可选填，如提供请以JSON格式输入脱敏后的收款账号</p>
-                    </>
-                  }
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="📌 EPAY配置说明"
+                  description="EPAY配置为可选项，如果您有EPAY商户账号可以填写，用于自动化支付处理。"
                 />
 
-                <Form.Item 
-                  label={<span><span style={{ color: 'red' }}>* </span>完整姓名</span>}
-                  name="full_name" 
-                  rules={[
-                    { required: true, message: '请输入完整姓名' },
-                    { type: 'string', max: 64, message: '姓名长度不能超过64字符' },
-                    { pattern: /^[\u4e00-\u9fa5a-zA-Z\s]+$/, message: '姓名只能包含中文、英文和空格' }
-                  ]}
-                  extra="链上将自动脱敏（如：'张三' → '张×三'），买家可见脱敏后的姓名"
+                <Form.Item
+                  label="EPAY商户号"
+                  name="epay_no"
+                  extra="可选，如有EPAY商户账号请填写"
                 >
-                  <Input 
-                    placeholder="例如：张三"
+                  <Input
+                    placeholder="可选，例如：1234567"
                     disabled={loading}
-                    maxLength={64}
                   />
                 </Form.Item>
 
-                <Form.Item 
-                  label={<span><span style={{ color: 'red' }}>* </span>完整身份证号</span>}
-                  name="id_card" 
-                  rules={[
-                    { required: true, message: '请输入完整身份证号' },
-                    { pattern: /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/, message: '请输入有效的18位身份证号' }
-                  ]}
-                  extra="链上将自动脱敏（如：'110101199001011234' → '1101**1234'），买家可见脱敏后的身份证号"
+                <Form.Item
+                  label="EPAY密钥"
+                  name="epay_key"
+                  extra="可选，EPAY商户密钥"
                 >
-                  <Input 
-                    placeholder="例如：110101199001011234"
+                  <Input.Password
+                    placeholder="可选，EPAY商户密钥"
                     disabled={loading}
-                    maxLength={18}
-                    style={{ fontFamily: 'monospace' }}
                   />
                 </Form.Item>
 
-                <Form.Item 
-                  label="脱敏收款方式（可选）"
-                  name="masked_payment_info_json" 
-                  rules={[
-                    { 
-                      validator: (_, value) => {
-                        if (!value || value.trim() === '') return Promise.resolve()
-                        try {
-                          JSON.parse(value)
-                          if (value.length > 512) {
-                            return Promise.reject(new Error('JSON长度不能超过512字节'))
-                          }
-                          return Promise.resolve()
-                        } catch (e) {
-                          return Promise.reject(new Error('请输入有效的JSON格式'))
-                        }
-                      } 
-                    }
-                  ]}
-                  extra='可选字段，JSON格式示例：[{"type":"BankCard","account":"6214****5678","name":"张×三","bank":"中国银行"}]'
-                >
-                  <Input.TextArea 
-                    placeholder='可选，示例：[{"type":"BankCard","account":"6214****5678","name":"张×三","bank":"中国银行"}]'
-                    disabled={loading}
-                    rows={3}
-                    maxLength={512}
-                  />
-                </Form.Item>
-
-                <Alert 
-                  type="warning" 
-                  showIcon 
-                  style={{ marginBottom: 12 }} 
-                  message="CID 检查规则" 
-                  description={
-                    <>
-                      <p>• CID 一律不加密，必须是有效的 IPFS CID（v0 或 v1）</p>
-                      <p>• 私密资料为加密内容文件的明文 CID，禁止使用 enc: 前缀</p>
-                      <p>• 提交前请确保 IPFS 网关可以取回文件</p>
-                      <p>• 委员会将下载并验证您提交的资料</p>
-                      {appDetails && appDetails.publicCid && (
-                        <p style={{ color: '#1890ff', fontWeight: 'bold' }}>
-                          • 修改模式：只填写需要修改的字段，其他字段留空则保持不变
-                        </p>
-                      )}
-                    </>
-                  }
-                />
-
-                <Space direction="vertical" className="mm-space">
+                <Space direction="vertical" className="mm-space" style={{ width: '100%' }}>
                   <Button
                     type="primary"
                     htmlType="submit"
                     loading={loading}
-                    disabled={!api || mmId === null}
+                    disabled={!api}
                     block
                     size="large"
                     className="mm-submit-button"
                   >
-                    {loading
-                      ? '正在签名...'
-                      : mmId === null
-                      ? 'mmId 加载中...'
-                      : appDetails && appDetails.publicCid
-                      ? '更新资料'
-                      : '提交资料'
-                    }
+                    {loading ? '正在签名...' : '提交资料'}
                   </Button>
                   <Button
                     onClick={() => setCurrent(0)}

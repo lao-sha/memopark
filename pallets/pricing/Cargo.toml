@@ -13,6 +13,11 @@ sp-arithmetic = { workspace = true, default-features = false }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 
+# Offchain Worker 依赖
+sp-core = { workspace = true, default-features = false }
+sp-io = { workspace = true, default-features = false }
+log = { workspace = true, default-features = false }
+
 [dev-dependencies]
 sp-core = { workspace = true }
 sp-io = { workspace = true }
@@ -24,8 +29,12 @@ std = [
   "scale-info/std",
   "sp-std/std",
   "sp-runtime/std",
+  "sp-arithmetic/std",
   "frame-support/std",
   "frame-system/std",
+  "sp-core/std",
+  "sp-io/std",
+  "log/std",
 ]
-
-
+runtime-benchmarks = ["frame-support/runtime-benchmarks", "frame-system/runtime-benchmarks"]
+try-runtime = ["frame-support/try-runtime", "frame-system/try-runtime"]

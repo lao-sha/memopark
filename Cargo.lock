@@ -7107,6 +7107,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-chat-permission"
+version = "0.1.0"
+dependencies = [
+ "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "frame-system 41.0.2",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api 37.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-core 37.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-io 41.0.1 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-runtime 42.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+]
+
+[[package]]
 name = "pallet-collective"
 version = "28.0.0"
 dependencies = [
@@ -7528,6 +7544,7 @@ dependencies = [
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
  "pallet-arbitration",
+ "pallet-chat-permission",
  "pallet-collective 41.0.0",
  "pallet-credit",
  "pallet-escrow",
@@ -7550,6 +7567,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "log",
  "parity-scale-codec",
  "scale-info",
  "sp-arithmetic 27.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
@@ -13427,6 +13445,7 @@ dependencies = [
  "pallet-bazi-chart",
  "pallet-bridge",
  "pallet-chat",
+ "pallet-chat-permission",
  "pallet-collective 28.0.0",
  "pallet-credit",
  "pallet-deceased",

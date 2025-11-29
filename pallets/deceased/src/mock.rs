@@ -213,10 +213,13 @@ impl pallet_deceased::Config for Test {
     type TextId = u64;
     type MaxMessagesPerDeceased = ConstU32<1000>;
     type MaxEulogiesPerDeceased = ConstU32<100>;
-    type TextDeposit = ConstU64<100>;
+    type TextDeposit = ConstU64<0>;  // 🆕 2025-11-26: 留言免押金
     type ComplaintDeposit = ConstU64<500>;
     type ComplaintPeriod = ConstU64<14400>; // 1天
     type ArbitrationAccount = ArbitrationFeeAccount;
+    // 🆕 2025-11-26: 留言频率限制配置
+    type MaxMessagesPerUserDaily = ConstU32<20>;      // 每日最多20条留言
+    type MaxMessagesPerDeceasedDaily = ConstU32<5>;   // 每个逝者每日最多5条
 
     // Media模块相关类型
     type AlbumId = u64;
@@ -255,6 +258,41 @@ impl pallet_deceased::Config for Test {
     type RuntimeHoldReason = MockHoldReason;
     type TreasuryAccount = TreasuryAccountProvider;
     type Social = MockSocial;  // 使用Mock实现
+
+    // ========== 🆕 2025-11-26: 逝者创建频率限制配置 ==========
+    /// 函数级中文注释：每日最大逝者创建数（测试用：3）
+    type MaxDeceasedCreationsPerUserDaily = ConstU32<3>;
+    /// 函数级中文注释：用户最大逝者总数（测试用：20）
+    type MaxDeceasedPerUser = ConstU32<20>;
+    /// 函数级中文注释：创建最小间隔（测试用：100块）
+    type MinCreationIntervalBlocks = ConstU64<100>;
+    // ==========================================================
+
+    // ========== 🆕 2025-11-26: 留言付费配置 ==========
+    /// 函数级中文注释：留言费用金额（测试用：10,000 单位）
+    /// - 在测试环境中使用 u64，所以是 10,000
+    /// - 对应生产环境的 10,000 DUST
+    type MessageFee = ConstU64<10000>;
+
+    /// 函数级中文注释：留言费用分配器（测试用 Mock 实现）
+    /// - 测试环境不执行实际资金转移
+    /// - 仅验证调用流程正确性
+    type MessageFeeDistributor = MockMessageFeeDistributor;
+    // ==========================================================
+
+    // ========== 🆕 2025-11-26: Article押金机制配置 ==========
+    /// 函数级中文注释：非拥有者创建 Article 的押金（测试用：1 USDT）
+    /// - 1_000_000 = 1 USDT（精度 10^6）
+    type ArticleDepositUsdt = ConstU64<1_000_000>;
+
+    /// 函数级中文注释：Article 押金锁定期（测试用：1000块，便于测试）
+    /// - 生产环境是 5_256_000（365天）
+    /// - 测试环境缩短到 1000 块便于测试
+    type ArticleDepositLockPeriod = ConstU64<1000>;
+
+    /// 函数级中文注释：每块最大处理到期文章数（测试用：50）
+    type MaxExpiringArticlesPerBlock = ConstU32<50>;
+    // ==========================================================
 }
 
 /// 函数级中文注释：Mock的IpfsPinner实现，简化pin逻辑
@@ -416,12 +454,15 @@ impl frame_support::traits::fungible::hold::Mutate<u64> for MockFungible {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub enum MockHoldReason {
     DeceasedDeposit,
+    /// 🆕 2025-11-26: Article押金hold原因
+    ArticleDeposit,
 }
 
 impl From<pallet_deceased::HoldReason> for MockHoldReason {
     fn from(reason: pallet_deceased::HoldReason) -> Self {
         match reason {
             pallet_deceased::HoldReason::DeceasedDeposit => MockHoldReason::DeceasedDeposit,
+            pallet_deceased::HoldReason::ArticleDeposit => MockHoldReason::ArticleDeposit,
         }
     }
 }
@@ -435,5 +476,30 @@ impl pallet_social::SocialInterface<u64> for MockSocial {
     fn unfollow(_follower: &u64, _followee: &u64) -> sp_runtime::DispatchResult { Ok(()) }
     fn get_followers_count(_account: &u64) -> u32 { 0 }
     fn get_following_count(_account: &u64) -> u32 { 0 }
+}
+
+// ========== 🆕 2025-11-26: 留言付费 Mock 实现 ==========
+
+/// 函数级详细中文注释：Mock 留言费用分配器
+///
+/// ### 功能说明
+/// - 测试环境下的留言费用分配实现
+/// - 简单返回成功，不实际执行资金转移
+/// - 用于验证付费逻辑的调用流程
+///
+/// ### 测试场景
+/// - 验证 create_text(Message) 时是否调用分配器
+/// - 验证余额检查逻辑
+/// - 验证 MessageFeePaid 事件触发
+pub struct MockMessageFeeDistributor;
+
+impl pallet_deceased::MessageFeeDistributor<u64, u64> for MockMessageFeeDistributor {
+    fn distribute_message_fee(
+        _payer: &u64,
+        amount: u64,
+    ) -> Result<u64, sp_runtime::DispatchError> {
+        // 测试环境：直接返回成功，金额原样返回
+        Ok(amount)
+    }
 }
 

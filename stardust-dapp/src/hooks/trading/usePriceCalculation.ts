@@ -75,24 +75,49 @@ export function usePriceCalculation(): UsePriceCalculationResult {
   useEffect(() => {
     /**
      * 函数级详细中文注释：加载基准价格
-     * 
+     *
      * 执行流程：
      * 1. 连接到链上API
-     * 2. 查询pallet-pricing的memoMarketPriceWeighted
-     * 3. 更新basePrice state
-     * 4. 每30秒自动更新一次
+     * 2. 检查是否退出冷启动（coldStartExited）
+     * 3. 如果已退出冷启动，使用otcPriceAggregate计算加权均价
+     * 4. 如果仍在冷启动，使用defaultPrice
+     * 5. 每30秒自动更新一次
+     *
+     * 价格精度：10^6（1,000,000 = 1 USDT）
      */
     const loadBasePrice = async () => {
       try {
         const api = await getApi();
-        const price = await (api.query as any).pricing?.memoMarketPriceWeighted?.();
-        
-        if (price) {
-          const priceValue = Number(price.toString());
+
+        // 检查是否退出冷启动
+        const coldStartExited = await (api.query as any).pricing?.coldStartExited?.();
+        const hasExitedColdStart = coldStartExited?.isTrue || coldStartExited?.toString() === 'true';
+
+        if (hasExitedColdStart) {
+          // 已退出冷启动：使用OTC价格聚合计算加权均价
+          const otcAggregate = await (api.query as any).pricing?.otcPriceAggregate?.();
+          if (otcAggregate) {
+            const aggregateData = otcAggregate.toJSON();
+            if (aggregateData.totalDust > 0 && aggregateData.totalUsdt > 0) {
+              // 加权均价 = totalUsdt / totalDust（已经是正确精度）
+              // totalUsdt 精度 10^6，totalDust 精度 10^12
+              // 结果：(usdt * 10^6) / (dust * 10^12) * 10^12 = usdt / dust * 10^6
+              const weightedPrice = Math.floor((Number(aggregateData.totalUsdt) * 1_000_000_000_000) / Number(aggregateData.totalDust));
+              setBasePrice(weightedPrice);
+              console.log('✅ [usePriceCalculation] 加权均价:', (weightedPrice / 1_000_000).toFixed(6), 'USDT/DUST');
+              return;
+            }
+          }
+        }
+
+        // 仍在冷启动或无聚合数据：使用默认价格
+        const defaultPrice = await (api.query as any).pricing?.defaultPrice?.();
+        if (defaultPrice) {
+          const priceValue = Number(defaultPrice.toString());
           setBasePrice(priceValue);
-          console.log('✅ [usePriceCalculation] 基准价格加载成功:', (priceValue / 1_000_000).toFixed(6), 'USDT/DUST');
+          console.log('✅ [usePriceCalculation] 默认价格:', (priceValue / 1_000_000).toFixed(6), 'USDT/DUST (冷启动)');
         } else {
-          console.warn('⚠️ [usePriceCalculation] 未获取到基准价格');
+          console.warn('⚠️ [usePriceCalculation] 未获取到价格数据');
         }
       } catch (e: any) {
         console.error('[usePriceCalculation] 加载基准价格失败:', e);

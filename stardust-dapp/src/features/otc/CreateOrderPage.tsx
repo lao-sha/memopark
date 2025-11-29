@@ -1,6 +1,6 @@
 import React from 'react'
 import { Card, Form, Input, InputNumber, Button, Radio, Space, Select, Typography, Descriptions, Tag, message, Table, Alert, Spin, Divider, Modal } from 'antd'
-import { ArrowLeftOutlined, ShoppingCartOutlined, CheckCircleOutlined, ClockCircleOutlined, DollarOutlined, StarOutlined, UserOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ShoppingCartOutlined, CheckCircleOutlined, ClockCircleOutlined, DollarOutlined, StarOutlined, UserOutlined, InfoCircleOutlined, MessageOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getApi } from '../../lib/polkadot'
 import { useWallet } from '../../providers/WalletProvider'
 import { blake2AsHex } from '@polkadot/util-crypto'
@@ -47,6 +47,12 @@ interface Listing {
   makerInfo?: MarketMaker  // 关联的做市商信息
 }
 
+interface PriceHistoryPoint {
+  timestamp: number
+  price: number
+  index: number
+}
+
 /**
  * 函数级详细中文注释：OTC 下单页（创建订单，统一青绿色UI风格）
  * - 功能：创建 DUST 购买订单，支持首购和常规订单
@@ -84,8 +90,26 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   const [status, setStatus] = React.useState<string>('pending')
   const [nowSec, setNowSec] = React.useState<number>(Math.floor(Date.now() / 1000))
 
-  // 🆕 订单类型选择（首购 vs 常规订单）
-  const [orderType, setOrderType] = React.useState<'first_purchase' | 'regular'>('first_purchase')
+  // 🆕 首购资格检查状态
+  const [checkingFirstPurchase, setCheckingFirstPurchase] = React.useState(true)
+  const [hasUsedFirstPurchase, setHasUsedFirstPurchase] = React.useState(false)
+
+  // 🆕 订单类型：根据首购资格自动确定（不再手动选择）
+  const orderType = hasUsedFirstPurchase ? 'regular' : 'first_purchase'
+
+  // 🆕 双向输入状态（DUST ↔ USDT）
+  const [dustAmount, setDustAmount] = React.useState<number | null>(null)
+  const [usdtAmount, setUsdtAmount] = React.useState<number | null>(null)
+  const [inputMode, setInputMode] = React.useState<'dust' | 'usdt'>('dust')
+
+  // 🆕 支付货币选择状态（USDT 或 CNY）
+  const [paymentCurrency, setPaymentCurrency] = React.useState<'USDT' | 'CNY'>('CNY')
+  const CNY_RATE = 7.2  // 人民币汇率（1 USD = 7.2 CNY）
+
+  // 🆕 聊天功能状态
+  const [chatLoading, setChatLoading] = React.useState(false)
+  const [priceHistory, setPriceHistory] = React.useState<PriceHistoryPoint[]>([])
+  const [priceHistoryLoading, setPriceHistoryLoading] = React.useState(false)
 
   // 🆕 2025-10-29 Phase 2：使用共享Hook加载做市商列表
   const { marketMakers, loading: loadingMM, error: mmError } = useMarketMakers()
@@ -97,6 +121,132 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   const { basePrice, loadingPrice, calculateDeviation } = usePriceCalculation()
 
   /**
+   * 函数级中文注释：计算当前做市商的最终价格
+   */
+  const currentFinalPrice = React.useMemo(() => {
+    if (!selectedMaker || basePrice === 0) return 0
+    const { finalPrice } = calculateDeviation(selectedMaker.sellPremiumBps)
+    return finalPrice
+  }, [selectedMaker, basePrice, calculateDeviation])
+
+  const loadPriceHistory = React.useCallback(async () => {
+    try {
+      setPriceHistoryLoading(true)
+      const api = await getApi()
+      const pricingModule = (api.query as any).pricing
+      if (!pricingModule?.otcPriceAggregate || !pricingModule?.otcOrderRingBuffer) {
+        console.warn('[价格趋势] pallet-pricing 缺少历史接口')
+        setPriceHistory([])
+        return
+      }
+
+      const aggregate = await pricingModule.otcPriceAggregate()
+      const orderCount = Number(aggregate?.orderCount?.toString?.() ?? aggregate?.order_count?.toString?.() ?? 0)
+      if (!orderCount) {
+        setPriceHistory([])
+        return
+      }
+
+      const newestIndexRaw = aggregate?.newestIndex ?? aggregate?.newest_index
+      const newestIndex = Number(newestIndexRaw?.toString?.() ?? 0)
+      const ringSize = 10_000
+      const fetchCount = Math.min(orderCount, 12)
+      const points: PriceHistoryPoint[] = []
+
+      for (let step = 0; step < fetchCount; step++) {
+        const index = ((newestIndex - step) % ringSize + ringSize) % ringSize
+        const entry = await pricingModule.otcOrderRingBuffer(index)
+        if (entry && entry.isSome) {
+          const snapshot = entry.unwrap()
+          const data = snapshot?.toJSON?.() ?? snapshot
+          const ts = Number(data?.timestamp ?? data?.timestampMs ?? data?.timestamp_ms ?? 0)
+          const priceRaw = Number(data?.price_usdt ?? data?.priceUsdt ?? 0)
+          if (priceRaw > 0) {
+            points.push({
+              timestamp: ts,
+              price: priceRaw / 1_000_000,
+              index
+            })
+          }
+        }
+      }
+
+      points.sort((a, b) => a.timestamp - b.timestamp)
+      setPriceHistory(points)
+    } catch (error) {
+      console.error('[价格趋势] 加载失败:', error)
+      setPriceHistory([])
+    } finally {
+      setPriceHistoryLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    loadPriceHistory()
+  }, [loadPriceHistory])
+
+  /**
+   * 函数级中文注释：DUST输入变化时，自动计算USDT
+   */
+  const handleDustChange = (value: number | null) => {
+    setDustAmount(value)
+    setInputMode('dust')
+    if (value && currentFinalPrice > 0) {
+      // USDT = DUST * 价格
+      const usdt = (value * currentFinalPrice) / 1_000_000
+      setUsdtAmount(Number(usdt.toFixed(2)))
+    } else {
+      setUsdtAmount(null)
+    }
+  }
+
+  /**
+   * 函数级中文注释：USDT输入变化时，自动计算DUST
+   */
+  const handleUsdtChange = (value: number | null) => {
+    setUsdtAmount(value)
+    setInputMode('usdt')
+    if (value && currentFinalPrice > 0) {
+      // DUST = USDT / 价格
+      const dust = (value * 1_000_000) / currentFinalPrice
+      setDustAmount(Number(dust.toFixed(0)))
+    } else {
+      setDustAmount(null)
+    }
+  }
+
+  /**
+   * 函数级中文注释：打开与做市商的聊天窗口
+   */
+  const handleOpenChat = async () => {
+    if (!currentAccount || !selectedMaker) {
+      message.warning('请先连接钱包并选择做市商')
+      return
+    }
+
+    try {
+      setChatLoading(true)
+      message.loading({ content: '正在创建聊天会话...', key: 'chat', duration: 0 })
+
+      const sessionId = await getOrCreateChatSession(
+        currentAccount.address,
+        selectedMaker.owner
+      )
+
+      // 构建聊天URL
+      const chatUrl = `#/chat/${sessionId}`
+
+      message.success({ content: '聊天窗口已创建', key: 'chat', duration: 2 })
+      window.location.hash = chatUrl
+    } catch (error) {
+      console.error('创建聊天会话失败:', error)
+      message.error({ content: '创建聊天会话失败，请稍后重试', key: 'chat', duration: 3 })
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  /**
    * 函数级中文注释：加载基准价格（pallet-pricing 市场加权均价）
    * 
    * ✅ 2025-10-30 Phase 2：已移除，改用usePriceCalculation共享Hook
@@ -104,10 +254,49 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
    * - 自动加载基准价格
    * - 每30秒自动更新
    * - 提供calculateDeviation函数
-   * 
+   *
    * 旧代码已删除（26行），减少重复代码
    */
   // React.useEffect(() => { ... }, [])  // ❌ 已删除，使用usePriceCalculation Hook替代
+
+  /**
+   * 函数级中文注释：检查用户首购资格
+   * - 查询链上 otcOrder.hasFirstPurchased(address) 存储
+   * - 如果已使用首购，自动切换到常规订单模式
+   */
+  React.useEffect(() => {
+    const checkFirstPurchaseStatus = async () => {
+      if (!currentAccount?.address) {
+        setCheckingFirstPurchase(false)
+        return
+      }
+
+      try {
+        setCheckingFirstPurchase(true)
+        const api = await getApi()
+
+        // 检查 otcOrder pallet 是否存在
+        if ((api.query as any).otcOrder?.hasFirstPurchased) {
+          const result = await (api.query as any).otcOrder.hasFirstPurchased(currentAccount.address)
+          const hasUsed = result.isTrue || result === true || result.toJSON() === true
+          console.log('[首购检查] 用户:', currentAccount.address, '已使用首购:', hasUsed)
+          setHasUsedFirstPurchase(hasUsed)
+        } else {
+          // pallet 不存在，默认允许首购
+          console.log('[首购检查] otcOrder.hasFirstPurchased 不存在，默认允许首购')
+          setHasUsedFirstPurchase(false)
+        }
+      } catch (e) {
+        console.error('[首购检查] 查询失败:', e)
+        // 查询失败时默认允许首购
+        setHasUsedFirstPurchase(false)
+      } finally {
+        setCheckingFirstPurchase(false)
+      }
+    }
+
+    checkFirstPurchaseStatus()
+  }, [currentAccount?.address])
 
   /**
    * 函数级中文注释：加载当前区块高度
@@ -321,16 +510,16 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
         const { finalPrice } = calculateDeviation(selectedMaker.sellPremiumBps)
         const usdAmount = 10 // 固定$10
-        const dustAmount = (usdAmount * 1_000_000) / finalPrice // 计算需要的DUST数量
-        qty = BigInt(Math.floor(dustAmount * 1e12))
+        const dustAmountCalc = (usdAmount * 1_000_000) / finalPrice // 计算需要的DUST数量
+        qty = BigInt(Math.floor(dustAmountCalc * 1e12))
       } else {
-        // 常规订单：按DUST数量
-        if (!values.dustAmount) {
+        // 常规订单：使用双向输入的dustAmount状态
+        if (!dustAmount || dustAmount <= 0) {
           message.warning('请输入 DUST 数量')
           setCreating(false)
           return
         }
-        qty = BigInt(Math.floor(Number(values.dustAmount) * 1e12))
+        qty = BigInt(Math.floor(dustAmount * 1e12))
       }
 
       // 验证订单数量是否满足做市商最小要求
@@ -433,33 +622,31 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
       let txHash: string
       if (orderType === 'first_purchase') {
-        console.log('📤 调用 create_first_purchase_order 方法')
+        console.log('📤 调用 createFirstPurchase 方法')
 
+        // 链端签名: create_first_purchase(origin, maker_id, payment_commit, contact_commit)
         txHash = await signAndSendLocalWithPassword(
           'otcOrder',
-          'createFirstPurchaseOrder',
+          'createFirstPurchase',
           [
-            selectedMaker.mmId,           // maker_id
-            contactCommit,                // contact_commit
-            paymentCommit,                // payment_commit
-            null,                         // min_accept_price (可选)
-            null                          // max_accept_price (可选)
+            selectedMaker.mmId,           // maker_id: u64
+            paymentCommit,                // payment_commit: H256
+            contactCommit,                // contact_commit: H256
           ],
           password
         )
       } else {
-        console.log('📤 调用 openOrderWithProtection 方法')
+        console.log('📤 调用 createOrder 方法')
 
+        // 链端签名: create_order(origin, maker_id, dust_amount, payment_commit, contact_commit)
         txHash = await signAndSendLocalWithPassword(
           'otcOrder',
-          'openOrderWithProtection',
+          'createOrder',
           [
-            selectedMaker.mmId,           // maker_id
-            qty.toString(),               // qty
-            paymentCommit,                // payment_commit
-            contactCommit,                // contact_commit
-            null,                         // min_accept_price (可选)
-            null                          // max_accept_price (可选)
+            selectedMaker.mmId,           // maker_id: u64
+            qty.toString(),               // dust_amount: BalanceOf<T>
+            paymentCommit,                // payment_commit: H256
+            contactCommit,                // contact_commit: H256
           ],
           password
         )
@@ -612,6 +799,40 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
   const payUrl = order?.url || order?.pay_qr
   const qrImg = payUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}` : ''
 
+  const latestHistoryPoint = priceHistory[priceHistory.length - 1]
+
+  const formatTimeLabel = (timestamp: number) => {
+    if (!timestamp) return '--'
+    const date = new Date(timestamp)
+    const now = new Date()
+    const sameDay = date.toDateString() === now.toDateString()
+    const datePart = sameDay ? '' : `${date.getMonth() + 1}/${date.getDate()} `
+    const hh = date.getHours().toString().padStart(2, '0')
+    const mm = date.getMinutes().toString().padStart(2, '0')
+    return `${datePart}${hh}:${mm}`
+  }
+
+  const priceChartMetrics = React.useMemo(() => {
+    if (priceHistory.length < 2) return null
+    const prices = priceHistory.map(point => point.price)
+    const minPrice = Math.min(...prices)
+    const maxPrice = Math.max(...prices)
+    const range = maxPrice - minPrice || 0.000001
+    const width = 320
+    const height = 160
+    const paddingX = 20
+    const paddingY = 20
+    const points = priceHistory.map((point, index) => {
+      const x = paddingX + (index / (priceHistory.length - 1)) * (width - paddingX * 2)
+      const y = height - paddingY - ((point.price - minPrice) / range) * (height - paddingY * 2)
+      return `${x},${y}`
+    }).join(' ')
+    const latestIndex = priceHistory.length - 1
+    const latestX = paddingX + (latestIndex / (priceHistory.length - 1)) * (width - paddingX * 2)
+    const latestY = height - paddingY - ((priceHistory[latestIndex].price - minPrice) / range) * (height - paddingY * 2)
+    return { minPrice, maxPrice, points, width, height, latestX, latestY }
+  }, [priceHistory])
+
   return (
     <div className="create-order-page">
       {/* 顶部导航栏（统一青绿色风格） */}
@@ -630,68 +851,14 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
 
       {/* 主要内容区域 */}
       <div className="order-content">
-        {/* 页面标题区域 */}
-        <div className="page-title-section">
-          <div className="title-icon">
-            <ShoppingCartOutlined style={{ fontSize: '32px', color: '#fff' }} />
-          </div>
-          <div className="page-main-title">购买 DUST</div>
-          <div className="page-subtitle">选择订单类型，联系做市商完成交易</div>
-          <Button
-            type="link"
-            onClick={() => window.location.hash = '#/otc/mm-apply'}
-            className="become-maker-link"
-          >
-            申请成为做市商 →
-          </Button>
-        </div>
-
-        {/* 我的订单卡片 */}
-        <div style={{ marginBottom: '16px' }}>
-          <MyOrdersCard />
-        </div>
-
-        {/* 订单类型选择 */}
-        <div className="order-type-card">
-          <div className="section-title">
-            <InfoCircleOutlined style={{ marginRight: '8px', color: '#5DBAAA' }} />
-            选择订单类型
-          </div>
-          <div className="order-type-options">
-            <div
-              className={`order-type-option ${orderType === 'first_purchase' ? 'active' : ''}`}
-              onClick={() => setOrderType('first_purchase')}
-            >
-              <StarOutlined className="option-icon" />
-              <div className="option-title">首购订单</div>
-              <div className="option-desc">固定 $10 USD<br/>新用户专享优惠</div>
-            </div>
-            <div
-              className={`order-type-option ${orderType === 'regular' ? 'active' : ''}`}
-              onClick={() => setOrderType('regular')}
-            >
-              <DollarOutlined className="option-icon" />
-              <div className="option-title">常规订单</div>
-              <div className="option-desc">$20-$200 USD<br/>灵活金额选择</div>
-            </div>
-          </div>
-          {orderType === 'first_purchase' && (
-            <div className="form-hint">
-              💡 首购订单固定金额 $10 USD，享受新用户优惠价格，每个账户限购一次
-            </div>
-          )}
-          {orderType === 'regular' && (
-            <div className="form-hint">
-              💰 常规订单支持 $20-$200 USD 范围，根据市场价格计算 DUST 数量
-            </div>
-          )}
-        </div>
-
-        {/* 做市商选择 */}
+        {/* 做市商选择 - 卡片列表方式 */}
         <div className="maker-selection-card">
           <div className="section-title">
             <UserOutlined style={{ marginRight: '8px', color: '#5DBAAA' }} />
             选择做市商
+            <span style={{ fontSize: '12px', fontWeight: 'normal', marginLeft: '12px', color: '#888' }}>
+              基准: {loadingPrice ? '...' : basePrice > 0 ? `${(basePrice / 1_000_000).toFixed(6)} USDT/DUST` : '未设置'}
+            </span>
           </div>
           {loadingMM ? (
             <div className="loading-tip">
@@ -713,76 +880,87 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             />
           ) : (
             <>
-              <Select
-                value={selectedMaker?.mmId}
-                onChange={(mmId) => {
-                  const maker = marketMakers.find(m => m.mmId === mmId)
-                  setSelectedMaker(maker || null)
-                }}
-                placeholder="请选择做市商"
-                className="maker-select"
-                size="large"
-              >
-                {marketMakers.map(maker => (
-                  <Select.Option key={maker.mmId} value={maker.mmId}>
-                    <div className="maker-option">
-                      <div className="maker-info">
-                        <Tag color="blue">#{maker.mmId}</Tag>
-                        <span>{maker.owner.substring(0, 10)}...{maker.owner.substring(maker.owner.length - 6)}</span>
+              {/* 做市商卡片列表 - 紧凑单行样式 */}
+              <div className="maker-list">
+                {/* 按溢价降序排列（高溢价在上） */}
+                {[...marketMakers].sort((a, b) => b.sellPremiumBps - a.sellPremiumBps).map((maker, index, sortedArr) => {
+                  const { finalPrice, deviationPercent, isWarning, isError } = calculateDeviation(maker.sellPremiumBps)
+                  const isSelected = selectedMaker?.mmId === maker.mmId
+                  const isLowestPremium = index === sortedArr.length - 1 // 最低溢价（最优惠）
+
+                  return (
+                    <div
+                      key={maker.mmId}
+                      className={`maker-card ${isSelected ? 'selected' : ''} ${isError ? 'disabled' : ''} ${isLowestPremium ? 'recommended' : ''}`}
+                      onClick={() => {
+                        if (!isError) {
+                          setSelectedMaker(maker)
+                        }
+                      }}
+                    >
+                      {/* 左侧：ID和推荐标签 */}
+                      <div className="maker-card-left">
+                        <div className="maker-card-id">
+                          <Tag color="blue" style={{ margin: 0 }}>#{maker.mmId}</Tag>
+                        </div>
+                        {isLowestPremium && (
+                          <div className="maker-card-badge">💎 最优</div>
+                        )}
                       </div>
-                      <div className="maker-tags">
-                        <MakerCreditBadge makerId={maker.mmId} detailed={false} showLink={false} />
-                        <Tag color={maker.sellPremiumBps > 0 ? 'orange' : maker.sellPremiumBps < 0 ? 'green' : 'default'}>
-                          溢价: {maker.sellPremiumBps > 0 ? '+' : ''}{(maker.sellPremiumBps / 100).toFixed(2)}%
-                        </Tag>
+
+                      {/* 中间：价格信息 */}
+                      <div className="maker-card-price">
+                        <div className="maker-card-price-item">
+                          <span className="price-label">溢价</span>
+                          <span className={`price-value ${maker.sellPremiumBps > 0 ? 'premium-high' : maker.sellPremiumBps < 0 ? 'premium-low' : 'premium-zero'}`}>
+                            {maker.sellPremiumBps > 0 ? '+' : ''}{(maker.sellPremiumBps / 100).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="maker-card-price-item">
+                          <span className="price-label">价格</span>
+                          <span className="price-value price-main">
+                            {loadingPrice ? '...' : basePrice > 0 ? `${(finalPrice / 1_000_000).toFixed(6)} USDT/DUST` : '未设置'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 右侧：状态 */}
+                      <div className="maker-card-right">
+                        <div className="maker-card-status">
+                          {isError ? (
+                            <Tag color="red" style={{ margin: 0 }}>超限</Tag>
+                          ) : isWarning ? (
+                            <Tag color="orange" style={{ margin: 0 }}>偏离</Tag>
+                          ) : (
+                            <Tag color="green" style={{ margin: 0 }}>正常</Tag>
+                          )}
+                          {isSelected && <Tag color="blue" style={{ margin: 0 }}>✓</Tag>}
+                        </div>
                       </div>
                     </div>
-                  </Select.Option>
-                ))}
-              </Select>
+                  )
+                })}
+              </div>
 
-              {/* 做市商详细信息 */}
+              {/* 选中做市商的详细信息 */}
               {selectedMaker && (
                 <div className="maker-details">
-                  <div className="maker-details-title">
-                    📊 做市商信息
-                  </div>
-                  <div style={{ marginBottom: '16px' }}>
-                    <MakerCreditBadge makerId={selectedMaker.mmId} detailed={true} showLink={true} />
+                  <div className="maker-details-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>📊 已选择: 做市商 #{selectedMaker.mmId}</span>
+                    <Button
+                      type="primary"
+                      icon={<MessageOutlined />}
+                      size="small"
+                      loading={chatLoading}
+                      onClick={handleOpenChat}
+                      style={{ marginLeft: '12px' }}
+                    >
+                      发起聊天
+                    </Button>
                   </div>
 
                   {basePrice > 0 && !loadingPrice ? (
                     <>
-                      <div className="price-info-grid">
-                        <div className="price-item">
-                          <div className="price-item-label">基准价格</div>
-                          <div className="price-item-value">
-                            {(basePrice / 1_000_000).toFixed(6)} USDT/DUST
-                          </div>
-                        </div>
-                        <div className="price-item">
-                          <div className="price-item-label">做市商溢价</div>
-                          <div className="price-item-value">
-                            {selectedMaker.sellPremiumBps > 0 ? '+' : ''}{(selectedMaker.sellPremiumBps / 100).toFixed(2)}%
-                          </div>
-                        </div>
-                        <div className="price-item">
-                          <div className="price-item-label">最终订单价格</div>
-                          <div className="price-item-value highlight">
-                            {(() => {
-                              const { finalPrice } = calculateDeviation(selectedMaker.sellPremiumBps)
-                              return (finalPrice / 1_000_000).toFixed(6)
-                            })()} USDT/DUST
-                          </div>
-                        </div>
-                        <div className="price-item">
-                          <div className="price-item-label">最小金额</div>
-                          <div className="price-item-value">
-                            {(Number(BigInt(selectedMaker.minAmount) / BigInt(1e12))).toFixed(4)} DUST
-                          </div>
-                        </div>
-                      </div>
-
                       {/* 价格偏离警告 */}
                       {(() => {
                         const { deviationPercent, isWarning, isError } = calculateDeviation(selectedMaker.sellPremiumBps)
@@ -810,18 +988,6 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
                             </div>
                           )
                         }
-                        if (deviationPercent > 0) {
-                          return (
-                            <div className="price-warning">
-                              <Alert
-                                message="✅ 价格正常"
-                                description={`当前价格偏离基准价 ${deviationPercent.toFixed(2)}%，在合理范围内`}
-                                type="success"
-                                showIcon
-                              />
-                            </div>
-                          )
-                        }
                         return null
                       })()}
                     </>
@@ -834,6 +1000,92 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
                   ) : null}
                 </div>
               )}
+            </>
+          )}
+        </div>
+
+        <div className="price-chart-card">
+          <div className="section-title price-chart-header">
+            <span>
+              📈 市场价格趋势
+              <span className="section-subtitle">（最近 12 笔 OTC 成交）</span>
+            </span>
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={loadPriceHistory}
+            >
+              刷新
+            </Button>
+          </div>
+
+          {priceHistoryLoading ? (
+            <div className="loading-tip">
+              <Spin tip="加载价格曲线..." />
+            </div>
+          ) : !priceChartMetrics ? (
+            <Alert
+              type="info"
+              showIcon
+              message={priceHistory.length === 0 ? '暂无成交数据' : '成交数据不足'}
+              description={priceHistory.length === 0 ? '等待新的 OTC 成交后将自动展示价格趋势' : '至少需要两笔成交才能绘制曲线'}
+            />
+          ) : (
+            <>
+              <div className="price-chart-wrapper">
+                <svg
+                  width="100%"
+                  height="160"
+                  viewBox={`0 0 ${priceChartMetrics.width} ${priceChartMetrics.height}`}
+                  className="price-chart-svg"
+                >
+                  <defs>
+                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#5DBAAA" stopOpacity="0.9" />
+                      <stop offset="100%" stopColor="#5DBAAA" stopOpacity="0.2" />
+                    </linearGradient>
+                  </defs>
+                  <polyline
+                    points={priceChartMetrics.points}
+                    fill="none"
+                    stroke="url(#priceGradient)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                  <circle
+                    cx={priceChartMetrics.latestX}
+                    cy={priceChartMetrics.latestY}
+                    r={4}
+                    fill="#ff7875"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                </svg>
+              </div>
+
+              <div className="price-chart-summary">
+                <div>
+                  <div className="label">最新价格</div>
+                  <div className="value">{latestHistoryPoint?.price ? `${latestHistoryPoint.price.toFixed(6)} USDT` : '--'}</div>
+                </div>
+                <div>
+                  <div className="label">最高</div>
+                  <div className="value">{priceChartMetrics.maxPrice.toFixed(6)} USDT</div>
+                </div>
+                <div>
+                  <div className="label">最低</div>
+                  <div className="value">{priceChartMetrics.minPrice.toFixed(6)} USDT</div>
+                </div>
+              </div>
+
+              <div className="price-chart-axis">
+                {priceHistory.map(point => (
+                  <span key={`${point.index}-${point.timestamp}`}>{formatTimeLabel(point.timestamp)}</span>
+                ))}
+              </div>
+
+              <div className="chart-footnote">数据源：pallet-pricing · OTC 成交快照</div>
             </>
           )}
         </div>
@@ -854,43 +1106,196 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
               fiatAmount: orderType === 'first_purchase' ? 10 : undefined
             }}
           >
+            {/* 🆕 支付货币选择 */}
+            <Form.Item label="支付货币">
+              <Radio.Group
+                value={paymentCurrency}
+                onChange={(e) => setPaymentCurrency(e.target.value)}
+                buttonStyle="solid"
+                style={{ width: '100%' }}
+              >
+                <Radio.Button value="CNY" style={{ width: '50%', textAlign: 'center' }}>
+                  💴 CNY（人民币）
+                </Radio.Button>
+                <Radio.Button value="USDT" style={{ width: '50%', textAlign: 'center' }}>
+                  💵 USDT（美元稳定币）
+                </Radio.Button>
+              </Radio.Group>
+              <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
+                {paymentCurrency === 'CNY' ? `参考汇率: 1 USDT ≈ ${CNY_RATE} CNY` : '直接使用USDT支付，无汇率转换'}
+              </div>
+            </Form.Item>
+
             {/* 订单金额输入 */}
             {orderType === 'first_purchase' ? (
               <Form.Item label="订单金额" name="fiatAmount">
                 <div className="amount-input-container">
                   <InputNumber
-                    value={10}
+                    value={paymentCurrency === 'CNY' ? 10 * CNY_RATE : 10}
                     disabled
                     className="amount-input"
                     controls={false}
                   />
-                  <div className="amount-suffix">USD</div>
+                  <div className="amount-suffix">{paymentCurrency === 'CNY' ? 'CNY' : 'USD'}</div>
                 </div>
-                <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-                  首购订单固定金额，享受新用户专享优惠
+                <div style={{ fontSize: '12px', color: '#ff4d4f', marginTop: '8px', fontWeight: 'bold' }}>
+                  首购订单固定金额{paymentCurrency === 'CNY' ? `（${10 * CNY_RATE} CNY ≈ 10 USD）` : ''}，享受新用户专享优惠
                 </div>
               </Form.Item>
             ) : (
-              <Form.Item
-                label="DUST 数量"
-                name="dustAmount"
-                rules={[{ required: true, message: '请输入 DUST 数量' }]}
-              >
-                <div className="amount-input-container">
-                  <InputNumber
-                    min={1}
-                    precision={0}
-                    placeholder="输入 DUST 数量"
-                    className="amount-input"
-                    controls={false}
-                  />
-                  <div className="amount-suffix">DUST</div>
+              <>
+                {/* 双向输入：DUST ↔ USDT/CNY */}
+                <div className="dual-input-container">
+                  <div className="dual-input-row">
+                    <div className="dual-input-item">
+                      <div className="dual-input-label">DUST 数量</div>
+                      <div className="amount-input-container">
+                        <InputNumber
+                          value={dustAmount}
+                          onChange={handleDustChange}
+                          min={1}
+                          precision={0}
+                          placeholder="输入 DUST"
+                          className="amount-input"
+                          controls={false}
+                          disabled={!selectedMaker || currentFinalPrice === 0}
+                        />
+                        <div className="amount-suffix">DUST</div>
+                      </div>
+                    </div>
+                    <div className="dual-input-arrow">⇄</div>
+                    <div className="dual-input-item">
+                      <div className="dual-input-label">支付金额</div>
+                      <div className="amount-input-container">
+                        <InputNumber
+                          value={paymentCurrency === 'CNY' && usdtAmount ? Number((usdtAmount * CNY_RATE).toFixed(2)) : usdtAmount}
+                          onChange={(val) => {
+                            if (paymentCurrency === 'CNY' && val) {
+                              // CNY输入转换为USDT
+                              handleUsdtChange(Number((val / CNY_RATE).toFixed(2)))
+                            } else {
+                              handleUsdtChange(val)
+                            }
+                          }}
+                          min={0.01}
+                          precision={2}
+                          placeholder={`输入 ${paymentCurrency}`}
+                          className="amount-input"
+                          controls={false}
+                          disabled={!selectedMaker || currentFinalPrice === 0}
+                        />
+                        <div className="amount-suffix">{paymentCurrency}</div>
+                      </div>
+                    </div>
+                  </div>
+                  {currentFinalPrice > 0 && (
+                    <div className="dual-input-rate">
+                      当前价格: 1 DUST = {(currentFinalPrice / 1_000_000).toFixed(6)} USDT
+                      {paymentCurrency === 'CNY' && ` ≈ ${((currentFinalPrice / 1_000_000) * CNY_RATE).toFixed(4)} CNY`}
+                    </div>
+                  )}
+                  {!selectedMaker && (
+                    <div className="dual-input-tip warning">请先选择做市商</div>
+                  )}
                 </div>
-                <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-                  常规订单支持 $20-$200 USD 范围
-                </div>
-              </Form.Item>
+              </>
             )}
+
+            {/* 🆕 支付方式显示（根据货币类型自动切换） */}
+            <Form.Item label="支付方式">
+              {paymentCurrency === 'CNY' ? (
+                // CNY - 支付宝支付
+                <div className="payment-method-card" style={{
+                  background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  color: '#fff'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '24px', marginRight: '8px' }}>💳</span>
+                    <span style={{ fontSize: '16px', fontWeight: 'bold' }}>支付宝转账</span>
+                  </div>
+                  {selectedMaker ? (
+                    <>
+                      <div style={{
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ fontSize: '12px', opacity: 0.8, marginBottom: '4px' }}>收款账户</div>
+                        <div style={{
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          wordBreak: 'break-all',
+                          fontFamily: 'monospace'
+                        }}>
+                          请通过聊天联系做市商获取
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                        💡 请使用支付宝转账到上述账户，转账后联系做市商确认
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ opacity: 0.8 }}>请先选择做市商查看收款账户</div>
+                  )}
+                </div>
+              ) : (
+                // USDT - TRC20转账
+                <div className="payment-method-card" style={{
+                  background: 'linear-gradient(135deg, #26a17b 0%, #1a7a5c 100%)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  color: '#fff'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '24px', marginRight: '8px' }}>💎</span>
+                    <span style={{ fontSize: '16px', fontWeight: 'bold' }}>USDT-TRC20 转账</span>
+                    <Tag color="#fff" style={{ marginLeft: '8px', color: '#26a17b', fontWeight: 'bold' }}>TRON</Tag>
+                  </div>
+                  {selectedMaker ? (
+                    <>
+                      <div style={{
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ fontSize: '12px', opacity: 0.8, marginBottom: '4px' }}>TRC20 收款地址</div>
+                        <div style={{
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          wordBreak: 'break-all',
+                          fontFamily: 'monospace',
+                          letterSpacing: '0.5px'
+                        }}>
+                          {selectedMaker.tronAddress || '未设置'}
+                        </div>
+                        {selectedMaker.tronAddress && (
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ color: '#fff', padding: '4px 0', marginTop: '4px' }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedMaker.tronAddress || '')
+                              message.success('地址已复制到剪贴板')
+                            }}
+                          >
+                            📋 复制地址
+                          </Button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                        ⚠️ 请确认网络为 <strong>TRC20（TRON）</strong>，转错网络资产将无法找回
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ opacity: 0.8 }}>请先选择做市商查看收款地址</div>
+                  )}
+                </div>
+              )}
+            </Form.Item>
 
             <Form.Item
               label="联系方式"
@@ -951,6 +1356,34 @@ export default function CreateOrderPage({ onBack }: { onBack?: () => void } = {}
             orderId={order?.order_id}
             showFullInfo={true}
           />
+        )}
+
+        {/* 我的订单卡片 */}
+        {!order && (
+          <div style={{ marginBottom: '16px' }}>
+            <MyOrdersCard />
+          </div>
+        )}
+
+        {/* 页面标题区域（放在温馨提示上方） */}
+        {!order && (
+          <div className="page-title-section">
+            <div className="title-icon">
+              <ShoppingCartOutlined style={{ fontSize: '32px', color: '#fff' }} />
+            </div>
+            <div className="page-main-title">购买 DUST</div>
+            <div className="page-subtitle">
+              {checkingFirstPurchase ? '正在检查首购资格...' :
+               orderType === 'first_purchase' ? '🎉 新用户首购专享 $10 USD' : '常规订单 $20-$200 USD'}
+            </div>
+            <Button
+              type="link"
+              onClick={() => window.location.hash = '#/otc/mm-apply'}
+              className="become-maker-link"
+            >
+              申请成为做市商 →
+            </Button>
+          </div>
         )}
 
         {/* 温馨提示 */}
@@ -1134,4 +1567,3 @@ const detectDeviceType = (): string => {
 // - getBasePrice()
 // - initiatePaymentRequest()
 // - showManualPaymentInfo()
-

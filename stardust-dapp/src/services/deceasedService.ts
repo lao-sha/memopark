@@ -105,30 +105,27 @@ export enum PinStatus {
 
 /**
  * 函数级详细中文注释：逝者基本信息
+ *
+ * 🔧 修复：字段名与链上结构对齐
+ * 链上字段：name, nameFullCid, birthTs, deathTs, mainImageCid, created, updated
  */
 export interface DeceasedInfo {
   id: number
   owner: string
   creator: string
-  fullName: string
-  fullNameCid: string
-  birthDate: number
-  deathDate: number
+  name: string              // 链上: name (姓名)
+  nameFullCid: string       // 链上: nameFullCid (完整姓名CID)
+  birthTs: string           // 链上: birthTs (出生日期 YYYYMMDD)
+  deathTs: string           // 链上: deathTs (逝世日期 YYYYMMDD)
   gender: Gender
-  mainImageCid: string
-  bio: string
-  bioCid: string
-  category: DeceasedCategory  // 🆕 分类系统
-
-  // Pin状态
-  fullNamePinStatus: PinStatus
-  mainImagePinStatus: PinStatus
-  bioPinStatus: PinStatus
+  mainImageCid: string      // 链上: mainImageCid (主图CID)
+  deceasedToken: string     // 链上: deceasedToken (唯一标识符)
+  category: DeceasedCategory
 
   // 生命周期
-  lifeYears?: number
-  createdAt: number
-  updatedAt: number
+  created: number           // 链上: created (创建区块号)
+  updated: number           // 链上: updated (更新区块号)
+  version: number           // 链上: version (版本号)
 }
 
 /**
@@ -228,28 +225,29 @@ export interface DeceasedFilter {
 
 /**
  * 函数级详细中文注释：创建逝者参数
+ *
+ * 🔧 修复：与链上 create_deceased 接口对齐
+ * 链上接口: create_deceased(name, gender_code, name_full_cid, birth_ts, death_ts, links)
  */
 export interface CreateDeceasedParams {
-  fullName: string
-  fullNameCid: string
-  birthDate: number
-  deathDate: number
-  gender: Gender
-  mainImageCid: string
-  bio: string
-  bioCid: string
+  name: string              // 姓名
+  gender: Gender            // 性别 (Male='M', Female='F', Other='B')
+  nameFullCid?: string      // 可选：完整姓名CID
+  birthTs: string           // 出生日期 YYYYMMDD
+  deathTs: string           // 逝世日期 YYYYMMDD
+  links?: string[]          // 可选：外部链接
 }
 
 /**
  * 函数级详细中文注释：更新逝者参数
+ *
+ * 🔧 修复：与链上接口对齐（注意：链上可能有 update_deceased 接口）
  */
 export interface UpdateDeceasedParams {
   deceasedId: number
-  fullName?: string
-  fullNameCid?: string
+  name?: string
+  nameFullCid?: string
   mainImageCid?: string
-  bio?: string
-  bioCid?: string
 }
 
 /**
@@ -329,6 +327,8 @@ export class DeceasedService {
 
   /**
    * 函数级详细中文注释：查询单个逝者信息
+   *
+   * 🔧 修复：字段名与链上结构对齐
    */
   async getDeceased(id: number): Promise<DeceasedInfo | null> {
     const result = await this.api.query.deceased.deceasedOf(id)
@@ -344,21 +344,17 @@ export class DeceasedService {
       id,
       owner: data.owner.toString(),
       creator: data.creator.toString(),
-      fullName: this.decodeString(data.fullName),
-      fullNameCid: this.decodeString(data.fullNameCid),
-      birthDate: data.birthDate.toNumber(),
-      deathDate: data.deathDate.toNumber(),
+      name: this.decodeString(data.name),
+      nameFullCid: this.decodeOptionString(data.nameFullCid),
+      birthTs: this.decodeOptionString(data.birthTs),
+      deathTs: this.decodeOptionString(data.deathTs),
       gender: this.decodeGender(data.gender),
-      mainImageCid: this.decodeString(data.mainImageCid),
-      bio: this.decodeString(data.bio),
-      bioCid: this.decodeString(data.bioCid),
-      category,  // 🆕 添加分类字段
-      fullNamePinStatus: this.decodePinStatus(data.fullNamePinStatus),
-      mainImagePinStatus: this.decodePinStatus(data.mainImagePinStatus),
-      bioPinStatus: this.decodePinStatus(data.bioPinStatus),
-      lifeYears: data.lifeYears?.isSome ? data.lifeYears.unwrap().toNumber() : undefined,
-      createdAt: data.createdAt.toNumber(),
-      updatedAt: data.updatedAt.toNumber(),
+      mainImageCid: this.decodeOptionString(data.mainImageCid),
+      deceasedToken: this.decodeString(data.deceasedToken),
+      category,
+      created: data.created.toNumber(),
+      updated: data.updated.toNumber(),
+      version: data.version?.toNumber?.() ?? 1,
     }
   }
 
@@ -385,7 +381,7 @@ export class DeceasedService {
     }
 
     // 按创建时间倒序排序
-    result.sort((a, b) => b.createdAt - a.createdAt)
+    result.sort((a, b) => b.created - a.created)
 
     // 应用数量限制
     if (filter.limit && filter.limit > 0) {
@@ -414,6 +410,7 @@ export class DeceasedService {
    * ### 参数说明
    * - page: 页码（从0开始）
    * - pageSize: 每页数量（默认20，最大50）
+   * - includeAll: 是否忽略分页一次性返回全部非普通逝者
    *
    * ### 返回值
    * - DeceasedInfo[]: 逝者信息列表（仅包含非普通民众）
@@ -434,10 +431,11 @@ export class DeceasedService {
    */
   async getNonOrdinaryDeceased(
     page: number = 0,
-    pageSize: number = 20
+    pageSize: number = 20,
+    includeAll: boolean = false
   ): Promise<DeceasedInfo[]> {
-    // 1. 限制每页最大数量，防止过载
-    const limit = Math.min(pageSize, 50)
+    // 1. 计算分页限制：includeAll=true 时一次性载入全部非普通逝者
+    const pageSizeLimit = includeAll ? undefined : Math.min(pageSize, 50)
 
     // 2. 定义所有非普通民众的分类（排除 Ordinary = 0）
     const targetCategories: DeceasedCategory[] = [
@@ -468,10 +466,13 @@ export class DeceasedService {
     // 5. 转换为数组并倒序排序（ID越大通常创建越晚）
     const sortedIds = Array.from(allIds).sort((a, b) => b - a)
 
-    // 6. 计算分页范围
-    const startIndex = page * limit
-    const endIndex = startIndex + limit
-    const pageIds = sortedIds.slice(startIndex, endIndex)
+    // 6. 计算需要加载的ID范围
+    const effectivePageSize = includeAll ? sortedIds.length : (pageSizeLimit ?? sortedIds.length)
+    const startIndex = includeAll ? 0 : page * effectivePageSize
+    const endIndex = includeAll ? sortedIds.length : startIndex + effectivePageSize
+    const pageIds = effectivePageSize > 0
+      ? sortedIds.slice(startIndex, endIndex)
+      : sortedIds
 
     // 7. 批量并发查询逝者详情
     const deceasedPromises = pageIds.map(id => this.getDeceased(id))
@@ -479,10 +480,54 @@ export class DeceasedService {
 
     // 8. 过滤掉 null 结果（已删除或不可见的逝者）
     const validDeceased = deceasedResults.filter(
-      (deceased): deceased is DeceasedInfo => deceased !== null
+      (deceased): deceased is DeceasedInfo =>
+        deceased !== null && deceased.category !== DeceasedCategory.Ordinary
     )
 
     return validDeceased
+  }
+
+  /**
+   * 函数级详细中文注释：按分类查询逝者列表
+   *
+   * ### 功能说明
+   * - 利用链上分类索引 DeceasedByCategory 高效查询指定分类的逝者
+   * - 支持分页查询
+   *
+   * ### 参数说明
+   * - category: 逝者分类
+   * - page: 页码（从0开始）
+   * - pageSize: 每页数量（默认20）
+   *
+   * ### 返回值
+   * - DeceasedInfo[]: 指定分类的逝者列表
+   */
+  async getDeceasedByCategory(
+    category: DeceasedCategory,
+    page: number = 0,
+    pageSize: number = 20
+  ): Promise<DeceasedInfo[]> {
+    // 1. 查询分类索引
+    const idsVec = await this.api.query.deceased.deceasedByCategory(category)
+
+    // 2. 转换为数组并倒序排序（ID越大通常创建越晚）
+    const allIds: number[] = []
+    idsVec.forEach((id: any) => {
+      allIds.push(id.toNumber())
+    })
+    allIds.sort((a, b) => b - a)
+
+    // 3. 分页
+    const startIndex = page * pageSize
+    const endIndex = startIndex + pageSize
+    const pageIds = allIds.slice(startIndex, endIndex)
+
+    // 4. 批量查询逝者详情
+    const deceasedPromises = pageIds.map(id => this.getDeceased(id))
+    const deceasedResults = await Promise.all(deceasedPromises)
+
+    // 5. 过滤掉 null 结果
+    return deceasedResults.filter((d): d is DeceasedInfo => d !== null)
   }
 
   /**
@@ -664,31 +709,37 @@ export class DeceasedService {
 
   /**
    * 函数级详细中文注释：构建创建逝者交易
+   *
+   * 🔧 修复：与链上 create_deceased 接口对齐
+   * 链上签名: create_deceased(name, gender_code, name_full_cid, birth_ts, death_ts, links)
    */
   buildCreateDeceasedTx(params: CreateDeceasedParams): SubmittableExtrinsic<'promise'> {
-    return this.api.tx.deceased.create(
-      params.fullName,
-      params.fullNameCid,
-      params.birthDate,
-      params.deathDate,
-      params.gender,
-      params.mainImageCid,
-      params.bio,
-      params.bioCid
+    // 转换性别枚举为数字代码: 0=M, 1=F, 2=B
+    const genderCode = params.gender === Gender.Male ? 0
+                     : params.gender === Gender.Female ? 1
+                     : 2
+
+    return this.api.tx.deceased.createDeceased(
+      params.name,                          // name: Vec<u8>
+      genderCode,                           // gender_code: u8
+      params.nameFullCid || null,           // name_full_cid: Option<Vec<u8>>
+      params.birthTs,                       // birth_ts: Vec<u8> (YYYYMMDD)
+      params.deathTs,                       // death_ts: Vec<u8> (YYYYMMDD)
+      params.links || []                    // links: Vec<Vec<u8>>
     )
   }
 
   /**
    * 函数级详细中文注释：构建更新逝者交易
+   *
+   * 注意：需要确认链上 update_deceased 的实际签名
    */
   buildUpdateDeceasedTx(params: UpdateDeceasedParams): SubmittableExtrinsic<'promise'> {
-    return this.api.tx.deceased.update(
+    return this.api.tx.deceased.updateDeceased(
       params.deceasedId,
-      params.fullName || null,
-      params.fullNameCid || null,
-      params.mainImageCid || null,
-      params.bio || null,
-      params.bioCid || null
+      params.name || null,
+      params.nameFullCid || null,
+      params.mainImageCid || null
     )
   }
 
@@ -902,6 +953,25 @@ export class DeceasedService {
   }
 
   /**
+   * 函数级详细中文注释：解码可选字符串（Option<BoundedVec<u8>>）
+   *
+   * 🔧 新增：处理链上 Option 类型字段
+   */
+  private decodeOptionString(option: any): string {
+    try {
+      if (!option) return ''
+      if (option.isSome) {
+        return this.decodeString(option.unwrap())
+      }
+      if (option.isNone) return ''
+      // 非 Option 类型，直接解码
+      return this.decodeString(option)
+    } catch {
+      return ''
+    }
+  }
+
+  /**
    * 函数级详细中文注释：解码性别枚举
    */
   private decodeGender(gender: any): Gender {
@@ -990,4 +1060,3 @@ export class DeceasedService {
 export function createDeceasedService(api: ApiPromise): DeceasedService {
   return new DeceasedService(api)
 }
-

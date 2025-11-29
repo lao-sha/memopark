@@ -125,10 +125,18 @@ export interface MediaItem {
  * 🔧 破坏式变更：target 保留用于兼容历史数据，但新记录 domain 应始终为 0
  */
 export interface OfferingRecord {
+  /** 供奉记录ID */
+  id?: number;
   /** 供奉人地址 */
   who: string;
   /** 目标（域代码，对象ID）- 例如 domain=0 表示纪念馆 */
   target: [number, number];
+  /** 目标类型（链上TargetType枚举值） */
+  targetType?: number;
+  /** 目标ID */
+  targetId?: number;
+  /** 祭祀品ID */
+  sacrificeId?: number;
   /** 供奉类型代码 */
   kindCode: number;
   /** 供奉金额（DUST） */
@@ -137,6 +145,14 @@ export interface OfferingRecord {
   media: MediaItem[];
   /** 持续时长（周数，可选） */
   duration: number | null;
+  /** 供奉数量 */
+  quantity?: number;
+  /** 供奉状态 */
+  status?: string;
+  /** 到期区块号 */
+  expiryBlock?: number | null;
+  /** 是否自动续费 */
+  autoRenew?: boolean;
   /** 供奉时间（区块号） */
   time: number;
 }
@@ -173,9 +189,23 @@ export interface OfferingPriceInfo {
  */
 export class MemorialService {
   private api: ApiPromise;
+  private static textDecoder: TextDecoder | null = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 
   constructor(api: ApiPromise) {
     this.api = api;
+  }
+
+  private resolveMemorialQuerySection(): any | null {
+    const root: any = this.api.query || {}
+    return root.memorial || root.memoOfferings || root.memo_offerings || null
+  }
+
+  private ensureMemorialQuery(method: string): any {
+    const section = this.resolveMemorialQuerySection()
+    if (!section) {
+      throw new Error(`链上未启用 memorial/memoOfferings 查询模块，无法执行 ${method}`)
+    }
+    return section
   }
 
   // ==================== Sacrifice（祭祀品目录）查询 ====================
@@ -186,8 +216,12 @@ export class MemorialService {
    * @returns 祭祀品信息，不存在则返回null
    */
   async getSacrifice(sacrificeId: number): Promise<SacrificeItem | null> {
-    const result = await this.api.query.memorial.sacrificeOf(sacrificeId);
-    const option = result as Option<any>;
+    const memorialQuery = this.ensureMemorialQuery('getSacrifice')
+    if (!memorialQuery.sacrificeOf) {
+      throw new Error('当前链未提供 sacrificeOf 查询接口')
+    }
+    const result = await memorialQuery.sacrificeOf(sacrificeId)
+    const option = result as Option<any>
 
     if (option.isNone) {
       return null;
@@ -202,8 +236,12 @@ export class MemorialService {
    * @returns 下一个可用的祭祀品ID
    */
   async getNextSacrificeId(): Promise<number> {
-    const result = await this.api.query.memorial.nextSacrificeId();
-    return (result as u64).toNumber();
+    const memorialQuery = this.ensureMemorialQuery('getNextSacrificeId')
+    if (!memorialQuery.nextSacrificeId) {
+      throw new Error('当前链未提供 nextSacrificeId 查询接口')
+    }
+    const result = await memorialQuery.nextSacrificeId()
+    return (result as u64).toNumber()
   }
 
   /**
@@ -250,8 +288,12 @@ export class MemorialService {
    * @returns 供奉品规格，不存在则返回null
    */
   async getOfferingKind(kindCode: number): Promise<OfferingSpec | null> {
-    const result = await this.api.query.memorial.offeringKinds(kindCode);
-    const option = result as Option<any>;
+    const memorialQuery = this.ensureMemorialQuery('getOfferingKind')
+    if (!memorialQuery.offeringKinds) {
+      throw new Error('当前链未提供 offeringKinds 查询接口')
+    }
+    const result = await memorialQuery.offeringKinds(kindCode)
+    const option = result as Option<any>
 
     if (option.isNone) {
       return null;
@@ -271,19 +313,92 @@ export class MemorialService {
    * @returns 供奉记录列表
    */
   async getOfferingsForTarget(target: [number, number], limit = 50): Promise<OfferingRecord[]> {
-    const targetKey = `${target[0]}-${target[1]}`;
-    const result = await this.api.query.memorial.offeringsOf(targetKey);
-    const vec = result as Vec<any>;
+    const memorialQuery = this.ensureMemorialQuery('getOfferingsForTarget')
+    const supportsOfferingsOf = typeof memorialQuery.offeringsOf === 'function'
+    const supportsOfferingRecords =
+      typeof memorialQuery.offeringsByTarget === 'function' &&
+      typeof memorialQuery.offeringRecords === 'function'
+    const supportsFullScan =
+      typeof memorialQuery.offeringRecords === 'function' &&
+      typeof memorialQuery.nextOfferingId === 'function'
 
-    const records: OfferingRecord[] = [];
-    const count = Math.min(vec.length, limit);
+    // 兼容旧版 pallet：直接返回 Vec<OfferingRecord>
+    if (supportsOfferingsOf) {
+      const targetKey = `${target[0]}-${target[1]}`
+      const result = await memorialQuery.offeringsOf(targetKey)
+      const vec = result as Vec<any>
 
-    for (let i = 0; i < count; i++) {
-      const record = this.parseOfferingRecord(vec[i]);
-      records.push(record);
+      const records: OfferingRecord[] = []
+      const count = Math.min(vec.length, limit)
+
+      for (let i = 0; i < count; i++) {
+        const record = this.parseOfferingRecord(vec[i])
+        records.push(record)
+      }
+
+      return records
     }
 
-    return records;
+    // 兼容新版 pallet：先查 ID 列表，再逐条拉取记录
+    if (supportsOfferingRecords) {
+      const result = await memorialQuery.offeringsByTarget(target)
+      const ids = result as Vec<any>
+      if (ids.length === 0) {
+        return []
+      }
+
+      const count = Math.min(ids.length, limit)
+
+      const queries = []
+      for (let i = 0; i < count; i++) {
+        queries.push(memorialQuery.offeringRecords(ids[i]))
+      }
+
+      const recordResults = await Promise.all(queries)
+      const records: OfferingRecord[] = []
+
+      for (const rawRecord of recordResults) {
+        const option = rawRecord as Option<any>
+        let data: any = rawRecord
+
+        if (typeof option?.isSome === 'boolean') {
+          if (option.isNone) {
+            continue
+          }
+          data = option.unwrap()
+        }
+
+        if (!data) continue
+        records.push(this.parseOfferingRecord(data))
+      }
+
+      return records
+    }
+
+    if (supportsFullScan) {
+      const nextIdRaw = await memorialQuery.nextOfferingId()
+      const nextId = typeof nextIdRaw?.toNumber === 'function' ? nextIdRaw.toNumber() : 0
+      if (!nextId) {
+        return []
+      }
+
+      const records: OfferingRecord[] = []
+      for (let id = nextId - 1; id >= 0 && records.length < limit; id--) {
+        const record = await this.fetchOfferingRecord(memorialQuery, id)
+        if (!record) continue
+        if (record.target[0] === target[0] && record.target[1] === target[1]) {
+          records.push(record)
+        }
+      }
+
+      return records
+    }
+
+    console.warn(
+      '[MemorialService] 当前链未提供 offeringsOf/offeringsByTarget 查询接口，返回空的供奉记录列表',
+      { target }
+    );
+    return [];
   }
 
   /**
@@ -293,18 +408,48 @@ export class MemorialService {
    * @returns 供奉记录列表
    */
   async getOfferingsByAccount(account: string, limit = 50): Promise<OfferingRecord[]> {
-    const result = await this.api.query.memorial.offeringsByAccount(account);
-    const vec = result as Vec<any>;
+    const memorialQuery = this.ensureMemorialQuery('getOfferingsByAccount')
+    if (typeof memorialQuery.offeringsByAccount === 'function') {
+      const result = await memorialQuery.offeringsByAccount(account)
+      const vec = result as Vec<any>
 
-    const records: OfferingRecord[] = [];
-    const count = Math.min(vec.length, limit);
+      const records: OfferingRecord[] = []
+      const count = Math.min(vec.length, limit)
 
-    for (let i = 0; i < count; i++) {
-      const record = this.parseOfferingRecord(vec[i]);
-      records.push(record);
+      for (let i = 0; i < count; i++) {
+        const record = this.parseOfferingRecord(vec[i])
+        records.push(record)
+      }
+
+      return records
     }
 
-    return records;
+    if (typeof memorialQuery.offeringsByUser === 'function' && typeof memorialQuery.offeringRecords === 'function') {
+      const idsResult = await memorialQuery.offeringsByUser(account)
+      const idsVec = idsResult as Vec<any>
+      if (idsVec.length === 0) {
+        return []
+      }
+
+      const idNumbers = idsVec.map(id => (typeof id?.toNumber === 'function' ? id.toNumber() : Number(id))).filter(id => Number.isFinite(id))
+      if (idNumbers.length === 0) {
+        return []
+      }
+
+      const sliced = idNumbers.slice(-limit).reverse()
+      const records: OfferingRecord[] = []
+
+      for (const id of sliced) {
+        const record = await this.fetchOfferingRecord(memorialQuery, id)
+        if (record) {
+          records.push(record)
+        }
+      }
+
+      return records
+    }
+
+    throw new Error('当前链未提供 offeringsByAccount/offeringsByUser 查询接口')
   }
 
   /**
@@ -393,6 +538,98 @@ export class MemorialService {
   }
 
   /**
+   * 函数级详细中文注释：构建向目标供奉交易
+   * 调用 pallet-memorial 的 offer_to_target 方法
+   *
+   * @param params 供奉参数
+   * @param params.targetType 目标类型（0=Deceased, 1=Pet, 2=Memorial, 3=Event）
+   * @param params.targetId 目标ID
+   * @param params.sacrificeId 祭祀品ID（链上注册的祭品目录ID）
+   * @param params.quantity 数量
+   * @param params.media 媒体资源（可选的IPFS CID列表）
+   * @param params.durationWeeks 订阅周期（周数，订阅类商品必填）
+   * @returns Polkadot.js 交易对象
+   */
+  buildOfferToTargetTx(params: {
+    targetType: number;
+    targetId: number;
+    sacrificeId: number;
+    quantity: number;
+    media?: string[];
+    durationWeeks?: number;
+  }) {
+    // 将媒体数据转为字节数组（UTF-8编码）
+    const mediaBytes = (params.media || []).map(cid =>
+      Array.from(new TextEncoder().encode(cid))
+    );
+
+    return this.api.tx.memorial.offerToTarget(
+      params.targetType,
+      params.targetId,
+      params.sacrificeId,
+      params.quantity,
+      mediaBytes,
+      params.durationWeeks ?? null
+    );
+  }
+
+  /**
+   * 函数级详细中文注释：批量构建供奉交易
+   * 当用户选择多种祭品时，使用批量交易一次提交
+   *
+   * @param offerings 供奉项目列表
+   * @param targetType 目标类型
+   * @param targetId 目标ID
+   * @returns Polkadot.js 批量交易对象
+   */
+  buildBatchOfferTx(
+    offerings: Array<{
+      sacrificeId: number;
+      quantity: number;
+      media?: string[];
+      durationWeeks?: number;
+    }>,
+    targetType: number,
+    targetId: number
+  ) {
+    const txs = offerings.map(offering =>
+      this.buildOfferToTargetTx({
+        targetType,
+        targetId,
+        sacrificeId: offering.sacrificeId,
+        quantity: offering.quantity,
+        media: offering.media,
+        durationWeeks: offering.durationWeeks,
+      })
+    );
+
+    // 如果只有一个交易，直接返回；否则尝试使用 utility 的批量接口
+    if (txs.length === 1) {
+      return txs[0];
+    }
+
+    const utilityTx = (this.api.tx as any)?.utility;
+
+    if (typeof utilityTx?.batchAll === 'function') {
+      return utilityTx.batchAll(txs);
+    }
+
+    if (typeof utilityTx?.batch === 'function') {
+      return utilityTx.batch(txs);
+    }
+
+    throw new Error('当前链未启用 utility.batch/batchAll，无法一次性提交多笔供奉');
+  }
+
+  /**
+   * 函数级详细中文注释：检测链端是否支持批量供奉交易
+   */
+  supportsBatchOffer(): boolean {
+    const utilityTx = (this.api.tx as any)?.utility;
+    return typeof utilityTx?.batchAll === 'function' || typeof utilityTx?.batch === 'function';
+  }
+
+  /**
    * 函数级详细中文注释：构建通过目录下单交易
    * @param params 下单参数
    * @returns Polkadot.js 交易对象
@@ -441,6 +678,28 @@ export class MemorialService {
       params.target,
       params.offeringId
     );
+  }
+
+  private async fetchOfferingRecord(memorialQuery: any, id: number): Promise<OfferingRecord | null> {
+    if (typeof memorialQuery.offeringRecords !== 'function') {
+      return null
+    }
+    const rawResult = await memorialQuery.offeringRecords(id)
+    const option = rawResult as Option<any>
+    let data: any = rawResult
+
+    if (typeof option?.isSome === 'boolean') {
+      if (option.isNone) {
+        return null
+      }
+      data = option.unwrap()
+    }
+
+    if (!data) {
+      return null
+    }
+
+    return this.parseOfferingRecord(data, id)
   }
 
   // ==================== 交易构建（管理员端）====================
@@ -641,16 +900,203 @@ export class MemorialService {
   /**
    * 函数级详细中文注释：解析供奉记录
    */
-  private parseOfferingRecord(data: any): OfferingRecord {
+  private parseOfferingRecord(data: any, offeringId?: number): OfferingRecord {
+    const who = data.who?.toString ? data.who.toString() : String(data.who ?? '')
+
+    const targetTypeEnum = data.targetType || data.target_type
+    const targetType = this.parseTargetType(targetTypeEnum)
+    const targetId = this.extractNumber(data.targetId ?? data.target_id) ?? 0
+
+    const legacyTarget: [number, number] | null = Array.isArray(data.target)
+      ? [
+          this.extractNumber(data.target[0]) ?? 0,
+          this.extractNumber(data.target[1]) ?? 0,
+        ]
+      : null
+
+    const target: [number, number] = legacyTarget || [targetType ?? 0, targetId]
+
+    const sacrificeId =
+      this.extractNumber(data.sacrificeId ?? data.sacrifice_id) ??
+      this.extractNumber(data.kindCode ?? data.kind_code) ??
+      0
+
+    const amountRaw = data.amount
+    const amount = typeof amountRaw?.toString === 'function' ? amountRaw.toString() : String(amountRaw ?? '0')
+
+    const mediaItems: MediaItem[] = Array.isArray(data.media)
+      ? data.media.map((m: any) => ({ cid: this.decodeCid(m?.cid) })).filter(m => !!m.cid)
+      : []
+
+    const duration = this.extractDuration(data)
+    const blockTime = this.extractNumber(data.time) ?? 0
+    const quantity = this.extractNumber(data.quantity)
+    const status = this.parseOfferingStatus(data.status)
+    const expiryBlock = this.extractOptionNumber(data.expiryBlock ?? data.expiry_block)
+    const autoRenew = this.extractBoolean(data.autoRenew ?? data.auto_renew)
+
     return {
-      who: data.who.toString(),
-      target: [data.target[0].toNumber(), data.target[1].toNumber()],
-      kindCode: data.kindCode.toNumber(),
-      amount: data.amount.toString(),
-      media: data.media.map((m: any) => ({ cid: m.cid.toUtf8() })),
-      duration: data.duration.isSome ? data.duration.unwrap().toNumber() : null,
-      time: data.time.toNumber(),
-    };
+      id: offeringId,
+      who,
+      target,
+      targetType,
+      targetId,
+      sacrificeId: sacrificeId || undefined,
+      kindCode: sacrificeId,
+      amount,
+      media: mediaItems,
+      duration,
+      time: blockTime,
+      quantity: quantity ?? undefined,
+      status,
+      expiryBlock,
+      autoRenew,
+    }
+  }
+
+  private parseTargetType(targetType: any): number | undefined {
+    if (!targetType) return undefined
+    if (typeof targetType.toNumber === 'function') {
+      return targetType.toNumber()
+    }
+    if (typeof targetType === 'number') {
+      return targetType
+    }
+    if (typeof targetType?.type === 'string') {
+      return this.mapTargetTypeString(targetType.type)
+    }
+    const mapping: Record<string, number> = {
+      isDeceased: 0,
+      isPet: 1,
+      isMemorial: 2,
+      isEvent: 3,
+    }
+    for (const key of Object.keys(mapping)) {
+      if (targetType[key]) {
+        return mapping[key]
+      }
+    }
+    return undefined
+  }
+
+  private mapTargetTypeString(type: string): number | undefined {
+    const normalized = type.toLowerCase()
+    switch (normalized) {
+      case 'deceased':
+        return 0
+      case 'pet':
+        return 1
+      case 'memorial':
+        return 2
+      case 'event':
+        return 3
+      default:
+        return undefined
+    }
+  }
+
+  private extractDuration(data: any): number | null {
+    if (data.duration && typeof data.duration.isSome === 'boolean') {
+      return data.duration.isSome ? data.duration.unwrap().toNumber() : null
+    }
+    const durationWeeks = data.durationWeeks ?? data.duration_weeks
+    if (durationWeeks && typeof durationWeeks.toNumber === 'function') {
+      return durationWeeks.toNumber()
+    }
+    if (typeof durationWeeks === 'number') {
+      return durationWeeks
+    }
+    return null
+  }
+
+  private extractNumber(value: any): number | undefined {
+    if (typeof value?.toNumber === 'function') {
+      return value.toNumber()
+    }
+    if (typeof value === 'number') {
+      return value
+    }
+    if (typeof value === 'bigint') {
+      return Number(value)
+    }
+    return undefined
+  }
+
+  private extractOptionNumber(value: any): number | null {
+    if (!value && value !== 0) {
+      return null
+    }
+    if (typeof value?.isSome === 'boolean') {
+      return value.isSome ? this.extractNumber(value.unwrap()) ?? null : null
+    }
+    const num = this.extractNumber(value)
+    return typeof num === 'number' ? num : null
+  }
+
+  private extractBoolean(value: any): boolean {
+    if (typeof value === 'boolean') {
+      return value
+    }
+    if (value?.isTrue === true) {
+      return true
+    }
+    if (value?.isFalse === true) {
+      return false
+    }
+    if (typeof value?.toJSON === 'function') {
+      const json = value.toJSON()
+      if (typeof json === 'boolean') {
+        return json
+      }
+    }
+    return false
+  }
+
+  private decodeCid(cidField: any): string {
+    if (!cidField) {
+      return ''
+    }
+    if (typeof cidField.toUtf8 === 'function') {
+      return cidField.toUtf8()
+    }
+    if (Array.isArray(cidField)) {
+      return MemorialService.textDecoder
+        ? MemorialService.textDecoder.decode(new Uint8Array(cidField))
+        : ''
+    }
+    if (cidField instanceof Uint8Array) {
+      return MemorialService.textDecoder ? MemorialService.textDecoder.decode(cidField) : ''
+    }
+    return String(cidField)
+  }
+
+  private parseOfferingStatus(status: any): string | undefined {
+    if (!status) {
+      return undefined
+    }
+    if (typeof status === 'string') {
+      return status
+    }
+    if (typeof status.type === 'string') {
+      return status.type
+    }
+    const mapping: Record<string, string> = {
+      isCompleted: 'Completed',
+      isActive: 'Active',
+      isExpired: 'Expired',
+      isSuspended: 'Suspended',
+      isCancelled: 'Cancelled',
+      isProcessing: 'Processing',
+    }
+    for (const key of Object.keys(mapping)) {
+      if (status[key]) {
+        return mapping[key]
+      }
+    }
+    if (typeof status.toString === 'function') {
+      return status.toString()
+    }
+    return undefined
   }
 }
 
@@ -662,4 +1108,3 @@ export class MemorialService {
 export function createMemorialService(api: ApiPromise): MemorialService {
   return new MemorialService(api);
 }
-

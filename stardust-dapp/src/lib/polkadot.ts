@@ -1,5 +1,6 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { AppConfig } from './config';
+import { createSessionSignerAdapter } from './sessionSignerAdapter';
 // 兼容旧代码：重新导出安全封装的API工具函数
 export { getApi, signAndSend, sendViaForwarder } from './polkadot-safe';
 
@@ -26,6 +27,11 @@ export const createPolkadotApi = async (): Promise<ApiPromise> => {
 
   console.log('[Polkadot] 等待API就绪...');
   await api.isReady;
+  try {
+    api.setSigner(createSessionSignerAdapter(api.registry));
+  } catch (error) {
+    console.warn('[Polkadot] 设置本地签名器失败:', error);
+  }
   console.log('[Polkadot] API连接就绪');
 
   return api;

@@ -90,7 +90,7 @@ const CreateWalletPage: React.FC<{ onCreated?: (address: string) => void }> = ({
    * - 用密码加密助记词
    * - 保存到本地 keystore
    * - 设置为当前地址
-   * - 调用回调进入登录页面
+   * - 调用回调进入登录页面，或跳转到钱包管理页面
    */
   const handleVerifySuccess = async () => {
     try {
@@ -104,9 +104,14 @@ const CreateWalletPage: React.FC<{ onCreated?: (address: string) => void }> = ({
       saveLocalKeystore(payload)
       upsertKeystore(payload)
       if (derivedAddress) setCurrentAddress(derivedAddress)
-      
+
       if (derivedAddress) {
-        onCreated?.(derivedAddress)
+        if (onCreated) {
+          onCreated(derivedAddress)
+        } else {
+          // 独立路由访问时，跳转到钱包管理页面
+          window.location.hash = '#/wallet'
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -120,7 +125,14 @@ const CreateWalletPage: React.FC<{ onCreated?: (address: string) => void }> = ({
     return (
       <SetPasswordPage
         onPasswordSet={handlePasswordSet}
-        onBack={() => onCreated?.('')}
+        onBack={() => {
+          if (onCreated) {
+            onCreated('')
+          } else {
+            // 独立路由访问时，返回钱包管理页面
+            window.location.hash = '#/wallet'
+          }
+        }}
       />
     )
   }

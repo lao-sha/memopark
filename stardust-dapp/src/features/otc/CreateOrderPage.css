@@ -180,45 +180,209 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.maker-select {
+.price-chart-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.price-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-subtitle {
+  font-size: 12px;
+  color: #888;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.price-chart-wrapper {
+  margin-top: 8px;
+  background: linear-gradient(180deg, rgba(93, 186, 170, 0.08) 0%, rgba(93, 186, 170, 0.02) 100%);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.price-chart-svg {
   width: 100%;
 }
 
-.maker-select .ant-select-selector {
-  height: 48px !important;
-  border-radius: 8px !important;
-  border: 2px solid #e0e0e0 !important;
-  font-size: 15px !important;
-}
-
-.maker-select .ant-select-selector:hover {
-  border-color: #5DBAAA !important;
-}
-
-.maker-select.ant-select-focused .ant-select-selector {
-  border-color: #5DBAAA !important;
-  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15) !important;
-}
-
-.maker-option {
+.price-chart-summary {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+}
+
+.price-chart-summary .label {
+  font-size: 12px;
+  color: #666;
+}
+
+.price-chart-summary .value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2F4F4F;
+}
+
+.price-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #888;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chart-footnote {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #999;
+  text-align: right;
+}
+
+/* 做市商卡片列表 - 紧凑单行样式 */
+.maker-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.maker-info {
-  flex: 1;
+/* 做市商卡片 - 紧凑单行 */
+.maker-card {
+  position: relative;
+  background: #fff;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.maker-card:hover {
+  border-color: #5DBAAA;
+  background: rgba(93, 186, 170, 0.03);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.12);
+}
+
+.maker-card.selected {
+  border-color: #5DBAAA;
+  background: rgba(93, 186, 170, 0.08);
+  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.2);
+}
+
+.maker-card.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.maker-card.disabled:hover {
+  box-shadow: none;
+}
+
+.maker-card.recommended {
+  border-color: #52c41a;
+  background: rgba(82, 196, 26, 0.05);
+}
+
+.maker-card.recommended.selected {
+  border-color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.2);
+}
+
+/* 推荐标签 - 紧凑版 */
+.maker-card-badge {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* 做市商左侧信息 */
+.maker-card-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
-.maker-tags {
+.maker-card-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 做市商中间价格信息 - 横向排列 */
+.maker-card-price {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  justify-content: center;
+}
+
+.maker-card-price-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.maker-card-price-item .price-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.maker-card-price-item .price-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.maker-card-price-item .price-value.price-main {
+  font-size: 14px;
+  color: #5DBAAA;
+}
+
+.maker-card-price-item .price-value.premium-high {
+  color: #fa8c16;
+}
+
+.maker-card-price-item .price-value.premium-low {
+  color: #52c41a;
+}
+
+.maker-card-price-item .price-value.premium-zero {
+  color: #666;
+}
+
+/* 做市商右侧状态 */
+.maker-card-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 做市商状态标签 */
+.maker-card-status {
   display: flex;
   gap: 4px;
-  align-items: center;
+  flex-wrap: nowrap;
 }
 
 /* 做市商详情信息 */
@@ -322,6 +486,61 @@
   font-size: 14px;
   font-weight: 500;
   pointer-events: none;
+}
+
+/* 双向输入容器 DUST ↔ USDT */
+.dual-input-container {
+  background: rgba(93, 186, 170, 0.05);
+  border: 1px solid rgba(93, 186, 170, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.dual-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dual-input-item {
+  flex: 1;
+}
+
+.dual-input-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.dual-input-arrow {
+  font-size: 18px;
+  color: #5DBAAA;
+  font-weight: bold;
+  padding: 0 4px;
+  margin-top: 20px;
+}
+
+.dual-input-rate {
+  text-align: center;
+  font-size: 12px;
+  color: #5DBAAA;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(93, 186, 170, 0.3);
+}
+
+.dual-input-tip {
+  text-align: center;
+  font-size: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(93, 186, 170, 0.3);
+}
+
+.dual-input-tip.warning {
+  color: #fa8c16;
 }
 
 .contact-textarea {

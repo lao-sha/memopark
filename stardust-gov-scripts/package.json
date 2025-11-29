@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node governance-cli.js",
     "gov": "node governance-cli.js",
+    "proposal": "node committee-proposal-cli.js",
+    "committee": "node committee-proposal-cli.js",
     "batch-transfer": "node batch-transfer.js",
     "transfer": "node batch-transfer.js",
     "create-listing": "node create-listing.js",

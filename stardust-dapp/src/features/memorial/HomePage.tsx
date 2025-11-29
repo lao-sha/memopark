@@ -47,6 +47,17 @@ interface PublicMemorial {
   categoryName: string
 }
 
+interface LatestMemorialCard {
+  id: number
+  name: string
+  owner: string
+  createdBlock: number
+  createdAt: number | null
+  category: DeceasedCategory
+  categoryName: string
+  avatar: string
+}
+
 /**
  * 函数级详细中文注释：今日生祭接口
  */
@@ -80,6 +91,8 @@ const HomePage: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('首页')
   const [publicMemorials, setPublicMemorials] = useState<PublicMemorial[]>([])
   const [loading, setLoading] = useState(false)
+  const [latestMemorial, setLatestMemorial] = useState<LatestMemorialCard | null>(null)
+  const [latestLoading, setLatestLoading] = useState(false)
   const api = useApi()
 
   /**
@@ -106,7 +119,8 @@ const HomePage: React.FC = () => {
    * - 利用优化的查询方法，大幅提升加载速度
    *
    * ### 性能优化
-   * - 首页/陵园：使用 getNonOrdinaryDeceased 避免全表扫描
+   * - 首页：调用 getNonOrdinaryDeceased(includeAll=true) 一次性获取所有非普通逝者
+   * - 陵园：临时复用 getNonOrdinaryDeceased 分页结果（后续接入普通逝者索引）
    * - 特定分类：使用分类索引直接查询
    * - 加载速度：从 3-5分钟 降至 2-5秒
    *
@@ -122,11 +136,11 @@ const HomePage: React.FC = () => {
       const deceasedService = new DeceasedService(api)
       let filteredDeceased: DeceasedInfo[] = []
 
-      if (activeCategory === '首页' || activeCategory === '陵园') {
-        // ✅ 优化：使用高性能查询方法，直接获取非普通民众
-        // 从 listDeceased({ limit: 100 }) + 客户端过滤
-        // 改为 getNonOrdinaryDeceased(0, 50)
-        // RPC调用从 10,001次 降至 26次
+      if (activeCategory === '首页') {
+        // 首页：一次性加载所有非普通逝者，满足“公众纪念馆展示全部特殊分类”的需求
+        filteredDeceased = await deceasedService.getNonOrdinaryDeceased(0, 50, true)
+      } else if (activeCategory === '陵园') {
+        // 临时策略：陵园入口复用非普通查询，后续单独接入普通逝者列表
         filteredDeceased = await deceasedService.getNonOrdinaryDeceased(0, 50)
       } else {
         // 特定分类页面，只显示对应分类的逝者
@@ -145,8 +159,8 @@ const HomePage: React.FC = () => {
       // 转换为公众纪念馆格式
       const memorialData: PublicMemorial[] = filteredDeceased.map(deceased => ({
         id: deceased.id,
-        title: deceased.fullName,
-        subtitle: deceased.bio?.length > 50 ? deceased.bio.substring(0, 50) + '...' : deceased.bio || '暂无简介',
+        title: deceased.name,  // 🔧 修复：fullName -> name
+        subtitle: deceased.nameFullCid || '暂无简介',  // 🔧 修复：bio -> nameFullCid
         avatar: deceased.mainImageCid ? `https://ipfs.io/ipfs/${deceased.mainImageCid}` : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face',
         hearts: Math.floor(Math.random() * 1000000), // 模拟数据，实际应从供奉记录获取
         flowers: Math.floor(Math.random() * 1000000), // 模拟数据，实际应从供奉记录获取
@@ -161,6 +175,63 @@ const HomePage: React.FC = () => {
       setPublicMemorials(getFallbackMemorials())
     }
     setLoading(false)
+  }
+
+  const loadLatestMemorial = async () => {
+    if (!api) return
+    setLatestLoading(true)
+    try {
+      const deceasedService = new DeceasedService(api)
+      const latestList = await deceasedService.listDeceased({ limit: 1 })
+      if (!latestList.length) {
+        setLatestMemorial(null)
+      } else {
+        const latest = latestList[0]
+        let createdAt: number | null = null
+
+        // 尝试获取创建时间，如果历史状态已被修剪则使用区块号估算
+        if (typeof latest.created === 'number' && latest.created > 0) {
+          const header = await api.rpc.chain.getHeader()
+          const currentBlock = header.number.toNumber()
+          const blockDiff = currentBlock - latest.created
+          const blockHashCount = api.consts?.system?.blockHashCount?.toNumber?.() ?? 2400
+
+          const canQueryHistoricalState = blockDiff >= 0 && blockDiff < blockHashCount
+          if (canQueryHistoricalState) {
+            try {
+              const hash = await api.rpc.chain.getBlockHash(latest.created)
+              const timestamp = await api.query.timestamp.now.at(hash)
+              createdAt = timestamp?.toNumber?.() ?? null
+            } catch (error) {
+              console.warn('查询历史区块时间失败，改用估算值', error)
+            }
+          }
+
+          if (!createdAt) {
+            // 历史状态已被节点修剪或查询失败，使用区块差估算时间
+            const estimatedTime = Date.now() - (blockDiff * 6000)
+            createdAt = estimatedTime > 0 ? estimatedTime : null
+          }
+        }
+
+        setLatestMemorial({
+          id: latest.id,
+          name: latest.name || `纪念馆 #${latest.id}`,
+          owner: latest.owner,
+          createdBlock: latest.created,
+          createdAt,
+          category: latest.category,
+          categoryName: getCategoryName(latest.category),
+          avatar: latest.mainImageCid
+            ? `https://ipfs.io/ipfs/${latest.mainImageCid}`
+            : 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&h=120&fit=crop&crop=faces'
+        })
+      }
+    } catch (error) {
+      console.error('加载最新纪念馆失败:', error)
+      setLatestMemorial(null)
+    }
+    setLatestLoading(false)
   }
 
   /**
@@ -219,6 +290,34 @@ const HomePage: React.FC = () => {
     loadPublicMemorials()
   }, [api, activeCategory])  // 添加activeCategory依赖，分类切换时重新加载
 
+  useEffect(() => {
+    loadLatestMemorial()
+  }, [api])
+
+  const handleLatestMemorialClick = () => {
+    if (latestMemorial) {
+      window.location.hash = `#/memorial/${latestMemorial.id}`
+    }
+  }
+
+  const formatCreatedTime = (timestamp: number | null) => {
+    if (!timestamp) return '创建时间未知'
+    const date = new Date(timestamp)
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date
+      .getDate()
+      .toString()
+      .padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}`
+  }
+
+  const formatAddressShort = (address?: string) => {
+    if (!address) return '未知地址'
+    if (address.length <= 12) return address
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  }
+
   /**
    * 函数级详细中文注释：处理逝者卡片点击事件
    * 跳转到逝者纪念馆详情页面
@@ -229,11 +328,25 @@ const HomePage: React.FC = () => {
 
   /**
    * 函数级详细中文注释：处理分类点击事件
-   * 更新：现在分类导航直接在当前页面切换内容，而不是跳转到其他页面
+   * 点击分类导航跳转到对应的馆页面
    */
   const handleCategoryClick = (category: string) => {
-    setActiveCategory(category)
-    // 移除原有的页面跳转逻辑，改为在当前页面显示对应分类的数据
+    const routes: Record<string, string> = {
+      '首页': '#/memorial',
+      '陵园': '#/memorial',  // 陵园暂时跳转首页
+      '名人馆': '#/memorial/celebrity',
+      '伟人馆': '#/memorial/great-person',
+      '英雄馆': '#/memorial/hero',
+      '事件馆': '#/memorial/event',
+      '院士馆': '#/memorial/academician'
+    }
+    const targetRoute = routes[category]
+    if (targetRoute && window.location.hash !== targetRoute) {
+      window.location.hash = targetRoute
+    } else if (category === '首页' || category === '陵园') {
+      // 当前已在首页，只更新激活状态
+      setActiveCategory(category)
+    }
   }
 
   /**
@@ -428,6 +541,42 @@ const HomePage: React.FC = () => {
               创建家族祠堂供奉先祖
             </Button>
           </div>
+        </div>
+
+        {/* 最新纪念馆 */}
+        <div className="section">
+          <div className="section-header">
+            <h3 className="section-title">最新纪念馆</h3>
+            <Button type="text" className="refresh-btn" onClick={loadLatestMemorial}>
+              刷新 🔄
+            </Button>
+          </div>
+
+          {latestLoading ? (
+            <div style={{ textAlign: 'center', padding: '32px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 12, color: '#666' }}>正在获取最新纪念馆...</p>
+            </div>
+          ) : latestMemorial ? (
+            <div className="latest-memorial-card clickable" onClick={handleLatestMemorialClick}>
+              <img src={latestMemorial.avatar} alt={latestMemorial.name} className="latest-memorial-image" />
+              <div className="latest-memorial-info">
+                <div className="latest-memorial-title">
+                  <h4>{latestMemorial.name}</h4>
+                  <Tag color="purple">{latestMemorial.categoryName}</Tag>
+                </div>
+                <p>创建者：{formatAddressShort(latestMemorial.owner)}</p>
+                <div className="latest-memorial-meta">
+                  <span>区块 #{latestMemorial.createdBlock}</span>
+                  <span>{formatCreatedTime(latestMemorial.createdAt)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '32px', color: '#666' }}>
+              <p>暂无纪念馆数据，请稍后重试</p>
+            </div>
+          )}
         </div>
 
         {/* 公众纪念馆 */}

@@ -1,0 +1,157 @@
+/**
+ * 场景标签栏样式
+ *
+ * 创建日期：2025-11-28
+ * 版本：v4.0
+ */
+
+/* ==================== 主容器 ==================== */
+.scene-tab-bar {
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.scene-tab-bar-inner {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scene-tab-bar-inner::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==================== 加载状态 ==================== */
+.scene-tab-bar-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #999;
+}
+
+.scene-tab-bar-loading .loading-text {
+  font-size: 12px;
+}
+
+/* ==================== 错误状态 ==================== */
+.scene-tab-bar-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-tab-bar-error .error-text {
+  font-size: 12px;
+  color: #ff4d4f;
+}
+
+/* ==================== 空状态 ==================== */
+.scene-tab-bar-empty {
+  padding: 8px;
+}
+
+.scene-empty {
+  margin: 0;
+}
+
+.scene-empty .ant-empty-image {
+  height: 32px;
+  margin-bottom: 4px;
+}
+
+.scene-empty .ant-empty-description {
+  font-size: 12px;
+  color: #999;
+}
+
+/* ==================== 场景标签 ==================== */
+.scene-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.scene-tag:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.scene-tag:active {
+  transform: translateY(0);
+}
+
+.scene-tag-selected {
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.scene-tag-icon {
+  font-size: 14px;
+}
+
+.scene-tag-text {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==================== 提示框 ==================== */
+.scene-tooltip {
+  text-align: center;
+}
+
+.scene-tooltip-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.scene-tooltip-count {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.scene-tooltip-expiry {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 4px;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 360px) {
+  .scene-tab-bar {
+    padding: 6px 8px;
+  }
+
+  .scene-tag {
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+
+  .scene-tag-text {
+    max-width: 60px;
+  }
+}
+
+/* ==================== 触控优化 ==================== */
+@media (hover: none) and (pointer: coarse) {
+  .scene-tag:hover {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scene-tag:active {
+    opacity: 0.85;
+    transform: scale(0.98);
+  }
+}

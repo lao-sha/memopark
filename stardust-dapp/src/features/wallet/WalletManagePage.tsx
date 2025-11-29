@@ -4,8 +4,8 @@ import {
   CopyOutlined,
   SettingOutlined,
   SyncOutlined,
-  SwapOutlined,
-  QrcodeOutlined,
+  PlusCircleOutlined,
+  ImportOutlined,
   SwapRightOutlined,
 } from '@ant-design/icons';
 import { getCurrentAddress, getAlias, loadAllKeystores, type LocalKeystore } from '../../lib/keystore';
@@ -301,7 +301,7 @@ const WalletManagePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 转账和收款按钮 */}
+      {/* 创建钱包和导入钱包按钮 */}
       <div
         style={{
           padding: '0 16px 24px',
@@ -309,11 +309,11 @@ const WalletManagePage: React.FC = () => {
           gap: '16px',
         }}
       >
-        {/* 转账按钮 */}
+        {/* 创建钱包按钮 */}
         <button
           onClick={() => {
-            message.info('跳转到转账页面');
-            window.location.hash = '#/transfer';
+            // 跳转到创建钱包页面
+            window.location.hash = '#/wallet/create';
           }}
           style={{
             flex: 1,
@@ -334,22 +334,22 @@ const WalletManagePage: React.FC = () => {
               width: '48px',
               height: '48px',
               borderRadius: '50%',
-              background: '#f0f0f0',
+              background: '#e6f7ff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <SwapOutlined style={{ fontSize: '24px', color: '#262626' }} />
+            <PlusCircleOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
           </div>
-          <Text style={{ fontSize: '14px', color: '#262626' }}>转账</Text>
+          <Text style={{ fontSize: '14px', color: '#262626' }}>创建钱包</Text>
         </button>
 
-        {/* 收款按钮 */}
+        {/* 导入钱包按钮 */}
         <button
           onClick={() => {
-            message.info('显示收款二维码');
-            // TODO: 显示收款二维码弹窗
+            // 跳转到恢复钱包页面
+            window.location.hash = '#/wallet/restore';
           }}
           style={{
             flex: 1,
@@ -370,15 +370,15 @@ const WalletManagePage: React.FC = () => {
               width: '48px',
               height: '48px',
               borderRadius: '50%',
-              background: '#f0f0f0',
+              background: '#fff7e6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <QrcodeOutlined style={{ fontSize: '24px', color: '#262626' }} />
+            <ImportOutlined style={{ fontSize: '24px', color: '#fa8c16' }} />
           </div>
-          <Text style={{ fontSize: '14px', color: '#262626' }}>收款</Text>
+          <Text style={{ fontSize: '14px', color: '#262626' }}>导入钱包</Text>
         </button>
       </div>
 

@@ -29,6 +29,9 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/memorial/event', component: lazy(() => import('./features/memorial/EventHallPage')) },  // 🆕 事件馆页面
   { match: h => h === '#/memorial/academician', component: lazy(() => import('./features/memorial/AcademicianHallPage')) },  // 🆕 院士馆页面
   { match: h => h === '#/memorial/my', component: lazy(() => import('./features/memorial/MyMemorialPage')) },  // 🆕 我的纪念馆页面
+  { match: h => h === '#/memorial/my-created', component: lazy(() => import('./features/memorial/MyCreatedMemorialsPage')) },  // 🆕 我创建的纪念馆列表
+  { match: h => h === '#/memorial/family', component: lazy(() => import('./features/memorial/MyCreatedMemorialsPage')) },  // 🆕 亲友团的馆（暂用同一页面）
+  { match: h => h === '#/memorial/followed', component: lazy(() => import('./features/memorial/MyCreatedMemorialsPage')) },  // 🆕 关注的馆（暂用同一页面）
   { match: h => h === '#/transfer', component: lazy(() => import('./features/ledger/TransferPage')) },  // 🆕 转账页面
   { match: h => h.startsWith('#/memorial/comprehensive'), component: lazy(() => import('./features/memorial/MemorialComprehensive')) },  // 🆕 纪念馆综合页面（云上思念风格）
   { match: h => h.startsWith('#/memorial/'), component: lazy(() => import('./features/memorial/MemorialHallDetailPage')) },  // 🆕 纪念馆详情页
@@ -75,14 +78,20 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/membership/purchase', component: lazy(() => import('./features/membership/MembershipPurchasePage')) },
   { match: h => h === '#/membership/analytics', component: lazy(() => import('./features/membership/MembershipAnalyticsPage')) },
   { match: h => h === '#/storage-treasury', component: lazy(() => import('./features/storage-treasury/StorageTreasuryDashboard')) },
-  { match: h => h === '#/chat', component: lazy(() => import('./features/chat/OneOnOneChatPage')) },  // 🆕 一对一聊天
   { match: h => h === '#/chat/blocked', component: lazy(() => import('./features/chat/BlockedUsersPage')) },  // 🆕 聊天黑名单管理
   { match: h => h === '#/chat/cache', component: lazy(() => import('./features/chat/CacheManagement')) },  // 🆕 聊天缓存管理
+  { match: h => h === '#/chat/privacy', component: lazy(() => import('./features/chat/ChatPrivacySettingsPage')) },  // 🆕 聊天隐私设置
+  {
+    match: h => h === '#/chat' || (h.startsWith('#/chat/') && h !== '#/chat/blocked' && h !== '#/chat/cache' && h !== '#/chat/privacy'),
+    component: lazy(() => import('./features/chat/OneOnOneChatPage'))
+  },  // 🆕 一对一聊天（支持携带会话ID）
   { match: h => h === '#/smart-chat/demo', component: lazy(() => import('./features/smart-chat/SmartGroupChatPage')) },  // 🆕 聊天演示页面
   { match: h => h.startsWith('#/smart-chat'), component: lazy(() => import('./features/smart-chat/SmartChatApp')) },  // 🆕 Stardust群聊系统
   { match: h => h === '#/ai-trader', component: lazy(() => import('./features/ai-trader/AIStrategyDemo')) },  // 🆕 AI 交易策略
   { match: h => h === '#/profile', component: lazy(() => import('./features/profile/MyWalletPage')) },  // 🆕 我的钱包（个人中心）
   { match: h => h === '#/wallet', component: lazy(() => import('./features/wallet/WalletManagePage')) },  // 🆕 钱包管理
+  { match: h => h === '#/wallet/create', component: lazy(() => import('./features/auth/CreateWalletPage')) },  // 🆕 创建钱包（独立路由）
+  { match: h => h === '#/wallet/restore', component: lazy(() => import('./features/auth/RestoreWalletPage')) },  // 🆕 导入/恢复钱包（独立路由）
   { match: h => h === '#/contacts', component: lazy(() => import('./features/contacts/ContactsPage')) },  // 🆕 通讯录管理
 ];
 

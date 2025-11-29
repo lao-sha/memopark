@@ -1,71 +1,59 @@
-#!/usr/bin/env node
-
-/**
- * 测试查询链上逝者数据和分类
- */
-
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
-async function testQuery() {
-  console.log('🔗 正在连接到Substrate节点...');
-
-  const wsEndpoint = 'ws://127.0.0.1:9944';
-  const provider = new WsProvider(wsEndpoint);
-
-  try {
-    const api = await ApiPromise.create({ provider });
-    console.log(`✅ 已连接到链：${await api.rpc.system.chain()}`);
-
-    // 查询所有逝者
-    const entries = await api.query.deceased.deceasedOf.entries();
-    console.log(`\n📊 链上逝者总数: ${entries.length}`);
-
-    if (entries.length === 0) {
-      console.log('❌ 链上暂无逝者数据，请先运行 create-test-deceased.js 创建测试数据');
-      process.exit(1);
+async function main() {
+  const provider = new WsProvider('ws://127.0.0.1:9944');
+  const api = await ApiPromise.create({ provider });
+  
+  console.log('API 已连接');
+  console.log('可用的 pallets:', Object.keys(api.query));
+  
+  // 检查 deceased 模块
+  if (api.query.deceased) {
+    console.log('\ndeceased 模块存在');
+    console.log('deceased 方法:', Object.keys(api.query.deceased));
+    
+    if (api.query.deceased.nextDeceasedId) {
+      const nextId = await api.query.deceased.nextDeceasedId();
+      console.log('\nnextDeceasedId:', nextId.toString());
+      console.log('（注：已改为随机ID，此值不再递增）');
     }
 
-    console.log('\n📋 逝者列表：');
-    console.log('═'.repeat(100));
+    // 使用 entries() 查询所有逝者（支持随机ID）
+    if (api.query.deceased.deceasedOf) {
+      console.log('\n使用 entries() 查询所有逝者...');
+      const entries = await api.query.deceased.deceasedOf.entries();
+      console.log(`找到 ${entries.length} 条逝者记录`);
 
-    for (const [key, value] of entries) {
-      if (value.isNone) continue;
+      // 按创建时间排序，显示最新的5条
+      const sortedEntries = entries
+        .filter(([_, value]) => value.isSome)
+        .map(([key, value]) => {
+          const d = value.unwrap();
+          return {
+            id: key.args[0].toString(),
+            created: d.created?.toNumber?.() || 0,
+            data: d.toHuman()
+          };
+        })
+        .sort((a, b) => b.created - a.created);
 
-      const id = key.args[0].toNumber();
-      const data = value.unwrap();
-      const fullName = new TextDecoder().decode(new Uint8Array(data.fullName));
-
-      // 查询分类
-      const categoryResult = await api.query.deceased.categoryOf(id);
-      console.log(`\nID: ${id}`);
-      console.log(`姓名: ${fullName}`);
-      console.log(`分类对象:`, categoryResult.toJSON());
-      console.log(`isOrdinary: ${categoryResult.isOrdinary}`);
-      console.log(`isHistoricalFigure: ${categoryResult.isHistoricalFigure}`);
-      console.log(`isMartyr: ${categoryResult.isMartyr}`);
-      console.log(`isHero: ${categoryResult.isHero}`);
-
-      // 解码分类
-      let category = 'Unknown';
-      if (categoryResult.isOrdinary) category = 'Ordinary';
-      else if (categoryResult.isHistoricalFigure) category = 'HistoricalFigure';
-      else if (categoryResult.isMartyr) category = 'Martyr';
-      else if (categoryResult.isHero) category = 'Hero';
-      else if (categoryResult.isPublicFigure) category = 'PublicFigure';
-      else if (categoryResult.isReligiousFigure) category = 'ReligiousFigure';
-      else if (categoryResult.isEventHall) category = 'EventHall';
-
-      console.log(`解码后分类: ${category}`);
-      console.log('─'.repeat(100));
+      console.log('\n按创建时间排序，最新的5条:');
+      for (const entry of sortedEntries.slice(0, 5)) {
+        console.log(`\n逝者 #${entry.id} (区块 ${entry.created}):`, JSON.stringify(entry.data, null, 2));
+      }
     }
-
-    console.log('\n✅ 查询完成');
-
-  } catch (error) {
-    console.error('❌ 查询失败：', error.message);
-  } finally {
-    process.exit(0);
+  } else {
+    console.log('\ndeceased 模块不存在！');
+    // 尝试其他可能的名称
+    const possibleNames = ['memoDeceased', 'memo_deceased', 'Deceased'];
+    for (const name of possibleNames) {
+      if (api.query[name]) {
+        console.log(`找到模块: ${name}`);
+      }
+    }
   }
+  
+  await api.disconnect();
 }
 
-testQuery().catch(console.error);
+main().catch(console.error);
