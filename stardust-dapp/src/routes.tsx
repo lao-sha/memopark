@@ -93,6 +93,23 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/wallet/create', component: lazy(() => import('./features/auth/CreateWalletPage')) },  // 🆕 创建钱包（独立路由）
   { match: h => h === '#/wallet/restore', component: lazy(() => import('./features/auth/RestoreWalletPage')) },  // 🆕 导入/恢复钱包（独立路由）
   { match: h => h === '#/contacts', component: lazy(() => import('./features/contacts/ContactsPage')) },  // 🆕 通讯录管理
+  // 梅花易数模块
+  { match: h => h === '#/meihua', component: lazy(() => import('./features/meihua/DivinationPage')) },  // 🆕 梅花易数起卦页面
+  { match: h => h === '#/meihua/list', component: lazy(() => import('./features/meihua/HexagramListPage')) },  // 🆕 我的卦象列表
+  { match: h => h === '#/meihua/market', component: lazy(() => import('./features/meihua/MarketplacePage')) },  // 🆕 占卜服务市场
+  { match: h => h === '#/meihua/nft', component: lazy(() => import('./features/meihua/NftMarketPage')) },  // 🆕 卦象 NFT 市场
+  { match: h => h === '#/meihua/my-nft', component: lazy(() => import('./features/meihua/MyNftPage')) },  // 🆕 我的 NFT 管理
+  { match: h => h.startsWith('#/meihua/ai/'), component: lazy(() => import('./features/meihua/AiInterpretationPage')) },  // 🆕 AI 解卦服务
+  { match: h => h.startsWith('#/meihua/hexagram/'), component: lazy(() => import('./features/meihua/HexagramDetailPage')) },  // 🆕 卦象详情页
+
+  // 🆕 通用占卜系统（支持多种玄学体系）
+  { match: h => h === '#/divination', component: lazy(() => import('./features/divination/DivinationEntryPage')) },  // 占卜入口页面
+  { match: h => h === '#/divination/market' || h.startsWith('#/divination/market?'), component: lazy(() => import('./features/divination/DivinationMarketPage')) },  // 通用服务市场
+  { match: h => h === '#/divination/nft' || h.startsWith('#/divination/nft?'), component: lazy(() => import('./features/divination/DivinationNftMarketPage')) },  // 通用 NFT 市场
+  { match: h => h === '#/divination/my-nft', component: lazy(() => import('./features/divination/MyDivinationNftPage')) },  // 我的占卜 NFT
+
+  // 🆕 八字命理模块
+  { match: h => h === '#/bazi', component: lazy(() => import('./features/bazi/BaziPage')) },  // 八字排盘页面
 ];
 
 // UI 组件展示页仅在开发模式暴露

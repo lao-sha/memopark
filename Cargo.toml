@@ -7,7 +7,8 @@ edition = "2021"
 
 [workspace]
 members = [
-    "pallets/bazi-chart",
+    # 🆕 2025-12-01 重构：玄学模块统一放入 pallets/divination 目录
+    "pallets/divination/bazi",
     "node",
     "pallets/template",
     "pallets/identity",
@@ -79,6 +80,24 @@ members = [
 
     # 🆕 2025-01-25: 共享媒体工具库
     "stardust-media-common",   # 通用媒体验证、哈希、IPFS工具库
+
+    # 🆕 2025-12-01 重构：玄学模块统一放入 pallets/divination 目录
+    "pallets/divination/meihua",       # 梅花易数排盘
+    # 🗑️ 2025-12-01 已删除：meihua-ai/market/nft 功能已抽离到通用模块 divination/ai/market/nft
+
+    # 玄学公共模块
+    "pallets/divination/common",       # 通用类型、trait 和工具函数
+    "pallets/divination/nft",          # 通用 NFT 铸造、交易、收藏
+    "pallets/divination/ai",           # 通用 AI 解读模块
+    "pallets/divination/market",       # 通用服务市场模块
+
+    # 其他玄学排盘系统
+    "pallets/divination/tarot",        # 塔罗牌链上占卜
+    "pallets/divination/qimen",        # 奇门遁甲链上排盘
+    "pallets/divination/ziwei",        # 紫微斗数链上排盘
+    "pallets/divination/liuyao",       # 六爻纳甲链上排盘
+    "pallets/divination/daliuren",     # 大六壬式盘链上排盘
+    "pallets/divination/xiaoliuren",   # 小六壬掐指速算链上排盘
 
     "runtime",
 ]

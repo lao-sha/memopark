@@ -97,8 +97,27 @@ pallet-credit = { path = "../pallets/credit", default-features = false }
 # pallet-deposits = { path = "../pallets/deposits", default-features = false }
 pallet-storage-treasury = { path = "../pallets/storage-treasury", default-features = false }
 
-# 🆕 2025-11-25 八字排盘系统（中国传统命理计算）
-pallet-bazi-chart = { path = "../pallets/bazi-chart", default-features = false }
+# 🆕 2025-12-01 重构：玄学模块统一放入 pallets/divination 目录
+# 八字排盘系统（中国传统命理计算）
+pallet-bazi-chart = { path = "../pallets/divination/bazi", default-features = false }
+
+# 梅花易数系统（区块链占卜系统）
+pallet-meihua = { path = "../pallets/divination/meihua", default-features = false }
+# 🗑️ 2025-12-01 已删除：meihua-ai/market/nft 已抽离到通用模块
+
+# 通用占卜系统（支持多种玄学体系）
+pallet-divination-common = { path = "../pallets/divination/common", default-features = false }
+pallet-divination-nft = { path = "../pallets/divination/nft", default-features = false }
+pallet-divination-ai = { path = "../pallets/divination/ai", default-features = false }
+pallet-divination-market = { path = "../pallets/divination/market", default-features = false }
+
+# 其他玄学排盘系统
+pallet-tarot = { path = "../pallets/divination/tarot", default-features = false }
+pallet-qimen = { path = "../pallets/divination/qimen", default-features = false }
+pallet-ziwei = { path = "../pallets/divination/ziwei", default-features = false }
+pallet-liuyao = { path = "../pallets/divination/liuyao", default-features = false }
+pallet-daliuren = { path = "../pallets/divination/daliuren", default-features = false }
+pallet-xiaoliuren = { path = "../pallets/divination/xiaoliuren", default-features = false }
 
 # 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
 # pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
@@ -201,6 +220,29 @@ std = [
     # "pallet-deposits/std",  # [已归档 2025-11-03]
     "pallet-storage-treasury/std",
 	"pallet-bazi-chart/std",  # 🆕 2025-11-25：八字排盘系统
+	# 🆕 2025-11-29 梅花易数系统
+	"pallet-meihua/std",  # 核心排盘
+	# 🗑️ 2025-12-01 已删除：meihua-ai/market/nft 已抽离到通用模块
+	# "pallet-meihua-ai/std",  # AI解卦
+	# "pallet-meihua-market/std",  # 服务市场
+	# "pallet-meihua-nft/std",  # 卦象NFT
+	# 🆕 2025-11-29 通用占卜系统
+	"pallet-divination-common/std",  # 公共类型与trait
+	"pallet-divination-nft/std",  # 通用占卜NFT
+	"pallet-divination-ai/std",  # 通用AI解读
+	"pallet-divination-market/std",  # 通用服务市场
+	# 🆕 2025-11-30 塔罗牌排盘系统
+	"pallet-tarot/std",  # 78张塔罗牌链上占卜
+	# 🆕 2025-12-01 奇门遁甲排盘系统
+	"pallet-qimen/std",  # 奇门遁甲链上排盘
+	# 🆕 2025-12-01 紫微斗数排盘系统
+	"pallet-ziwei/std",  # 紫微斗数链上排盘
+	# 🆕 2025-12-01 六爻排盘系统
+	"pallet-liuyao/std",  # 六爻纳甲链上排盘
+	# 🆕 2025-12-01 大六壬排盘系统
+	"pallet-daliuren/std",  # 大六壬链上排盘
+	# 🆕 2025-12-01 小六壬排盘系统
+	"pallet-xiaoliuren/std",  # 小六壬掐指速算链上排盘
     # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
     "pallet-chat/std",
 	"pallet-social/std",  # 🆕 2025-11-17: 多类型目标关注系统

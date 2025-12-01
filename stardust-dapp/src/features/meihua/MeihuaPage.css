@@ -1,0 +1,618 @@
+/**
+ * 梅花易数模块样式
+ */
+
+/* ==================== 通用样式 ==================== */
+
+.meihua-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.meihua-page.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+}
+
+/* ==================== 起卦页面 ==================== */
+
+.divination-card {
+  border-radius: 12px;
+}
+
+.page-title {
+  text-align: center;
+  margin-bottom: 4px !important;
+}
+
+.page-subtitle {
+  display: block;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.divination-panel {
+  padding: 16px 0;
+}
+
+.panel-description {
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 16px !important;
+}
+
+.time-info {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.number-inputs {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 24px;
+}
+
+.number-input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.divination-tips {
+  background: #fafafa;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.divination-tips ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.divination-tips li {
+  margin-bottom: 8px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* ==================== 卦象详情页 ==================== */
+
+.hexagram-header-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.hexagram-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.hexagram-header h4 {
+  margin: 0 !important;
+}
+
+.hexagram-display-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.hexagram-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+
+.hexagram-title {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 8px;
+}
+
+.hexagram-symbol {
+  font-size: 32px;
+  margin-bottom: 4px;
+}
+
+.hexagram-name {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.hexagram-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.hexagram-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+}
+
+.yang-line {
+  width: 60px;
+  height: 8px;
+  background: #333;
+  border-radius: 2px;
+}
+
+.yin-half {
+  width: 26px;
+  height: 8px;
+  background: #333;
+  border-radius: 2px;
+}
+
+.yin-gap {
+  width: 8px;
+}
+
+.hexagram-line.changing .yang-line,
+.hexagram-line.changing .yin-half {
+  background: #ff4d4f;
+}
+
+.changing-marker {
+  position: absolute;
+  right: -24px;
+  font-size: 12px;
+  color: #ff4d4f;
+}
+
+.trigram-info {
+  width: 100%;
+  font-size: 12px;
+}
+
+.trigram-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.trigram-row:last-child {
+  border-bottom: none;
+}
+
+.arrow-col {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.transform-arrow {
+  font-size: 24px;
+  color: #1890ff;
+}
+
+.analysis-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.analysis-hint {
+  background: #f6ffed;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 0 !important;
+}
+
+.service-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.service-hint {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+/* ==================== 卦象列表页 ==================== */
+
+.list-header-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.list-header h4 {
+  margin: 0 !important;
+}
+
+.stats-row {
+  margin-bottom: 12px;
+}
+
+.filter-row {
+  display: flex;
+  justify-content: center;
+}
+
+.hexagram-list-card {
+  border-radius: 12px;
+}
+
+.hexagram-list-item {
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.hexagram-list-item:hover {
+  background: #fafafa;
+}
+
+.hexagram-avatar {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+}
+
+.hexagram-avatar .hexagram-symbol {
+  font-size: 20px;
+  color: white;
+}
+
+.hexagram-item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hexagram-item-title .hexagram-name {
+  font-size: 16px;
+}
+
+.bottom-links {
+  padding: 16px 0;
+}
+
+/* ==================== AI 解卦页面 ==================== */
+
+.hexagram-info-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.hexagram-brief {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hexagram-brief .hexagram-symbol {
+  font-size: 28px;
+}
+
+.hexagram-brief .hexagram-name {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.type-selection-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.interpretation-type-group {
+  width: 100%;
+}
+
+.interpretation-type-option {
+  display: block;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.interpretation-type-option:hover {
+  border-color: #1890ff;
+}
+
+.interpretation-type-option.ant-radio-wrapper-checked {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.type-option-content {
+  margin-left: 8px;
+}
+
+.type-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.type-icon {
+  font-size: 16px;
+  color: #1890ff;
+}
+
+.type-name {
+  font-weight: 500;
+}
+
+.type-description {
+  font-size: 12px;
+  display: block;
+}
+
+.fee-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.fee-summary {
+  margin-bottom: 16px;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.fee-row:last-child {
+  border-bottom: none;
+}
+
+.fee-hint {
+  text-align: center;
+  margin-top: 12px;
+  margin-bottom: 0 !important;
+}
+
+.processing-card {
+  border-radius: 12px;
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.processing-hint {
+  margin-top: 24px;
+}
+
+.result-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.interpretation-content-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* ==================== 服务市场页面 ==================== */
+
+.market-header-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.market-header-card h4 {
+  margin-bottom: 4px !important;
+}
+
+.search-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.providers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider-card {
+  border-radius: 12px;
+}
+
+.provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.provider-info {
+  display: flex;
+  gap: 12px;
+}
+
+.provider-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-name {
+  font-size: 16px;
+}
+
+.provider-stats {
+  display: flex;
+  align-items: center;
+}
+
+.provider-metrics {
+  display: flex;
+  gap: 16px;
+}
+
+.provider-metrics .ant-statistic-title {
+  font-size: 12px;
+}
+
+.provider-bio {
+  margin: 12px 0 8px 0 !important;
+}
+
+.provider-specialties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.packages-section {
+  margin-top: 8px;
+}
+
+.toggle-button {
+  margin-top: 8px;
+}
+
+.package-card {
+  border-radius: 8px;
+}
+
+.package-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.package-description {
+  margin-bottom: 8px !important;
+  font-size: 12px;
+}
+
+.package-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hint-card {
+  border-radius: 12px;
+  margin-top: 12px;
+}
+
+.hint-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ==================== 下单弹窗 ==================== */
+
+.order-confirm-content {
+  padding: 8px 0;
+}
+
+.order-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.order-info-row:last-child {
+  border-bottom: none;
+}
+
+.order-info-row.price-row {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 2px solid #f0f0f0;
+  border-bottom: none;
+}
+
+.question-input {
+  margin-top: 8px;
+}
+
+.urgent-option {
+  background: #fff2f0;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+/* ==================== 响应式调整 ==================== */
+
+@media (max-width: 480px) {
+  .meihua-page {
+    padding: 12px;
+  }
+
+  .provider-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .provider-metrics {
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .number-inputs {
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .hexagram-display-card .ant-row {
+    flex-direction: column;
+  }
+
+  .arrow-col {
+    transform: rotate(90deg);
+    margin: 12px 0;
+  }
+}

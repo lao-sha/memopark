@@ -3940,6 +3940,163 @@ impl pallet_bazi_chart::Config for Runtime {
     type MaxCangGan = frame_support::traits::ConstU32<3>;
 }
 
+// ========= 🆕 2025-11-29 梅花易数系统（区块链占卜）=========
+
+/// 函数级详细中文注释：梅花易数排盘 Pallet 配置
+///
+/// ### 功能定位
+/// - 实现区块链上的梅花易数排盘系统
+/// - 支持时间起卦、双数起卦、随机起卦、手动起卦
+/// - 卦象存储与查询、AI 解卦请求
+///
+/// ### 配置参数
+/// - **MaxUserHexagrams**: 每用户最大卦象数（100）
+/// - **MaxPublicHexagrams**: 公开卦象列表上限（1000）
+/// - **DailyFreeDivinations**: 每日免费起卦次数（3）
+/// - **MaxDailyDivinations**: 每日最大起卦次数（20）
+/// - **AiInterpretationFee**: AI 解卦费用（10 DUST）
+impl pallet_meihua::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxUserHexagrams = frame_support::traits::ConstU32<100>;
+    type MaxPublicHexagrams = frame_support::traits::ConstU32<1000>;
+    type DailyFreeDivinations = frame_support::traits::ConstU32<3>;
+    type MaxDailyDivinations = frame_support::traits::ConstU32<20>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+/// 函数级详细中文注释：梅花易数 AI 解卦 Pallet 配置
+///
+/// ### 功能定位
+/// - 基于链下预言机的 AI 智能解卦系统
+/// - 预言机节点注册与管理
+/// - 解读结果提交与存储
+///
+/// ### 配置参数
+/// - **BaseInterpretationFee**: 基础解读费用（5 DUST）
+/// - **MinOracleStake**: 预言机最低质押（1000 DUST）
+// 🗑️ 2025-12-01 已删除：pallet-meihua-ai/market/nft 功能已抽离到通用模块 pallet-divination-ai/market/nft
+// /// - **DisputeDeposit**: 争议押金（50 DUST）
+// /// - **RequestTimeout**: 请求超时（1小时 = 600块）
+// /// - **ProcessingTimeout**: 处理超时（24小时 = 14400块）
+// /// - **DisputePeriod**: 争议期限（7天 = 100800块）
+// impl pallet_meihua_ai::Config for Runtime {
+//     type Currency = Balances;
+//     type Randomness = SimpleRandomness;
+//     type BaseInterpretationFee = frame_support::traits::ConstU128<{ 5 * UNIT }>;
+//     type MinOracleStake = frame_support::traits::ConstU128<{ 1000 * UNIT }>;
+//     type DisputeDeposit = frame_support::traits::ConstU128<{ 50 * UNIT }>;
+//     type RequestTimeout = frame_support::traits::ConstU32<600>;
+//     type ProcessingTimeout = frame_support::traits::ConstU32<14400>;
+//     type DisputePeriod = frame_support::traits::ConstU32<100800>;
+//     type MaxCidLength = frame_support::traits::ConstU32<64>;
+//     type MaxOracles = frame_support::traits::ConstU32<100>;
+//     type TreasuryAccount = TreasuryAccount;
+//     type ArbitratorOrigin = frame_system::EnsureRoot<AccountId>;
+//     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+// }
+//
+// /// 函数级详细中文注释：梅花易数占卜服务市场 Pallet 配置
+// ///
+// /// ### 功能定位
+// /// - 去中心化的占卜服务交易市场
+// /// - 服务提供者注册与管理
+// /// - 订单创建与流转、评价与信誉系统
+// ///
+// /// ### 配置参数
+// /// - **MinDeposit**: 服务提供者最小保证金（100 DUST）
+// /// - **MinServicePrice**: 最小服务价格（1 DUST）
+// /// - **OrderTimeout**: 订单超时（48小时 = 28800块）
+// /// - **AcceptTimeout**: 接单超时（2小时 = 1200块）
+// /// - **ReviewPeriod**: 评价期限（7天 = 100800块）
+// /// - **WithdrawalCooldown**: 提现冷却期（24小时 = 14400块）
+// impl pallet_meihua_market::Config for Runtime {
+//     type Currency = Balances;
+//     type MinDeposit = frame_support::traits::ConstU128<{ 100 * UNIT }>;
+//     type MinServicePrice = frame_support::traits::ConstU128<{ 1 * UNIT }>;
+//     type OrderTimeout = frame_support::traits::ConstU32<28800>;
+//     type AcceptTimeout = frame_support::traits::ConstU32<1200>;
+//     type ReviewPeriod = frame_support::traits::ConstU32<100800>;
+//     type WithdrawalCooldown = frame_support::traits::ConstU32<14400>;
+//     type MaxNameLength = frame_support::traits::ConstU32<64>;
+//     type MaxBioLength = frame_support::traits::ConstU32<256>;
+//     type MaxDescriptionLength = frame_support::traits::ConstU32<1024>;
+//     type MaxCidLength = frame_support::traits::ConstU32<64>;
+//     type MaxPackagesPerProvider = frame_support::traits::ConstU32<10>;
+//     type MaxFollowUpsPerOrder = frame_support::traits::ConstU32<5>;
+//     type PlatformAccount = TreasuryAccount;
+//     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+// }
+//
+// /// 函数级详细中文注释：梅花易数 NFT Pallet 配置
+// ///
+// /// ### 功能定位
+// /// - 卦象 NFT 铸造、交易、收藏系统
+// /// - 根据卦象特征自动判定稀有度
+// /// - 版税分配、出价机制
+// ///
+// /// ### 配置参数
+// /// - **BaseMintFee**: 基础铸造费用（10 DUST）
+// /// - **PlatformFeeRate**: 平台手续费率（2.5% = 250/10000）
+// /// - **MaxRoyaltyRate**: 最大版税比例（10% = 1000/10000）
+// /// - **OfferValidityPeriod**: 出价有效期（7天 = 100800块）
+// ///
+// /// ### HexagramProvider 实现
+// /// - 通过 pallet_meihua::Pallet 提供卦象数据查询
+// impl pallet_meihua_nft::Config for Runtime {
+//     type NftCurrency = Balances;
+//     type HexagramProvider = MeihuaHexagramProvider;
+//     type MaxNameLength = frame_support::traits::ConstU32<64>;
+//     type MaxCidLength = frame_support::traits::ConstU32<64>;
+//     type MaxCollectionsPerUser = frame_support::traits::ConstU32<100>;
+//     type MaxNftsPerCollection = frame_support::traits::ConstU32<1000>;
+//     type MaxOffersPerNft = frame_support::traits::ConstU32<100>;
+//     type BaseMintFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+//     type PlatformFeeRate = frame_support::traits::ConstU16<250>;
+//     type MaxRoyaltyRate = frame_support::traits::ConstU16<1000>;
+//     type OfferValidityPeriod = frame_support::traits::ConstU32<100800>;
+//     type PlatformAccount = TreasuryAccount;
+//     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+// }
+//
+// /// 梅花易数卦象数据提供者实现
+// ///
+// /// 连接 pallet-meihua-nft 与 pallet-meihua
+// /// 实现 HexagramProvider trait，提供卦象存在性检查、创建者查询、卦象数据查询
+// pub struct MeihuaHexagramProvider;
+//
+// impl pallet_meihua_nft::pallet::HexagramProvider<AccountId> for MeihuaHexagramProvider {
+//     /// 检查卦象是否存在
+//     fn hexagram_exists(hexagram_id: u64) -> bool {
+//         pallet_meihua::Hexagrams::<Runtime>::contains_key(hexagram_id)
+//     }
+//
+//     /// 获取卦象创建者
+//     fn hexagram_creator(hexagram_id: u64) -> Option<AccountId> {
+//         pallet_meihua::Hexagrams::<Runtime>::get(hexagram_id)
+//             .map(|divination| divination.ben_gua.diviner)
+//     }
+//
+//     /// 获取卦象数据（用于稀有度计算）
+//     fn hexagram_data(hexagram_id: u64) -> Option<pallet_meihua_nft::pallet::HexagramData> {
+//         pallet_meihua::Hexagrams::<Runtime>::get(hexagram_id).map(|divination| {
+//             // 从时间戳转换为农历日期
+//             let (lunar_month, lunar_day) = pallet_meihua::lunar::timestamp_to_lunar(divination.ben_gua.timestamp)
+//                 .map(|lunar| (lunar.month, lunar.day))
+//                 .unwrap_or((1, 1)); // 转换失败时使用默认值
+//
+//             pallet_meihua_nft::pallet::HexagramData {
+//                 upper_trigram: divination.ben_gua.shang_gua.number(),
+//                 lower_trigram: divination.ben_gua.xia_gua.number(),
+//                 lunar_month,
+//                 lunar_day,
+//             }
+//         })
+//     }
+// }
+
 // ========= 🆕 2025-11-28 Chat Permission（聊天权限系统）=========
 
 /// 函数级详细中文注释：聊天权限系统配置 v4.0
@@ -3975,5 +4132,445 @@ impl pallet_chat_permission::Config for Runtime {
     /// - 同一对用户可以有多个场景授权（如订单+做市商）
     /// - 20 个授权足够覆盖所有业务场景
     type MaxScenesPerPair = frame_support::traits::ConstU32<20>;
+}
+
+// ========= 🆕 2025-11-29 通用占卜系统配置 =========
+
+/// 组合占卜结果提供者
+///
+/// 将多个玄学系统（梅花、八字等）的查询统一路由到各自的 pallet。
+/// 这是实现 `DivinationProvider` trait 的运行时适配器。
+///
+/// ### 支持的占卜类型
+/// - Meihua（梅花易数）: 路由到 pallet-meihua
+/// - Bazi（八字命理）: 暂未实现（pallet-bazi-chart 使用 Hash 作为 ID）
+/// - 其他类型：暂未实现
+///
+/// ### 设计说明
+/// 目前主要支持梅花易数。八字命理由于存储结构不同（使用 Hash 而非 u64 作为 ID），
+/// 需要后续进行接口适配。其他玄学系统（六爻、奇门、紫微）将在后续版本中逐步支持。
+pub struct CombinedDivinationProvider;
+
+impl pallet_divination_common::DivinationProvider<AccountId> for CombinedDivinationProvider {
+    /// 检查占卜结果是否存在
+    fn result_exists(divination_type: pallet_divination_common::DivinationType, result_id: u64) -> bool {
+        match divination_type {
+            pallet_divination_common::DivinationType::Meihua => {
+                pallet_meihua::Hexagrams::<Runtime>::contains_key(result_id)
+            }
+            // 其他类型暂未实现
+            _ => false,
+        }
+    }
+
+    /// 获取占卜结果的创建者
+    fn result_creator(
+        divination_type: pallet_divination_common::DivinationType,
+        result_id: u64,
+    ) -> Option<AccountId> {
+        match divination_type {
+            pallet_divination_common::DivinationType::Meihua => {
+                pallet_meihua::Hexagrams::<Runtime>::get(result_id)
+                    .map(|h| h.ben_gua.diviner)
+            }
+            _ => None,
+        }
+    }
+
+    /// 获取稀有度计算数据
+    fn rarity_data(
+        divination_type: pallet_divination_common::DivinationType,
+        result_id: u64,
+    ) -> Option<pallet_divination_common::RarityInput> {
+        match divination_type {
+            pallet_divination_common::DivinationType::Meihua => {
+                pallet_meihua::Hexagrams::<Runtime>::get(result_id).map(|divination| {
+                    // 判断是否为纯卦（上下卦相同）
+                    let is_pure = divination.ben_gua.shang_gua == divination.ben_gua.xia_gua;
+                    // 从时间戳转换为农历日期判断特殊日期
+                    let is_special = pallet_meihua::lunar::timestamp_to_lunar(divination.ben_gua.timestamp)
+                        .map(|lunar| {
+                            // 重阳节（九月初九）或其他特殊日期
+                            (lunar.month == 9 && lunar.day == 9) ||
+                            (lunar.month == 1 && lunar.day == 1) ||  // 春节
+                            (lunar.month == 5 && lunar.day == 5)     // 端午
+                        })
+                        .unwrap_or(false);
+
+                    pallet_divination_common::RarityInput {
+                        primary_score: if is_pure { 80 } else { 30 },
+                        secondary_score: 10,
+                        is_special_date: is_special,
+                        is_special_combination: is_pure,
+                        custom_factors: [0, 0, 0, 0],
+                    }
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// 获取占卜结果摘要（用于 AI 解读）
+    fn result_summary(
+        divination_type: pallet_divination_common::DivinationType,
+        result_id: u64,
+    ) -> Option<alloc::vec::Vec<u8>> {
+        match divination_type {
+            pallet_divination_common::DivinationType::Meihua => {
+                pallet_meihua::Hexagrams::<Runtime>::get(result_id).map(|divination| {
+                    // 生成梅花卦象摘要
+                    // bian_gua 是 (上卦, 下卦) 元组
+                    let summary = alloc::format!(
+                        "Meihua Hexagram: Ben={:?}/{:?}, Bian={:?}/{:?}, Dong={}",
+                        divination.ben_gua.shang_gua,
+                        divination.ben_gua.xia_gua,
+                        divination.bian_gua.0,  // 变卦上卦
+                        divination.bian_gua.1,  // 变卦下卦
+                        divination.ben_gua.dong_yao
+                    );
+                    summary.into_bytes()
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// 检查是否可以铸造为 NFT
+    ///
+    /// 注意：pallet-meihua 的 FullDivination 结构体中没有 is_nfted 字段，
+    /// 需要通过 pallet-divination-nft 的 ResultNftMapping 来检查是否已铸造。
+    /// 这里简化处理：只检查卦象是否存在，实际的铸造检查由 NFT 模块负责。
+    fn is_nftable(divination_type: pallet_divination_common::DivinationType, result_id: u64) -> bool {
+        match divination_type {
+            pallet_divination_common::DivinationType::Meihua => {
+                pallet_meihua::Hexagrams::<Runtime>::contains_key(result_id)
+            }
+            _ => false,
+        }
+    }
+
+    /// 标记为已铸造 NFT
+    ///
+    /// 注意：由于 pallet-meihua 的 FullDivination 结构体中没有 is_nfted 字段，
+    /// 此方法为空操作。实际的 NFT 铸造记录由 pallet-divination-nft 的 ResultNftMapping 管理。
+    fn mark_as_nfted(_divination_type: pallet_divination_common::DivinationType, _result_id: u64) {
+        // 空操作 - NFT 铸造状态由 pallet-divination-nft 自行管理
+    }
+}
+
+/// 函数级详细中文注释：通用占卜 NFT Pallet 配置
+///
+/// ### 功能定位
+/// - 支持多种占卜类型的 NFT 铸造与交易
+/// - 基于占卜结果自动计算稀有度
+/// - 版税分配、出价机制
+///
+/// ### 配置参数
+/// - **BaseMintFee**: 基础铸造费用（10 DUST）
+/// - **PlatformFeeRate**: 平台手续费率（2.5% = 250/10000）
+/// - **MaxRoyaltyRate**: 最大版税比例（10% = 1000/10000）
+/// - **OfferValidityPeriod**: 出价有效期（7天 = 100800块）
+impl pallet_divination_nft::Config for Runtime {
+    type NftCurrency = Balances;
+    type DivinationProvider = CombinedDivinationProvider;
+    type MaxNameLength = frame_support::traits::ConstU32<64>;
+    type MaxCidLength = frame_support::traits::ConstU32<64>;
+    type MaxCollectionsPerUser = frame_support::traits::ConstU32<100>;
+    type MaxNftsPerCollection = frame_support::traits::ConstU32<1000>;
+    type MaxOffersPerNft = frame_support::traits::ConstU32<100>;
+    type BaseMintFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type PlatformFeeRate = frame_support::traits::ConstU16<250>;
+    type MaxRoyaltyRate = frame_support::traits::ConstU16<1000>;
+    type OfferValidityPeriod = frame_support::traits::ConstU32<100800>;
+    type PlatformAccount = TreasuryAccount;
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+/// 函数级详细中文注释：通用占卜 AI 解读 Pallet 配置
+///
+/// ### 功能定位
+/// - 基于预言机网络的多类型 AI 智能解读
+/// - 支持不同占卜类型的专业解读
+/// - 质量评估与争议处理
+///
+/// ### 配置参数
+/// - **BaseInterpretationFee**: 基础解读费用（5 DUST）
+/// - **MinOracleStake**: 预言机最低质押（100 DUST）
+/// - **DisputeDeposit**: 争议押金（10 DUST）
+/// - **RequestTimeout**: 请求超时（1小时 = 600块）
+/// - **ProcessingTimeout**: 处理超时（4小时 = 2400块）
+/// - **DisputePeriod**: 争议期限（24小时 = 14400块）
+impl pallet_divination_ai::Config for Runtime {
+    type AiCurrency = Balances;
+    type DivinationProvider = CombinedDivinationProvider;
+    type BaseInterpretationFee = frame_support::traits::ConstU128<{ 5 * UNIT }>;
+    type MinOracleStake = frame_support::traits::ConstU128<{ 100 * UNIT }>;
+    type DisputeDeposit = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type RequestTimeout = frame_support::traits::ConstU32<600>;
+    type ProcessingTimeout = frame_support::traits::ConstU32<2400>;
+    type DisputePeriod = frame_support::traits::ConstU32<14400>;
+    type MaxCidLength = frame_support::traits::ConstU32<64>;
+    type MaxOracles = frame_support::traits::ConstU32<100>;
+    type TreasuryAccount = TreasuryAccount;
+    type ArbitratorOrigin = frame_system::EnsureRoot<AccountId>;
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+/// 函数级详细中文注释：通用占卜服务市场 Pallet 配置
+///
+/// ### 功能定位
+/// - 去中心化的多类型占卜服务交易市场
+/// - 服务提供者注册与等级管理
+/// - 订单流转、评价与信誉系统
+///
+/// ### 配置参数
+/// - **MinDeposit**: 服务提供者最小保证金（100 DUST）
+/// - **MinServicePrice**: 最小服务价格（1 DUST）
+/// - **OrderTimeout**: 订单超时（48小时 = 28800块）
+/// - **AcceptTimeout**: 接单超时（2小时 = 1200块）
+/// - **ReviewPeriod**: 评价期限（7天 = 100800块）
+/// - **WithdrawalCooldown**: 提现冷却期（24小时 = 14400块）
+impl pallet_divination_market::Config for Runtime {
+    type Currency = Balances;
+    type DivinationProvider = CombinedDivinationProvider;
+    type MinDeposit = frame_support::traits::ConstU128<{ 100 * UNIT }>;
+    type MinServicePrice = frame_support::traits::ConstU128<{ 1 * UNIT }>;
+    type OrderTimeout = frame_support::traits::ConstU32<28800>;
+    type AcceptTimeout = frame_support::traits::ConstU32<1200>;
+    type ReviewPeriod = frame_support::traits::ConstU32<100800>;
+    type WithdrawalCooldown = frame_support::traits::ConstU32<14400>;
+    type MaxNameLength = frame_support::traits::ConstU32<64>;
+    type MaxBioLength = frame_support::traits::ConstU32<256>;
+    type MaxDescriptionLength = frame_support::traits::ConstU32<1024>;
+    type MaxCidLength = frame_support::traits::ConstU32<64>;
+    type MaxPackagesPerProvider = frame_support::traits::ConstU32<10>;
+    type MaxFollowUpsPerOrder = frame_support::traits::ConstU32<5>;
+    type PlatformAccount = TreasuryAccount;
+    type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+// ========= 🆕 2025-11-30 塔罗牌排盘系统配置 =========
+
+/// 函数级详细中文注释：塔罗牌排盘 Pallet 配置
+///
+/// ### 功能定位
+/// - 实现区块链上的塔罗牌占卜系统
+/// - 支持随机抽牌、时间起卦、数字起卦、手动指定
+/// - 多种牌阵支持（单张、三牌、凯尔特十字等）
+/// - AI 解读请求（链下预言机触发）
+///
+/// ### 配置参数
+/// - **MaxCardsPerReading**: 每次占卜最大牌数（12张，对应年度运势牌阵）
+/// - **MaxUserReadings**: 每用户最大占卜记录数（100）
+/// - **MaxPublicReadings**: 公开占卜列表上限（1000）
+/// - **DailyFreeDivinations**: 每日免费占卜次数（3）
+/// - **MaxDailyDivinations**: 每日最大占卜次数（20）
+/// - **AiInterpretationFee**: AI 解读费用（10 DUST）
+impl pallet_tarot::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxCardsPerReading = frame_support::traits::ConstU32<12>;
+    type MaxUserReadings = frame_support::traits::ConstU32<100>;
+    type MaxPublicReadings = frame_support::traits::ConstU32<1000>;
+    type DailyFreeDivinations = frame_support::traits::ConstU32<3>;
+    type MaxDailyDivinations = frame_support::traits::ConstU32<20>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
+}
+
+// ========= 🆕 2025-12-01 奇门遁甲排盘系统配置 =========
+
+/// 函数级详细中文注释：奇门遁甲排盘 Pallet 配置
+///
+/// ### 功能定位
+/// - 实现区块链上的奇门遁甲排盘系统
+/// - 支持时间起局、数字起局、随机起局、手动指定
+/// - 完整的四盘排布（天盘、地盘、人盘、神盘）
+/// - AI 解读请求（链下预言机触发）
+///
+/// ### 配置参数
+/// - **MaxUserCharts**: 每用户最大排盘记录数（100）
+/// - **MaxPublicCharts**: 公开排盘列表上限（1000）
+/// - **DailyFreeCharts**: 每日免费排盘次数（3）
+/// - **MaxDailyCharts**: 每日最大排盘次数（20）
+/// - **AiInterpretationFee**: AI 解读费用（15 DUST，奇门遁甲更复杂）
+/// - **MaxCidLen**: IPFS CID 最大长度（64字节）
+///
+/// ### 奇门遁甲核心功能
+/// - 阴阳遁判断：根据节气自动确定
+/// - 局数计算：由节气和三元决定（1-9局）
+/// - 四盘排布：天盘（九星）、地盘（三奇六仪）、人盘（八门）、神盘（八神）
+/// - 值符值使：当值的星和门，是奇门的核心
+impl pallet_qimen::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxUserCharts = frame_support::traits::ConstU32<100>;
+    type MaxPublicCharts = frame_support::traits::ConstU32<1000>;
+    type DailyFreeCharts = frame_support::traits::ConstU32<3>;
+    type MaxDailyCharts = frame_support::traits::ConstU32<20>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 15 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxCidLen = frame_support::traits::ConstU32<64>;
+}
+
+// ============================================================================
+// pallet-ziwei: 紫微斗数排盘系统配置
+// ============================================================================
+//
+/// ### 函数级中文注释：紫微斗数排盘系统配置
+///
+/// 配置紫微斗数 Pallet 的运行时参数：
+///
+/// - **Currency**: 使用 Balances pallet 进行费用支付
+/// - **Randomness**: 使用 SimpleRandomness 生成随机数（用于随机起盘）
+/// - **MaxUserCharts**: 每用户最多存储 100 张命盘
+/// - **MaxPublicCharts**: 公开命盘列表最多 1000 张
+/// - **DailyFreeCharts**: 每日免费排盘次数（3次）
+/// - **MaxDailyCharts**: 每日最大排盘次数（20次）
+/// - **AiInterpretationFee**: AI 解读费用（10 DUST）
+/// - **MaxCidLen**: IPFS CID 最大长度（64字节）
+///
+/// ### 紫微斗数核心功能
+/// - 命宫定位：根据农历月和时辰计算
+/// - 五行局计算：根据年干和命宫纳音五行确定
+/// - 十四主星安星：紫微星系6星 + 天府星系8星
+/// - 六吉六煞安星：辅星和煞星的位置
+/// - 四化飞星：生年四化（化禄、化权、化科、化忌）
+/// - 大运推算：起运年龄和顺逆行方向
+impl pallet_ziwei::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxUserCharts = frame_support::traits::ConstU32<100>;
+    type MaxPublicCharts = frame_support::traits::ConstU32<1000>;
+    type DailyFreeCharts = frame_support::traits::ConstU32<3>;
+    type MaxDailyCharts = frame_support::traits::ConstU32<20>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxCidLen = frame_support::traits::ConstU32<64>;
+}
+
+// ============================================================================
+// 🆕 2025-12-01 pallet-liuyao 配置（六爻排盘系统）
+// ============================================================================
+/// # pallet-liuyao 配置
+///
+/// 六爻排盘是中国传统周易占卜术的核心技法之一，本模块实现了完整的
+/// 纳甲六爻排盘算法。
+///
+/// ## 配置参数
+///
+/// - **MaxUserGuas**: 每用户最大卦象数量（100个）
+/// - **MaxPublicGuas**: 公开卦象列表最大长度（1000个）
+/// - **DailyFreeGuas**: 每日免费起卦次数（3次）
+/// - **MaxDailyGuas**: 每日最大起卦次数（20次）
+/// - **AiInterpretationFee**: AI 解读费用（10 DUST）
+/// - **MaxCidLen**: IPFS CID 最大长度（64字节）
+///
+/// ## 六爻核心功能
+///
+/// - **起卦方式**: 铜钱起卦、数字起卦、时间起卦、随机起卦、手动指定
+/// - **纳甲装卦**: 八卦配天干地支（乾纳甲壬，坤纳乙癸...）
+/// - **世应计算**: 寻世诀（天同二世天变五，地同四世地变初...）
+/// - **卦宫归属**: 认宫诀（一二三六外卦宫，四五游魂内变更...）
+/// - **六亲配置**: 兄弟、父母、官鬼、妻财、子孙
+/// - **六神排布**: 青龙、朱雀、勾陈、螣蛇、白虎、玄武
+/// - **旬空计算**: 六十甲子旬空
+/// - **伏神查找**: 缺失六亲从本宫纯卦寻伏
+/// - **变卦生成**: 动爻变化形成变卦
+impl pallet_liuyao::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxUserGuas = frame_support::traits::ConstU32<100>;
+    type MaxPublicGuas = frame_support::traits::ConstU32<1000>;
+    type DailyFreeGuas = frame_support::traits::ConstU32<3>;
+    type MaxDailyGuas = frame_support::traits::ConstU32<20>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxCidLen = frame_support::traits::ConstU32<64>;
+}
+
+// ============================================================================
+// 🆕 2025-12-01 pallet-daliuren 配置（大六壬排盘系统）
+// ============================================================================
+/// # pallet-daliuren 配置
+///
+/// 大六壬是中国古代三式之一（太乙、奇门、六壬），以天人合一、阴阳五行为理论基础，
+/// 通过起课、定三传来预测吉凶。
+///
+/// ## 配置参数
+///
+/// - **MaxCidLen**: IPFS CID 最大长度（64字节）
+/// - **MaxDailyDivinations**: 每日最大起课次数（100次）
+/// - **DivinationFee**: 起课费用（1 DUST）
+/// - **AiInterpretationFee**: AI 解读费用（5 DUST）
+///
+/// ## 大六壬核心功能
+///
+/// - **起课方式**: 时间起课、随机起课、手动指定
+/// - **天盘计算**: 月将加占时，天盘顺时针旋转
+/// - **四课起法**: 干阳神、干阴神、支阳神、支阴神
+/// - **九种课式**: 贼克、比用、涉害、遥克、昂星、别责、八专、伏吟、返吟
+/// - **三传推导**: 初传、中传、末传
+/// - **天将排布**: 十二天将（贵人为首，顺逆排布）
+/// - **AI解读**: 支持请求和存储 AI 对式盘的解读结果
+impl pallet_daliuren::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxCidLen = frame_support::traits::ConstU32<64>;
+    type MaxDailyDivinations = frame_support::traits::ConstU32<100>;
+    type DivinationFee = frame_support::traits::ConstU128<{ 1 * UNIT }>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 5 * UNIT }>;
+    type AiSubmitter = frame_system::EnsureSigned<AccountId>;
+    type WeightInfo = ();
+}
+
+// ============================================================================
+// 🆕 2025-12-01 小六壬排盘系统 (pallet-xiaoliuren)
+// ============================================================================
+
+/// 函数级中文注释：小六壬排盘 Pallet 配置
+///
+/// 小六壬又称"诸葛亮马前课"或"掐指速算"，是中国古代流传的一种简易占卜术。
+/// 通过六宫（大安、留连、速喜、赤口、小吉、空亡）来预测吉凶。
+///
+/// ## 配置参数
+///
+/// - **MaxUserPans**: 每用户最大存储课盘数（1000）
+/// - **MaxPublicPans**: 公开课盘列表最大长度（10000）
+/// - **MaxCidLen**: IPFS CID 最大长度（64字节）
+/// - **DailyFreeDivinations**: 每日免费起课次数（3次）
+/// - **MaxDailyDivinations**: 每日最大起课次数（100次）
+/// - **AiInterpretationFee**: AI 解读费用（5 DUST）
+///
+/// ## 六宫含义
+///
+/// - **大安**：属木，临青龙，吉祥安康
+/// - **留连**：属水，临玄武，延迟纠缠
+/// - **速喜**：属火，临朱雀，快速喜庆
+/// - **赤口**：属金，临白虎，口舌是非
+/// - **小吉**：属木，临六合，和合吉利
+/// - **空亡**：属土，临勾陈，无果忧虑
+///
+/// ## 起课方式
+///
+/// - **时间起课**: 按农历月日时起课（传统方法）
+/// - **数字起课**: 活数起课法，三个数字计算三宫
+/// - **随机起课**: 使用链上随机数生成
+/// - **手动指定**: 直接指定三宫结果
+impl pallet_xiaoliuren::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = SimpleRandomness;
+    type MaxUserPans = frame_support::traits::ConstU32<1000>;
+    type MaxPublicPans = frame_support::traits::ConstU32<10000>;
+    type MaxCidLen = frame_support::traits::ConstU32<64>;
+    type DailyFreeDivinations = frame_support::traits::ConstU32<3>;
+    type MaxDailyDivinations = frame_support::traits::ConstU32<100>;
+    type AiInterpretationFee = frame_support::traits::ConstU128<{ 5 * UNIT }>;
+    type TreasuryAccount = TreasuryAccount;
+    type AiOracleOrigin = frame_system::EnsureSigned<AccountId>;
 }
 

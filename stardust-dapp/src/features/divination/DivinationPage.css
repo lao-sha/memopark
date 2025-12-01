@@ -1,0 +1,422 @@
+/**
+ * 通用占卜页面样式
+ */
+
+.divination-entry-page {
+  padding: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.divination-entry-page .header-card {
+  text-align: center;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.divination-entry-page .header-card .ant-typography {
+  color: white !important;
+}
+
+.divination-entry-page .header-card h3 {
+  color: white !important;
+  margin-bottom: 8px;
+}
+
+/* 占卜类型卡片 */
+.divination-type-card {
+  border-radius: 12px;
+  border-width: 2px;
+  transition: all 0.3s ease;
+}
+
+.divination-type-card:hover:not(.disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.divination-type-card.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.divination-type-card .type-card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.divination-type-card .type-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.divination-type-card .type-icon .icon-text {
+  font-size: 24px;
+}
+
+.divination-type-card .type-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.divination-type-card .type-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.divination-type-card .type-name {
+  font-size: 16px;
+}
+
+.divination-type-card .type-description {
+  font-size: 12px;
+  margin-bottom: 0 !important;
+}
+
+.divination-type-card .arrow-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* 服务入口卡片 */
+.services-card {
+  margin-top: 16px;
+  border-radius: 12px;
+}
+
+.services-card h5 {
+  margin-bottom: 12px;
+}
+
+/* 功能说明卡片 */
+.info-card {
+  margin-top: 16px;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.info-card h5 {
+  margin-bottom: 12px;
+}
+
+.info-card .info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 通用占卜服务市场页面 */
+.divination-market-page {
+  padding: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.divination-market-page .page-header {
+  margin-bottom: 16px;
+}
+
+.divination-market-page .filter-section {
+  margin-bottom: 16px;
+}
+
+.divination-market-page .type-tabs {
+  margin-bottom: 12px;
+}
+
+/* 提供者卡片样式 */
+.divination-market-page .provider-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.divination-market-page .provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.divination-market-page .provider-info {
+  display: flex;
+  gap: 12px;
+}
+
+.divination-market-page .provider-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.divination-market-page .provider-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.divination-market-page .provider-name {
+  font-size: 16px;
+}
+
+.divination-market-page .provider-stats {
+  display: flex;
+  align-items: center;
+}
+
+.divination-market-page .provider-metrics {
+  display: flex;
+  gap: 16px;
+}
+
+.divination-market-page .provider-bio {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.divination-market-page .provider-specialties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.divination-market-page .packages-section {
+  margin-top: 12px;
+}
+
+.divination-market-page .toggle-button {
+  margin-top: 8px;
+}
+
+/* 服务套餐卡片 */
+.divination-market-page .package-card {
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.divination-market-page .package-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.divination-market-page .package-description {
+  font-size: 12px;
+  margin-bottom: 8px !important;
+}
+
+.divination-market-page .package-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* 加载状态 */
+.divination-market-page .loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+/* 搜索卡片 */
+.divination-market-page .search-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+/* 提示卡片 */
+.divination-market-page .hint-card {
+  margin-top: 16px;
+  border-radius: 12px;
+  background: #fffbe6;
+  border-color: #ffe58f;
+}
+
+.divination-market-page .hint-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 通用 NFT 市场页面 */
+.divination-nft-page {
+  padding: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.divination-nft-page .page-header {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.divination-nft-page .filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.divination-nft-page .nft-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.divination-nft-page .nft-cover {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border-bottom: 3px solid;
+  position: relative;
+}
+
+.divination-nft-page .nft-cover .hexagram-display {
+  display: flex;
+  flex-direction: column;
+  font-size: 32px;
+}
+
+.divination-nft-page .rarity-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.divination-nft-page .type-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+.divination-nft-page .loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+/* NFT 详情弹窗 */
+.nft-detail .detail-header {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.nft-detail .detail-cover {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border: 3px solid;
+  flex-shrink: 0;
+}
+
+.nft-detail .detail-cover.large .hexagram-display {
+  display: flex;
+  flex-direction: column;
+  font-size: 28px;
+}
+
+.nft-detail .detail-info {
+  flex: 1;
+}
+
+.nft-detail .price {
+  margin-top: 8px;
+}
+
+.nft-detail .detail-body .info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.nft-detail .offers-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 我的 NFT 页面 */
+.my-divination-nft-page {
+  padding: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.my-divination-nft-page .page-header {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.my-divination-nft-page .stats-row {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 16px;
+}
+
+.my-divination-nft-page .filter-bar {
+  margin-bottom: 16px;
+}
+
+.my-divination-nft-page .nft-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.my-divination-nft-page .nft-card-content {
+  display: flex;
+  gap: 12px;
+}
+
+.my-divination-nft-page .nft-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.my-divination-nft-page .nft-preview .symbol {
+  font-size: 24px;
+}
+
+.my-divination-nft-page .nft-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.my-divination-nft-page .nft-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.my-divination-nft-page .loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}

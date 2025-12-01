@@ -15,7 +15,8 @@
     "create-offerings": "node create-offerings.js",
     "offerings": "node create-offerings.js",
     "create-graves": "node create-graves-and-deceased.js",
-    "graves": "node create-graves-and-deceased.js"
+    "graves": "node create-graves-and-deceased.js",
+    "bazi": "node bazi-cli.js"
   },
   "keywords": [
     "governance",

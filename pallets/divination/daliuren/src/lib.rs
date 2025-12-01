@@ -1,0 +1,747 @@
+//! # 大六壬排盘模块 (Da Liu Ren Divination Pallet)
+//!
+//! 本模块实现区块链大六壬排盘系统，提供式盘生成、存储和AI解读功能。
+//!
+//! ## 概述
+//!
+//! 大六壬是中国古代三式之一（太乙、奇门、六壬），以天人合一、
+//! 阴阳五行为理论基础，通过起课、定三传来预测吉凶。
+//!
+//! ## 主要功能
+//!
+//! - **起课方式**: 支持时间起课、随机起课、手动指定三种方式
+//! - **式盘计算**: 天盘、四课、三传、天将自动排布
+//! - **九种课式**: 贼克、比用、涉害、遥克、昂星、别责、八专、伏吟、返吟
+//! - **AI解读**: 支持AI解读请求和结果存储
+//! - **NFT铸造**: 可将式盘铸造为NFT
+//!
+//! ## 大六壬核心概念
+//!
+//! - **天盘**: 月将加占时，十二地支顺时针旋转
+//! - **四课**: 日干阳神、干阴神、日支阳神、支阴神
+//! - **三传**: 初传、中传、末传（根据九种课式推导）
+//! - **天将**: 十二天将（贵人为首，顺逆排布）
+//! - **空亡**: 旬空计算
+//!
+//! ## 使用示例
+//!
+//! ```ignore
+//! // 时间起课
+//! DaLiuRen::divine_by_time(origin, year_gz, month_gz, day_gz, hour_gz, yue_jiang, zhan_shi, is_day, question_cid)?;
+//!
+//! // 随机起课
+//! DaLiuRen::divine_random(origin, day_gz, question_cid)?;
+//!
+//! // 请求AI解读
+//! DaLiuRen::request_ai_interpretation(origin, pan_id)?;
+//! ```
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+pub use pallet::*;
+
+mod algorithm;
+mod types;
+
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
+pub use algorithm::*;
+pub use types::*;
+
+/// 权重 trait
+pub trait DaLiuRenWeightInfo {
+    fn divine_by_time() -> frame_support::weights::Weight;
+    fn divine_random() -> frame_support::weights::Weight;
+    fn divine_manual() -> frame_support::weights::Weight;
+    fn request_ai_interpretation() -> frame_support::weights::Weight;
+    fn submit_ai_interpretation() -> frame_support::weights::Weight;
+    fn set_pan_visibility() -> frame_support::weights::Weight;
+}
+
+/// 默认权重实现
+impl DaLiuRenWeightInfo for () {
+    fn divine_by_time() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(50_000_000, 0)
+    }
+    fn divine_random() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(60_000_000, 0)
+    }
+    fn divine_manual() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(45_000_000, 0)
+    }
+    fn request_ai_interpretation() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(30_000_000, 0)
+    }
+    fn submit_ai_interpretation() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(35_000_000, 0)
+    }
+    fn set_pan_visibility() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::from_parts(20_000_000, 0)
+    }
+}
+
+#[frame_support::pallet]
+pub mod pallet {
+    use super::*;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{Currency, Randomness, ReservableCurrency},
+    };
+    use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::Zero;
+
+    /// 货币类型别名
+    type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
+
+    /// 配置 trait
+    #[pallet::config]
+    pub trait Config: frame_system::Config + pallet_timestamp::Config {
+        /// 货币类型
+        type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+
+        /// 随机数生成器
+        type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
+
+        /// CID 最大长度
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
+
+        /// 每日每用户最大起课次数
+        #[pallet::constant]
+        type MaxDailyDivinations: Get<u32>;
+
+        /// 起课费用
+        #[pallet::constant]
+        type DivinationFee: Get<BalanceOf<Self>>;
+
+        /// AI 解读费用
+        #[pallet::constant]
+        type AiInterpretationFee: Get<BalanceOf<Self>>;
+
+        /// AI 解读提交者（可信任的 AI 服务账户）
+        type AiSubmitter: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
+
+        /// 权重信息
+        type WeightInfo: DaLiuRenWeightInfo;
+    }
+
+    // ========================================================================
+    // 存储项
+    // ========================================================================
+
+    /// 下一个式盘 ID
+    #[pallet::storage]
+    pub type NextPanId<T: Config> = StorageValue<_, u64, ValueQuery>;
+
+    /// 式盘存储
+    /// 键: 式盘 ID
+    /// 值: 大六壬式盘
+    #[pallet::storage]
+    pub type Pans<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        DaLiuRenPan<T::AccountId, BlockNumberFor<T>, T::MaxCidLen>,
+    >;
+
+    /// 用户式盘索引
+    /// 键: (用户账户, 式盘 ID)
+    /// 值: 是否存在
+    #[pallet::storage]
+    pub type UserPans<T: Config> =
+        StorageDoubleMap<_, Blake2_128Concat, T::AccountId, Blake2_128Concat, u64, bool, ValueQuery>;
+
+    /// 公开式盘索引
+    /// 键: 式盘 ID
+    /// 值: 创建区块
+    #[pallet::storage]
+    pub type PublicPans<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>>;
+
+    /// 每日起课计数
+    /// 键: (用户账户, 日期戳)
+    /// 值: 起课次数
+    #[pallet::storage]
+    pub type DailyPanCount<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        u32,
+        u32,
+        ValueQuery,
+    >;
+
+    /// AI 解读请求队列
+    /// 键: 式盘 ID
+    /// 值: 请求区块
+    #[pallet::storage]
+    pub type AiInterpretationRequests<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, BlockNumberFor<T>>;
+
+    /// 用户统计数据
+    #[pallet::storage]
+    pub type UserStatsStorage<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, UserStats, ValueQuery>;
+
+    // ========================================================================
+    // 事件
+    // ========================================================================
+
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event<T: Config> {
+        /// 式盘已创建
+        PanCreated {
+            pan_id: u64,
+            creator: T::AccountId,
+            ke_shi: u8,
+            ge_ju: u8,
+        },
+
+        /// AI 解读已请求
+        AiInterpretationRequested {
+            pan_id: u64,
+            requester: T::AccountId,
+        },
+
+        /// AI 解读已提交
+        AiInterpretationSubmitted {
+            pan_id: u64,
+            cid: BoundedVec<u8, T::MaxCidLen>,
+        },
+
+        /// 式盘可见性已更改
+        PanVisibilityChanged {
+            pan_id: u64,
+            is_public: bool,
+        },
+    }
+
+    // ========================================================================
+    // 错误
+    // ========================================================================
+
+    #[pallet::error]
+    pub enum Error<T> {
+        /// 式盘不存在
+        PanNotFound,
+
+        /// 无权操作
+        NotAuthorized,
+
+        /// 超出每日限额
+        DailyLimitExceeded,
+
+        /// 余额不足
+        InsufficientBalance,
+
+        /// CID 过长
+        CidTooLong,
+
+        /// AI 解读已请求
+        AiInterpretationAlreadyRequested,
+
+        /// AI 解读未请求
+        AiInterpretationNotRequested,
+
+        /// AI 解读已完成
+        AiInterpretationAlreadySubmitted,
+
+        /// 无效的干支组合
+        InvalidGanZhi,
+
+        /// 无效的月将
+        InvalidYueJiang,
+
+        /// 无效的占时
+        InvalidZhanShi,
+    }
+
+    // ========================================================================
+    // 调用
+    // ========================================================================
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// 时间起课
+        ///
+        /// 根据指定的年月日时干支和月将、占时进行起课。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `year_gz`: 年干支 (天干索引, 地支索引)
+        /// - `month_gz`: 月干支
+        /// - `day_gz`: 日干支
+        /// - `hour_gz`: 时干支
+        /// - `yue_jiang`: 月将（地支索引）
+        /// - `zhan_shi`: 占时（地支索引）
+        /// - `is_day`: 是否昼占
+        /// - `question_cid`: 占问事项 CID（可选）
+        #[pallet::call_index(0)]
+        #[pallet::weight(<T as Config>::WeightInfo::divine_by_time())]
+        pub fn divine_by_time(
+            origin: OriginFor<T>,
+            year_gz: (u8, u8),
+            month_gz: (u8, u8),
+            day_gz: (u8, u8),
+            hour_gz: (u8, u8),
+            yue_jiang: u8,
+            zhan_shi: u8,
+            is_day: bool,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查每日限额
+            Self::check_daily_limit(&who)?;
+
+            // 收取费用
+            Self::charge_fee(&who, T::DivinationFee::get())?;
+
+            // 转换参数
+            let year = (TianGan::from_index(year_gz.0), DiZhi::from_index(year_gz.1));
+            let month = (TianGan::from_index(month_gz.0), DiZhi::from_index(month_gz.1));
+            let day = (TianGan::from_index(day_gz.0), DiZhi::from_index(day_gz.1));
+            let hour = (TianGan::from_index(hour_gz.0), DiZhi::from_index(hour_gz.1));
+            let yj = DiZhi::from_index(yue_jiang);
+            let zs = DiZhi::from_index(zhan_shi);
+
+            // 执行起课
+            Self::do_divine(
+                who,
+                DivinationMethod::TimeMethod,
+                year,
+                month,
+                day,
+                hour,
+                yj,
+                zs,
+                is_day,
+                question_cid,
+            )
+        }
+
+        /// 随机起课
+        ///
+        /// 使用链上随机数生成月将和占时进行起课。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `day_gz`: 日干支
+        /// - `question_cid`: 占问事项 CID（可选）
+        #[pallet::call_index(1)]
+        #[pallet::weight(<T as Config>::WeightInfo::divine_random())]
+        pub fn divine_random(
+            origin: OriginFor<T>,
+            day_gz: (u8, u8),
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查每日限额
+            Self::check_daily_limit(&who)?;
+
+            // 收取费用
+            Self::charge_fee(&who, T::DivinationFee::get())?;
+
+            // 生成随机数
+            let (random_hash, _) = T::Randomness::random(&b"daliuren"[..]);
+            let random_bytes: [u8; 32] = random_hash.as_ref().try_into().unwrap_or([0u8; 32]);
+
+            // 从随机数生成参数
+            let (yue_jiang, zhan_shi, is_day) = random_to_params(&random_bytes);
+
+            // 使用日干支作为基础
+            let day = (TianGan::from_index(day_gz.0), DiZhi::from_index(day_gz.1));
+
+            // 简化处理：年月时使用默认值
+            let year = (TianGan::Jia, DiZhi::Zi);
+            let month = (TianGan::Jia, DiZhi::Zi);
+            let hour = (TianGan::from_index(random_bytes[3] % 10), zhan_shi);
+
+            Self::do_divine(
+                who,
+                DivinationMethod::RandomMethod,
+                year,
+                month,
+                day,
+                hour,
+                yue_jiang,
+                zhan_shi,
+                is_day,
+                question_cid,
+            )
+        }
+
+        /// 手动指定起课
+        ///
+        /// 完全手动指定所有参数进行起课，用于复盘或教学。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `year_gz`: 年干支
+        /// - `month_gz`: 月干支
+        /// - `day_gz`: 日干支
+        /// - `hour_gz`: 时干支
+        /// - `yue_jiang`: 月将
+        /// - `zhan_shi`: 占时
+        /// - `is_day`: 是否昼占
+        /// - `question_cid`: 占问事项 CID（可选）
+        #[pallet::call_index(2)]
+        #[pallet::weight(<T as Config>::WeightInfo::divine_manual())]
+        pub fn divine_manual(
+            origin: OriginFor<T>,
+            year_gz: (u8, u8),
+            month_gz: (u8, u8),
+            day_gz: (u8, u8),
+            hour_gz: (u8, u8),
+            yue_jiang: u8,
+            zhan_shi: u8,
+            is_day: bool,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查每日限额
+            Self::check_daily_limit(&who)?;
+
+            // 收取费用
+            Self::charge_fee(&who, T::DivinationFee::get())?;
+
+            // 转换参数
+            let year = (TianGan::from_index(year_gz.0), DiZhi::from_index(year_gz.1));
+            let month = (TianGan::from_index(month_gz.0), DiZhi::from_index(month_gz.1));
+            let day = (TianGan::from_index(day_gz.0), DiZhi::from_index(day_gz.1));
+            let hour = (TianGan::from_index(hour_gz.0), DiZhi::from_index(hour_gz.1));
+            let yj = DiZhi::from_index(yue_jiang);
+            let zs = DiZhi::from_index(zhan_shi);
+
+            Self::do_divine(
+                who,
+                DivinationMethod::ManualMethod,
+                year,
+                month,
+                day,
+                hour,
+                yj,
+                zs,
+                is_day,
+                question_cid,
+            )
+        }
+
+        /// 请求 AI 解读
+        ///
+        /// 为指定式盘请求 AI 解读服务。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `pan_id`: 式盘 ID
+        #[pallet::call_index(3)]
+        #[pallet::weight(<T as Config>::WeightInfo::request_ai_interpretation())]
+        pub fn request_ai_interpretation(origin: OriginFor<T>, pan_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查式盘存在
+            let pan = Pans::<T>::get(pan_id).ok_or(Error::<T>::PanNotFound)?;
+
+            // 检查权限
+            ensure!(pan.creator == who, Error::<T>::NotAuthorized);
+
+            // 检查是否已请求
+            ensure!(
+                !AiInterpretationRequests::<T>::contains_key(pan_id),
+                Error::<T>::AiInterpretationAlreadyRequested
+            );
+
+            // 检查是否已有解读
+            ensure!(
+                pan.ai_interpretation_cid.is_none(),
+                Error::<T>::AiInterpretationAlreadySubmitted
+            );
+
+            // 收取费用
+            Self::charge_fee(&who, T::AiInterpretationFee::get())?;
+
+            // 记录请求
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            AiInterpretationRequests::<T>::insert(pan_id, current_block);
+
+            // 更新统计
+            UserStatsStorage::<T>::mutate(&who, |stats| {
+                stats.ai_interpretations = stats.ai_interpretations.saturating_add(1);
+            });
+
+            // 发出事件
+            Self::deposit_event(Event::AiInterpretationRequested {
+                pan_id,
+                requester: who,
+            });
+
+            Ok(())
+        }
+
+        /// 提交 AI 解读结果
+        ///
+        /// 由可信任的 AI 服务账户提交解读结果。
+        ///
+        /// # 参数
+        /// - `origin`: AI 服务来源
+        /// - `pan_id`: 式盘 ID
+        /// - `interpretation_cid`: 解读内容 CID
+        #[pallet::call_index(4)]
+        #[pallet::weight(<T as Config>::WeightInfo::submit_ai_interpretation())]
+        pub fn submit_ai_interpretation(
+            origin: OriginFor<T>,
+            pan_id: u64,
+            interpretation_cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
+            // 验证 AI 提交者权限
+            let _submitter = T::AiSubmitter::ensure_origin(origin)?;
+
+            // 检查式盘存在
+            ensure!(Pans::<T>::contains_key(pan_id), Error::<T>::PanNotFound);
+
+            // 检查是否已请求
+            ensure!(
+                AiInterpretationRequests::<T>::contains_key(pan_id),
+                Error::<T>::AiInterpretationNotRequested
+            );
+
+            // 更新式盘
+            Pans::<T>::try_mutate(pan_id, |maybe_pan| -> DispatchResult {
+                let pan = maybe_pan.as_mut().ok_or(Error::<T>::PanNotFound)?;
+                pan.ai_interpretation_cid = Some(interpretation_cid.clone());
+                Ok(())
+            })?;
+
+            // 移除请求
+            AiInterpretationRequests::<T>::remove(pan_id);
+
+            // 发出事件
+            Self::deposit_event(Event::AiInterpretationSubmitted {
+                pan_id,
+                cid: interpretation_cid,
+            });
+
+            Ok(())
+        }
+
+        /// 设置式盘可见性
+        ///
+        /// 设置式盘是否公开可见。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `pan_id`: 式盘 ID
+        /// - `is_public`: 是否公开
+        #[pallet::call_index(5)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_pan_visibility())]
+        pub fn set_pan_visibility(
+            origin: OriginFor<T>,
+            pan_id: u64,
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 更新式盘
+            Pans::<T>::try_mutate(pan_id, |maybe_pan| -> DispatchResult {
+                let pan = maybe_pan.as_mut().ok_or(Error::<T>::PanNotFound)?;
+
+                // 检查权限
+                ensure!(pan.creator == who, Error::<T>::NotAuthorized);
+
+                pan.is_public = is_public;
+
+                // 更新公开索引
+                if is_public {
+                    let current_block = <frame_system::Pallet<T>>::block_number();
+                    PublicPans::<T>::insert(pan_id, current_block);
+                } else {
+                    PublicPans::<T>::remove(pan_id);
+                }
+
+                Ok(())
+            })?;
+
+            // 发出事件
+            Self::deposit_event(Event::PanVisibilityChanged { pan_id, is_public });
+
+            Ok(())
+        }
+    }
+
+    // ========================================================================
+    // 内部函数
+    // ========================================================================
+
+    impl<T: Config> Pallet<T> {
+        /// 执行起课
+        ///
+        /// 核心起课逻辑，计算天盘、四课、三传等。
+        fn do_divine(
+            who: T::AccountId,
+            method: DivinationMethod,
+            year_gz: (TianGan, DiZhi),
+            month_gz: (TianGan, DiZhi),
+            day_gz: (TianGan, DiZhi),
+            hour_gz: (TianGan, DiZhi),
+            yue_jiang: DiZhi,
+            zhan_shi: DiZhi,
+            is_day: bool,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let current_block = <frame_system::Pallet<T>>::block_number();
+
+            // 计算天盘
+            let tian_pan = calculate_tian_pan(yue_jiang, zhan_shi);
+
+            // 计算天将盘
+            let tian_jiang_pan = calculate_tian_jiang_pan(&tian_pan, day_gz.0, is_day);
+
+            // 计算四课
+            let si_ke = calculate_si_ke(&tian_pan, &tian_jiang_pan, day_gz.0, day_gz.1);
+
+            // 计算三传
+            let (san_chuan, ke_shi, ge_ju) =
+                calculate_san_chuan(&tian_pan, &tian_jiang_pan, &si_ke, day_gz.0, day_gz.1);
+
+            // 计算空亡
+            let xun_kong = calculate_xun_kong(day_gz.0, day_gz.1);
+
+            // 生成式盘 ID
+            let pan_id = NextPanId::<T>::get();
+            NextPanId::<T>::put(pan_id.saturating_add(1));
+
+            // 创建式盘
+            let pan = DaLiuRenPan {
+                id: pan_id,
+                creator: who.clone(),
+                created_at: current_block,
+                method,
+                question_cid,
+                year_gz,
+                month_gz,
+                day_gz,
+                hour_gz,
+                yue_jiang,
+                zhan_shi,
+                is_day,
+                tian_pan,
+                tian_jiang_pan,
+                si_ke,
+                san_chuan,
+                ke_shi,
+                ge_ju,
+                xun_kong,
+                is_public: false,
+                ai_interpretation_cid: None,
+            };
+
+            // 存储式盘
+            Pans::<T>::insert(pan_id, pan);
+            UserPans::<T>::insert(&who, pan_id, true);
+
+            // 更新每日计数
+            let day_stamp = Self::get_day_stamp();
+            DailyPanCount::<T>::mutate(&who, day_stamp, |count| {
+                *count = count.saturating_add(1);
+            });
+
+            // 更新用户统计
+            UserStatsStorage::<T>::mutate(&who, |stats| {
+                stats.total_pans = stats.total_pans.saturating_add(1);
+                if stats.first_pan_block == 0 {
+                    stats.first_pan_block = Self::block_to_u32(current_block);
+                }
+            });
+
+            // 发出事件
+            Self::deposit_event(Event::PanCreated {
+                pan_id,
+                creator: who,
+                ke_shi: ke_shi as u8,
+                ge_ju: ge_ju as u8,
+            });
+
+            Ok(())
+        }
+
+        /// 检查每日限额
+        fn check_daily_limit(who: &T::AccountId) -> DispatchResult {
+            let day_stamp = Self::get_day_stamp();
+            let count = DailyPanCount::<T>::get(who, day_stamp);
+
+            ensure!(
+                count < T::MaxDailyDivinations::get(),
+                Error::<T>::DailyLimitExceeded
+            );
+
+            Ok(())
+        }
+
+        /// 收取费用
+        fn charge_fee(who: &T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+            if !amount.is_zero() {
+                // 销毁费用（或转入国库）
+                let _ = T::Currency::withdraw(
+                    who,
+                    amount,
+                    frame_support::traits::WithdrawReasons::FEE,
+                    frame_support::traits::ExistenceRequirement::KeepAlive,
+                )?;
+            }
+            Ok(())
+        }
+
+        /// 获取日期戳（简化为区块号除以一天的区块数）
+        fn get_day_stamp() -> u32 {
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            // 假设 6 秒一个区块，一天 14400 个区块
+            Self::block_to_u32(current_block) / 14400
+        }
+
+        /// 区块号转 u32
+        fn block_to_u32(block: BlockNumberFor<T>) -> u32 {
+            use sp_runtime::traits::UniqueSaturatedInto;
+            block.unique_saturated_into()
+        }
+    }
+
+    // ========================================================================
+    // 查询函数
+    // ========================================================================
+
+    impl<T: Config> Pallet<T> {
+        /// 获取式盘
+        pub fn get_pan(
+            pan_id: u64,
+        ) -> Option<DaLiuRenPan<T::AccountId, BlockNumberFor<T>, T::MaxCidLen>> {
+            Pans::<T>::get(pan_id)
+        }
+
+        /// 获取用户统计
+        pub fn get_user_stats(who: &T::AccountId) -> UserStats {
+            UserStatsStorage::<T>::get(who)
+        }
+
+        /// 检查式盘是否属于用户
+        pub fn is_user_pan(who: &T::AccountId, pan_id: u64) -> bool {
+            UserPans::<T>::get(who, pan_id)
+        }
+
+        /// 检查式盘是否有待处理的 AI 解读请求
+        pub fn has_pending_ai_request(pan_id: u64) -> bool {
+            AiInterpretationRequests::<T>::contains_key(pan_id)
+        }
+    }
+}

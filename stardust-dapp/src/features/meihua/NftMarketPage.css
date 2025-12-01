@@ -1,0 +1,252 @@
+/**
+ * 梅花易数 NFT 市场页面样式
+ */
+
+/* ==================== 页面布局 ==================== */
+
+.nft-market-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.page-header h4 {
+  margin-bottom: 4px !important;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  min-height: 50vh;
+}
+
+/* ==================== 筛选栏 ==================== */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 12px;
+}
+
+.filter-bar .ant-input-search {
+  max-width: 200px;
+}
+
+.filter-bar .ant-tabs {
+  margin-bottom: 0;
+}
+
+.filter-bar .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+/* ==================== NFT 卡片 ==================== */
+
+.nft-card {
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.nft-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.nft-cover {
+  position: relative;
+  height: 160px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: 3px solid;
+}
+
+.nft-cover .hexagram-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+}
+
+.nft-cover .trigram {
+  font-size: 36px;
+  line-height: 1.2;
+}
+
+.nft-cover .trigram.upper {
+  margin-bottom: 4px;
+}
+
+.rarity-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* ==================== NFT 详情弹窗 ==================== */
+
+.nft-detail {
+  padding: 8px 0;
+}
+
+.detail-header {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.detail-cover {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  border: 3px solid;
+  flex-shrink: 0;
+}
+
+.detail-cover .hexagram-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+}
+
+.detail-cover .hexagram-display.large .trigram {
+  font-size: 32px;
+  line-height: 1.2;
+}
+
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.detail-info h4 {
+  margin: 0 !important;
+}
+
+.detail-info .price {
+  margin-top: 8px;
+}
+
+.detail-body {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed #e8e8e8;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+/* ==================== 出价列表 ==================== */
+
+.offers-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.offers-section h5 {
+  margin-bottom: 12px !important;
+}
+
+.offers-section .ant-list-item {
+  justify-content: space-between;
+}
+
+/* ==================== 出价表单 ==================== */
+
+.offer-form {
+  padding: 8px 0;
+}
+
+.offer-form .ant-input {
+  margin-top: 12px;
+}
+
+/* ==================== 稀有度颜色 ==================== */
+
+.rarity-common {
+  color: #8c8c8c;
+}
+
+.rarity-rare {
+  color: #1890ff;
+}
+
+.rarity-epic {
+  color: #722ed1;
+}
+
+.rarity-legendary {
+  color: #faad14;
+}
+
+/* ==================== 空状态 ==================== */
+
+.nft-market-page .ant-empty {
+  padding: 48px 0;
+}
+
+/* ==================== 响应式调整 ==================== */
+
+@media (max-width: 480px) {
+  .nft-market-page {
+    padding: 12px;
+  }
+
+  .filter-bar {
+    padding: 8px;
+  }
+
+  .filter-bar .ant-input-search {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .detail-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .detail-info {
+    align-items: center;
+  }
+
+  .nft-cover {
+    height: 140px;
+  }
+
+  .nft-cover .trigram {
+    font-size: 28px;
+  }
+}

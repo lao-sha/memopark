@@ -1,11 +1,9 @@
 // L-4修复：CID加密验证模块
-// 
+//
 // 函数级详细中文注释：提供CID加密状态验证功能
 // - 根据规则6：除证据类数据外，其他数据CID必须加密
 // - 支持多种加密CID格式识别
 // - 提供验证接口供各pallet调用
-
-#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 use alloc::vec::Vec;

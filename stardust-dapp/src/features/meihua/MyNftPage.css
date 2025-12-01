@@ -1,0 +1,177 @@
+/**
+ * 我的 NFT 页面样式
+ */
+
+/* ==================== 页面布局 ==================== */
+
+.my-nft-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.page-header h4 {
+  margin-bottom: 4px !important;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  min-height: 40vh;
+}
+
+/* ==================== NFT 卡片 ==================== */
+
+.my-nft-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.my-nft-card .nft-cover {
+  position: relative;
+  height: 140px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: 3px solid;
+}
+
+.my-nft-card .hexagram-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+}
+
+.my-nft-card .trigram {
+  font-size: 32px;
+  line-height: 1.2;
+}
+
+.my-nft-card .rarity-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.my-nft-card .listed-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+.nft-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* ==================== 铸造卡片 ==================== */
+
+.hexagram-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hexagram-mint-card {
+  border-radius: 12px;
+}
+
+.hexagram-mint-card .ant-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hexagram-brief {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trigram-symbol {
+  font-size: 28px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hexagram-info {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==================== 弹窗表单 ==================== */
+
+.list-form,
+.transfer-form {
+  padding: 8px 0;
+}
+
+.nft-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.price-input,
+.address-input {
+  margin-top: 8px;
+}
+
+.hexagram-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: white;
+}
+
+.preview-symbol {
+  font-size: 36px;
+}
+
+/* ==================== 响应式调整 ==================== */
+
+@media (max-width: 480px) {
+  .my-nft-page {
+    padding: 12px;
+  }
+
+  .my-nft-card .nft-cover {
+    height: 120px;
+  }
+
+  .my-nft-card .trigram {
+    font-size: 26px;
+  }
+
+  .nft-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .nft-actions button {
+    width: 100%;
+  }
+}

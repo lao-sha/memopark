@@ -1,8 +1,36 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
+import type { KeyringPair } from '@polkadot/keyring/types';
 import { AppConfig } from './config';
 import { createSessionSignerAdapter } from './sessionSignerAdapter';
+import sessionSigner from './session-signer';
+import { getCurrentAddress } from './keystore';
+import { getApi as getApiSafe, signAndSend, sendViaForwarder } from './polkadot-safe';
+
 // 兼容旧代码：重新导出安全封装的API工具函数
-export { getApi, signAndSend, sendViaForwarder } from './polkadot-safe';
+export { signAndSend, sendViaForwarder };
+
+export const getApi = getApiSafe;
+
+export type SignedApi = ApiPromise & { signer: KeyringPair };
+
+/**
+ * 函数级详细中文注释：获取带签名器的 API 实例
+ * - 复用 getApiSafe 建立的全局连接
+ * - 确保本地钱包已选择账户并初始化会话
+ * - 在 ApiPromise 上附加 signer（KeyringPair），兼容旧服务层调用
+ */
+export const getSignedApi = async (): Promise<SignedApi> => {
+  const api = await getApiSafe();
+  const currentAddress = getCurrentAddress();
+  if (!currentAddress) {
+    throw new Error('未找到当前账户，请先在本地钱包中选择账户');
+  }
+
+  const signerPair = await sessionSigner.getKeyPairForAddress(currentAddress);
+  const signedApi = api as SignedApi;
+  signedApi.signer = signerPair;
+  return signedApi;
+};
 
 // 导出 useApi hook（从 hooks 重新导出）
 export { useApi } from '../hooks/useApi';
