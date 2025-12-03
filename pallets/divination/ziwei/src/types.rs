@@ -424,6 +424,174 @@ impl SiHua {
 }
 
 // ============================================================================
+// 四化星联合类型（支持主星和辅星）
+// ============================================================================
+
+/// 四化星联合类型
+///
+/// 四化飞星可以作用于主星（十四主星）或辅星（六吉星），
+/// 此枚举统一表示可以参与四化的所有星曜。
+///
+/// 根据《紫微斗数全书》，各天干四化如下：
+/// - 甲：廉贞化禄、破军化权、武曲化科、太阳化忌
+/// - 乙：天机化禄、天梁化权、紫微化科、太阴化忌
+/// - 丙：天同化禄、天机化权、**文昌**化科、廉贞化忌
+/// - 丁：太阴化禄、天同化权、天机化科、巨门化忌
+/// - 戊：贪狼化禄、太阴化权、**右弼**化科、天机化忌
+/// - 己：武曲化禄、贪狼化权、天梁化科、**文曲**化忌
+/// - 庚：太阳化禄、武曲化权、太阴化科、天同化忌
+/// - 辛：巨门化禄、太阳化权、**文曲**化科、**文昌**化忌
+/// - 壬：天梁化禄、紫微化权、**左辅**化科、武曲化忌
+/// - 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
+pub enum SiHuaStar {
+    // ===== 主星（十四主星） =====
+    /// 紫微星
+    ZiWei,
+    /// 天机星
+    TianJi,
+    /// 太阳星
+    TaiYang,
+    /// 武曲星
+    WuQu,
+    /// 天同星
+    TianTong,
+    /// 廉贞星
+    LianZhen,
+    /// 天府星
+    TianFu,
+    /// 太阴星
+    TaiYin,
+    /// 贪狼星
+    TanLang,
+    /// 巨门星
+    JuMen,
+    /// 天相星
+    TianXiang,
+    /// 天梁星
+    TianLiang,
+    /// 七杀星
+    QiSha,
+    /// 破军星
+    PoJun,
+
+    // ===== 辅星（六吉星中参与四化的） =====
+    /// 文昌星（丙化科、辛化忌）
+    WenChang,
+    /// 文曲星（己化忌、辛化科）
+    WenQu,
+    /// 左辅星（壬化科）
+    ZuoFu,
+    /// 右弼星（戊化科）
+    YouBi,
+}
+
+impl SiHuaStar {
+    /// 获取星曜名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::ZiWei => "紫微",
+            Self::TianJi => "天机",
+            Self::TaiYang => "太阳",
+            Self::WuQu => "武曲",
+            Self::TianTong => "天同",
+            Self::LianZhen => "廉贞",
+            Self::TianFu => "天府",
+            Self::TaiYin => "太阴",
+            Self::TanLang => "贪狼",
+            Self::JuMen => "巨门",
+            Self::TianXiang => "天相",
+            Self::TianLiang => "天梁",
+            Self::QiSha => "七杀",
+            Self::PoJun => "破军",
+            Self::WenChang => "文昌",
+            Self::WenQu => "文曲",
+            Self::ZuoFu => "左辅",
+            Self::YouBi => "右弼",
+        }
+    }
+
+    /// 判断是否为主星
+    pub fn is_zhu_xing(&self) -> bool {
+        matches!(
+            self,
+            Self::ZiWei | Self::TianJi | Self::TaiYang | Self::WuQu |
+            Self::TianTong | Self::LianZhen | Self::TianFu | Self::TaiYin |
+            Self::TanLang | Self::JuMen | Self::TianXiang | Self::TianLiang |
+            Self::QiSha | Self::PoJun
+        )
+    }
+
+    /// 判断是否为辅星
+    pub fn is_fu_xing(&self) -> bool {
+        matches!(self, Self::WenChang | Self::WenQu | Self::ZuoFu | Self::YouBi)
+    }
+
+    /// 从主星枚举转换
+    pub fn from_zhu_xing(zhu_xing: ZhuXing) -> Self {
+        match zhu_xing {
+            ZhuXing::ZiWei => Self::ZiWei,
+            ZhuXing::TianJi => Self::TianJi,
+            ZhuXing::TaiYang => Self::TaiYang,
+            ZhuXing::WuQu => Self::WuQu,
+            ZhuXing::TianTong => Self::TianTong,
+            ZhuXing::LianZhen => Self::LianZhen,
+            ZhuXing::TianFu => Self::TianFu,
+            ZhuXing::TaiYin => Self::TaiYin,
+            ZhuXing::TanLang => Self::TanLang,
+            ZhuXing::JuMen => Self::JuMen,
+            ZhuXing::TianXiang => Self::TianXiang,
+            ZhuXing::TianLiang => Self::TianLiang,
+            ZhuXing::QiSha => Self::QiSha,
+            ZhuXing::PoJun => Self::PoJun,
+        }
+    }
+
+    /// 从六吉星枚举转换（仅支持参与四化的辅星）
+    pub fn from_liu_ji_xing(liu_ji: LiuJiXing) -> Option<Self> {
+        match liu_ji {
+            LiuJiXing::WenChang => Some(Self::WenChang),
+            LiuJiXing::WenQu => Some(Self::WenQu),
+            LiuJiXing::ZuoFu => Some(Self::ZuoFu),
+            LiuJiXing::YouBi => Some(Self::YouBi),
+            _ => None, // 天魁、天钺不参与四化
+        }
+    }
+
+    /// 尝试转换为主星枚举
+    pub fn to_zhu_xing(&self) -> Option<ZhuXing> {
+        match self {
+            Self::ZiWei => Some(ZhuXing::ZiWei),
+            Self::TianJi => Some(ZhuXing::TianJi),
+            Self::TaiYang => Some(ZhuXing::TaiYang),
+            Self::WuQu => Some(ZhuXing::WuQu),
+            Self::TianTong => Some(ZhuXing::TianTong),
+            Self::LianZhen => Some(ZhuXing::LianZhen),
+            Self::TianFu => Some(ZhuXing::TianFu),
+            Self::TaiYin => Some(ZhuXing::TaiYin),
+            Self::TanLang => Some(ZhuXing::TanLang),
+            Self::JuMen => Some(ZhuXing::JuMen),
+            Self::TianXiang => Some(ZhuXing::TianXiang),
+            Self::TianLiang => Some(ZhuXing::TianLiang),
+            Self::QiSha => Some(ZhuXing::QiSha),
+            Self::PoJun => Some(ZhuXing::PoJun),
+            _ => None,
+        }
+    }
+
+    /// 尝试转换为六吉星枚举
+    pub fn to_liu_ji_xing(&self) -> Option<LiuJiXing> {
+        match self {
+            Self::WenChang => Some(LiuJiXing::WenChang),
+            Self::WenQu => Some(LiuJiXing::WenQu),
+            Self::ZuoFu => Some(LiuJiXing::ZuoFu),
+            Self::YouBi => Some(LiuJiXing::YouBi),
+            _ => None,
+        }
+    }
+}
+
+// ============================================================================
 // 星曜亮度
 // ============================================================================
 
@@ -572,8 +740,8 @@ pub struct ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen: frame_support::
     pub palaces: [Palace; 12],
 
     // ===== 四化信息 =====
-    /// 生年四化星
-    pub si_hua_stars: [ZhuXing; 4],
+    /// 生年四化星（使用 SiHuaStar 支持主星和辅星）
+    pub si_hua_stars: [SiHuaStar; 4],
 
     // ===== 大运信息 =====
     /// 起运年龄

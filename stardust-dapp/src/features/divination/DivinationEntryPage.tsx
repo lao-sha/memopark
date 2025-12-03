@@ -98,6 +98,16 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     color: '#eb2f96',
     enabled: true,
   },
+  {
+    type: DivinationType.XiaoLiuRen,
+    name: DIVINATION_TYPE_NAMES[DivinationType.XiaoLiuRen],
+    description: DIVINATION_TYPE_DESCRIPTIONS[DivinationType.XiaoLiuRen],
+    icon: DIVINATION_TYPE_ICONS[DivinationType.XiaoLiuRen],
+    antIcon: <ClockCircleOutlined />,
+    route: '#/xiaoliuren',
+    color: '#2f54eb',
+    enabled: true,
+  },
 ];
 
 /**
@@ -173,6 +183,14 @@ const DivinationEntryPage: React.FC = () => {
       <Card className="services-card">
         <Title level={5}>占卜服务</Title>
         <Space direction="vertical" style={{ width: '100%' }}>
+          <Button
+            block
+            size="large"
+            type="primary"
+            onClick={() => window.location.hash = '#/market'}
+          >
+            🏪 玄学服务市场
+          </Button>
           <Button
             block
             size="large"

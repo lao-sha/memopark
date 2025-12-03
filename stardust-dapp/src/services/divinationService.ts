@@ -1473,3 +1473,40 @@ export async function resumeOracleNode(): Promise<void> {
     }).catch(reject);
   });
 }
+
+// ==================== 服务模块导出 ====================
+
+/**
+ * 导出个人主页服务
+ *
+ * ProfileService 提供服务提供者个人主页管理功能：
+ * - 个人资料管理
+ * - 资质证书管理
+ * - 作品集管理
+ * - 技能标签管理
+ */
+export { ProfileService, createProfileService } from './profileService';
+
+/**
+ * 导出占卜市场信用体系服务
+ *
+ * DivinationCreditService 提供服务提供者信用管理功能：
+ * - 信用档案查询和管理
+ * - 违规记录管理
+ * - 申诉处理
+ * - 信用修复任务
+ *
+ * 注意：此服务与 creditService.ts（OTC 交易信用）是不同的系统
+ */
+export { DivinationCreditService, createDivinationCreditService } from './divinationCreditService';
+
+/**
+ * 导出悬赏问答服务
+ *
+ * BountyService 提供悬赏问答功能：
+ * - 创建悬赏问题
+ * - 提交回答
+ * - 投票和采纳
+ * - 奖励结算
+ */
+export { BountyService, createBountyService } from './bountyService';

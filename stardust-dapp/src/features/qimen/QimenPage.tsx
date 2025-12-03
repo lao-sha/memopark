@@ -46,10 +46,16 @@ import {
   BA_SHEN_NAMES,
   BA_SHEN_JI_XIONG,
   JIE_QI_NAMES,
+  ShiGanGeJuType,
+  SHI_GAN_GE_JU_NAMES,
+  SHI_GAN_GE_JU_JI_XIONG,
   type GongWei,
   type QimenPan,
+  type PalaceAnalysis,
   isYangDun,
   getJuNumber,
+  analyzePalace,
+  getYiMaGong,
 } from '../../types/qimen';
 
 const { Title, Text, Paragraph } = Typography;
@@ -126,10 +132,23 @@ function generateMockQimenPan(
 /**
  * 单宫显示组件
  */
-const GongWeiCard: React.FC<{ gongWei: GongWei; isCenter?: boolean }> = ({ gongWei, isCenter }) => {
+const GongWeiCard: React.FC<{
+  gongWei: GongWei;
+  isCenter?: boolean;
+  analysis?: PalaceAnalysis;
+}> = ({ gongWei, isCenter, analysis }) => {
   const menJiXiong = BA_MEN_JI_XIONG[gongWei.men];
   const xingJiXiong = JIU_XING_JI_XIONG[gongWei.xing];
   const shenJiXiong = BA_SHEN_JI_XIONG[gongWei.shen];
+
+  // 格局分析标记
+  const hasJiXing = analysis?.jiXing !== undefined;
+  const hasRuMu = analysis?.ruMu !== undefined;
+  const hasMenPo = analysis?.menPo !== undefined;
+  const hasSpecialGeJu = analysis?.keYing &&
+    analysis.keYing.geJu !== ShiGanGeJuType.Other &&
+    analysis.keYing.geJu !== ShiGanGeJuType.FuYin;
+  const isYiMa = analysis?.isYiMa || gongWei.isMa;
 
   return (
     <div
@@ -137,9 +156,10 @@ const GongWeiCard: React.FC<{ gongWei: GongWei; isCenter?: boolean }> = ({ gongW
         border: '1px solid #d9d9d9',
         borderRadius: 4,
         padding: 6,
-        minHeight: 90,
+        minHeight: 100,
         backgroundColor: isCenter ? '#f5f5f5' : '#fff',
         fontSize: 11,
+        position: 'relative',
       }}
     >
       {/* 宫位标题 */}
@@ -158,14 +178,31 @@ const GongWeiCard: React.FC<{ gongWei: GongWei; isCenter?: boolean }> = ({ gongW
         </div>
       ) : (
         <>
-          {/* 天盘/地盘干 */}
+          {/* 天盘/地盘干 + 十干克应 */}
           <div style={{ marginBottom: 2 }}>
-            <Tag style={{ fontSize: 10, padding: '0 2px', margin: 0 }}>
+            <Tag
+              style={{
+                fontSize: 10,
+                padding: '0 2px',
+                margin: 0,
+                backgroundColor: hasSpecialGeJu
+                  ? (analysis?.keYing?.isJi ? '#f6ffed' : '#fff2f0')
+                  : undefined,
+                borderColor: hasSpecialGeJu
+                  ? (analysis?.keYing?.isJi ? '#52c41a' : '#ff4d4f')
+                  : undefined,
+              }}
+            >
               {QI_YI_NAMES[gongWei.tianPanGan]}+{QI_YI_NAMES[gongWei.diPanGan]}
+              {hasSpecialGeJu && analysis?.keYing && (
+                <span style={{ fontSize: 8, marginLeft: 2 }}>
+                  {SHI_GAN_GE_JU_NAMES[analysis.keYing.geJu].slice(0, 2)}
+                </span>
+              )}
             </Tag>
           </div>
 
-          {/* 八门 */}
+          {/* 八门 + 门迫标记 */}
           <div style={{ marginBottom: 2 }}>
             <Tag
               color={BA_MEN_COLORS[gongWei.men]}
@@ -174,6 +211,7 @@ const GongWeiCard: React.FC<{ gongWei: GongWei; isCenter?: boolean }> = ({ gongW
               {BA_MEN_NAMES[gongWei.men]}
               {menJiXiong > 0 && '吉'}
               {menJiXiong < 0 && '凶'}
+              {hasMenPo && <span style={{ color: '#ff4d4f' }}>迫</span>}
             </Tag>
           </div>
 
@@ -197,13 +235,13 @@ const GongWeiCard: React.FC<{ gongWei: GongWei; isCenter?: boolean }> = ({ gongW
             </Tag>
           </div>
 
-          {/* 特殊标记 */}
-          {(gongWei.isKong || gongWei.isMa) && (
-            <div style={{ marginTop: 2 }}>
-              {gongWei.isKong && <Tag color="purple" style={{ fontSize: 9, padding: '0 2px' }}>空</Tag>}
-              {gongWei.isMa && <Tag color="gold" style={{ fontSize: 9, padding: '0 2px' }}>马</Tag>}
-            </div>
-          )}
+          {/* 特殊标记（旬空、马星、击刑、入墓） */}
+          <div style={{ marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {gongWei.isKong && <Tag color="purple" style={{ fontSize: 8, padding: '0 2px', margin: 0 }}>空</Tag>}
+            {isYiMa && <Tag color="gold" style={{ fontSize: 8, padding: '0 2px', margin: 0 }}>马</Tag>}
+            {hasJiXing && <Tag color="red" style={{ fontSize: 8, padding: '0 2px', margin: 0 }}>击刑</Tag>}
+            {hasRuMu && <Tag color="volcano" style={{ fontSize: 8, padding: '0 2px', margin: 0 }}>入墓</Tag>}
+          </div>
         </>
       )}
     </div>
@@ -351,6 +389,50 @@ const QimenPage: React.FC = () => {
       8: 5, // 乾六
     };
 
+    // 计算各宫格局分析
+    const palaceAnalyses: PalaceAnalysis[] = pan.gongWeis.map((gw) =>
+      analyzePalace(gw, pan.hour)
+    );
+
+    // 获取驿马信息
+    const yiMa = getYiMaGong(pan.hour);
+
+    // 收集整盘特殊格局
+    const specialPatterns: Array<{ name: string; isJi: boolean; gong: string }> = [];
+    palaceAnalyses.forEach((analysis, idx) => {
+      const gongName = JIU_GONG_SHORT[pan.gongWeis[idx].gong];
+      if (analysis.jiXing) {
+        specialPatterns.push({
+          name: `${QI_YI_NAMES[analysis.jiXing.gan]}击刑`,
+          isJi: false,
+          gong: gongName,
+        });
+      }
+      if (analysis.ruMu) {
+        specialPatterns.push({
+          name: `${QI_YI_NAMES[analysis.ruMu.gan]}入墓`,
+          isJi: false,
+          gong: gongName,
+        });
+      }
+      if (analysis.menPo) {
+        specialPatterns.push({
+          name: `${BA_MEN_NAMES[analysis.menPo.men]}门迫`,
+          isJi: false,
+          gong: gongName,
+        });
+      }
+      if (analysis.keYing &&
+          analysis.keYing.geJu !== ShiGanGeJuType.Other &&
+          analysis.keYing.geJu !== ShiGanGeJuType.FuYin) {
+        specialPatterns.push({
+          name: SHI_GAN_GE_JU_NAMES[analysis.keYing.geJu],
+          isJi: analysis.keYing.isJi,
+          gong: gongName,
+        });
+      }
+    });
+
     return (
       <Card className="pan-card" style={{ marginTop: 16 }}>
         <Title level={5}>
@@ -366,6 +448,9 @@ const QimenPage: React.FC = () => {
           <Tag color="red">值符：{JIU_XING_NAMES[pan.zhiFu]}</Tag>
           <Tag color="blue">值使：{BA_MEN_NAMES[pan.zhiShi]}</Tag>
           <Tag>旬首：{QI_YI_NAMES[pan.xunShou]}</Tag>
+          {yiMa && (
+            <Tag color="gold">驿马：{yiMa.zhiName}（{JIU_GONG_SHORT[yiMa.gong]}）</Tag>
+          )}
         </div>
 
         {/* 九宫格 */}
@@ -379,11 +464,13 @@ const QimenPage: React.FC = () => {
           {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((idx) => {
             const gongIdx = layoutMap[idx];
             const gongWei = pan.gongWeis[gongIdx];
+            const analysis = palaceAnalyses[gongIdx];
             return (
               <GongWeiCard
                 key={idx}
                 gongWei={gongWei}
                 isCenter={gongWei.gong === JiuGong.Zhong}
+                analysis={analysis}
               />
             );
           })}
@@ -395,6 +482,24 @@ const QimenPage: React.FC = () => {
             上南下北 · 左东右西
           </Text>
         </div>
+
+        {/* 格局分析卡片 */}
+        {specialPatterns.length > 0 && (
+          <div style={{ marginTop: 12, padding: 8, backgroundColor: '#fafafa', borderRadius: 4 }}>
+            <Text strong style={{ fontSize: 12 }}>格局分析</Text>
+            <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {specialPatterns.map((pattern, idx) => (
+                <Tag
+                  key={idx}
+                  color={pattern.isJi ? 'green' : 'red'}
+                  style={{ fontSize: 10 }}
+                >
+                  {pattern.name}（{pattern.gong}）
+                </Tag>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
     );
   };

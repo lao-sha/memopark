@@ -2,6 +2,8 @@
 //!
 //! 本模块包含 pallet-qimen 的所有单元测试
 
+#![allow(deprecated)]
+
 use crate::{mock::*, types::*, Error, Event};
 use frame_support::{assert_noop, assert_ok};
 

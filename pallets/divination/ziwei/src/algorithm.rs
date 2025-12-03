@@ -121,38 +121,41 @@ pub fn calculate_ziwei_position(lunar_day: u8, ju_shu: u8) -> u8 {
 
     // 使用公式：紫微位置 = f(日数, 局数)
     // 完整的查表数据
-    let ziwei_table: [[u8; 6]; 30] = [
-        // 日1-30，局2/3/4/5/6
-        [1, 4, 11, 6, 9, 0],   // 日1
-        [2, 1, 4, 11, 6, 0],   // 日2
-        [2, 2, 1, 4, 11, 0],   // 日3
-        [3, 5, 2, 1, 4, 0],    // 日4
-        [3, 2, 0, 2, 1, 0],    // 日5
-        [4, 3, 5, 7, 2, 0],    // 日6
-        [4, 6, 2, 0, 10, 0],   // 日7
-        [5, 3, 3, 5, 7, 0],    // 日8
-        [5, 4, 1, 2, 0, 0],    // 日9
-        [6, 7, 6, 3, 5, 0],    // 日10
-        [6, 4, 3, 8, 2, 0],    // 日11
-        [7, 5, 4, 1, 3, 0],    // 日12
-        [7, 8, 2, 6, 11, 0],   // 日13
-        [8, 5, 7, 3, 8, 0],    // 日14
-        [8, 6, 4, 4, 1, 0],    // 日15
-        [9, 9, 5, 9, 6, 0],    // 日16
-        [9, 6, 3, 2, 3, 0],    // 日17
-        [10, 7, 8, 5, 4, 0],   // 日18
-        [10, 10, 5, 10, 9, 0], // 日19
-        [11, 7, 6, 3, 6, 0],   // 日20
-        [11, 8, 4, 8, 3, 0],   // 日21
-        [0, 11, 9, 5, 4, 0],   // 日22
-        [0, 8, 6, 2, 1, 0],    // 日23
-        [1, 9, 10, 9, 7, 0],   // 日24
-        [1, 0, 7, 4, 4, 0],    // 日25
-        [2, 9, 8, 11, 9, 0],   // 日26
-        [2, 10, 5, 6, 6, 0],   // 日27
-        [3, 1, 11, 3, 3, 0],   // 日28
-        [3, 10, 8, 8, 8, 0],   // 日29
-        [4, 11, 0, 7, 5, 0],   // 日30
+    // 紫微星定位表（已校正）
+    // 数据来源：《紫微斗数全书》安星诀 / openzw 参考实现
+    // 列顺序：水二局、木三局、金四局、土五局、火六局
+    // 数值为地支索引：子=0, 丑=1, 寅=2, 卯=3, 辰=4, 巳=5, 午=6, 未=7, 申=8, 酉=9, 戌=10, 亥=11
+    let ziwei_table: [[u8; 5]; 30] = [
+        [ 1,  4, 11,  6,  9],   // 日1:  丑、辰、亥、午、酉
+        [ 2,  1,  4, 11,  6],   // 日2:  寅、丑、辰、亥、午
+        [ 2,  2,  1,  4, 11],   // 日3:  寅、寅、丑、辰、亥
+        [ 3,  5,  2,  1,  4],   // 日4:  卯、巳、寅、丑、辰
+        [ 3,  2,  0,  2,  1],   // 日5:  卯、寅、子、寅、丑
+        [ 4,  3,  5,  7,  2],   // 日6:  辰、卯、巳、未、寅
+        [ 4,  6,  2,  0, 10],   // 日7:  辰、午、寅、子、戌
+        [ 5,  3,  3,  5,  7],   // 日8:  巳、卯、卯、巳、未
+        [ 5,  4,  1,  2,  0],   // 日9:  巳、辰、丑、寅、子
+        [ 6,  7,  6,  3,  5],   // 日10: 午、未、午、卯、巳
+        [ 6,  4,  3,  8,  2],   // 日11: 午、辰、卯、申、寅
+        [ 7,  5,  4,  1,  3],   // 日12: 未、巳、辰、丑、卯
+        [ 7,  8,  2,  6, 11],   // 日13: 未、申、寅、午、亥
+        [ 8,  5,  7,  3,  8],   // 日14: 申、巳、未、卯、申
+        [ 8,  6,  4,  4,  1],   // 日15: 申、午、辰、辰、丑
+        [ 9,  9,  5,  9,  6],   // 日16: 酉、酉、巳、酉、午
+        [ 9,  6,  3,  2,  3],   // 日17: 酉、午、卯、寅、卯
+        [10,  7,  8,  7,  4],   // 日18: 戌、未、申、未、辰 [修正: 土5→7, 火4不变]
+        [10, 10,  5, 10,  0],   // 日19: 戌、戌、巳、戌、子 [修正: 火9→0]
+        [11,  7,  6,  5,  9],   // 日20: 亥、未、午、巳、酉 [修正: 土3→5, 火6→9]
+        [11,  8,  4, 10,  2],   // 日21: 亥、申、辰、戌、寅 [修正: 土8→10, 火3→2]
+        [ 0, 11,  9,  3,  7],   // 日22: 子、亥、酉、卯、未 [修正: 土5→3, 火4→7]
+        [ 0,  8,  6,  8,  4],   // 日23: 子、申、午、申、辰 [修正: 土2→8, 火1→4]
+        [ 1,  9,  7,  5,  5],   // 日24: 丑、酉、未、巳、巳
+        [ 1,  0,  5,  6,  1],   // 日25: 丑、子、巳、午、丑
+        [ 2,  9, 10, 11, 10],   // 日26: 寅、酉、戌、亥、戌
+        [ 2, 10,  7,  4,  3],   // 日27: 寅、戌、未、辰、卯
+        [ 3,  1,  8,  9,  8],   // 日28: 卯、丑、申、酉、申
+        [ 3, 10,  6,  6,  5],   // 日29: 卯、戌、午、午、巳
+        [ 4, 11, 11,  7,  6],   // 日30: 辰、亥、亥、未、午
     ];
 
     let day_idx = (lunar_day.saturating_sub(1) % 30) as usize;
@@ -370,21 +373,132 @@ pub fn calculate_di_kong_jie(birth_hour: DiZhi) -> (u8, u8) {
 // 四化飞星
 // ============================================================================
 
-/// 获取生年四化星
+/// 获取生年四化星（旧版兼容接口，仅返回主星）
+///
 /// 返回 (化禄星, 化权星, 化科星, 化忌星)
+///
+/// # 注意
+/// 此函数为兼容旧代码保留，对于涉及辅星的四化使用了替代主星：
+/// - 丙干化科：正确为文昌，此处返回天同
+/// - 戊干化科：正确为右弼，此处返回太阳
+/// - 己干化忌：正确为文曲，此处返回天机
+/// - 辛干化科：正确为文曲，此处返回天机
+/// - 辛干化忌：正确为文昌，此处返回天同
+/// - 壬干化科：正确为左辅，此处返回天府
+///
+/// 建议使用 `get_si_hua_stars_full()` 获取完整准确的四化星。
+#[deprecated(since = "1.1.0", note = "请使用 get_si_hua_stars_full() 获取准确的四化星")]
 pub fn get_si_hua_stars(year_gan: TianGan) -> [ZhuXing; 4] {
     match year_gan {
         TianGan::Jia => [ZhuXing::LianZhen, ZhuXing::PoJun, ZhuXing::WuQu, ZhuXing::TaiYang],
         TianGan::Yi => [ZhuXing::TianJi, ZhuXing::TianLiang, ZhuXing::ZiWei, ZhuXing::TaiYin],
-        TianGan::Bing => [ZhuXing::TianTong, ZhuXing::TianJi, ZhuXing::ZiWei, ZhuXing::LianZhen], // 文昌化科，这里简化用紫微
+        TianGan::Bing => [ZhuXing::TianTong, ZhuXing::TianJi, ZhuXing::TianTong, ZhuXing::LianZhen], // 文昌化科→天同(占位)
         TianGan::Ding => [ZhuXing::TaiYin, ZhuXing::TianTong, ZhuXing::TianJi, ZhuXing::JuMen],
-        TianGan::Wu => [ZhuXing::TanLang, ZhuXing::TaiYin, ZhuXing::TaiYang, ZhuXing::TianJi], // 右弼化科，简化
-        TianGan::Ji => [ZhuXing::WuQu, ZhuXing::TanLang, ZhuXing::TianLiang, ZhuXing::ZiWei], // 文曲化忌，简化
+        TianGan::Wu => [ZhuXing::TanLang, ZhuXing::TaiYin, ZhuXing::TaiYang, ZhuXing::TianJi], // 右弼化科→太阳(占位)
+        TianGan::Ji => [ZhuXing::WuQu, ZhuXing::TanLang, ZhuXing::TianLiang, ZhuXing::TianJi], // 文曲化忌→天机(占位)
         TianGan::Geng => [ZhuXing::TaiYang, ZhuXing::WuQu, ZhuXing::TaiYin, ZhuXing::TianTong],
-        TianGan::Xin => [ZhuXing::JuMen, ZhuXing::TaiYang, ZhuXing::ZiWei, ZhuXing::ZiWei], // 文曲化科、文昌化忌，简化
-        TianGan::Ren => [ZhuXing::TianLiang, ZhuXing::ZiWei, ZhuXing::TianFu, ZhuXing::WuQu], // 左辅化科，简化
+        TianGan::Xin => [ZhuXing::JuMen, ZhuXing::TaiYang, ZhuXing::TianJi, ZhuXing::TianTong], // 文曲化科→天机、文昌化忌→天同(占位)
+        TianGan::Ren => [ZhuXing::TianLiang, ZhuXing::ZiWei, ZhuXing::TianFu, ZhuXing::WuQu], // 左辅化科→天府(占位)
         TianGan::Gui => [ZhuXing::PoJun, ZhuXing::JuMen, ZhuXing::TaiYin, ZhuXing::TanLang],
     }
+}
+
+/// 获取生年四化星（完整版，支持主星和辅星）
+///
+/// 返回 [化禄星, 化权星, 化科星, 化忌星]
+///
+/// 根据《紫微斗数全书》安星诀，各天干四化如下：
+/// - 甲：廉贞化禄、破军化权、武曲化科、太阳化忌
+/// - 乙：天机化禄、天梁化权、紫微化科、太阴化忌
+/// - 丙：天同化禄、天机化权、文昌化科、廉贞化忌
+/// - 丁：太阴化禄、天同化权、天机化科、巨门化忌
+/// - 戊：贪狼化禄、太阴化权、右弼化科、天机化忌
+/// - 己：武曲化禄、贪狼化权、天梁化科、文曲化忌
+/// - 庚：太阳化禄、武曲化权、太阴化科、天同化忌
+/// - 辛：巨门化禄、太阳化权、文曲化科、文昌化忌
+/// - 壬：天梁化禄、紫微化权、左辅化科、武曲化忌
+/// - 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
+pub fn get_si_hua_stars_full(year_gan: TianGan) -> [SiHuaStar; 4] {
+    match year_gan {
+        // 甲：廉贞化禄、破军化权、武曲化科、太阳化忌
+        TianGan::Jia => [
+            SiHuaStar::LianZhen,
+            SiHuaStar::PoJun,
+            SiHuaStar::WuQu,
+            SiHuaStar::TaiYang,
+        ],
+        // 乙：天机化禄、天梁化权、紫微化科、太阴化忌
+        TianGan::Yi => [
+            SiHuaStar::TianJi,
+            SiHuaStar::TianLiang,
+            SiHuaStar::ZiWei,
+            SiHuaStar::TaiYin,
+        ],
+        // 丙：天同化禄、天机化权、文昌化科、廉贞化忌
+        TianGan::Bing => [
+            SiHuaStar::TianTong,
+            SiHuaStar::TianJi,
+            SiHuaStar::WenChang, // 正确：文昌
+            SiHuaStar::LianZhen,
+        ],
+        // 丁：太阴化禄、天同化权、天机化科、巨门化忌
+        TianGan::Ding => [
+            SiHuaStar::TaiYin,
+            SiHuaStar::TianTong,
+            SiHuaStar::TianJi,
+            SiHuaStar::JuMen,
+        ],
+        // 戊：贪狼化禄、太阴化权、右弼化科、天机化忌
+        TianGan::Wu => [
+            SiHuaStar::TanLang,
+            SiHuaStar::TaiYin,
+            SiHuaStar::YouBi, // 正确：右弼
+            SiHuaStar::TianJi,
+        ],
+        // 己：武曲化禄、贪狼化权、天梁化科、文曲化忌
+        TianGan::Ji => [
+            SiHuaStar::WuQu,
+            SiHuaStar::TanLang,
+            SiHuaStar::TianLiang,
+            SiHuaStar::WenQu, // 正确：文曲
+        ],
+        // 庚：太阳化禄、武曲化权、太阴化科、天同化忌
+        TianGan::Geng => [
+            SiHuaStar::TaiYang,
+            SiHuaStar::WuQu,
+            SiHuaStar::TaiYin,
+            SiHuaStar::TianTong,
+        ],
+        // 辛：巨门化禄、太阳化权、文曲化科、文昌化忌
+        TianGan::Xin => [
+            SiHuaStar::JuMen,
+            SiHuaStar::TaiYang,
+            SiHuaStar::WenQu,   // 正确：文曲
+            SiHuaStar::WenChang, // 正确：文昌
+        ],
+        // 壬：天梁化禄、紫微化权、左辅化科、武曲化忌
+        TianGan::Ren => [
+            SiHuaStar::TianLiang,
+            SiHuaStar::ZiWei,
+            SiHuaStar::ZuoFu, // 正确：左辅
+            SiHuaStar::WuQu,
+        ],
+        // 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
+        TianGan::Gui => [
+            SiHuaStar::PoJun,
+            SiHuaStar::JuMen,
+            SiHuaStar::TaiYin,
+            SiHuaStar::TanLang,
+        ],
+    }
+}
+
+/// 获取指定天干的四化信息描述
+///
+/// 返回格式化的四化星名称字符串
+pub fn describe_si_hua(year_gan: TianGan) -> (&'static str, &'static str, &'static str, &'static str) {
+    let stars = get_si_hua_stars_full(year_gan);
+    (stars[0].name(), stars[1].name(), stars[2].name(), stars[3].name())
 }
 
 // ============================================================================

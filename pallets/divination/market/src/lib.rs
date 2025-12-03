@@ -42,6 +42,8 @@ pub use pallet::*;
 
 pub mod types;
 
+mod helpers;
+
 #[cfg(test)]
 mod mock;
 
@@ -181,6 +183,53 @@ pub mod pallet {
         <T as frame_system::Config>::AccountId,
         BlockNumberFor<T>,
     >;
+
+    // ==================== 个人主页类型别名 ====================
+
+    /// 提供者详细资料类型别名
+    pub type ProviderProfileOf<T> = ProviderProfile<
+        BlockNumberFor<T>,
+        <T as Config>::MaxDescriptionLength,
+        <T as Config>::MaxCidLength,
+    >;
+
+    /// 资质证书类型别名
+    pub type CertificateOf<T> = Certificate<
+        BlockNumberFor<T>,
+        <T as Config>::MaxNameLength,
+        <T as Config>::MaxCidLength,
+    >;
+
+    /// 作品集类型别名
+    pub type PortfolioItemOf<T> = PortfolioItem<
+        BlockNumberFor<T>,
+        <T as Config>::MaxNameLength,
+        <T as Config>::MaxCidLength,
+    >;
+
+    /// 技能标签类型别名
+    pub type SkillTagOf = SkillTag<ConstU32<32>>;
+
+    // ==================== 信用体系类型别名 ====================
+
+    /// 信用档案类型别名
+    pub type CreditProfileOf<T> = CreditProfile<BlockNumberFor<T>>;
+
+    /// 违规记录类型别名
+    pub type ViolationRecordOf<T> = ViolationRecord<
+        <T as frame_system::Config>::AccountId,
+        BlockNumberFor<T>,
+        <T as Config>::MaxDescriptionLength,
+    >;
+
+    /// 信用变更记录类型别名
+    pub type CreditChangeRecordOf<T> = CreditChangeRecord<
+        BlockNumberFor<T>,
+        ConstU32<256>,
+    >;
+
+    /// 信用修复任务类型别名
+    pub type CreditRepairTaskOf<T> = CreditRepairTask<BlockNumberFor<T>>;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -336,6 +385,143 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn bounty_stats)]
     pub type BountyStatistics<T: Config> = StorageValue<_, BountyStats<BalanceOf<T>>, ValueQuery>;
+
+    // ==================== 个人主页存储项 ====================
+
+    /// 提供者详细资料
+    #[pallet::storage]
+    #[pallet::getter(fn provider_profiles)]
+    pub type ProviderProfiles<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ProviderProfileOf<T>>;
+
+    /// 提供者资质证书（提供者 -> 证书ID -> 证书）
+    #[pallet::storage]
+    #[pallet::getter(fn certificates)]
+    pub type Certificates<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        u32,
+        CertificateOf<T>,
+    >;
+
+    /// 提供者下一个证书 ID
+    #[pallet::storage]
+    #[pallet::getter(fn next_certificate_id)]
+    pub type NextCertificateId<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
+
+    /// 提供者作品集（提供者 -> 作品ID -> 作品）
+    #[pallet::storage]
+    #[pallet::getter(fn portfolios)]
+    pub type Portfolios<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        u32,
+        PortfolioItemOf<T>,
+    >;
+
+    /// 提供者下一个作品 ID
+    #[pallet::storage]
+    #[pallet::getter(fn next_portfolio_id)]
+    pub type NextPortfolioId<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
+
+    /// 提供者技能标签
+    #[pallet::storage]
+    #[pallet::getter(fn skill_tags)]
+    pub type SkillTags<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<SkillTagOf, ConstU32<20>>,
+        ValueQuery,
+    >;
+
+    /// 提供者评价标签统计
+    #[pallet::storage]
+    #[pallet::getter(fn review_tag_stats)]
+    pub type ReviewTagStatistics<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ReviewTagStats, ValueQuery>;
+
+    /// 作品点赞记录（(提供者, 作品ID) -> 用户 -> 是否点赞）
+    #[pallet::storage]
+    #[pallet::getter(fn portfolio_likes)]
+    pub type PortfolioLikes<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        (T::AccountId, u32),
+        Blake2_128Concat,
+        T::AccountId,
+        bool,
+        ValueQuery,
+    >;
+
+    // ==================== 信用体系存储项 ====================
+
+    /// 提供者信用档案
+    #[pallet::storage]
+    #[pallet::getter(fn credit_profiles)]
+    pub type CreditProfiles<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, CreditProfileOf<T>>;
+
+    /// 违规记录存储
+    #[pallet::storage]
+    #[pallet::getter(fn violation_records)]
+    pub type ViolationRecords<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, ViolationRecordOf<T>>;
+
+    /// 提供者违规记录索引
+    #[pallet::storage]
+    #[pallet::getter(fn provider_violations)]
+    pub type ProviderViolations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u64, ConstU32<100>>,
+        ValueQuery,
+    >;
+
+    /// 下一个违规记录 ID
+    #[pallet::storage]
+    #[pallet::getter(fn next_violation_id)]
+    pub type NextViolationId<T> = StorageValue<_, u64, ValueQuery>;
+
+    /// 信用变更历史（最近 50 条）
+    #[pallet::storage]
+    #[pallet::getter(fn credit_history)]
+    pub type CreditHistory<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<CreditChangeRecordOf<T>, ConstU32<50>>,
+        ValueQuery,
+    >;
+
+    /// 信用修复任务
+    #[pallet::storage]
+    #[pallet::getter(fn repair_tasks)]
+    pub type RepairTasks<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<CreditRepairTaskOf<T>, ConstU32<5>>,
+        ValueQuery,
+    >;
+
+    /// 信用黑名单（永久封禁）
+    #[pallet::storage]
+    #[pallet::getter(fn credit_blacklist)]
+    pub type CreditBlacklist<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>>;
+
+    /// 全局信用统计
+    #[pallet::storage]
+    #[pallet::getter(fn credit_stats)]
+    pub type CreditStatistics<T: Config> = StorageValue<_, GlobalCreditStats, ValueQuery>;
 
     // ==================== 事件 ====================
 
@@ -526,6 +712,118 @@ pub mod pallet {
             amount: BalanceOf<T>,
             rank: u8, // 1=第一名, 2=第二名, 3=第三名, 0=参与奖
         },
+
+        // ==================== 个人主页事件 ====================
+
+        /// 个人资料已更新
+        ProfileUpdated { provider: T::AccountId },
+
+        /// 资质证书已添加
+        CertificateAdded {
+            provider: T::AccountId,
+            certificate_id: u32,
+        },
+
+        /// 资质证书已删除
+        CertificateRemoved {
+            provider: T::AccountId,
+            certificate_id: u32,
+        },
+
+        /// 资质证书验证状态已更新
+        CertificateVerified {
+            provider: T::AccountId,
+            certificate_id: u32,
+            is_verified: bool,
+        },
+
+        /// 作品已发布
+        PortfolioPublished {
+            provider: T::AccountId,
+            portfolio_id: u32,
+            divination_type: DivinationType,
+        },
+
+        /// 作品已更新
+        PortfolioUpdated {
+            provider: T::AccountId,
+            portfolio_id: u32,
+        },
+
+        /// 作品已删除
+        PortfolioRemoved {
+            provider: T::AccountId,
+            portfolio_id: u32,
+        },
+
+        /// 作品被点赞
+        PortfolioLiked {
+            provider: T::AccountId,
+            portfolio_id: u32,
+            liker: T::AccountId,
+        },
+
+        /// 技能标签已更新
+        SkillTagsUpdated { provider: T::AccountId },
+
+        // ==================== 信用体系事件 ====================
+
+        /// 信用档案已创建
+        CreditProfileCreated { provider: T::AccountId },
+
+        /// 信用评估完成
+        CreditEvaluated {
+            provider: T::AccountId,
+            new_score: u16,
+            new_level: CreditLevel,
+        },
+
+        /// 信用等级变更
+        CreditLevelChanged {
+            provider: T::AccountId,
+            old_level: CreditLevel,
+            new_level: CreditLevel,
+        },
+
+        /// 违规记录创建
+        ViolationRecorded {
+            provider: T::AccountId,
+            violation_id: u64,
+            violation_type: ViolationType,
+            penalty: PenaltyType,
+            deduction_points: u16,
+        },
+
+        /// 违规申诉提交
+        ViolationAppealed {
+            provider: T::AccountId,
+            violation_id: u64,
+        },
+
+        /// 申诉结果处理完成
+        AppealResolved {
+            provider: T::AccountId,
+            violation_id: u64,
+            result: AppealResult,
+            restored_points: u16,
+        },
+
+        /// 信用修复任务申请
+        CreditRepairRequested {
+            provider: T::AccountId,
+            task_type: RepairTaskType,
+            target_value: u32,
+        },
+
+        /// 信用修复任务完成
+        CreditRepairCompleted {
+            provider: T::AccountId,
+            task_type: RepairTaskType,
+            restored_points: u16,
+        },
+
+        /// 加入信用黑名单
+        AddedToBlacklist { provider: T::AccountId },
     }
 
     // ==================== 错误 ====================
@@ -643,6 +941,50 @@ pub mod pallet {
         BountyListFull,
         /// 奖励分配比例无效
         InvalidRewardDistribution,
+
+        // ==================== 个人主页错误 ====================
+
+        /// 资质证书不存在
+        CertificateNotFound,
+        /// 证书数量已达上限
+        TooManyCertificates,
+        /// 作品不存在
+        PortfolioNotFound,
+        /// 作品数量已达上限
+        TooManyPortfolios,
+        /// 已点赞
+        AlreadyLiked,
+        /// 标签数量过多
+        TooManyTags,
+
+        // ==================== 信用体系错误 ====================
+
+        /// 信用档案不存在
+        CreditProfileNotFound,
+        /// 违规记录不存在
+        ViolationNotFound,
+        /// 不是违规记录所有者
+        NotViolationOwner,
+        /// 已申诉
+        AlreadyAppealed,
+        /// 违规已过期
+        ViolationExpired,
+        /// 未申诉
+        NotAppealed,
+        /// 信用分过高，无需修复
+        CreditTooHighForRepair,
+        /// 重复的修复任务
+        DuplicateRepairTask,
+        /// 活跃任务过多
+        TooManyActiveTasks,
+        /// 任务数量过多
+        TooManyTasks,
+        /// 违规记录过多
+        TooManyViolations,
+        /// 已被列入黑名单
+        InBlacklist,
+        /// 信用等级不足
+        InsufficientCreditLevel,
     }
 
     // ==================== 可调用函数 ====================
@@ -2262,40 +2604,802 @@ pub mod pallet {
 
             Ok(())
         }
-    }
 
-    // ==================== 内部辅助函数 ====================
+        // ==================== 个人主页管理函数 ====================
 
-    impl<T: Config> Pallet<T> {
-        /// 尝试提升提供者等级
-        fn try_upgrade_tier(provider: &mut ProviderOf<T>) {
-            let current_tier = provider.tier;
-            let avg_rating = provider.average_rating();
-            let completed = provider.completed_orders;
+        /// 更新提供者详细资料
+        ///
+        /// # 参数
+        /// - `introduction_cid`: 详细自我介绍 IPFS CID
+        /// - `experience_years`: 从业年限
+        /// - `background`: 师承/学习背景
+        /// - `motto`: 服务理念/座右铭
+        /// - `expertise_description`: 擅长问题类型描述
+        /// - `working_hours`: 工作时间说明
+        /// - `avg_response_time`: 平均响应时间（分钟）
+        /// - `accepts_appointment`: 是否接受预约
+        /// - `banner_cid`: 主页背景图 CID
+        #[pallet::call_index(26)]
+        #[pallet::weight(Weight::from_parts(40_000_000, 0))]
+        pub fn update_profile(
+            origin: OriginFor<T>,
+            introduction_cid: Option<Vec<u8>>,
+            experience_years: Option<u8>,
+            background: Option<Vec<u8>>,
+            motto: Option<Vec<u8>>,
+            expertise_description: Option<Vec<u8>>,
+            working_hours: Option<Vec<u8>>,
+            avg_response_time: Option<u32>,
+            accepts_appointment: Option<bool>,
+            banner_cid: Option<Vec<u8>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
 
-            let new_tier = if completed >= ProviderTier::Master.min_orders()
-                && avg_rating >= ProviderTier::Master.min_rating()
-            {
-                ProviderTier::Master
-            } else if completed >= ProviderTier::Expert.min_orders()
-                && avg_rating >= ProviderTier::Expert.min_rating()
-            {
-                ProviderTier::Expert
-            } else if completed >= ProviderTier::Senior.min_orders()
-                && avg_rating >= ProviderTier::Senior.min_rating()
-            {
-                ProviderTier::Senior
-            } else if completed >= ProviderTier::Certified.min_orders()
-                && avg_rating >= ProviderTier::Certified.min_rating()
-            {
-                ProviderTier::Certified
-            } else {
-                ProviderTier::Novice
+            // 验证是注册的提供者
+            ensure!(
+                Providers::<T>::contains_key(&who),
+                Error::<T>::ProviderNotFound
+            );
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+
+            ProviderProfiles::<T>::try_mutate(&who, |maybe_profile| {
+                let profile = match maybe_profile {
+                    Some(p) => p,
+                    None => {
+                        *maybe_profile = Some(ProviderProfile {
+                            introduction_cid: None,
+                            experience_years: 0,
+                            background: None,
+                            motto: None,
+                            expertise_description: None,
+                            working_hours: None,
+                            avg_response_time: None,
+                            accepts_appointment: false,
+                            banner_cid: None,
+                            updated_at: current_block,
+                        });
+                        maybe_profile.as_mut().unwrap()
+                    }
+                };
+
+                if let Some(cid) = introduction_cid {
+                    profile.introduction_cid = Some(
+                        BoundedVec::try_from(cid).map_err(|_| Error::<T>::CidTooLong)?
+                    );
+                }
+                if let Some(years) = experience_years {
+                    profile.experience_years = years;
+                }
+                if let Some(bg) = background {
+                    profile.background = Some(
+                        BoundedVec::try_from(bg).map_err(|_| Error::<T>::DescriptionTooLong)?
+                    );
+                }
+                if let Some(m) = motto {
+                    profile.motto = Some(
+                        BoundedVec::try_from(m).map_err(|_| Error::<T>::DescriptionTooLong)?
+                    );
+                }
+                if let Some(exp) = expertise_description {
+                    profile.expertise_description = Some(
+                        BoundedVec::try_from(exp).map_err(|_| Error::<T>::DescriptionTooLong)?
+                    );
+                }
+                if let Some(wh) = working_hours {
+                    profile.working_hours = Some(
+                        BoundedVec::try_from(wh).map_err(|_| Error::<T>::DescriptionTooLong)?
+                    );
+                }
+                if let Some(time) = avg_response_time {
+                    profile.avg_response_time = Some(time);
+                }
+                if let Some(accepts) = accepts_appointment {
+                    profile.accepts_appointment = accepts;
+                }
+                if let Some(cid) = banner_cid {
+                    profile.banner_cid = Some(
+                        BoundedVec::try_from(cid).map_err(|_| Error::<T>::CidTooLong)?
+                    );
+                }
+
+                profile.updated_at = current_block;
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            Self::deposit_event(Event::ProfileUpdated { provider: who });
+
+            Ok(())
+        }
+
+        /// 添加资质证书
+        #[pallet::call_index(27)]
+        #[pallet::weight(Weight::from_parts(35_000_000, 0))]
+        pub fn add_certificate(
+            origin: OriginFor<T>,
+            name: Vec<u8>,
+            cert_type: CertificateType,
+            issuer: Option<Vec<u8>>,
+            image_cid: Vec<u8>,
+            issued_at: Option<BlockNumberFor<T>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Providers::<T>::contains_key(&who),
+                Error::<T>::ProviderNotFound
+            );
+
+            let cert_id = NextCertificateId::<T>::get(&who);
+            // 限制每个提供者最多 20 个证书
+            ensure!(cert_id < 20, Error::<T>::TooManyCertificates);
+
+            let name_bounded = BoundedVec::try_from(name).map_err(|_| Error::<T>::NameTooLong)?;
+            let image_cid_bounded = BoundedVec::try_from(image_cid).map_err(|_| Error::<T>::CidTooLong)?;
+            let issuer_bounded = issuer
+                .map(|i| BoundedVec::try_from(i).map_err(|_| Error::<T>::NameTooLong))
+                .transpose()?;
+
+            let certificate = Certificate {
+                id: cert_id,
+                name: name_bounded,
+                cert_type,
+                issuer: issuer_bounded,
+                image_cid: image_cid_bounded,
+                issued_at,
+                is_verified: false,
+                uploaded_at: <frame_system::Pallet<T>>::block_number(),
             };
 
-            if new_tier as u8 > current_tier as u8 {
-                provider.tier = new_tier;
+            Certificates::<T>::insert(&who, cert_id, certificate);
+            NextCertificateId::<T>::insert(&who, cert_id.saturating_add(1));
+
+            Self::deposit_event(Event::CertificateAdded {
+                provider: who,
+                certificate_id: cert_id,
+            });
+
+            Ok(())
+        }
+
+        /// 删除资质证书
+        #[pallet::call_index(28)]
+        #[pallet::weight(Weight::from_parts(20_000_000, 0))]
+        pub fn remove_certificate(
+            origin: OriginFor<T>,
+            certificate_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Certificates::<T>::contains_key(&who, certificate_id),
+                Error::<T>::CertificateNotFound
+            );
+
+            Certificates::<T>::remove(&who, certificate_id);
+
+            Self::deposit_event(Event::CertificateRemoved {
+                provider: who,
+                certificate_id,
+            });
+
+            Ok(())
+        }
+
+        /// 验证资质证书（治理权限）
+        #[pallet::call_index(29)]
+        #[pallet::weight(Weight::from_parts(25_000_000, 0))]
+        pub fn verify_certificate(
+            origin: OriginFor<T>,
+            provider: T::AccountId,
+            certificate_id: u32,
+            is_verified: bool,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            Certificates::<T>::try_mutate(&provider, certificate_id, |maybe_cert| {
+                let cert = maybe_cert.as_mut().ok_or(Error::<T>::CertificateNotFound)?;
+                cert.is_verified = is_verified;
+                Ok::<_, DispatchError>(())
+            })?;
+
+            // 更新信用档案中的认证数
+            if is_verified {
+                CreditProfiles::<T>::mutate(&provider, |maybe_profile| {
+                    if let Some(profile) = maybe_profile {
+                        profile.certification_count = profile.certification_count.saturating_add(1);
+                    }
+                });
             }
+
+            Self::deposit_event(Event::CertificateVerified {
+                provider,
+                certificate_id,
+                is_verified,
+            });
+
+            Ok(())
+        }
+
+        /// 发布作品/案例
+        #[pallet::call_index(30)]
+        #[pallet::weight(Weight::from_parts(40_000_000, 0))]
+        pub fn publish_portfolio(
+            origin: OriginFor<T>,
+            title: Vec<u8>,
+            divination_type: DivinationType,
+            case_type: PortfolioCaseType,
+            content_cid: Vec<u8>,
+            cover_cid: Option<Vec<u8>>,
+            is_featured: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Providers::<T>::contains_key(&who),
+                Error::<T>::ProviderNotFound
+            );
+
+            let portfolio_id = NextPortfolioId::<T>::get(&who);
+            // 限制每个提供者最多 100 个作品
+            ensure!(portfolio_id < 100, Error::<T>::TooManyPortfolios);
+
+            let title_bounded = BoundedVec::try_from(title).map_err(|_| Error::<T>::NameTooLong)?;
+            let content_cid_bounded = BoundedVec::try_from(content_cid).map_err(|_| Error::<T>::CidTooLong)?;
+            let cover_cid_bounded = cover_cid
+                .map(|c| BoundedVec::try_from(c).map_err(|_| Error::<T>::CidTooLong))
+                .transpose()?;
+
+            let portfolio = PortfolioItem {
+                id: portfolio_id,
+                title: title_bounded,
+                divination_type,
+                case_type,
+                content_cid: content_cid_bounded,
+                cover_cid: cover_cid_bounded,
+                is_featured,
+                view_count: 0,
+                like_count: 0,
+                published_at: <frame_system::Pallet<T>>::block_number(),
+            };
+
+            Portfolios::<T>::insert(&who, portfolio_id, portfolio);
+            NextPortfolioId::<T>::insert(&who, portfolio_id.saturating_add(1));
+
+            Self::deposit_event(Event::PortfolioPublished {
+                provider: who,
+                portfolio_id,
+                divination_type,
+            });
+
+            Ok(())
+        }
+
+        /// 更新作品
+        #[pallet::call_index(31)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn update_portfolio(
+            origin: OriginFor<T>,
+            portfolio_id: u32,
+            title: Option<Vec<u8>>,
+            content_cid: Option<Vec<u8>>,
+            cover_cid: Option<Vec<u8>>,
+            is_featured: Option<bool>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            Portfolios::<T>::try_mutate(&who, portfolio_id, |maybe_portfolio| {
+                let portfolio = maybe_portfolio.as_mut().ok_or(Error::<T>::PortfolioNotFound)?;
+
+                if let Some(t) = title {
+                    portfolio.title = BoundedVec::try_from(t).map_err(|_| Error::<T>::NameTooLong)?;
+                }
+                if let Some(cid) = content_cid {
+                    portfolio.content_cid = BoundedVec::try_from(cid).map_err(|_| Error::<T>::CidTooLong)?;
+                }
+                if let Some(cid) = cover_cid {
+                    portfolio.cover_cid = Some(
+                        BoundedVec::try_from(cid).map_err(|_| Error::<T>::CidTooLong)?
+                    );
+                }
+                if let Some(f) = is_featured {
+                    portfolio.is_featured = f;
+                }
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            Self::deposit_event(Event::PortfolioUpdated {
+                provider: who,
+                portfolio_id,
+            });
+
+            Ok(())
+        }
+
+        /// 删除作品
+        #[pallet::call_index(32)]
+        #[pallet::weight(Weight::from_parts(20_000_000, 0))]
+        pub fn remove_portfolio(
+            origin: OriginFor<T>,
+            portfolio_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Portfolios::<T>::contains_key(&who, portfolio_id),
+                Error::<T>::PortfolioNotFound
+            );
+
+            Portfolios::<T>::remove(&who, portfolio_id);
+
+            Self::deposit_event(Event::PortfolioRemoved {
+                provider: who,
+                portfolio_id,
+            });
+
+            Ok(())
+        }
+
+        /// 点赞作品
+        #[pallet::call_index(33)]
+        #[pallet::weight(Weight::from_parts(25_000_000, 0))]
+        pub fn like_portfolio(
+            origin: OriginFor<T>,
+            provider: T::AccountId,
+            portfolio_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 验证作品存在
+            ensure!(
+                Portfolios::<T>::contains_key(&provider, portfolio_id),
+                Error::<T>::PortfolioNotFound
+            );
+
+            // 检查是否已点赞
+            let key = (provider.clone(), portfolio_id);
+            ensure!(
+                !PortfolioLikes::<T>::get(&key, &who),
+                Error::<T>::AlreadyLiked
+            );
+
+            // 记录点赞
+            PortfolioLikes::<T>::insert(&key, &who, true);
+
+            // 更新点赞数
+            Portfolios::<T>::mutate(&provider, portfolio_id, |maybe_portfolio| {
+                if let Some(p) = maybe_portfolio {
+                    p.like_count = p.like_count.saturating_add(1);
+                }
+            });
+
+            Self::deposit_event(Event::PortfolioLiked {
+                provider,
+                portfolio_id,
+                liker: who,
+            });
+
+            Ok(())
+        }
+
+        /// 设置技能标签
+        #[pallet::call_index(34)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn set_skill_tags(
+            origin: OriginFor<T>,
+            tags: Vec<(Vec<u8>, SkillTagType, u8)>, // (label, type, proficiency)
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Providers::<T>::contains_key(&who),
+                Error::<T>::ProviderNotFound
+            );
+
+            let mut skill_tags: BoundedVec<SkillTagOf, ConstU32<20>> = BoundedVec::new();
+
+            for (label, tag_type, proficiency) in tags {
+                ensure!(proficiency >= 1 && proficiency <= 5, Error::<T>::InvalidRating);
+
+                let label_bounded = BoundedVec::try_from(label)
+                    .map_err(|_| Error::<T>::NameTooLong)?;
+
+                skill_tags.try_push(SkillTag {
+                    label: label_bounded,
+                    tag_type,
+                    proficiency,
+                }).map_err(|_| Error::<T>::TooManyTags)?;
+            }
+
+            SkillTags::<T>::insert(&who, skill_tags);
+
+            Self::deposit_event(Event::SkillTagsUpdated { provider: who });
+
+            Ok(())
+        }
+
+        // ==================== 信用体系管理函数 ====================
+
+        /// 初始化提供者信用档案
+        ///
+        /// 在提供者注册时自动调用，也可手动为老用户创建
+        #[pallet::call_index(35)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn init_credit_profile(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                Providers::<T>::contains_key(&who),
+                Error::<T>::ProviderNotFound
+            );
+
+            // 检查是否已有信用档案
+            ensure!(
+                !CreditProfiles::<T>::contains_key(&who),
+                Error::<T>::ProviderAlreadyExists
+            );
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let provider = Providers::<T>::get(&who).ok_or(Error::<T>::ProviderNotFound)?;
+
+            // 创建初始信用档案，基础分 650
+            let initial_score: u16 = 650;
+            let profile = CreditProfile {
+                score: initial_score,
+                level: CreditLevel::from_score(initial_score),
+                highest_score: initial_score,
+                lowest_score: initial_score,
+                service_quality_score: 0,
+                avg_overall_rating: 0,
+                avg_accuracy_rating: 0,
+                avg_attitude_rating: 0,
+                avg_response_rating: 0,
+                five_star_count: 0,
+                one_star_count: 0,
+                behavior_score: 250, // 满分
+                violation_count: 0,
+                warning_count: 0,
+                complaint_count: 0,
+                complaint_upheld_count: 0,
+                active_violations: 0,
+                fulfillment_score: 0,
+                completion_rate: 10000, // 100%
+                on_time_rate: 10000,
+                cancellation_rate: 0,
+                timeout_count: 0,
+                active_cancel_count: 0,
+                avg_response_blocks: 0,
+                bonus_score: 0,
+                bounty_adoption_count: 0,
+                certification_count: 0,
+                consecutive_positive_days: 0,
+                is_verified: false,
+                has_deposit: !provider.deposit.is_zero(),
+                total_deductions: 0,
+                last_deduction_reason: None,
+                last_deduction_at: None,
+                total_orders: provider.total_orders,
+                completed_orders: provider.completed_orders,
+                total_reviews: provider.total_ratings,
+                created_at: current_block,
+                updated_at: current_block,
+                last_evaluated_at: current_block,
+            };
+
+            CreditProfiles::<T>::insert(&who, profile);
+
+            // 更新全局统计
+            CreditStatistics::<T>::mutate(|stats| {
+                stats.total_providers = stats.total_providers.saturating_add(1);
+                stats.fair_count = stats.fair_count.saturating_add(1);
+            });
+
+            Self::deposit_event(Event::CreditProfileCreated { provider: who });
+
+            Ok(())
+        }
+
+        /// 记录违规（治理权限）
+        #[pallet::call_index(36)]
+        #[pallet::weight(Weight::from_parts(60_000_000, 0))]
+        pub fn record_violation(
+            origin: OriginFor<T>,
+            provider: T::AccountId,
+            violation_type: ViolationType,
+            reason: Vec<u8>,
+            related_order_id: Option<u64>,
+            penalty: PenaltyType,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                Providers::<T>::contains_key(&provider),
+                Error::<T>::ProviderNotFound
+            );
+
+            // 检查是否在黑名单中
+            ensure!(
+                !CreditBlacklist::<T>::contains_key(&provider),
+                Error::<T>::InBlacklist
+            );
+
+            let reason_bounded = BoundedVec::try_from(reason)
+                .map_err(|_| Error::<T>::DescriptionTooLong)?;
+
+            let violation_id = NextViolationId::<T>::get();
+            NextViolationId::<T>::put(violation_id.saturating_add(1));
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let duration = violation_type.record_duration();
+            let expires_at = if duration > 0 {
+                Some(current_block + duration.into())
+            } else {
+                None
+            };
+
+            // 计算扣分
+            let base_deduction: u16 = match &penalty {
+                PenaltyType::DeductionOnly => 20,
+                PenaltyType::Warning => 30,
+                PenaltyType::OrderRestriction => 50,
+                PenaltyType::ServiceSuspension => 100,
+                PenaltyType::PermanentBan => 500,
+            };
+            let deduction_points = (base_deduction as u32 * violation_type.penalty_multiplier() as u32 / 100) as u16;
+
+            let record = ViolationRecord {
+                id: violation_id,
+                provider: provider.clone(),
+                violation_type,
+                reason: reason_bounded,
+                related_order_id,
+                deduction_points,
+                penalty,
+                penalty_duration: duration,
+                is_appealed: false,
+                appeal_result: None,
+                recorded_at: current_block,
+                expires_at,
+                is_active: true,
+            };
+
+            ViolationRecords::<T>::insert(violation_id, record);
+
+            // 更新提供者违规索引
+            ProviderViolations::<T>::try_mutate(&provider, |list| {
+                list.try_push(violation_id)
+                    .map_err(|_| Error::<T>::TooManyViolations)
+            })?;
+
+            // 更新信用档案
+            CreditProfiles::<T>::mutate(&provider, |maybe_profile| {
+                if let Some(profile) = maybe_profile {
+                    profile.violation_count = profile.violation_count.saturating_add(1);
+                    profile.active_violations = profile.active_violations.saturating_add(1);
+                    profile.total_deductions = profile.total_deductions.saturating_add(deduction_points);
+                    profile.last_deduction_reason = Some(DeductionReason::Violation);
+                    profile.last_deduction_at = Some(current_block);
+
+                    // 重新计算分数
+                    let new_score = profile.score.saturating_sub(deduction_points);
+                    let old_level = profile.level;
+                    let new_level = CreditLevel::from_score(new_score);
+
+                    profile.score = new_score;
+                    profile.level = new_level;
+                    if new_score < profile.lowest_score {
+                        profile.lowest_score = new_score;
+                    }
+                    profile.updated_at = current_block;
+
+                    // 如果等级变更，发送事件
+                    if old_level != new_level {
+                        Self::deposit_event(Event::CreditLevelChanged {
+                            provider: provider.clone(),
+                            old_level,
+                            new_level,
+                        });
+                    }
+                }
+            });
+
+            // 处理永久封禁
+            if penalty == PenaltyType::PermanentBan {
+                CreditBlacklist::<T>::insert(&provider, current_block);
+
+                // 更新提供者状态
+                Providers::<T>::mutate(&provider, |maybe_p| {
+                    if let Some(p) = maybe_p {
+                        p.status = ProviderStatus::Banned;
+                    }
+                });
+
+                CreditStatistics::<T>::mutate(|stats| {
+                    stats.blacklisted_count = stats.blacklisted_count.saturating_add(1);
+                });
+
+                Self::deposit_event(Event::AddedToBlacklist { provider: provider.clone() });
+            }
+
+            Self::deposit_event(Event::ViolationRecorded {
+                provider,
+                violation_id,
+                violation_type,
+                penalty,
+                deduction_points,
+            });
+
+            Ok(())
+        }
+
+        /// 申诉违规（提供者调用）
+        #[pallet::call_index(37)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn appeal_violation(
+            origin: OriginFor<T>,
+            violation_id: u64,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ViolationRecords::<T>::try_mutate(violation_id, |maybe_record| {
+                let record = maybe_record.as_mut()
+                    .ok_or(Error::<T>::ViolationNotFound)?;
+
+                ensure!(record.provider == who, Error::<T>::NotViolationOwner);
+                ensure!(!record.is_appealed, Error::<T>::AlreadyAppealed);
+                ensure!(record.is_active, Error::<T>::ViolationExpired);
+
+                record.is_appealed = true;
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            Self::deposit_event(Event::ViolationAppealed {
+                provider: who,
+                violation_id,
+            });
+
+            Ok(())
+        }
+
+        /// 处理申诉（治理权限）
+        #[pallet::call_index(38)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn resolve_appeal(
+            origin: OriginFor<T>,
+            violation_id: u64,
+            result: AppealResult,
+            restore_points: Option<u16>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            let record = ViolationRecords::<T>::get(violation_id)
+                .ok_or(Error::<T>::ViolationNotFound)?;
+
+            ensure!(record.is_appealed, Error::<T>::NotAppealed);
+
+            let provider = record.provider.clone();
+            let original_deduction = record.deduction_points;
+
+            // 更新违规记录
+            ViolationRecords::<T>::mutate(violation_id, |maybe_record| {
+                if let Some(r) = maybe_record {
+                    r.appeal_result = Some(result);
+                    if result == AppealResult::Upheld {
+                        r.is_active = false;
+                    }
+                }
+            });
+
+            // 根据申诉结果恢复信用分
+            let points_to_restore = match result {
+                AppealResult::Upheld => original_deduction,
+                AppealResult::PartiallyUpheld => restore_points.unwrap_or(original_deduction / 2),
+                AppealResult::Rejected => 0,
+            };
+
+            if points_to_restore > 0 {
+                CreditProfiles::<T>::mutate(&provider, |maybe_profile| {
+                    if let Some(profile) = maybe_profile {
+                        profile.total_deductions = profile.total_deductions.saturating_sub(points_to_restore);
+
+                        if result == AppealResult::Upheld {
+                            profile.violation_count = profile.violation_count.saturating_sub(1);
+                            profile.active_violations = profile.active_violations.saturating_sub(1);
+                        }
+
+                        let new_score = profile.score.saturating_add(points_to_restore).min(1000);
+                        let old_level = profile.level;
+                        let new_level = CreditLevel::from_score(new_score);
+
+                        profile.score = new_score;
+                        profile.level = new_level;
+                        if new_score > profile.highest_score {
+                            profile.highest_score = new_score;
+                        }
+                        profile.updated_at = <frame_system::Pallet<T>>::block_number();
+
+                        if old_level != new_level {
+                            Self::deposit_event(Event::CreditLevelChanged {
+                                provider: provider.clone(),
+                                old_level,
+                                new_level,
+                            });
+                        }
+                    }
+                });
+            }
+
+            Self::deposit_event(Event::AppealResolved {
+                provider,
+                violation_id,
+                result,
+                restored_points: points_to_restore,
+            });
+
+            Ok(())
+        }
+
+        /// 申请信用修复任务
+        #[pallet::call_index(39)]
+        #[pallet::weight(Weight::from_parts(40_000_000, 0))]
+        pub fn request_credit_repair(
+            origin: OriginFor<T>,
+            task_type: RepairTaskType,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let profile = CreditProfiles::<T>::get(&who)
+                .ok_or(Error::<T>::CreditProfileNotFound)?;
+
+            // 只有信用分低于 750 的用户才能申请修复
+            ensure!(profile.score < 750, Error::<T>::CreditTooHighForRepair);
+
+            // 检查是否已有相同类型的进行中任务
+            let tasks = RepairTasks::<T>::get(&who);
+            ensure!(
+                !tasks.iter().any(|t| t.task_type == task_type && !t.is_completed),
+                Error::<T>::DuplicateRepairTask
+            );
+
+            // 检查活跃任务数量上限
+            ensure!(
+                tasks.iter().filter(|t| !t.is_completed).count() < 3,
+                Error::<T>::TooManyActiveTasks
+            );
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let target_value = task_type.default_target();
+            let duration = task_type.default_duration();
+
+            let task_id = tasks.len() as u32;
+
+            let task = CreditRepairTask {
+                id: task_id,
+                task_type,
+                reward_points: task_type.default_reward(),
+                target_value,
+                current_progress: 0,
+                is_completed: false,
+                started_at: current_block,
+                deadline: current_block + duration.into(),
+                completed_at: None,
+            };
+
+            RepairTasks::<T>::try_mutate(&who, |tasks| {
+                tasks.try_push(task)
+                    .map_err(|_| Error::<T>::TooManyTasks)
+            })?;
+
+            Self::deposit_event(Event::CreditRepairRequested {
+                provider: who,
+                task_type,
+                target_value,
+            });
+
+            Ok(())
         }
     }
 }

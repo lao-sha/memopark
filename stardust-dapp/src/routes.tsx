@@ -121,6 +121,12 @@ export const routes: RouteItem[] = [
   // 🆕 奇门遁甲模块
   { match: h => h === '#/qimen', component: lazy(() => import('./features/qimen/QimenPage')) },  // 奇门遁甲排盘页面
 
+  // 🆕 小六壬模块
+  { match: h => h === '#/xiaoliuren', component: lazy(() => import('./features/xiaoliuren/XiaoLiuRenPage')) },  // 小六壬排盘页面
+
+  // 🆕 占卜服务市场模块
+  { match: h => h === '#/market', component: lazy(() => import('./features/market/MarketPage')) },  // 占卜服务市场页面
+
   // 🆕 悬赏问答系统（基于占卜结果）
   { match: h => h === '#/bounty', component: lazy(() => import('./features/bounty/BountyListPage')) },  // 悬赏列表页面
   { match: h => h.startsWith('#/bounty/'), component: lazy(() => import('./features/bounty/BountyDetailPage')) },  // 悬赏详情页面

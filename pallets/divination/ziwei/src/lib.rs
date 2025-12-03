@@ -663,8 +663,8 @@ pub mod pallet {
             let lu_cun = calculate_lu_cun(year_gan);
             palaces[lu_cun as usize].lu_cun = true;
 
-            // 获取四化星
-            let si_hua_stars = get_si_hua_stars(year_gan);
+            // 获取四化星（使用完整版支持辅星）
+            let si_hua_stars = get_si_hua_stars_full(year_gan);
 
             // 计算起运
             let qi_yun_age = calculate_qi_yun_age(ju_shu);

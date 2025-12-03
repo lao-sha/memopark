@@ -126,6 +126,66 @@ export enum SiHua {
 }
 
 /**
+ * 四化星联合类型
+ *
+ * 四化飞星可以作用于主星（十四主星）或辅星（六吉星），
+ * 此枚举统一表示可以参与四化的所有星曜。
+ *
+ * 根据《紫微斗数全书》，各天干四化如下：
+ * - 甲：廉贞化禄、破军化权、武曲化科、太阳化忌
+ * - 乙：天机化禄、天梁化权、紫微化科、太阴化忌
+ * - 丙：天同化禄、天机化权、文昌化科、廉贞化忌
+ * - 丁：太阴化禄、天同化权、天机化科、巨门化忌
+ * - 戊：贪狼化禄、太阴化权、右弼化科、天机化忌
+ * - 己：武曲化禄、贪狼化权、天梁化科、文曲化忌
+ * - 庚：太阳化禄、武曲化权、太阴化科、天同化忌
+ * - 辛：巨门化禄、太阳化权、文曲化科、文昌化忌
+ * - 壬：天梁化禄、紫微化权、左辅化科、武曲化忌
+ * - 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
+ */
+export enum SiHuaStar {
+  // ===== 主星（十四主星） =====
+  /** 紫微星 */
+  ZiWei = 0,
+  /** 天机星 */
+  TianJi = 1,
+  /** 太阳星 */
+  TaiYang = 2,
+  /** 武曲星 */
+  WuQu = 3,
+  /** 天同星 */
+  TianTong = 4,
+  /** 廉贞星 */
+  LianZhen = 5,
+  /** 天府星 */
+  TianFu = 6,
+  /** 太阴星 */
+  TaiYin = 7,
+  /** 贪狼星 */
+  TanLang = 8,
+  /** 巨门星 */
+  JuMen = 9,
+  /** 天相星 */
+  TianXiang = 10,
+  /** 天梁星 */
+  TianLiang = 11,
+  /** 七杀星 */
+  QiSha = 12,
+  /** 破军星 */
+  PoJun = 13,
+
+  // ===== 辅星（六吉星中参与四化的） =====
+  /** 文昌星（丙化科、辛化忌） */
+  WenChang = 14,
+  /** 文曲星（己化忌、辛化科） */
+  WenQu = 15,
+  /** 左辅星（壬化科） */
+  ZuoFu = 16,
+  /** 右弼星（戊化科） */
+  YouBi = 17,
+}
+
+/**
  * 五行局
  */
 export enum WuXingJu {
@@ -352,6 +412,60 @@ export const SI_HUA_SHORT: Record<SiHua, string> = {
 };
 
 /**
+ * 四化星名称（支持主星和辅星）
+ */
+export const SI_HUA_STAR_NAMES: Record<SiHuaStar, string> = {
+  // 主星
+  [SiHuaStar.ZiWei]: '紫微',
+  [SiHuaStar.TianJi]: '天机',
+  [SiHuaStar.TaiYang]: '太阳',
+  [SiHuaStar.WuQu]: '武曲',
+  [SiHuaStar.TianTong]: '天同',
+  [SiHuaStar.LianZhen]: '廉贞',
+  [SiHuaStar.TianFu]: '天府',
+  [SiHuaStar.TaiYin]: '太阴',
+  [SiHuaStar.TanLang]: '贪狼',
+  [SiHuaStar.JuMen]: '巨门',
+  [SiHuaStar.TianXiang]: '天相',
+  [SiHuaStar.TianLiang]: '天梁',
+  [SiHuaStar.QiSha]: '七杀',
+  [SiHuaStar.PoJun]: '破军',
+  // 辅星
+  [SiHuaStar.WenChang]: '文昌',
+  [SiHuaStar.WenQu]: '文曲',
+  [SiHuaStar.ZuoFu]: '左辅',
+  [SiHuaStar.YouBi]: '右弼',
+};
+
+/**
+ * 十天干对应的四化星（完整版）
+ *
+ * 索引顺序：[化禄, 化权, 化科, 化忌]
+ */
+export const TIAN_GAN_SI_HUA: Record<number, [SiHuaStar, SiHuaStar, SiHuaStar, SiHuaStar]> = {
+  // 甲：廉贞化禄、破军化权、武曲化科、太阳化忌
+  0: [SiHuaStar.LianZhen, SiHuaStar.PoJun, SiHuaStar.WuQu, SiHuaStar.TaiYang],
+  // 乙：天机化禄、天梁化权、紫微化科、太阴化忌
+  1: [SiHuaStar.TianJi, SiHuaStar.TianLiang, SiHuaStar.ZiWei, SiHuaStar.TaiYin],
+  // 丙：天同化禄、天机化权、文昌化科、廉贞化忌
+  2: [SiHuaStar.TianTong, SiHuaStar.TianJi, SiHuaStar.WenChang, SiHuaStar.LianZhen],
+  // 丁：太阴化禄、天同化权、天机化科、巨门化忌
+  3: [SiHuaStar.TaiYin, SiHuaStar.TianTong, SiHuaStar.TianJi, SiHuaStar.JuMen],
+  // 戊：贪狼化禄、太阴化权、右弼化科、天机化忌
+  4: [SiHuaStar.TanLang, SiHuaStar.TaiYin, SiHuaStar.YouBi, SiHuaStar.TianJi],
+  // 己：武曲化禄、贪狼化权、天梁化科、文曲化忌
+  5: [SiHuaStar.WuQu, SiHuaStar.TanLang, SiHuaStar.TianLiang, SiHuaStar.WenQu],
+  // 庚：太阳化禄、武曲化权、太阴化科、天同化忌
+  6: [SiHuaStar.TaiYang, SiHuaStar.WuQu, SiHuaStar.TaiYin, SiHuaStar.TianTong],
+  // 辛：巨门化禄、太阳化权、文曲化科、文昌化忌
+  7: [SiHuaStar.JuMen, SiHuaStar.TaiYang, SiHuaStar.WenQu, SiHuaStar.WenChang],
+  // 壬：天梁化禄、紫微化权、左辅化科、武曲化忌
+  8: [SiHuaStar.TianLiang, SiHuaStar.ZiWei, SiHuaStar.ZuoFu, SiHuaStar.WuQu],
+  // 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
+  9: [SiHuaStar.PoJun, SiHuaStar.JuMen, SiHuaStar.TaiYin, SiHuaStar.TanLang],
+};
+
+/**
  * 五行局名称
  */
 export const WU_XING_JU_NAMES: Record<WuXingJu, string> = {
@@ -397,3 +511,112 @@ export const DI_ZHI_NAMES: string[] = [
 export const TIAN_GAN_NAMES: string[] = [
   '甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸',
 ];
+
+// ==================== 辅助函数 ====================
+
+/**
+ * 判断四化星是否为主星
+ * @param star 四化星
+ * @returns 是否为主星（十四主星）
+ */
+export function isSiHuaStarZhuXing(star: SiHuaStar): boolean {
+  return star >= SiHuaStar.ZiWei && star <= SiHuaStar.PoJun;
+}
+
+/**
+ * 判断四化星是否为辅星
+ * @param star 四化星
+ * @returns 是否为辅星（文昌、文曲、左辅、右弼）
+ */
+export function isSiHuaStarFuXing(star: SiHuaStar): boolean {
+  return star >= SiHuaStar.WenChang && star <= SiHuaStar.YouBi;
+}
+
+/**
+ * 获取四化星名称
+ * @param star 四化星
+ * @returns 星曜名称
+ */
+export function getSiHuaStarName(star: SiHuaStar): string {
+  return SI_HUA_STAR_NAMES[star] || '未知';
+}
+
+/**
+ * 获取指定天干的四化星
+ * @param tianGanIndex 天干索引（0=甲, 1=乙, ...）
+ * @returns [化禄星, 化权星, 化科星, 化忌星]
+ */
+export function getSiHuaStarsByTianGan(tianGanIndex: number): [SiHuaStar, SiHuaStar, SiHuaStar, SiHuaStar] {
+  const index = tianGanIndex % 10;
+  return TIAN_GAN_SI_HUA[index];
+}
+
+/**
+ * 获取指定天干的四化描述
+ * @param tianGanIndex 天干索引
+ * @returns 格式化的四化描述，如 "廉贞化禄、破军化权、武曲化科、太阳化忌"
+ */
+export function getSiHuaDescription(tianGanIndex: number): string {
+  const stars = getSiHuaStarsByTianGan(tianGanIndex);
+  const names = [
+    `${getSiHuaStarName(stars[0])}化禄`,
+    `${getSiHuaStarName(stars[1])}化权`,
+    `${getSiHuaStarName(stars[2])}化科`,
+    `${getSiHuaStarName(stars[3])}化忌`,
+  ];
+  return names.join('、');
+}
+
+/**
+ * 将 SiHuaStar 转换为 ZhuXing（仅主星有效）
+ * @param star 四化星
+ * @returns ZhuXing 或 undefined（如果是辅星）
+ */
+export function siHuaStarToZhuXing(star: SiHuaStar): ZhuXing | undefined {
+  if (isSiHuaStarZhuXing(star)) {
+    return star as unknown as ZhuXing;
+  }
+  return undefined;
+}
+
+/**
+ * 将 SiHuaStar 转换为 FuXing（仅辅星有效）
+ * @param star 四化星
+ * @returns FuXing 或 undefined（如果是主星）
+ */
+export function siHuaStarToFuXing(star: SiHuaStar): FuXing | undefined {
+  if (isSiHuaStarFuXing(star)) {
+    // SiHuaStar.WenChang = 14 对应 FuXing.WenChang = 0
+    return (star - SiHuaStar.WenChang) as FuXing;
+  }
+  return undefined;
+}
+
+/**
+ * 从 ZhuXing 转换为 SiHuaStar
+ * @param zhuXing 主星
+ * @returns 对应的 SiHuaStar
+ */
+export function zhuXingToSiHuaStar(zhuXing: ZhuXing): SiHuaStar {
+  return zhuXing as unknown as SiHuaStar;
+}
+
+/**
+ * 从 FuXing 转换为 SiHuaStar（仅参与四化的辅星有效）
+ * @param fuXing 辅星
+ * @returns 对应的 SiHuaStar 或 undefined（如果不参与四化）
+ */
+export function fuXingToSiHuaStar(fuXing: FuXing): SiHuaStar | undefined {
+  switch (fuXing) {
+    case FuXing.WenChang:
+      return SiHuaStar.WenChang;
+    case FuXing.WenQu:
+      return SiHuaStar.WenQu;
+    case FuXing.ZuoFu:
+      return SiHuaStar.ZuoFu;
+    case FuXing.YouBi:
+      return SiHuaStar.YouBi;
+    default:
+      return undefined; // 天魁、天钺、禄存、天马不参与四化
+  }
+}

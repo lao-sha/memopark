@@ -48,6 +48,7 @@ import {
   WuXingJu,
   ZhuXing,
   SiHua,
+  getSiHuaDescription,
 } from '../../types/ziwei';
 
 const { Title, Text, Paragraph } = Typography;
@@ -471,6 +472,12 @@ const ZiweiPage: React.FC = () => {
             <Text strong>四化飞星：</Text>
             <Text type="secondary">化禄（财）、化权（权力）、化科（名声）、化忌（阻碍）</Text>
           </div>
+          {chart && (
+            <div>
+              <Text strong>{TIAN_GAN_NAMES[chart.birthYear % 10]}年四化：</Text>
+              <Text type="secondary">{getSiHuaDescription(chart.birthYear % 10)}</Text>
+            </div>
+          )}
           <div>
             <Text strong>庙旺利陷：</Text>
             <Text type="secondary">

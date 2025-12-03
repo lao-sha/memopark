@@ -541,10 +541,10 @@ fn test_liu_gong_properties() {
     assert!(da_an.is_auspicious());
     assert_eq!(da_an.fortune_level(), 5);
 
-    // 留连
+    // 留连（道家流派：土）
     let liu_lian = LiuGong::LiuLian;
     assert_eq!(liu_lian.name(), "留连");
-    assert_eq!(liu_lian.wu_xing(), WuXing::Water);
+    assert_eq!(liu_lian.wu_xing(), WuXing::Earth); // 道家流派为土
     assert!(!liu_lian.is_auspicious());
 
     // 速喜
@@ -559,10 +559,10 @@ fn test_liu_gong_properties() {
     assert_eq!(chi_kou.wu_xing(), WuXing::Metal);
     assert!(!chi_kou.is_auspicious());
 
-    // 小吉
+    // 小吉（道家流派：水）
     let xiao_ji = LiuGong::XiaoJi;
     assert_eq!(xiao_ji.name(), "小吉");
-    assert_eq!(xiao_ji.wu_xing(), WuXing::Wood);
+    assert_eq!(xiao_ji.wu_xing(), WuXing::Water); // 道家流派为水
     assert!(xiao_ji.is_auspicious());
 
     // 空亡

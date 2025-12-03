@@ -71,6 +71,87 @@ pub fn divine_by_time_with_hour(lunar_month: u8, lunar_day: u8, hour: u8) -> San
 }
 
 // ============================================================================
+// 时刻分起课算法（道家流派）
+// ============================================================================
+
+/// 时刻分起课
+///
+/// 按时辰、刻、分起课，这是道家小六壬的起课方法。
+/// 适用于需要更精确时间定位的占卜场景。
+///
+/// # 参数
+/// - `shi_chen`: 时辰（1-12，子时为1）
+/// - `ke`: 刻数（1-8，每时辰8刻）
+/// - `fen`: 分数（1-15，每刻15分）
+///
+/// # 算法
+/// 1. 天宫：从大安起子时，顺数至所求时辰
+/// 2. 地宫：从天宫起第一刻，顺数至所求刻数
+/// 3. 人宫：从地宫起第一分，顺数至所求分数
+///
+/// # 刻的计算说明
+/// - 一个时辰（2小时）分为8刻
+/// - 每刻约15分钟
+/// - 刻数 = (分钟 / 15) + 1（如果刚好整除则取上一刻）
+/// - 偶数小时（如0点、2点）的刻从5开始计数
+/// - 奇数小时（如1点、3点）的刻从1开始计数
+pub fn divine_by_hour_ke_fen(shi_chen_index: u8, ke: u8, fen: u8) -> SanGong {
+    // 确保输入有效
+    let shi_chen_index = shi_chen_index.max(1).min(12);
+    let ke = ke.max(1).min(8);
+    let fen = fen.max(1).min(15);
+
+    // 天宫：从大安(0)起子时(1)，顺数至所求时辰
+    let tian_index = (shi_chen_index.saturating_sub(1)) % 6;
+    let tian_gong = LiuGong::from_index(tian_index);
+
+    // 地宫：从天宫起第一刻，顺数至所求刻数
+    let di_index = (tian_index + ke.saturating_sub(1)) % 6;
+    let di_gong = LiuGong::from_index(di_index);
+
+    // 人宫：从地宫起第一分，顺数至所求分数
+    let ren_index = (di_index + fen.saturating_sub(1)) % 6;
+    let ren_gong = LiuGong::from_index(ren_index);
+
+    SanGong::new(tian_gong, di_gong, ren_gong)
+}
+
+/// 从时分计算时刻分起课
+///
+/// # 参数
+/// - `hour`: 小时（0-23）
+/// - `minute`: 分钟（0-59）
+///
+/// # 返回
+/// (时辰索引, 刻数, 分数, 三宫结果)
+pub fn divine_by_hour_minute(hour: u8, minute: u8) -> (u8, u8, u8, SanGong) {
+    let shi_chen = ShiChen::from_hour(hour);
+    let shi_chen_index = shi_chen.index(); // 1-12
+
+    // 计算刻数
+    // 偶数小时：刻从5开始（5,6,7,8,1,2,3,4）
+    // 奇数小时：刻从1开始（1,2,3,4,5,6,7,8）
+    let is_even_hour = hour % 2 == 0;
+    let quarter_in_hour = minute / 15; // 0-3 表示当前小时内的第几个15分钟段
+
+    let ke = if is_even_hour {
+        // 偶数小时（如0点、2点）的前半时辰
+        (quarter_in_hour + 4) % 8 + 1
+    } else {
+        // 奇数小时（如1点、3点）的后半时辰
+        quarter_in_hour + 1
+    };
+    let ke = ke.max(1) as u8;
+
+    // 计算分数（1-15，不能为0）
+    let fen = (minute % 15).max(0) + 1;
+    let fen = fen as u8;
+
+    let san_gong = divine_by_hour_ke_fen(shi_chen_index, ke, fen);
+    (shi_chen_index, ke, fen, san_gong)
+}
+
+// ============================================================================
 // 数字起课算法
 // ============================================================================
 
@@ -266,6 +347,121 @@ pub struct SanGongAnalysis {
     pub yue_detail: GongDetail,
     pub ri_detail: GongDetail,
     pub shi_detail: GongDetail,
+}
+
+// ============================================================================
+// 八卦具象法分析（道家高级分析）
+// ============================================================================
+
+use crate::types::{BaGua, TiYongRelation};
+
+/// 八卦具象法分析结果
+#[derive(Clone, Debug)]
+pub struct BaGuaAnalysis {
+    /// 八卦
+    pub ba_gua: BaGua,
+    /// 八卦名称
+    pub name: &'static str,
+    /// 八卦符号
+    pub symbol: &'static str,
+    /// 八卦五行
+    pub wu_xing: &'static str,
+    /// 八卦阴阳
+    pub yin_yang: &'static str,
+    /// 八卦描述
+    pub description: &'static str,
+    /// 三爻组合（上中下）
+    pub yao_pattern: (&'static str, &'static str, &'static str),
+}
+
+/// 分析三宫转化八卦
+///
+/// 将三宫的阴阳属性转化为八卦，用于高级分析
+pub fn analyze_ba_gua(san_gong: &SanGong) -> BaGuaAnalysis {
+    let ba_gua = BaGua::from_san_gong(san_gong);
+
+    let yao1 = san_gong.yue_gong.yin_yang();
+    let yao2 = san_gong.ri_gong.yin_yang();
+    let yao3 = san_gong.shi_gong.yin_yang();
+
+    BaGuaAnalysis {
+        ba_gua,
+        name: ba_gua.name(),
+        symbol: ba_gua.symbol(),
+        wu_xing: ba_gua.wu_xing().name(),
+        yin_yang: ba_gua.yin_yang().name(),
+        description: ba_gua.brief(),
+        yao_pattern: (
+            if yao1.is_yang() { "阳" } else { "阴" },
+            if yao2.is_yang() { "阳" } else { "阴" },
+            if yao3.is_yang() { "阳" } else { "阴" },
+        ),
+    }
+}
+
+/// 体用关系分析结果
+#[derive(Clone, Debug)]
+pub struct TiYongAnalysis {
+    /// 体用关系
+    pub relation: TiYongRelation,
+    /// 关系名称
+    pub name: &'static str,
+    /// 吉凶描述
+    pub fortune_desc: &'static str,
+    /// 吉凶等级
+    pub fortune_level: u8,
+    /// 体（人宫）信息
+    pub ti_gong: LiuGong,
+    pub ti_wu_xing: &'static str,
+    pub ti_yin_yang: &'static str,
+    /// 用（时辰）信息
+    pub yong_shi_chen: ShiChen,
+    pub yong_wu_xing: &'static str,
+    pub yong_yin_yang: &'static str,
+}
+
+/// 分析体用关系
+///
+/// 体：人宫（时宫），代表求测者自身
+/// 用：时辰，代表外部环境
+pub fn analyze_ti_yong(san_gong: &SanGong, shi_chen: ShiChen) -> TiYongAnalysis {
+    let ti_gong = san_gong.shi_gong; // 人宫为体
+    let relation = TiYongRelation::calculate(ti_gong, shi_chen);
+
+    TiYongAnalysis {
+        relation,
+        name: relation.name(),
+        fortune_desc: relation.fortune_desc(),
+        fortune_level: relation.fortune_level(),
+        ti_gong,
+        ti_wu_xing: ti_gong.wu_xing().name(),
+        ti_yin_yang: ti_gong.yin_yang().name(),
+        yong_shi_chen: shi_chen,
+        yong_wu_xing: shi_chen.wu_xing().name(),
+        yong_yin_yang: shi_chen.yin_yang().name(),
+    }
+}
+
+/// 完整分析结果（包含八卦和体用）
+#[derive(Clone, Debug)]
+pub struct FullAnalysis {
+    /// 基础三宫分析
+    pub san_gong: SanGongAnalysis,
+    /// 八卦具象分析
+    pub ba_gua: BaGuaAnalysis,
+    /// 体用关系分析（如果有时辰信息）
+    pub ti_yong: Option<TiYongAnalysis>,
+}
+
+/// 完整分析三宫
+///
+/// 包括基础分析、八卦具象法和体用关系
+pub fn full_analysis(san_gong: &SanGong, shi_chen: Option<ShiChen>) -> FullAnalysis {
+    FullAnalysis {
+        san_gong: analyze_san_gong(san_gong),
+        ba_gua: analyze_ba_gua(san_gong),
+        ti_yong: shi_chen.map(|sc| analyze_ti_yong(san_gong, sc)),
+    }
 }
 
 #[cfg(test)]

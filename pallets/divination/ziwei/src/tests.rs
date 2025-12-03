@@ -1,5 +1,7 @@
 //! # 紫微斗数 Pallet 测试用例
 
+#![allow(deprecated)]
+
 use crate::{mock::*, types::*, algorithm::*, Error, Event};
 use frame_support::{assert_noop, assert_ok, BoundedVec};
 
@@ -398,6 +400,76 @@ fn test_get_si_hua_stars() {
     assert_eq!(si_hua[1], ZhuXing::PoJun);    // 化权
     assert_eq!(si_hua[2], ZhuXing::WuQu);     // 化科
     assert_eq!(si_hua[3], ZhuXing::TaiYang);  // 化忌
+}
+
+/// 测试完整版四化飞星（支持辅星）
+#[test]
+fn test_get_si_hua_stars_full() {
+    // 甲干四化：廉贞化禄、破军化权、武曲化科、太阳化忌（全主星）
+    let jia = get_si_hua_stars_full(TianGan::Jia);
+    assert_eq!(jia[0], SiHuaStar::LianZhen);
+    assert_eq!(jia[1], SiHuaStar::PoJun);
+    assert_eq!(jia[2], SiHuaStar::WuQu);
+    assert_eq!(jia[3], SiHuaStar::TaiYang);
+
+    // 丙干四化：天同化禄、天机化权、**文昌**化科、廉贞化忌
+    let bing = get_si_hua_stars_full(TianGan::Bing);
+    assert_eq!(bing[0], SiHuaStar::TianTong);
+    assert_eq!(bing[1], SiHuaStar::TianJi);
+    assert_eq!(bing[2], SiHuaStar::WenChang); // 文昌化科（辅星）
+    assert_eq!(bing[3], SiHuaStar::LianZhen);
+
+    // 戊干四化：贪狼化禄、太阴化权、**右弼**化科、天机化忌
+    let wu = get_si_hua_stars_full(TianGan::Wu);
+    assert_eq!(wu[0], SiHuaStar::TanLang);
+    assert_eq!(wu[1], SiHuaStar::TaiYin);
+    assert_eq!(wu[2], SiHuaStar::YouBi); // 右弼化科（辅星）
+    assert_eq!(wu[3], SiHuaStar::TianJi);
+
+    // 己干四化：武曲化禄、贪狼化权、天梁化科、**文曲**化忌
+    let ji = get_si_hua_stars_full(TianGan::Ji);
+    assert_eq!(ji[0], SiHuaStar::WuQu);
+    assert_eq!(ji[1], SiHuaStar::TanLang);
+    assert_eq!(ji[2], SiHuaStar::TianLiang);
+    assert_eq!(ji[3], SiHuaStar::WenQu); // 文曲化忌（辅星）
+
+    // 辛干四化：巨门化禄、太阳化权、**文曲**化科、**文昌**化忌
+    let xin = get_si_hua_stars_full(TianGan::Xin);
+    assert_eq!(xin[0], SiHuaStar::JuMen);
+    assert_eq!(xin[1], SiHuaStar::TaiYang);
+    assert_eq!(xin[2], SiHuaStar::WenQu);   // 文曲化科（辅星）
+    assert_eq!(xin[3], SiHuaStar::WenChang); // 文昌化忌（辅星）
+
+    // 壬干四化：天梁化禄、紫微化权、**左辅**化科、武曲化忌
+    let ren = get_si_hua_stars_full(TianGan::Ren);
+    assert_eq!(ren[0], SiHuaStar::TianLiang);
+    assert_eq!(ren[1], SiHuaStar::ZiWei);
+    assert_eq!(ren[2], SiHuaStar::ZuoFu); // 左辅化科（辅星）
+    assert_eq!(ren[3], SiHuaStar::WuQu);
+}
+
+/// 测试 SiHuaStar 类型转换
+#[test]
+fn test_si_hua_star_conversions() {
+    // 主星转换
+    let zhu_xing = ZhuXing::ZiWei;
+    let si_hua_star = SiHuaStar::from_zhu_xing(zhu_xing);
+    assert_eq!(si_hua_star, SiHuaStar::ZiWei);
+    assert!(si_hua_star.is_zhu_xing());
+    assert!(!si_hua_star.is_fu_xing());
+    assert_eq!(si_hua_star.to_zhu_xing(), Some(ZhuXing::ZiWei));
+
+    // 辅星转换
+    let liu_ji = LiuJiXing::WenChang;
+    let si_hua_star = SiHuaStar::from_liu_ji_xing(liu_ji).unwrap();
+    assert_eq!(si_hua_star, SiHuaStar::WenChang);
+    assert!(!si_hua_star.is_zhu_xing());
+    assert!(si_hua_star.is_fu_xing());
+    assert_eq!(si_hua_star.to_liu_ji_xing(), Some(LiuJiXing::WenChang));
+
+    // 不参与四化的辅星
+    let tian_kui = LiuJiXing::TianKui;
+    assert!(SiHuaStar::from_liu_ji_xing(tian_kui).is_none());
 }
 
 #[test]

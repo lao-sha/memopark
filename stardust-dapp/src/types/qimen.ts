@@ -510,3 +510,447 @@ export function getShenJiXiong(shen: BaShen): string {
   if (level < 0) return '凶';
   return '平';
 }
+
+// ==================== 格局检测类型 ====================
+
+/**
+ * 五行
+ */
+export enum WuXing {
+  /** 金 */
+  Jin = 0,
+  /** 木 */
+  Mu = 1,
+  /** 水 */
+  Shui = 2,
+  /** 火 */
+  Huo = 3,
+  /** 土 */
+  Tu = 4,
+}
+
+/**
+ * 五行名称
+ */
+export const WU_XING_NAMES: Record<WuXing, string> = {
+  [WuXing.Jin]: '金',
+  [WuXing.Mu]: '木',
+  [WuXing.Shui]: '水',
+  [WuXing.Huo]: '火',
+  [WuXing.Tu]: '土',
+};
+
+/**
+ * 六仪击刑信息
+ *
+ * 六仪（戊己庚辛壬癸）临某些特定宫位时形成击刑格局
+ */
+export interface LiuYiJiXing {
+  /** 击刑的天干 */
+  gan: QiYi;
+  /** 发生击刑的宫位 */
+  gong: JiuGong;
+}
+
+/**
+ * 六仪击刑规则表
+ */
+export const LIU_YI_JI_XING_RULES: Array<{ gan: QiYi; gong: JiuGong; desc: string }> = [
+  { gan: QiYi.Wu, gong: JiuGong.Zhen, desc: '戊击刑（震三宫）' },
+  { gan: QiYi.Ji, gong: JiuGong.Kun, desc: '己击刑（坤二宫）' },
+  { gan: QiYi.Geng, gong: JiuGong.Gen, desc: '庚击刑（艮八宫）' },
+  { gan: QiYi.Xin, gong: JiuGong.Li, desc: '辛击刑（离九宫）' },
+  { gan: QiYi.Ren, gong: JiuGong.Xun, desc: '壬击刑（巽四宫）' },
+  { gan: QiYi.Gui, gong: JiuGong.Xun, desc: '癸击刑（巽四宫）' },
+];
+
+/**
+ * 奇仪入墓信息
+ *
+ * 天干临其墓库之宫位时形成入墓格局，主事不顺、受困
+ */
+export interface QiYiRuMu {
+  /** 入墓的天干 */
+  gan: QiYi;
+  /** 发生入墓的宫位 */
+  gong: JiuGong;
+  /** 墓库名称 */
+  muName: string;
+}
+
+/**
+ * 奇仪入墓规则表
+ */
+export const QI_YI_RU_MU_RULES: Array<{ gan: QiYi; gong: JiuGong; muName: string; desc: string }> = [
+  { gan: QiYi.Jia, gong: JiuGong.Qian, muName: '戌土', desc: '甲入墓（乾六宫）' },
+  { gan: QiYi.Wu, gong: JiuGong.Qian, muName: '戌土', desc: '戊入墓（乾六宫）' },
+  { gan: QiYi.Yi, gong: JiuGong.Qian, muName: '戌土', desc: '乙入墓（乾六宫）' },
+  { gan: QiYi.Bing, gong: JiuGong.Qian, muName: '戌土', desc: '丙入墓（乾六宫）' },
+  { gan: QiYi.Ding, gong: JiuGong.Gen, muName: '丑土', desc: '丁入墓（艮八宫）' },
+  { gan: QiYi.Ji, gong: JiuGong.Gen, muName: '丑土', desc: '己入墓（艮八宫）' },
+  { gan: QiYi.Geng, gong: JiuGong.Gen, muName: '丑土', desc: '庚入墓（艮八宫）' },
+  { gan: QiYi.Xin, gong: JiuGong.Xun, muName: '辰土', desc: '辛入墓（巽四宫）' },
+  { gan: QiYi.Ren, gong: JiuGong.Xun, muName: '辰土', desc: '壬入墓（巽四宫）' },
+  { gan: QiYi.Gui, gong: JiuGong.Kun, muName: '未土', desc: '癸入墓（坤二宫）' },
+];
+
+/**
+ * 门迫信息
+ *
+ * 八门五行克落宫五行时为门迫，主事受阻、不顺
+ */
+export interface MenPo {
+  /** 被迫之门 */
+  men: BaMen;
+  /** 发生门迫的宫位 */
+  gong: JiuGong;
+}
+
+/**
+ * 门迫规则表
+ */
+export const MEN_PO_RULES: Array<{ men: BaMen; gong: JiuGong; desc: string }> = [
+  { men: BaMen.Xiu, gong: JiuGong.Li, desc: '休门（水）克离宫（火）' },
+  { men: BaMen.Sheng, gong: JiuGong.Kan, desc: '生门（土）克坎宫（水）' },
+  { men: BaMen.Shang, gong: JiuGong.Kun, desc: '伤门（木）克坤宫（土）' },
+  { men: BaMen.Shang, gong: JiuGong.Gen, desc: '伤门（木）克艮宫（土）' },
+  { men: BaMen.Du, gong: JiuGong.Kun, desc: '杜门（木）克坤宫（土）' },
+  { men: BaMen.Du, gong: JiuGong.Gen, desc: '杜门（木）克艮宫（土）' },
+  { men: BaMen.Jing, gong: JiuGong.Qian, desc: '景门（火）克乾宫（金）' },
+  { men: BaMen.Jing, gong: JiuGong.Dui, desc: '景门（火）克兑宫（金）' },
+  { men: BaMen.Si, gong: JiuGong.Kan, desc: '死门（土）克坎宫（水）' },
+  { men: BaMen.Jing2, gong: JiuGong.Zhen, desc: '惊门（金）克震宫（木）' },
+  { men: BaMen.Jing2, gong: JiuGong.Xun, desc: '惊门（金）克巽宫（木）' },
+  { men: BaMen.Kai, gong: JiuGong.Zhen, desc: '开门（金）克震宫（木）' },
+  { men: BaMen.Kai, gong: JiuGong.Xun, desc: '开门（金）克巽宫（木）' },
+];
+
+/**
+ * 十干克应格局类型
+ */
+export enum ShiGanGeJuType {
+  // ========== 吉格 ==========
+  /** 乙+乙：日奇伏吟 */
+  RiQiFuYin = 'RiQiFuYin',
+  /** 乙+丙：奇仪顺遂 */
+  QiYiShunSui = 'QiYiShunSui',
+  /** 乙+丁：奇仪相佐 */
+  QiYiXiangZuo = 'QiYiXiangZuo',
+  /** 丙+乙：日月并行 */
+  RiYueBingXing = 'RiYueBingXing',
+  /** 丙+丙：月奇悖师 */
+  YueQiBeiShi = 'YueQiBeiShi',
+  /** 丙+丁：星奇朱雀 */
+  XingQiZhuQue = 'XingQiZhuQue',
+  /** 丁+乙：星奇入太阴 */
+  XingQiRuTaiYin = 'XingQiRuTaiYin',
+  /** 丁+丙：星奇入六合 */
+  XingQiRuLiuHe = 'XingQiRuLiuHe',
+  /** 丁+丁：星奇伏吟 */
+  XingQiFuYin = 'XingQiFuYin',
+  /** 丙+戊：飞鸟跌穴（大吉） */
+  FeiNiaoDieXue = 'FeiNiaoDieXue',
+
+  // ========== 凶格 ==========
+  /** 庚+庚：太白同宫（大凶） */
+  TaiBaiTongGong = 'TaiBaiTongGong',
+  /** 庚+乙：太白入日 */
+  TaiBaiRuRi = 'TaiBaiRuRi',
+  /** 庚+丙：太白入荧 */
+  TaiBaiRuYing = 'TaiBaiRuYing',
+  /** 庚+丁：太白入星 */
+  TaiBaiRuXing = 'TaiBaiRuXing',
+  /** 癸+癸：华盖伏吟 */
+  HuaGaiFuYin = 'HuaGaiFuYin',
+  /** 辛+乙：白虎猖狂 */
+  BaiHuChangKuang = 'BaiHuChangKuang',
+  /** 辛+丙：白虎入荧 */
+  BaiHuRuYing = 'BaiHuRuYing',
+  /** 辛+丁：白虎入星 */
+  BaiHuRuXing = 'BaiHuRuXing',
+  /** 壬+壬：蛇夭矫 */
+  SheYaoJiao = 'SheYaoJiao',
+
+  // ========== 中平格 ==========
+  /** 戊+戊/己+己：伏吟 */
+  FuYin = 'FuYin',
+  /** 其他组合 */
+  Other = 'Other',
+}
+
+/**
+ * 十干克应格局名称
+ */
+export const SHI_GAN_GE_JU_NAMES: Record<ShiGanGeJuType, string> = {
+  [ShiGanGeJuType.RiQiFuYin]: '日奇伏吟',
+  [ShiGanGeJuType.QiYiShunSui]: '奇仪顺遂',
+  [ShiGanGeJuType.QiYiXiangZuo]: '奇仪相佐',
+  [ShiGanGeJuType.RiYueBingXing]: '日月并行',
+  [ShiGanGeJuType.YueQiBeiShi]: '月奇悖师',
+  [ShiGanGeJuType.XingQiZhuQue]: '星奇朱雀',
+  [ShiGanGeJuType.XingQiRuTaiYin]: '星奇入太阴',
+  [ShiGanGeJuType.XingQiRuLiuHe]: '星奇入六合',
+  [ShiGanGeJuType.XingQiFuYin]: '星奇伏吟',
+  [ShiGanGeJuType.FeiNiaoDieXue]: '飞鸟跌穴',
+  [ShiGanGeJuType.TaiBaiTongGong]: '太白同宫',
+  [ShiGanGeJuType.TaiBaiRuRi]: '太白入日',
+  [ShiGanGeJuType.TaiBaiRuYing]: '太白入荧',
+  [ShiGanGeJuType.TaiBaiRuXing]: '太白入星',
+  [ShiGanGeJuType.HuaGaiFuYin]: '华盖伏吟',
+  [ShiGanGeJuType.BaiHuChangKuang]: '白虎猖狂',
+  [ShiGanGeJuType.BaiHuRuYing]: '白虎入荧',
+  [ShiGanGeJuType.BaiHuRuXing]: '白虎入星',
+  [ShiGanGeJuType.SheYaoJiao]: '蛇夭矫',
+  [ShiGanGeJuType.FuYin]: '伏吟',
+  [ShiGanGeJuType.Other]: '普通',
+};
+
+/**
+ * 十干克应格局吉凶
+ */
+export const SHI_GAN_GE_JU_JI_XIONG: Record<ShiGanGeJuType, number> = {
+  [ShiGanGeJuType.RiQiFuYin]: 1,
+  [ShiGanGeJuType.QiYiShunSui]: 1,
+  [ShiGanGeJuType.QiYiXiangZuo]: 1,
+  [ShiGanGeJuType.RiYueBingXing]: 1,
+  [ShiGanGeJuType.YueQiBeiShi]: 1,
+  [ShiGanGeJuType.XingQiZhuQue]: 1,
+  [ShiGanGeJuType.XingQiRuTaiYin]: 1,
+  [ShiGanGeJuType.XingQiRuLiuHe]: 1,
+  [ShiGanGeJuType.XingQiFuYin]: 1,
+  [ShiGanGeJuType.FeiNiaoDieXue]: 1,
+  [ShiGanGeJuType.TaiBaiTongGong]: -1,
+  [ShiGanGeJuType.TaiBaiRuRi]: -1,
+  [ShiGanGeJuType.TaiBaiRuYing]: -1,
+  [ShiGanGeJuType.TaiBaiRuXing]: -1,
+  [ShiGanGeJuType.HuaGaiFuYin]: -1,
+  [ShiGanGeJuType.BaiHuChangKuang]: -1,
+  [ShiGanGeJuType.BaiHuRuYing]: -1,
+  [ShiGanGeJuType.BaiHuRuXing]: -1,
+  [ShiGanGeJuType.SheYaoJiao]: -1,
+  [ShiGanGeJuType.FuYin]: 0,
+  [ShiGanGeJuType.Other]: 0,
+};
+
+/**
+ * 十干克应检测结果
+ */
+export interface ShiGanKeYing {
+  /** 天盘干 */
+  tianGan: QiYi;
+  /** 地盘干 */
+  diGan: QiYi;
+  /** 格局类型 */
+  geJu: ShiGanGeJuType;
+  /** 是否吉格 */
+  isJi: boolean;
+}
+
+/**
+ * 旺衰状态
+ */
+export enum WangShuai {
+  /** 旺 - 当令 */
+  Wang = 'Wang',
+  /** 相 - 我生者 */
+  Xiang = 'Xiang',
+  /** 休 - 生我者 */
+  Xiu = 'Xiu',
+  /** 囚 - 克我者 */
+  Qiu = 'Qiu',
+  /** 死 - 我克者 */
+  Si = 'Si',
+}
+
+/**
+ * 旺衰名称
+ */
+export const WANG_SHUAI_NAMES: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '旺',
+  [WangShuai.Xiang]: '相',
+  [WangShuai.Xiu]: '休',
+  [WangShuai.Qiu]: '囚',
+  [WangShuai.Si]: '死',
+};
+
+/**
+ * 旺衰颜色
+ */
+export const WANG_SHUAI_COLORS: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '#52c41a',  // 绿色
+  [WangShuai.Xiang]: '#1890ff', // 蓝色
+  [WangShuai.Xiu]: '#faad14',   // 黄色
+  [WangShuai.Qiu]: '#fa541c',   // 橙色
+  [WangShuai.Si]: '#8c8c8c',    // 灰色
+};
+
+/**
+ * 驿马信息
+ */
+export interface YiMa {
+  /** 驿马所在宫位 */
+  gong: JiuGong;
+  /** 驿马对应地支名称 */
+  zhiName: string;
+}
+
+/**
+ * 驿马规则表（根据时支三合局）
+ */
+export const YI_MA_RULES: Array<{ shiZhi: string[]; gong: JiuGong; zhiName: string }> = [
+  { shiZhi: ['申', '子', '辰'], gong: JiuGong.Gen, zhiName: '寅' },  // 水局驿马在寅
+  { shiZhi: ['寅', '午', '戌'], gong: JiuGong.Kun, zhiName: '申' },  // 火局驿马在申
+  { shiZhi: ['巳', '酉', '丑'], gong: JiuGong.Qian, zhiName: '亥' }, // 金局驿马在亥
+  { shiZhi: ['亥', '卯', '未'], gong: JiuGong.Xun, zhiName: '巳' },  // 木局驿马在巳
+];
+
+/**
+ * 宫位格局分析结果
+ */
+export interface PalaceAnalysis {
+  /** 六仪击刑 */
+  jiXing?: LiuYiJiXing;
+  /** 奇仪入墓 */
+  ruMu?: QiYiRuMu;
+  /** 门迫 */
+  menPo?: MenPo;
+  /** 十干克应 */
+  keYing?: ShiGanKeYing;
+  /** 是否为驿马宫 */
+  isYiMa: boolean;
+  /** 九星旺衰 */
+  xingWangShuai?: WangShuai;
+  /** 八门旺衰 */
+  menWangShuai?: WangShuai;
+}
+
+/**
+ * 扩展的宫位信息（包含格局分析）
+ */
+export interface GongWeiWithAnalysis extends GongWei {
+  /** 格局分析结果 */
+  analysis?: PalaceAnalysis;
+}
+
+/**
+ * 奇门遁甲完整分析结果
+ */
+export interface QimenFullAnalysis {
+  /** 基础盘 */
+  pan: QimenPan;
+  /** 九宫格局分析 */
+  palaceAnalyses: PalaceAnalysis[];
+  /** 整盘格局列表（如飞鸟跌穴、太白同宫等） */
+  patterns: GeJu[];
+  /** 驿马信息 */
+  yiMa?: YiMa;
+  /** 综合吉凶评分（-100到100） */
+  score: number;
+  /** 简要断语 */
+  summary: string;
+}
+
+// ==================== 格局检测辅助函数 ====================
+
+/**
+ * 检测六仪击刑
+ */
+export function checkLiuYiJiXing(tianPanGan: QiYi, gong: JiuGong): LiuYiJiXing | undefined {
+  const rule = LIU_YI_JI_XING_RULES.find(r => r.gan === tianPanGan && r.gong === gong);
+  return rule ? { gan: tianPanGan, gong } : undefined;
+}
+
+/**
+ * 检测奇仪入墓
+ */
+export function checkQiYiRuMu(tianPanGan: QiYi, gong: JiuGong): QiYiRuMu | undefined {
+  const rule = QI_YI_RU_MU_RULES.find(r => r.gan === tianPanGan && r.gong === gong);
+  return rule ? { gan: tianPanGan, gong, muName: rule.muName } : undefined;
+}
+
+/**
+ * 检测门迫
+ */
+export function checkMenPo(men: BaMen, gong: JiuGong): MenPo | undefined {
+  const rule = MEN_PO_RULES.find(r => r.men === men && r.gong === gong);
+  return rule ? { men, gong } : undefined;
+}
+
+/**
+ * 检测十干克应
+ */
+export function checkShiGanKeYing(tianGan: QiYi, diGan: QiYi): ShiGanKeYing {
+  let geJu: ShiGanGeJuType = ShiGanGeJuType.Other;
+  let isJi = true;
+
+  // 吉格
+  if (tianGan === QiYi.Yi && diGan === QiYi.Yi) { geJu = ShiGanGeJuType.RiQiFuYin; }
+  else if (tianGan === QiYi.Yi && diGan === QiYi.Bing) { geJu = ShiGanGeJuType.QiYiShunSui; }
+  else if (tianGan === QiYi.Yi && diGan === QiYi.Ding) { geJu = ShiGanGeJuType.QiYiXiangZuo; }
+  else if (tianGan === QiYi.Bing && diGan === QiYi.Yi) { geJu = ShiGanGeJuType.RiYueBingXing; }
+  else if (tianGan === QiYi.Bing && diGan === QiYi.Bing) { geJu = ShiGanGeJuType.YueQiBeiShi; }
+  else if (tianGan === QiYi.Bing && diGan === QiYi.Ding) { geJu = ShiGanGeJuType.XingQiZhuQue; }
+  else if (tianGan === QiYi.Ding && diGan === QiYi.Yi) { geJu = ShiGanGeJuType.XingQiRuTaiYin; }
+  else if (tianGan === QiYi.Ding && diGan === QiYi.Bing) { geJu = ShiGanGeJuType.XingQiRuLiuHe; }
+  else if (tianGan === QiYi.Ding && diGan === QiYi.Ding) { geJu = ShiGanGeJuType.XingQiFuYin; }
+  else if (tianGan === QiYi.Bing && diGan === QiYi.Wu) { geJu = ShiGanGeJuType.FeiNiaoDieXue; }
+  // 凶格
+  else if (tianGan === QiYi.Geng && diGan === QiYi.Geng) { geJu = ShiGanGeJuType.TaiBaiTongGong; isJi = false; }
+  else if (tianGan === QiYi.Geng && diGan === QiYi.Yi) { geJu = ShiGanGeJuType.TaiBaiRuRi; isJi = false; }
+  else if (tianGan === QiYi.Geng && diGan === QiYi.Bing) { geJu = ShiGanGeJuType.TaiBaiRuYing; isJi = false; }
+  else if (tianGan === QiYi.Geng && diGan === QiYi.Ding) { geJu = ShiGanGeJuType.TaiBaiRuXing; isJi = false; }
+  else if (tianGan === QiYi.Gui && diGan === QiYi.Gui) { geJu = ShiGanGeJuType.HuaGaiFuYin; isJi = false; }
+  else if (tianGan === QiYi.Xin && diGan === QiYi.Yi) { geJu = ShiGanGeJuType.BaiHuChangKuang; isJi = false; }
+  else if (tianGan === QiYi.Xin && diGan === QiYi.Bing) { geJu = ShiGanGeJuType.BaiHuRuYing; isJi = false; }
+  else if (tianGan === QiYi.Xin && diGan === QiYi.Ding) { geJu = ShiGanGeJuType.BaiHuRuXing; isJi = false; }
+  else if (tianGan === QiYi.Ren && diGan === QiYi.Ren) { geJu = ShiGanGeJuType.SheYaoJiao; isJi = false; }
+  // 中平格
+  else if (tianGan === QiYi.Wu && diGan === QiYi.Wu) { geJu = ShiGanGeJuType.FuYin; }
+  else if (tianGan === QiYi.Ji && diGan === QiYi.Ji) { geJu = ShiGanGeJuType.FuYin; }
+
+  return { tianGan, diGan, geJu, isJi };
+}
+
+/**
+ * 根据时辰获取驿马宫位
+ */
+export function getYiMaGong(hourIndex: number): YiMa | undefined {
+  // 时辰对应的地支
+  const diZhiNames = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+  const shiZhi = diZhiNames[hourIndex % 12];
+
+  const rule = YI_MA_RULES.find(r => r.shiZhi.includes(shiZhi));
+  return rule ? { gong: rule.gong, zhiName: rule.zhiName } : undefined;
+}
+
+/**
+ * 综合分析单宫格局
+ */
+export function analyzePalace(
+  gongWei: GongWei,
+  hourIndex: number,
+): PalaceAnalysis {
+  const analysis: PalaceAnalysis = {
+    isYiMa: false,
+  };
+
+  // 检测六仪击刑
+  analysis.jiXing = checkLiuYiJiXing(gongWei.tianPanGan, gongWei.gong);
+
+  // 检测奇仪入墓
+  analysis.ruMu = checkQiYiRuMu(gongWei.tianPanGan, gongWei.gong);
+
+  // 检测门迫
+  analysis.menPo = checkMenPo(gongWei.men, gongWei.gong);
+
+  // 检测十干克应
+  analysis.keYing = checkShiGanKeYing(gongWei.tianPanGan, gongWei.diPanGan);
+
+  // 检测驿马
+  const yiMa = getYiMaGong(hourIndex);
+  if (yiMa && yiMa.gong === gongWei.gong) {
+    analysis.isYiMa = true;
+  }
+
+  return analysis;
+}

@@ -1280,3 +1280,813 @@ export function calculateDivinationInterpretationFee(
   const divinationMultiplier = DIVINATION_FEE_MULTIPLIER[divinationType] / 10000;
   return BigInt(Math.floor(Number(baseFee) * interpretationMultiplier * divinationMultiplier));
 }
+
+// ==================== 个人主页系统 ====================
+
+/**
+ * 资质证书类型
+ */
+export enum CertificateType {
+  /** 学历证书 */
+  Education = 0,
+  /** 专业资格证书 */
+  Professional = 1,
+  /** 行业协会认证 */
+  Association = 2,
+  /** 师承证明 */
+  Apprenticeship = 3,
+  /** 获奖证书 */
+  Award = 4,
+  /** 其他 */
+  Other = 5,
+}
+
+/** 资质证书类型名称 */
+export const CERTIFICATE_TYPE_NAMES: Record<CertificateType, string> = {
+  [CertificateType.Education]: '学历证书',
+  [CertificateType.Professional]: '专业资格',
+  [CertificateType.Association]: '协会认证',
+  [CertificateType.Apprenticeship]: '师承证明',
+  [CertificateType.Award]: '获奖证书',
+  [CertificateType.Other]: '其他',
+};
+
+/**
+ * 案例类型
+ */
+export enum PortfolioCaseType {
+  /** 经典解读案例 */
+  ClassicCase = 0,
+  /** 教学文章 */
+  Tutorial = 1,
+  /** 理论研究 */
+  Research = 2,
+  /** 心得分享 */
+  Sharing = 3,
+}
+
+/** 案例类型名称 */
+export const PORTFOLIO_CASE_TYPE_NAMES: Record<PortfolioCaseType, string> = {
+  [PortfolioCaseType.ClassicCase]: '经典案例',
+  [PortfolioCaseType.Tutorial]: '教学文章',
+  [PortfolioCaseType.Research]: '理论研究',
+  [PortfolioCaseType.Sharing]: '心得分享',
+};
+
+/**
+ * 技能标签类型
+ */
+export enum SkillTagType {
+  /** 占卜类型相关 */
+  DivinationType = 0,
+  /** 擅长领域 */
+  Specialty = 1,
+  /** 服务特色 */
+  ServiceFeature = 2,
+  /** 自定义标签 */
+  Custom = 3,
+}
+
+/** 技能标签类型名称 */
+export const SKILL_TAG_TYPE_NAMES: Record<SkillTagType, string> = {
+  [SkillTagType.DivinationType]: '占卜类型',
+  [SkillTagType.Specialty]: '擅长领域',
+  [SkillTagType.ServiceFeature]: '服务特色',
+  [SkillTagType.Custom]: '自定义',
+};
+
+/**
+ * 提供者详细资料接口
+ *
+ * 用于个人主页展示的扩展信息
+ */
+export interface ProviderProfile {
+  /** 详细自我介绍 IPFS CID（支持富文本/Markdown） */
+  introductionCid?: string;
+  /** 从业年限 */
+  experienceYears: number;
+  /** 师承/学习背景 */
+  background?: string;
+  /** 服务理念/座右铭 */
+  motto?: string;
+  /** 擅长问题类型描述 */
+  expertiseDescription?: string;
+  /** 工作时间说明（如：每日 9:00-21:00） */
+  workingHours?: string;
+  /** 平均响应时间（分钟） */
+  avgResponseTime?: number;
+  /** 是否接受预约 */
+  acceptsAppointment: boolean;
+  /** 个人主页背景图 IPFS CID */
+  bannerCid?: string;
+  /** 资料最后更新时间（区块号） */
+  updatedAt: number;
+}
+
+/**
+ * 资质证书接口
+ */
+export interface Certificate {
+  /** 证书 ID */
+  id: number;
+  /** 证书名称 */
+  name: string;
+  /** 证书类型 */
+  certType: CertificateType;
+  /** 颁发机构 */
+  issuer?: string;
+  /** 证书图片 IPFS CID */
+  imageCid: string;
+  /** 颁发时间（区块号） */
+  issuedAt?: number;
+  /** 是否已验证（管理员验证） */
+  isVerified: boolean;
+  /** 上传时间（区块号） */
+  uploadedAt: number;
+}
+
+/**
+ * 作品集/案例展示接口
+ */
+export interface PortfolioItem {
+  /** 作品 ID */
+  id: number;
+  /** 作品标题 */
+  title: string;
+  /** 占卜类型 */
+  divinationType: DivinationType;
+  /** 案例类型 */
+  caseType: PortfolioCaseType;
+  /** 案例内容 IPFS CID（脱敏后的解读案例） */
+  contentCid: string;
+  /** 封面图片 IPFS CID */
+  coverCid?: string;
+  /** 是否精选（置顶展示） */
+  isFeatured: boolean;
+  /** 浏览次数 */
+  viewCount: number;
+  /** 点赞次数 */
+  likeCount: number;
+  /** 发布时间（区块号） */
+  publishedAt: number;
+}
+
+/**
+ * 技能标签接口
+ */
+export interface SkillTag {
+  /** 标签名称 */
+  label: string;
+  /** 标签类型 */
+  tagType: SkillTagType;
+  /** 熟练程度（1-5） */
+  proficiency: number;
+}
+
+/**
+ * 评价标签统计接口
+ */
+export interface ReviewTagStats {
+  /** "解读准确" 次数 */
+  accurateCount: number;
+  /** "态度友好" 次数 */
+  friendlyCount: number;
+  /** "回复及时" 次数 */
+  quickResponseCount: number;
+  /** "专业深入" 次数 */
+  professionalCount: number;
+  /** "耐心解答" 次数 */
+  patientCount: number;
+  /** "物超所值" 次数 */
+  valueForMoneyCount: number;
+}
+
+// ==================== 信用体系系统 ====================
+
+/**
+ * 信用等级枚举
+ *
+ * 根据信用分划分的等级，影响用户权益
+ */
+export enum CreditLevel {
+  /** 失信 (0-199) */
+  Bad = 0,
+  /** 不良 (200-399) */
+  Poor = 1,
+  /** 警示 (400-599) */
+  Warning = 2,
+  /** 一般 (600-749) */
+  Fair = 3,
+  /** 优秀 (750-899) */
+  Good = 4,
+  /** 卓越 (900-1000) */
+  Excellent = 5,
+}
+
+/** 信用等级名称 */
+export const CREDIT_LEVEL_NAMES: Record<CreditLevel, string> = {
+  [CreditLevel.Bad]: '失信',
+  [CreditLevel.Poor]: '不良',
+  [CreditLevel.Warning]: '警示',
+  [CreditLevel.Fair]: '一般',
+  [CreditLevel.Good]: '优秀',
+  [CreditLevel.Excellent]: '卓越',
+};
+
+/** 信用等级颜色 */
+export const CREDIT_LEVEL_COLORS: Record<CreditLevel, string> = {
+  [CreditLevel.Bad]: '#ff4d4f',
+  [CreditLevel.Poor]: '#ff7a45',
+  [CreditLevel.Warning]: '#faad14',
+  [CreditLevel.Fair]: '#8c8c8c',
+  [CreditLevel.Good]: '#52c41a',
+  [CreditLevel.Excellent]: '#1890ff',
+};
+
+/** 信用等级分数范围 */
+export const CREDIT_LEVEL_RANGES: Record<CreditLevel, { min: number; max: number }> = {
+  [CreditLevel.Bad]: { min: 0, max: 199 },
+  [CreditLevel.Poor]: { min: 200, max: 399 },
+  [CreditLevel.Warning]: { min: 400, max: 599 },
+  [CreditLevel.Fair]: { min: 600, max: 749 },
+  [CreditLevel.Good]: { min: 750, max: 899 },
+  [CreditLevel.Excellent]: { min: 900, max: 1000 },
+};
+
+/**
+ * 根据分数获取信用等级
+ */
+export function getCreditLevelFromScore(score: number): CreditLevel {
+  if (score < 200) return CreditLevel.Bad;
+  if (score < 400) return CreditLevel.Poor;
+  if (score < 600) return CreditLevel.Warning;
+  if (score < 750) return CreditLevel.Fair;
+  if (score < 900) return CreditLevel.Good;
+  return CreditLevel.Excellent;
+}
+
+/**
+ * 扣分原因枚举
+ */
+export enum DeductionReason {
+  /** 差评扣分 */
+  NegativeReview = 0,
+  /** 订单取消 */
+  OrderCancellation = 1,
+  /** 订单超时 */
+  OrderTimeout = 2,
+  /** 客户投诉成立 */
+  ComplaintUpheld = 3,
+  /** 违规行为 */
+  Violation = 4,
+  /** 虚假宣传 */
+  FalseAdvertising = 5,
+  /** 服务欺诈 */
+  Fraud = 6,
+  /** 辱骂客户 */
+  Abuse = 7,
+  /** 泄露隐私 */
+  PrivacyBreach = 8,
+  /** 其他 */
+  Other = 9,
+}
+
+/** 扣分原因名称 */
+export const DEDUCTION_REASON_NAMES: Record<DeductionReason, string> = {
+  [DeductionReason.NegativeReview]: '差评扣分',
+  [DeductionReason.OrderCancellation]: '订单取消',
+  [DeductionReason.OrderTimeout]: '订单超时',
+  [DeductionReason.ComplaintUpheld]: '投诉成立',
+  [DeductionReason.Violation]: '违规行为',
+  [DeductionReason.FalseAdvertising]: '虚假宣传',
+  [DeductionReason.Fraud]: '服务欺诈',
+  [DeductionReason.Abuse]: '辱骂客户',
+  [DeductionReason.PrivacyBreach]: '泄露隐私',
+  [DeductionReason.Other]: '其他',
+};
+
+/** 扣分原因默认扣分值 */
+export const DEDUCTION_REASON_DEFAULT_POINTS: Record<DeductionReason, number> = {
+  [DeductionReason.NegativeReview]: 5,
+  [DeductionReason.OrderCancellation]: 10,
+  [DeductionReason.OrderTimeout]: 15,
+  [DeductionReason.ComplaintUpheld]: 30,
+  [DeductionReason.Violation]: 50,
+  [DeductionReason.FalseAdvertising]: 80,
+  [DeductionReason.Fraud]: 200,
+  [DeductionReason.Abuse]: 100,
+  [DeductionReason.PrivacyBreach]: 150,
+  [DeductionReason.Other]: 20,
+};
+
+/**
+ * 违规类型枚举
+ */
+export enum ViolationType {
+  /** 轻微违规 */
+  Minor = 0,
+  /** 一般违规 */
+  Moderate = 1,
+  /** 严重违规 */
+  Severe = 2,
+  /** 特别严重违规 */
+  Critical = 3,
+}
+
+/** 违规类型名称 */
+export const VIOLATION_TYPE_NAMES: Record<ViolationType, string> = {
+  [ViolationType.Minor]: '轻微违规',
+  [ViolationType.Moderate]: '一般违规',
+  [ViolationType.Severe]: '严重违规',
+  [ViolationType.Critical]: '特别严重',
+};
+
+/** 违规类型颜色 */
+export const VIOLATION_TYPE_COLORS: Record<ViolationType, string> = {
+  [ViolationType.Minor]: '#faad14',
+  [ViolationType.Moderate]: '#fa8c16',
+  [ViolationType.Severe]: '#ff4d4f',
+  [ViolationType.Critical]: '#cf1322',
+};
+
+/** 违规类型惩罚系数（万分比） */
+export const VIOLATION_TYPE_MULTIPLIERS: Record<ViolationType, number> = {
+  [ViolationType.Minor]: 100,      // 1x
+  [ViolationType.Moderate]: 200,   // 2x
+  [ViolationType.Severe]: 500,     // 5x
+  [ViolationType.Critical]: 1000,  // 10x
+};
+
+/**
+ * 处罚类型枚举
+ */
+export enum PenaltyType {
+  /** 仅扣分 */
+  DeductionOnly = 0,
+  /** 警告 */
+  Warning = 1,
+  /** 限制接单 */
+  OrderRestriction = 2,
+  /** 暂停服务 */
+  ServiceSuspension = 3,
+  /** 永久封禁 */
+  PermanentBan = 4,
+}
+
+/** 处罚类型名称 */
+export const PENALTY_TYPE_NAMES: Record<PenaltyType, string> = {
+  [PenaltyType.DeductionOnly]: '仅扣分',
+  [PenaltyType.Warning]: '警告',
+  [PenaltyType.OrderRestriction]: '限制接单',
+  [PenaltyType.ServiceSuspension]: '暂停服务',
+  [PenaltyType.PermanentBan]: '永久封禁',
+};
+
+/** 处罚类型颜色 */
+export const PENALTY_TYPE_COLORS: Record<PenaltyType, string> = {
+  [PenaltyType.DeductionOnly]: '#8c8c8c',
+  [PenaltyType.Warning]: '#faad14',
+  [PenaltyType.OrderRestriction]: '#fa8c16',
+  [PenaltyType.ServiceSuspension]: '#ff4d4f',
+  [PenaltyType.PermanentBan]: '#cf1322',
+};
+
+/**
+ * 申诉结果枚举
+ */
+export enum AppealResult {
+  /** 申诉成功，撤销处罚 */
+  Upheld = 0,
+  /** 申诉部分成功，减轻处罚 */
+  PartiallyUpheld = 1,
+  /** 申诉失败 */
+  Rejected = 2,
+}
+
+/** 申诉结果名称 */
+export const APPEAL_RESULT_NAMES: Record<AppealResult, string> = {
+  [AppealResult.Upheld]: '申诉成功',
+  [AppealResult.PartiallyUpheld]: '部分成功',
+  [AppealResult.Rejected]: '申诉失败',
+};
+
+/** 申诉结果颜色 */
+export const APPEAL_RESULT_COLORS: Record<AppealResult, string> = {
+  [AppealResult.Upheld]: '#52c41a',
+  [AppealResult.PartiallyUpheld]: '#faad14',
+  [AppealResult.Rejected]: '#ff4d4f',
+};
+
+/**
+ * 信用修复任务类型枚举
+ */
+export enum RepairTaskType {
+  /** 完成 N 个订单 */
+  CompleteOrders = 0,
+  /** 获得 N 个好评 */
+  GetPositiveReviews = 1,
+  /** 连续 N 天无投诉 */
+  NoComplaintDays = 2,
+  /** 缴纳额外保证金 */
+  ExtraDeposit = 3,
+  /** 完成培训课程 */
+  CompleteTraining = 4,
+  /** 通过认证考试 */
+  PassCertification = 5,
+}
+
+/** 信用修复任务类型名称 */
+export const REPAIR_TASK_TYPE_NAMES: Record<RepairTaskType, string> = {
+  [RepairTaskType.CompleteOrders]: '完成订单',
+  [RepairTaskType.GetPositiveReviews]: '获得好评',
+  [RepairTaskType.NoComplaintDays]: '无投诉',
+  [RepairTaskType.ExtraDeposit]: '额外保证金',
+  [RepairTaskType.CompleteTraining]: '培训课程',
+  [RepairTaskType.PassCertification]: '认证考试',
+};
+
+/** 信用修复任务默认奖励分数 */
+export const REPAIR_TASK_DEFAULT_REWARDS: Record<RepairTaskType, number> = {
+  [RepairTaskType.CompleteOrders]: 20,
+  [RepairTaskType.GetPositiveReviews]: 30,
+  [RepairTaskType.NoComplaintDays]: 25,
+  [RepairTaskType.ExtraDeposit]: 50,
+  [RepairTaskType.CompleteTraining]: 40,
+  [RepairTaskType.PassCertification]: 60,
+};
+
+/** 信用修复任务默认目标值 */
+export const REPAIR_TASK_DEFAULT_TARGETS: Record<RepairTaskType, number> = {
+  [RepairTaskType.CompleteOrders]: 5,
+  [RepairTaskType.GetPositiveReviews]: 3,
+  [RepairTaskType.NoComplaintDays]: 14,
+  [RepairTaskType.ExtraDeposit]: 1,
+  [RepairTaskType.CompleteTraining]: 1,
+  [RepairTaskType.PassCertification]: 1,
+};
+
+/**
+ * 信用变更原因枚举
+ */
+export enum CreditChangeReason {
+  /** 好评加分 */
+  PositiveReview = 0,
+  /** 差评扣分 */
+  NegativeReview = 1,
+  /** 完成订单 */
+  OrderCompleted = 2,
+  /** 取消订单 */
+  OrderCancelled = 3,
+  /** 超时未响应 */
+  ResponseTimeout = 4,
+  /** 悬赏被采纳 */
+  BountyAdopted = 5,
+  /** 获得认证 */
+  CertificationGained = 6,
+  /** 违规处罚 */
+  ViolationPenalty = 7,
+  /** 申诉成功恢复 */
+  AppealRestored = 8,
+  /** 信用修复 */
+  CreditRepair = 9,
+  /** 定期评估调整 */
+  PeriodicAdjustment = 10,
+  /** 系统奖励 */
+  SystemBonus = 11,
+  /** 连续好评奖励 */
+  ConsecutiveBonus = 12,
+}
+
+/** 信用变更原因名称 */
+export const CREDIT_CHANGE_REASON_NAMES: Record<CreditChangeReason, string> = {
+  [CreditChangeReason.PositiveReview]: '好评加分',
+  [CreditChangeReason.NegativeReview]: '差评扣分',
+  [CreditChangeReason.OrderCompleted]: '完成订单',
+  [CreditChangeReason.OrderCancelled]: '取消订单',
+  [CreditChangeReason.ResponseTimeout]: '响应超时',
+  [CreditChangeReason.BountyAdopted]: '悬赏被采纳',
+  [CreditChangeReason.CertificationGained]: '获得认证',
+  [CreditChangeReason.ViolationPenalty]: '违规处罚',
+  [CreditChangeReason.AppealRestored]: '申诉恢复',
+  [CreditChangeReason.CreditRepair]: '信用修复',
+  [CreditChangeReason.PeriodicAdjustment]: '定期评估',
+  [CreditChangeReason.SystemBonus]: '系统奖励',
+  [CreditChangeReason.ConsecutiveBonus]: '连续好评',
+};
+
+/**
+ * 信用档案接口
+ *
+ * 记录提供者的信用评估数据和历史
+ */
+export interface CreditProfile {
+  /** 当前信用分（0-1000） */
+  score: number;
+  /** 当前信用等级 */
+  level: CreditLevel;
+  /** 历史最高分 */
+  highestScore: number;
+  /** 历史最低分 */
+  lowestScore: number;
+
+  // ========== 服务质量维度 ==========
+  /** 服务质量分（0-350） */
+  serviceQualityScore: number;
+  /** 平均综合评分（*100，如 450 = 4.5星） */
+  avgOverallRating: number;
+  /** 平均准确度评分 */
+  avgAccuracyRating: number;
+  /** 平均服务态度评分 */
+  avgAttitudeRating: number;
+  /** 平均响应速度评分 */
+  avgResponseRating: number;
+  /** 5星好评数 */
+  fiveStarCount: number;
+  /** 1星差评数 */
+  oneStarCount: number;
+
+  // ========== 行为规范维度 ==========
+  /** 行为规范分（0-250） */
+  behaviorScore: number;
+  /** 累计违规次数 */
+  violationCount: number;
+  /** 累计警告次数 */
+  warningCount: number;
+  /** 累计投诉次数 */
+  complaintCount: number;
+  /** 投诉成立次数 */
+  complaintUpheldCount: number;
+  /** 当前活跃违规数（未过期） */
+  activeViolations: number;
+
+  // ========== 履约能力维度 ==========
+  /** 履约能力分（0-300） */
+  fulfillmentScore: number;
+  /** 订单完成率（万分比，10000 = 100%） */
+  completionRate: number;
+  /** 按时完成率（万分比） */
+  onTimeRate: number;
+  /** 取消率（万分比） */
+  cancellationRate: number;
+  /** 超时次数 */
+  timeoutCount: number;
+  /** 主动取消次数 */
+  activeCancelCount: number;
+  /** 平均响应时间（区块数） */
+  avgResponseBlocks: number;
+
+  // ========== 加分项 ==========
+  /** 加分项总分（0-100） */
+  bonusScore: number;
+  /** 悬赏被采纳次数 */
+  bountyAdoptionCount: number;
+  /** 获得认证数 */
+  certificationCount: number;
+  /** 连续好评天数 */
+  consecutivePositiveDays: number;
+  /** 是否通过实名认证 */
+  isVerified: boolean;
+  /** 是否缴纳保证金 */
+  hasDeposit: boolean;
+
+  // ========== 扣分记录 ==========
+  /** 累计扣分 */
+  totalDeductions: number;
+  /** 最近一次扣分原因 */
+  lastDeductionReason?: DeductionReason;
+  /** 最近一次扣分时间（区块号） */
+  lastDeductionAt?: number;
+
+  // ========== 统计数据 ==========
+  /** 总订单数 */
+  totalOrders: number;
+  /** 完成订单数 */
+  completedOrders: number;
+  /** 总评价数 */
+  totalReviews: number;
+
+  // ========== 时间戳 ==========
+  /** 信用档案创建时间（区块号） */
+  createdAt: number;
+  /** 最近更新时间（区块号） */
+  updatedAt: number;
+  /** 最近评估时间（区块号） */
+  lastEvaluatedAt: number;
+}
+
+/**
+ * 违规记录接口
+ */
+export interface ViolationRecord {
+  /** 记录 ID */
+  id: number;
+  /** 提供者账户 */
+  provider: string;
+  /** 违规类型 */
+  violationType: ViolationType;
+  /** 违规原因描述 */
+  reason: string;
+  /** 关联订单 ID（如有） */
+  relatedOrderId?: number;
+  /** 扣分数值 */
+  deductionPoints: number;
+  /** 处罚措施 */
+  penalty: PenaltyType;
+  /** 处罚期限（区块数，0表示永久） */
+  penaltyDuration: number;
+  /** 是否已申诉 */
+  isAppealed: boolean;
+  /** 申诉结果 */
+  appealResult?: AppealResult;
+  /** 记录时间（区块号） */
+  recordedAt: number;
+  /** 过期时间（区块号，信用恢复点） */
+  expiresAt?: number;
+  /** 是否活跃（未过期） */
+  isActive: boolean;
+}
+
+/**
+ * 信用变更记录接口
+ */
+export interface CreditChangeRecord {
+  /** 变更前分数 */
+  previousScore: number;
+  /** 变更后分数 */
+  newScore: number;
+  /** 变更值（正数加分，负数扣分） */
+  changeAmount: number;
+  /** 变更原因 */
+  reason: CreditChangeReason;
+  /** 详细说明 */
+  description?: string;
+  /** 关联 ID（订单/违规记录等） */
+  relatedId?: number;
+  /** 变更时间（区块号） */
+  changedAt: number;
+}
+
+/**
+ * 信用修复任务接口
+ */
+export interface CreditRepairTask {
+  /** 任务 ID */
+  id: number;
+  /** 任务类型 */
+  taskType: RepairTaskType;
+  /** 完成后恢复的分数 */
+  rewardPoints: number;
+  /** 任务目标值 */
+  targetValue: number;
+  /** 当前进度 */
+  currentProgress: number;
+  /** 是否已完成 */
+  isCompleted: boolean;
+  /** 任务开始时间（区块号） */
+  startedAt: number;
+  /** 任务截止时间（区块号） */
+  deadline: number;
+  /** 完成时间（区块号） */
+  completedAt?: number;
+}
+
+/**
+ * 全局信用统计接口
+ */
+export interface GlobalCreditStats {
+  /** 总提供者数 */
+  totalProviders: number;
+  /** 卓越等级数量 */
+  excellentCount: number;
+  /** 优秀等级数量 */
+  goodCount: number;
+  /** 一般等级数量 */
+  fairCount: number;
+  /** 警示等级数量 */
+  warningCount: number;
+  /** 不良等级数量 */
+  poorCount: number;
+  /** 失信等级数量 */
+  badCount: number;
+  /** 黑名单数量 */
+  blacklistedCount: number;
+  /** 平均信用分 */
+  averageScore: number;
+  /** 本周新增违规数 */
+  weeklyViolations: number;
+}
+
+// ==================== 信用体系辅助函数 ====================
+
+/**
+ * 检查信用等级是否允许接单
+ */
+export function canAcceptOrders(level: CreditLevel): boolean {
+  return level !== CreditLevel.Bad;
+}
+
+/**
+ * 检查信用等级是否允许创建套餐
+ */
+export function canCreatePackages(level: CreditLevel): boolean {
+  return level !== CreditLevel.Bad && level !== CreditLevel.Poor;
+}
+
+/**
+ * 检查信用等级是否允许回答悬赏
+ */
+export function canAnswerBounties(level: CreditLevel): boolean {
+  return level === CreditLevel.Fair || level === CreditLevel.Good || level === CreditLevel.Excellent;
+}
+
+/**
+ * 获取信用等级允许的最大同时进行订单数
+ */
+export function getMaxActiveOrders(level: CreditLevel): number {
+  switch (level) {
+    case CreditLevel.Bad: return 0;
+    case CreditLevel.Poor: return 1;
+    case CreditLevel.Warning: return 3;
+    case CreditLevel.Fair: return 5;
+    case CreditLevel.Good: return 10;
+    case CreditLevel.Excellent: return 20;
+    default: return 0;
+  }
+}
+
+/**
+ * 获取信用等级的提现延迟（小时）
+ */
+export function getWithdrawalDelayHours(level: CreditLevel): number {
+  switch (level) {
+    case CreditLevel.Bad: return -1; // 禁止提现
+    case CreditLevel.Poor: return 168; // 7天
+    case CreditLevel.Warning: return 72; // 3天
+    case CreditLevel.Fair: return 24; // 1天
+    case CreditLevel.Good: return 0; // 即时
+    case CreditLevel.Excellent: return 0; // 即时
+    default: return 24;
+  }
+}
+
+/**
+ * 获取信用等级的平台费用调整（万分比，正数增加，负数减少）
+ */
+export function getPlatformFeeModifier(level: CreditLevel): number {
+  switch (level) {
+    case CreditLevel.Bad: return 0; // 不适用
+    case CreditLevel.Poor: return 3000; // +30%
+    case CreditLevel.Warning: return 1500; // +15%
+    case CreditLevel.Fair: return 0; // 无调整
+    case CreditLevel.Good: return -500; // -5%
+    case CreditLevel.Excellent: return -1000; // -10%
+    default: return 0;
+  }
+}
+
+/**
+ * 计算信用修复任务进度百分比
+ */
+export function calculateRepairProgress(task: CreditRepairTask): number {
+  if (task.targetValue === 0) return 100;
+  return Math.min(100, (task.currentProgress / task.targetValue) * 100);
+}
+
+/**
+ * 格式化信用分数显示
+ */
+export function formatCreditScore(score: number): string {
+  return score.toFixed(0);
+}
+
+/**
+ * 获取信用等级进度（到下一等级的百分比）
+ */
+export function getCreditLevelProgress(score: number): {
+  currentLevel: CreditLevel;
+  progress: number;
+  nextLevel?: CreditLevel;
+  pointsToNext?: number;
+} {
+  const currentLevel = getCreditLevelFromScore(score);
+  const range = CREDIT_LEVEL_RANGES[currentLevel];
+
+  if (currentLevel === CreditLevel.Excellent) {
+    return {
+      currentLevel,
+      progress: 100
+    };
+  }
+
+  const nextLevel = (currentLevel + 1) as CreditLevel;
+  const nextRange = CREDIT_LEVEL_RANGES[nextLevel];
+  const progress = ((score - range.min) / (range.max - range.min + 1)) * 100;
+  const pointsToNext = nextRange.min - score;
+
+  return {
+    currentLevel,
+    progress,
+    nextLevel,
+    pointsToNext,
+  };
+}
