@@ -461,15 +461,20 @@ pub mod pallet {
             )
         }
 
-        /// 请求 AI 解读
+        /// 请求 AI 解读（已废弃）
         ///
-        /// 为指定课盘请求 AI 解读服务，需支付费用。
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`
+        /// 新的统一 AI 解读系统支持多种 AI 模型选择、Oracle 质押评分、争议退款。
         ///
         /// # 参数
         /// - `origin`: 调用者
         /// - `pan_id`: 课盘 ID
         #[pallet::call_index(4)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::request_interpretation"
+        )]
         pub fn request_ai_interpretation(
             origin: OriginFor<T>,
             pan_id: u64,
@@ -512,9 +517,9 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 提交 AI 解读结果（仅限授权节点）
+        /// 提交 AI 解读结果（仅限授权节点）（已废弃）
         ///
-        /// AI 预言机节点提交解读结果的 IPFS CID。
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::submit_result`
         ///
         /// # 参数
         /// - `origin`: AI 预言机授权来源
@@ -522,6 +527,10 @@ pub mod pallet {
         /// - `interpretation_cid`: 解读内容的 IPFS CID
         #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::submit_result"
+        )]
         pub fn submit_ai_interpretation(
             origin: OriginFor<T>,
             pan_id: u64,

@@ -533,15 +533,27 @@ pub mod pallet {
             )
         }
 
-        /// 请求 AI 解读
+        /// 请求 AI 解读（已废弃）
         ///
-        /// 为指定排盘请求 AI 解读服务，需支付费用。
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`
+        /// 新的统一 AI 解读系统支持：
+        /// - 多种 AI 模型选择（针对不同占卜类型的专用模型）
+        /// - Oracle 质押和评分机制
+        /// - 争议和退款处理
+        ///
+        /// # 废弃原因
+        /// 为统一 AI 解读逻辑、减少代码重复，所有 AI 解读请求已移至
+        /// `pallet-divination-ai` 模块统一处理。
         ///
         /// # 参数
         /// - `origin`: 调用者
         /// - `chart_id`: 排盘记录 ID
         #[pallet::call_index(4)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::request_interpretation"
+        )]
         pub fn request_ai_interpretation(
             origin: OriginFor<T>,
             chart_id: u64,
@@ -579,9 +591,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 提交 AI 解读结果（仅限授权节点）
+        /// 提交 AI 解读结果（仅限授权节点）（已废弃）
         ///
-        /// AI 预言机节点提交解读结果的 IPFS CID。
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::submit_result`
+        /// 新的统一 AI 解读系统支持更完善的结果提交和验证机制。
         ///
         /// # 参数
         /// - `origin`: AI 预言机授权来源
@@ -589,6 +602,10 @@ pub mod pallet {
         /// - `interpretation_cid`: 解读内容的 IPFS CID
         #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::submit_result"
+        )]
         pub fn submit_ai_interpretation(
             origin: OriginFor<T>,
             chart_id: u64,

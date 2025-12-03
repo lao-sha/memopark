@@ -51,6 +51,12 @@ import {
   getGanZhiName,
 } from '../../types/bazi';
 import { calculateBazi, formatBazi, calculateLiuNian } from '../../services/baziService';
+import {
+  saveBaziToChain,
+  uploadBaziResultToIpfs,
+  getUserBaziCharts,
+} from '../../services/baziChainService';
+import { useWalletStore } from '../../stores/walletStore';
 import './BaziPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -68,6 +74,11 @@ const BaziPage: React.FC = () => {
   // 结果状态
   const [result, setResult] = useState<BaziResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedChartId, setSavedChartId] = useState<number | null>(null);
+
+  // 钱包状态
+  const { selectedAccount, isConnected } = useWalletStore();
 
   /**
    * 执行排盘
@@ -105,7 +116,52 @@ const BaziPage: React.FC = () => {
     setBirthDate(null);
     setBirthHour(12);
     setGender(Gender.Male);
+    setSavedChartId(null);
   }, []);
+
+  /**
+   * 保存到链上
+   */
+  const handleSaveToChain = useCallback(async () => {
+    if (!result || !birthDate || !isConnected || !selectedAccount) {
+      message.warning('请先连接钱包');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 上传完整八字数据到IPFS
+      const dataCid = await uploadBaziResultToIpfs(result);
+
+      // 保存到链上
+      const chartId = await saveBaziToChain({
+        year: birthDate.year(),
+        month: birthDate.month() + 1,
+        day: birthDate.date(),
+        hour: birthHour,
+        gender,
+        isPublic: false,
+        dataCid,
+      });
+
+      setSavedChartId(chartId);
+      message.success('八字命盘已保存到链上！');
+    } catch (error) {
+      console.error('保存失败:', error);
+      message.error(`保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [result, birthDate, birthHour, gender, isConnected, selectedAccount]);
+
+  /**
+   * 查看详情页
+   */
+  const handleViewDetail = useCallback(() => {
+    if (savedChartId) {
+      window.location.hash = `#/bazi/${savedChartId}`;
+    }
+  }, [savedChartId]);
 
   /**
    * 渲染单柱
@@ -451,9 +507,31 @@ const BaziPage: React.FC = () => {
 
         {/* 操作按钮 */}
         <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
-          <Button block onClick={handleReset}>
-            重新排盘
-          </Button>
+          {!savedChartId ? (
+            <>
+              <Button
+                type="primary"
+                block
+                onClick={handleSaveToChain}
+                loading={saving}
+                disabled={!isConnected}
+              >
+                {isConnected ? '保存到链上' : '请先连接钱包'}
+              </Button>
+              <Button block onClick={handleReset}>
+                重新排盘
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="primary" block onClick={handleViewDetail}>
+                查看命盘详情 <ArrowRightOutlined />
+              </Button>
+              <Button block onClick={handleReset}>
+                重新排盘
+              </Button>
+            </>
+          )}
           <Button
             type="link"
             block

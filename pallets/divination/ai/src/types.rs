@@ -226,3 +226,140 @@ pub struct TypeInterpretationStats {
     /// 失败数量
     pub failed_count: u64,
 }
+
+// ==================== 模型配置相关类型 ====================
+
+/// 占卜类型的 AI 模型配置
+///
+/// 每种占卜类型可以有不同的模型要求和费用配置
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+pub struct ModelConfig {
+    /// 占卜类型
+    pub divination_type: DivinationType,
+    /// 推荐的模型标识（供 Oracle 节点参考）
+    pub recommended_model_id: BoundedVec<u8, ConstU32<64>>,
+    /// 最低模型版本要求
+    pub min_model_version: u32,
+    /// 该类型的基础费用倍数（100 = 1x, 150 = 1.5x）
+    pub fee_multiplier: u32,
+    /// 最大响应长度（字符数，不同类型解读内容长度不同）
+    pub max_response_length: u32,
+    /// 是否启用该类型的 AI 解读
+    pub enabled: bool,
+    /// 最低 Oracle 评分要求（0-500，对应 0.0-5.0 星）
+    pub min_oracle_rating: u16,
+    /// 该类型的超时区块数（可覆盖全局设置）
+    pub timeout_blocks: Option<u32>,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            divination_type: DivinationType::Meihua,
+            recommended_model_id: BoundedVec::default(),
+            min_model_version: 1,
+            fee_multiplier: 100,
+            max_response_length: 10000,
+            enabled: true,
+            min_oracle_rating: 0,
+            timeout_blocks: None,
+        }
+    }
+}
+
+impl ModelConfig {
+    /// 创建指定占卜类型的默认配置
+    pub fn new_default(divination_type: DivinationType) -> Self {
+        let (fee_multiplier, max_response_length) = match divination_type {
+            // 梅花易数：解读相对简单
+            DivinationType::Meihua => (100, 8000),
+            // 八字命理：内容较多
+            DivinationType::Bazi => (150, 15000),
+            // 六爻占卜：需要详细分析
+            DivinationType::Liuyao => (120, 12000),
+            // 奇门遁甲：最复杂
+            DivinationType::Qimen => (200, 20000),
+            // 紫微斗数：星盘分析复杂
+            DivinationType::Ziwei => (180, 18000),
+            // 大六壬：时空预测
+            DivinationType::Daliuren => (150, 12000),
+            // 小六壬：简单快速
+            DivinationType::XiaoLiuRen => (80, 5000),
+            // 塔罗牌：西方占卜
+            DivinationType::Tarot => (100, 8000),
+            // 太乙神数：预留
+            DivinationType::Taiyi => (150, 12000),
+        };
+
+        Self {
+            divination_type,
+            recommended_model_id: BoundedVec::default(),
+            min_model_version: 1,
+            fee_multiplier,
+            max_response_length,
+            enabled: divination_type.is_implemented(),
+            min_oracle_rating: 0,
+            timeout_blocks: None,
+        }
+    }
+}
+
+/// Oracle 节点支持的单个模型信息
+///
+/// 用于 Oracle 注册时声明支持的具体模型
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+pub struct OracleModelInfo {
+    /// 占卜类型
+    pub divination_type: DivinationType,
+    /// 实际使用的模型标识
+    pub model_id: BoundedVec<u8, ConstU32<64>>,
+    /// 模型版本号
+    pub model_version: u32,
+    /// 该模型的历史准确率评分（0-10000，对应 0-100%）
+    pub accuracy_score: u16,
+    /// 该模型处理的请求数
+    pub requests_count: u64,
+    /// 是否当前启用
+    pub is_active: bool,
+}
+
+impl Default for OracleModelInfo {
+    fn default() -> Self {
+        Self {
+            divination_type: DivinationType::Meihua,
+            model_id: BoundedVec::default(),
+            model_version: 1,
+            accuracy_score: 0,
+            requests_count: 0,
+            is_active: true,
+        }
+    }
+}
+
+/// Oracle 节点的模型支持信息集合
+///
+/// 存储一个 Oracle 节点支持的所有模型
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug, Default)]
+pub struct OracleModelSupport {
+    /// 支持的模型列表（最多 16 个，对应最多 16 种占卜类型）
+    pub models: BoundedVec<OracleModelInfo, ConstU32<16>>,
+}
+
+impl OracleModelSupport {
+    /// 检查是否支持指定占卜类型
+    pub fn supports(&self, divination_type: DivinationType) -> bool {
+        self.models.iter().any(|m| m.divination_type == divination_type && m.is_active)
+    }
+
+    /// 获取指定占卜类型的模型信息
+    pub fn get_model(&self, divination_type: DivinationType) -> Option<&OracleModelInfo> {
+        self.models.iter().find(|m| m.divination_type == divination_type && m.is_active)
+    }
+
+    /// 检查模型版本是否满足最低要求
+    pub fn meets_version_requirement(&self, divination_type: DivinationType, min_version: u32) -> bool {
+        self.get_model(divination_type)
+            .map(|m| m.model_version >= min_version)
+            .unwrap_or(false)
+    }
+}

@@ -530,7 +530,7 @@ fn reject_order_works() {
 
 /// 测试提交解读
 #[test]
-fn submit_answer_works() {
+fn submit_interpretation_works() {
     new_test_ext().execute_with(|| {
         MockDivinationProvider::add_result(DivinationType::Meihua, 1, 1, RarityInput::common());
 
@@ -565,7 +565,7 @@ fn submit_answer_works() {
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
 
         // 提交解读
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"QmAnswerCid".to_vec()
@@ -573,7 +573,7 @@ fn submit_answer_works() {
 
         let order = DivinationMarket::orders(0).unwrap();
         assert_eq!(order.status, OrderStatus::Completed);
-        assert!(order.answer_cid.is_some());
+        assert!(order.interpretation_cid.is_some());
 
         // 验证提供者收益
         let provider = DivinationMarket::providers(10).unwrap();
@@ -673,7 +673,7 @@ fn follow_up_works() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -691,10 +691,10 @@ fn follow_up_works() {
 
         let follow_ups = DivinationMarket::follow_ups(0);
         assert_eq!(follow_ups.len(), 1);
-        assert!(follow_ups[0].answer_cid.is_none());
+        assert!(follow_ups[0].reply_cid.is_none());
 
         // 回复追问
-        assert_ok!(DivinationMarket::answer_follow_up(
+        assert_ok!(DivinationMarket::reply_follow_up(
             RuntimeOrigin::signed(10),
             0,
             0,
@@ -702,7 +702,7 @@ fn follow_up_works() {
         ));
 
         let follow_ups = DivinationMarket::follow_ups(0);
-        assert!(follow_ups[0].answer_cid.is_some());
+        assert!(follow_ups[0].reply_cid.is_some());
     });
 }
 
@@ -741,7 +741,7 @@ fn follow_up_exhausted_fails() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -791,7 +791,7 @@ fn submit_review_works() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -860,7 +860,7 @@ fn invalid_rating_fails() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -915,7 +915,7 @@ fn reply_review_works() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -980,7 +980,7 @@ fn request_withdrawal_works() {
             false
         ));
         assert_ok!(DivinationMarket::accept_order(RuntimeOrigin::signed(10), 0));
-        assert_ok!(DivinationMarket::submit_answer(
+        assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
             b"Answer".to_vec()
@@ -1171,10 +1171,23 @@ fn provider_tier_calculation() {
 
 // ==================== 悬赏问答测试 ====================
 
+/// 辅助函数：创建模拟占卜结果
+fn setup_divination_result(result_id: u64, creator: u64) {
+    MockDivinationProvider::add_result(
+        DivinationType::Meihua,
+        result_id,
+        creator,
+        RarityInput::common(),
+    );
+}
+
+
 /// 测试创建悬赏问题
 #[test]
 fn create_bounty_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         let creator = 1u64;
         let bounty_amount = 10000u64;
         let deadline = 1000u64;
@@ -1186,7 +1199,7 @@ fn create_bounty_works() {
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(creator),
             DivinationType::Meihua,
-            None, // 无关联占卜结果
+            1, // result_id
             b"QmQuestionCid".to_vec(),
             bounty_amount,
             deadline,
@@ -1228,11 +1241,13 @@ fn create_bounty_works() {
 #[test]
 fn create_bounty_amount_too_low_fails() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_noop!(
             DivinationMarket::create_bounty(
                 RuntimeOrigin::signed(1),
                 DivinationType::Meihua,
-                None,
+                1, // result_id
                 b"Cid".to_vec(),
                 50, // 低于 MinServicePrice (100)
                 1000,
@@ -1251,13 +1266,15 @@ fn create_bounty_amount_too_low_fails() {
 #[test]
 fn create_bounty_invalid_deadline_fails() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         System::set_block_number(100);
 
         assert_noop!(
             DivinationMarket::create_bounty(
                 RuntimeOrigin::signed(1),
                 DivinationType::Meihua,
-                None,
+                1, // result_id
                 b"Cid".to_vec(),
                 1000,
                 50, // 截止时间已过
@@ -1276,11 +1293,13 @@ fn create_bounty_invalid_deadline_fails() {
 #[test]
 fn submit_bounty_answer_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         // 创建悬赏
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1326,10 +1345,12 @@ fn submit_bounty_answer_works() {
 #[test]
 fn cannot_answer_own_bounty() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1355,10 +1376,12 @@ fn cannot_answer_own_bounty() {
 #[test]
 fn cannot_answer_twice() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1390,10 +1413,12 @@ fn cannot_answer_twice() {
 #[test]
 fn bounty_answer_limit_reached() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1427,10 +1452,12 @@ fn bounty_answer_limit_reached() {
 #[test]
 fn close_bounty_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1465,10 +1492,12 @@ fn close_bounty_works() {
 #[test]
 fn close_bounty_not_enough_answers_fails() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1497,10 +1526,12 @@ fn close_bounty_not_enough_answers_fails() {
 #[test]
 fn vote_bounty_answer_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1542,10 +1573,12 @@ fn vote_bounty_answer_works() {
 #[test]
 fn cannot_vote_twice() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1579,10 +1612,12 @@ fn cannot_vote_twice() {
 #[test]
 fn adopt_bounty_answers_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1645,6 +1680,8 @@ fn adopt_bounty_answers_works() {
 #[test]
 fn settle_bounty_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         let bounty_amount = 10000u64;
 
         // 记录初始余额
@@ -1656,7 +1693,7 @@ fn settle_bounty_works() {
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             bounty_amount,
             1000,
@@ -1739,13 +1776,15 @@ fn settle_bounty_works() {
 #[test]
 fn cancel_bounty_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         let bounty_amount = 10000u64;
         let creator_initial = Balances::free_balance(1);
 
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             bounty_amount,
             1000,
@@ -1775,10 +1814,12 @@ fn cancel_bounty_works() {
 #[test]
 fn cancel_bounty_with_answers_fails() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,
@@ -1806,13 +1847,15 @@ fn cancel_bounty_with_answers_fails() {
 #[test]
 fn expire_bounty_no_answers_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         let bounty_amount = 10000u64;
         let creator_initial = Balances::free_balance(1);
 
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             bounty_amount,
             100, // deadline
@@ -1841,10 +1884,12 @@ fn expire_bounty_no_answers_works() {
 #[test]
 fn expire_bounty_with_answers_closes() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             100, // deadline
@@ -1877,6 +1922,8 @@ fn expire_bounty_with_answers_closes() {
 #[test]
 fn certified_only_bounty_works() {
     new_test_ext().execute_with(|| {
+        setup_divination_result(1, 1); // Setup divination result for bounty test
+
         // 注册认证提供者
         assert_ok!(DivinationMarket::register_provider(
             RuntimeOrigin::signed(10),
@@ -1897,7 +1944,7 @@ fn certified_only_bounty_works() {
         assert_ok!(DivinationMarket::create_bounty(
             RuntimeOrigin::signed(1),
             DivinationType::Meihua,
-            None,
+            1, // result_id
             b"Question".to_vec(),
             10000,
             1000,

@@ -29,11 +29,11 @@ pub enum DivinationType {
     Meihua = 0,
     /// 八字排盘 - 基于出生时间的命理系统
     Bazi = 1,
-    /// 六爻占卜 - 基于摇卦的占卜系统（预留）
+    /// 六爻占卜 - 基于摇卦的占卜系统
     Liuyao = 2,
-    /// 奇门遁甲 - 时空方位预测系统（预留）
+    /// 奇门遁甲 - 时空方位预测系统
     Qimen = 3,
-    /// 紫微斗数 - 星命学系统（预留）
+    /// 紫微斗数 - 星命学系统
     Ziwei = 4,
     /// 太乙神数 - 古代预测术（预留）
     Taiyi = 5,
@@ -62,13 +62,45 @@ impl DivinationType {
     }
 
     /// 检查该类型是否已实现
+    ///
+    /// 已实现的占卜系统：
+    /// - 梅花易数 (Meihua)
+    /// - 八字命理 (Bazi)
+    /// - 六爻占卜 (Liuyao)
+    /// - 奇门遁甲 (Qimen)
+    /// - 紫微斗数 (Ziwei)
+    /// - 大六壬 (Daliuren)
+    /// - 小六壬 (XiaoLiuRen)
+    /// - 塔罗牌 (Tarot)
+    ///
+    /// 未实现（预留）：
+    /// - 太乙神数 (Taiyi)
     pub fn is_implemented(&self) -> bool {
-        matches!(self, Self::Meihua | Self::Bazi)
+        matches!(
+            self,
+            Self::Meihua
+                | Self::Bazi
+                | Self::Liuyao
+                | Self::Qimen
+                | Self::Ziwei
+                | Self::Daliuren
+                | Self::XiaoLiuRen
+                | Self::Tarot
+        )
     }
 
     /// 获取所有已实现的占卜类型
     pub fn implemented_types() -> sp_std::vec::Vec<Self> {
-        sp_std::vec![Self::Meihua, Self::Bazi]
+        sp_std::vec![
+            Self::Meihua,
+            Self::Bazi,
+            Self::Liuyao,
+            Self::Qimen,
+            Self::Ziwei,
+            Self::Daliuren,
+            Self::XiaoLiuRen,
+            Self::Tarot,
+        ]
     }
 }
 
@@ -542,6 +574,116 @@ pub enum DisputeResolution {
     Settled,
 }
 
+/// 悬赏问答状态
+///
+/// 基于占卜结果发起的解读悬赏的状态流转
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, Debug, Default)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum BountyStatus {
+    /// 开放中 - 接受解读提交
+    #[default]
+    Open = 0,
+    /// 已关闭 - 停止接受解读，等待采纳
+    Closed = 1,
+    /// 已采纳 - 已选择前三名，等待结算
+    Adopted = 2,
+    /// 已结算 - 奖励已分配完成（终态）
+    Settled = 3,
+    /// 已取消 - 提问者取消（无回答时）（终态）
+    Cancelled = 4,
+    /// 已过期 - 超时且无回答，已退款（终态）
+    Expired = 5,
+}
+
+impl BountyStatus {
+    /// 获取状态的中文名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Open => "开放中",
+            Self::Closed => "已关闭",
+            Self::Adopted => "已采纳",
+            Self::Settled => "已结算",
+            Self::Cancelled => "已取消",
+            Self::Expired => "已过期",
+        }
+    }
+
+    /// 检查是否为终态
+    pub fn is_final(&self) -> bool {
+        matches!(self, Self::Settled | Self::Cancelled | Self::Expired)
+    }
+
+    /// 检查是否可以接受新的解读
+    pub fn is_accepting_answers(&self) -> bool {
+        matches!(self, Self::Open)
+    }
+
+    /// 检查是否可以采纳解读
+    pub fn is_adoptable(&self) -> bool {
+        matches!(self, Self::Open | Self::Closed)
+    }
+
+    /// 检查是否可以结算
+    pub fn is_settleable(&self) -> bool {
+        matches!(self, Self::Adopted)
+    }
+}
+
+/// 悬赏解读回答状态
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, Debug, Default)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum BountyAnswerStatus {
+    /// 等待中 - 等待采纳/投票
+    #[default]
+    Pending = 0,
+    /// 已采纳 - 被采纳为最佳答案（第一名）
+    Adopted = 1,
+    /// 已入选 - 入选优秀答案（第二/三名）
+    Selected = 2,
+    /// 参与奖 - 获得参与奖励
+    Participated = 3,
+    /// 未入选 - 未获得任何奖励
+    Rejected = 4,
+}
+
+impl BountyAnswerStatus {
+    /// 获取状态的中文名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Pending => "等待中",
+            Self::Adopted => "已采纳",
+            Self::Selected => "已入选",
+            Self::Participated => "参与奖",
+            Self::Rejected => "未入选",
+        }
+    }
+
+    /// 检查是否获得了奖励
+    pub fn has_reward(&self) -> bool {
+        matches!(self, Self::Adopted | Self::Selected | Self::Participated)
+    }
+}
+
+/// 擅长领域（用于匹配回答者）
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, Debug)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum Specialty {
+    /// 事业
+    Career = 0,
+    /// 感情
+    Relationship = 1,
+    /// 健康
+    Health = 2,
+    /// 财运
+    Wealth = 3,
+    /// 学业
+    Education = 4,
+    /// 流年运势
+    Annual = 5,
+    /// 综合
+    General = 6,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,10 +755,21 @@ mod tests {
 
     #[test]
     fn test_divination_type_implemented() {
+        // 已实现的占卜类型
         assert!(DivinationType::Meihua.is_implemented());
         assert!(DivinationType::Bazi.is_implemented());
-        assert!(!DivinationType::Liuyao.is_implemented());
-        assert!(!DivinationType::Qimen.is_implemented());
+        assert!(DivinationType::Liuyao.is_implemented());
+        assert!(DivinationType::Qimen.is_implemented());
+        assert!(DivinationType::Ziwei.is_implemented());
+        assert!(DivinationType::Daliuren.is_implemented());
+        assert!(DivinationType::XiaoLiuRen.is_implemented());
+        assert!(DivinationType::Tarot.is_implemented());
+
+        // 未实现的占卜类型
+        assert!(!DivinationType::Taiyi.is_implemented());
+
+        // 验证 implemented_types 返回正确数量
+        assert_eq!(DivinationType::implemented_types().len(), 8);
     }
 
     #[test]

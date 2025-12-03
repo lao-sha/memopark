@@ -1,0 +1,108 @@
+/**
+ * 悬赏详情页面样式
+ */
+
+.bounty-detail-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 悬赏信息卡片 */
+.bounty-info-card {
+  margin-bottom: 16px;
+}
+
+.bounty-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.bounty-amount-large {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bounty-question-content {
+  margin: 16px 0;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-item > div {
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+/* 获奖答案区域 */
+.winners-section {
+  margin-bottom: 16px;
+  border: 2px solid #faad14;
+}
+
+/* 回答列表区域 */
+.answers-section {
+  margin-bottom: 16px;
+}
+
+/* 回答卡片 */
+.answer-card {
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+}
+
+.answer-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.winner-card {
+  border: 2px solid #faad14;
+  background: linear-gradient(135deg, #fffbe6 0%, #ffffff 100%);
+}
+
+.answer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.answer-content {
+  margin: 12px 0;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+}
+
+.answer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .bounty-detail-page {
+    padding: 8px;
+  }
+
+  .bounty-detail-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .bounty-amount-large {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .answer-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

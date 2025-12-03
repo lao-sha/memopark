@@ -395,9 +395,23 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 请求 AI 解读
+        /// 请求 AI 解读（已废弃）
+        ///
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`
+        /// 新的统一 AI 解读系统支持：
+        /// - 多种 AI 模型选择（针对不同占卜类型的专用模型）
+        /// - Oracle 质押和评分机制
+        /// - 争议和退款处理
+        ///
+        /// # 废弃原因
+        /// 为统一 AI 解读逻辑、减少代码重复，所有 AI 解读请求已移至
+        /// `pallet-divination-ai` 模块统一处理。
         #[pallet::call_index(3)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::request_interpretation"
+        )]
         pub fn request_ai_interpretation(
             origin: OriginFor<T>,
             chart_id: u64,
@@ -441,9 +455,16 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 提交 AI 解读结果（预言机调用）
+        /// 提交 AI 解读结果（预言机调用）（已废弃）
+        ///
+        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::submit_result`
+        /// 新的统一 AI 解读系统支持更完善的结果提交和验证机制。
         #[pallet::call_index(4)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        #[deprecated(
+            since = "0.2.0",
+            note = "请使用 pallet_divination_ai::submit_result"
+        )]
         pub fn submit_ai_interpretation(
             origin: OriginFor<T>,
             chart_id: u64,

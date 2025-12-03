@@ -1,0 +1,88 @@
+/**
+ * 悬赏问答列表页面样式
+ */
+
+.bounty-list-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 页面头部 */
+.bounty-list-page .page-header {
+  margin-bottom: 16px;
+}
+
+.bounty-list-page .header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 筛选区域 */
+.bounty-list-page .filter-section {
+  margin-bottom: 16px;
+}
+
+/* 悬赏卡片 */
+.bounty-card {
+  height: 100%;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.bounty-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.bounty-card .bounty-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.bounty-card .bounty-amount {
+  display: flex;
+  align-items: center;
+}
+
+.bounty-card .bounty-question {
+  min-height: 44px;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 14px;
+  line-height: 1.5715;
+}
+
+.bounty-card .bounty-info {
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.bounty-card .bounty-tags {
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 悬赏网格布局 */
+.bounties-grid {
+  margin-top: 16px;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .bounty-list-page {
+    padding: 8px;
+  }
+
+  .bounty-list-page .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .bounty-list-page .header-content button {
+    width: 100%;
+  }
+}

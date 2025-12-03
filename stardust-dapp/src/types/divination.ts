@@ -23,6 +23,14 @@ export enum DivinationType {
   Qimen = 3,
   /** 紫微斗数 - 星盘推算 */
   Ziwei = 4,
+  /** 大六壬 - 式占术数 */
+  Daliuren = 5,
+  /** 小六壬 - 马前课 */
+  XiaoLiuRen = 6,
+  /** 塔罗牌 - 西方占卜 */
+  Tarot = 7,
+  /** 太乙神数 - 三式之首 */
+  Taiyi = 8,
 }
 
 /** 占卜类型中文名称 */
@@ -32,6 +40,10 @@ export const DIVINATION_TYPE_NAMES: Record<DivinationType, string> = {
   [DivinationType.Liuyao]: '六爻占卜',
   [DivinationType.Qimen]: '奇门遁甲',
   [DivinationType.Ziwei]: '紫微斗数',
+  [DivinationType.Daliuren]: '大六壬',
+  [DivinationType.XiaoLiuRen]: '小六壬',
+  [DivinationType.Tarot]: '塔罗牌',
+  [DivinationType.Taiyi]: '太乙神数',
 };
 
 /** 占卜类型描述 */
@@ -41,6 +53,10 @@ export const DIVINATION_TYPE_DESCRIPTIONS: Record<DivinationType, string> = {
   [DivinationType.Liuyao]: '通过铜钱摇卦获得六爻卦象，详细分析事物发展',
   [DivinationType.Qimen]: '结合天时、地利、人事，进行时空维度的全面预测',
   [DivinationType.Ziwei]: '根据出生时间排布星盘，分析一生命运走势',
+  [DivinationType.Daliuren]: '三式之一，以天人合一理论预测吉凶祸福',
+  [DivinationType.XiaoLiuRen]: '掐指速算，快速判断事物吉凶的简易占卜术',
+  [DivinationType.Tarot]: '西方神秘学占卜，通过牌面解读人生',
+  [DivinationType.Taiyi]: '三式之首，主推测国运大事',
 };
 
 /** 占卜类型图标 */
@@ -50,6 +66,10 @@ export const DIVINATION_TYPE_ICONS: Record<DivinationType, string> = {
   [DivinationType.Liuyao]: '⚊',
   [DivinationType.Qimen]: '奇',
   [DivinationType.Ziwei]: '★',
+  [DivinationType.Daliuren]: '壬',
+  [DivinationType.XiaoLiuRen]: '六',
+  [DivinationType.Tarot]: '🃏',
+  [DivinationType.Taiyi]: '乙',
 };
 
 // ==================== 稀有度系统 ====================
@@ -475,8 +495,8 @@ export interface MarketOrder {
   status: OrderStatus;
   /** 问题描述 CID */
   questionCid: string;
-  /** 解读结果 CID */
-  answerCid?: string;
+  /** 解读结果 CID（服务提供者提交的专业解读内容） */
+  interpretationCid?: string;
   /** 创建时间（区块号） */
   createdAt: number;
   /** 支付时间（区块号） */
@@ -682,7 +702,7 @@ export function supportsDivinationType(
  */
 export function getSupportedDivinationTypes(supportedTypes: number): DivinationType[] {
   const result: DivinationType[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 9; i++) {  // 更新为 9 种占卜类型
     if (supportedTypes & (1 << i)) {
       result.push(i as DivinationType);
     }
@@ -724,6 +744,328 @@ export function getRarityFeeMultiplier(rarity: Rarity): number {
   }
 }
 
+// ==================== 悬赏问答系统 ====================
+
+/**
+ * 悬赏状态枚举
+ */
+export enum BountyStatus {
+  /** 开放中 - 接受回答 */
+  Open = 0,
+  /** 已关闭 - 停止接受新回答，等待采纳 */
+  Closed = 1,
+  /** 已采纳 - 选择了获奖答案 */
+  Adopted = 2,
+  /** 已结算 - 奖励已分发 */
+  Settled = 3,
+  /** 已取消 - 创建者取消悬赏 */
+  Cancelled = 4,
+  /** 已过期 - 超时无人回答 */
+  Expired = 5,
+}
+
+/** 悬赏状态名称 */
+export const BOUNTY_STATUS_NAMES: Record<BountyStatus, string> = {
+  [BountyStatus.Open]: '开放中',
+  [BountyStatus.Closed]: '已关闭',
+  [BountyStatus.Adopted]: '已采纳',
+  [BountyStatus.Settled]: '已结算',
+  [BountyStatus.Cancelled]: '已取消',
+  [BountyStatus.Expired]: '已过期',
+};
+
+/** 悬赏状态颜色 */
+export const BOUNTY_STATUS_COLORS: Record<BountyStatus, string> = {
+  [BountyStatus.Open]: '#52c41a',
+  [BountyStatus.Closed]: '#faad14',
+  [BountyStatus.Adopted]: '#1890ff',
+  [BountyStatus.Settled]: '#722ed1',
+  [BountyStatus.Cancelled]: '#8c8c8c',
+  [BountyStatus.Expired]: '#ff4d4f',
+};
+
+/**
+ * 悬赏回答状态枚举
+ */
+export enum BountyAnswerStatus {
+  /** 等待中 - 等待创建者采纳 */
+  Pending = 0,
+  /** 已采纳 - 第一名获奖答案 */
+  Adopted = 1,
+  /** 已选中 - 第二、三名获奖答案 */
+  Selected = 2,
+  /** 参与奖 - 获得参与奖的答案 */
+  Participated = 3,
+  /** 已拒绝 - 被拒绝的答案 */
+  Rejected = 4,
+}
+
+/** 悬赏回答状态名称 */
+export const BOUNTY_ANSWER_STATUS_NAMES: Record<BountyAnswerStatus, string> = {
+  [BountyAnswerStatus.Pending]: '等待中',
+  [BountyAnswerStatus.Adopted]: '第一名',
+  [BountyAnswerStatus.Selected]: '获奖',
+  [BountyAnswerStatus.Participated]: '参与奖',
+  [BountyAnswerStatus.Rejected]: '已拒绝',
+};
+
+/** 悬赏回答状态颜色 */
+export const BOUNTY_ANSWER_STATUS_COLORS: Record<BountyAnswerStatus, string> = {
+  [BountyAnswerStatus.Pending]: '#faad14',
+  [BountyAnswerStatus.Adopted]: '#faad14',
+  [BountyAnswerStatus.Selected]: '#1890ff',
+  [BountyAnswerStatus.Participated]: '#52c41a',
+  [BountyAnswerStatus.Rejected]: '#ff4d4f',
+};
+
+/**
+ * 奖励分配方案
+ */
+export interface RewardDistribution {
+  /** 第一名比例（万分比） */
+  firstPlace: number;
+  /** 第二名比例（万分比） */
+  secondPlace: number;
+  /** 第三名比例（万分比） */
+  thirdPlace: number;
+  /** 平台费比例（万分比） */
+  platformFee: number;
+  /** 参与奖池比例（万分比） */
+  participationPool: number;
+}
+
+/** 默认奖励分配方案（60/15/5/15/5） */
+export const DEFAULT_REWARD_DISTRIBUTION: RewardDistribution = {
+  firstPlace: 6000,       // 60%
+  secondPlace: 1500,      // 15%
+  thirdPlace: 500,        // 5%
+  platformFee: 1500,      // 15%
+  participationPool: 500, // 5%
+};
+
+/**
+ * 悬赏问题接口
+ */
+export interface BountyQuestion {
+  /** 悬赏 ID */
+  id: number;
+  /** 创建者 */
+  creator: string;
+  /** 占卜类型 */
+  divinationType: DivinationType;
+  /** 关联的占卜结果 ID */
+  resultId: number;
+  /** 问题描述 IPFS CID */
+  questionCid: string;
+  /** 悬赏金额 */
+  bountyAmount: bigint;
+  /** 截止时间（区块号） */
+  deadline: number;
+  /** 最少回答数 */
+  minAnswers: number;
+  /** 最多回答数 */
+  maxAnswers: number;
+  /** 指定擅长领域（可选） */
+  specialty?: Specialty;
+  /** 是否仅限认证提供者 */
+  certifiedOnly: boolean;
+  /** 是否允许投票 */
+  allowVoting: boolean;
+  /** 当前状态 */
+  status: BountyStatus;
+  /** 回答数量 */
+  answerCount: number;
+  /** 总投票数 */
+  totalVotes: number;
+  /** 创建时间（区块号） */
+  createdAt: number;
+  /** 关闭时间（区块号） */
+  closedAt?: number;
+  /** 采纳的第一名回答 ID */
+  adoptedAnswerId?: number;
+  /** 第二名回答 ID */
+  secondPlaceId?: number;
+  /** 第三名回答 ID */
+  thirdPlaceId?: number;
+  /** 结算时间（区块号） */
+  settledAt?: number;
+  /** 奖励分配方案 */
+  rewardDistribution: RewardDistribution;
+}
+
+/**
+ * 悬赏回答接口
+ */
+export interface BountyAnswer {
+  /** 回答 ID */
+  id: number;
+  /** 悬赏 ID */
+  bountyId: number;
+  /** 回答者 */
+  answerer: string;
+  /** 回答内容 IPFS CID */
+  contentCid: string;
+  /** 回答状态 */
+  status: BountyAnswerStatus;
+  /** 获得票数 */
+  votes: number;
+  /** 获得奖励金额 */
+  rewardAmount: bigint;
+  /** 提交时间（区块号） */
+  submittedAt: number;
+  /** 是否认证提供者 */
+  isCertified: boolean;
+  /** 提供者等级 */
+  providerTier?: ProviderTier;
+}
+
+/**
+ * 悬赏投票记录接口
+ */
+export interface BountyVote {
+  /** 悬赏 ID */
+  bountyId: number;
+  /** 投票者 */
+  voter: string;
+  /** 回答 ID */
+  answerId: number;
+  /** 投票时间（区块号） */
+  votedAt: number;
+}
+
+/**
+ * 悬赏统计接口
+ */
+export interface BountyStatistics {
+  /** 总悬赏数 */
+  totalBounties: number;
+  /** 活跃悬赏数 */
+  activeBounties: number;
+  /** 已结算悬赏数 */
+  settledBounties: number;
+  /** 总回答数 */
+  totalAnswers: number;
+  /** 总悬赏金额 */
+  totalBountyAmount: bigint;
+  /** 总分发奖励 */
+  totalRewardsDistributed: bigint;
+  /** 总平台手续费 */
+  totalPlatformFees: bigint;
+}
+
+// ==================== 悬赏辅助函数 ====================
+
+/**
+ * 计算奖励分配
+ */
+export function calculateRewards(
+  bountyAmount: bigint,
+  distribution: RewardDistribution
+): {
+  firstPlace: bigint;
+  secondPlace: bigint;
+  thirdPlace: bigint;
+  platformFee: bigint;
+  participationPool: bigint;
+} {
+  const amount = Number(bountyAmount);
+  return {
+    firstPlace: BigInt(Math.floor((amount * distribution.firstPlace) / 10000)),
+    secondPlace: BigInt(Math.floor((amount * distribution.secondPlace) / 10000)),
+    thirdPlace: BigInt(Math.floor((amount * distribution.thirdPlace) / 10000)),
+    platformFee: BigInt(Math.floor((amount * distribution.platformFee) / 10000)),
+    participationPool: BigInt(Math.floor((amount * distribution.participationPool) / 10000)),
+  };
+}
+
+/**
+ * 检查悬赏是否可以创建回答
+ */
+export function canSubmitAnswer(bounty: BountyQuestion, currentBlock: number): boolean {
+  return (
+    bounty.status === BountyStatus.Open &&
+    currentBlock <= bounty.deadline &&
+    bounty.answerCount < bounty.maxAnswers
+  );
+}
+
+/**
+ * 检查悬赏是否可以关闭
+ */
+export function canCloseBounty(bounty: BountyQuestion): boolean {
+  return (
+    bounty.status === BountyStatus.Open &&
+    bounty.answerCount >= bounty.minAnswers
+  );
+}
+
+/**
+ * 检查悬赏是否可以采纳答案
+ */
+export function canAdoptAnswers(bounty: BountyQuestion): boolean {
+  return (
+    bounty.status === BountyStatus.Closed &&
+    bounty.answerCount > 0
+  );
+}
+
+/**
+ * 格式化悬赏状态标签
+ */
+export function formatBountyStatusTag(status: BountyStatus): {
+  name: string;
+  color: string;
+  icon: string;
+} {
+  const icons: Record<BountyStatus, string> = {
+    [BountyStatus.Open]: '🟢',
+    [BountyStatus.Closed]: '🔒',
+    [BountyStatus.Adopted]: '✅',
+    [BountyStatus.Settled]: '💰',
+    [BountyStatus.Cancelled]: '❌',
+    [BountyStatus.Expired]: '⏰',
+  };
+
+  return {
+    name: BOUNTY_STATUS_NAMES[status],
+    color: BOUNTY_STATUS_COLORS[status],
+    icon: icons[status],
+  };
+}
+
+/**
+ * 格式化悬赏金额
+ */
+export function formatBountyAmount(amount: bigint): string {
+  const dust = Number(amount) / 1e12;
+  if (dust >= 1000000) {
+    return `${(dust / 1000000).toFixed(1)}M`;
+  } else if (dust >= 1000) {
+    return `${(dust / 1000).toFixed(1)}K`;
+  } else {
+    return dust.toFixed(2);
+  }
+}
+
+/**
+ * 计算悬赏剩余时间
+ */
+export function getBountyTimeRemaining(deadline: number, currentBlock: number): {
+  blocks: number;
+  hours: number;
+  isExpired: boolean;
+} {
+  const remainingBlocks = deadline - currentBlock;
+  const isExpired = remainingBlocks <= 0;
+  const hours = Math.max(0, (remainingBlocks * 6) / 3600); // 6秒一个区块
+
+  return {
+    blocks: Math.max(0, remainingBlocks),
+    hours,
+    isExpired,
+  };
+}
+
 /**
  * 格式化占卜类型标签
  */
@@ -738,6 +1080,10 @@ export function formatDivinationTypeTag(divinationType: DivinationType): {
     [DivinationType.Liuyao]: '#722ed1',
     [DivinationType.Qimen]: '#fa8c16',
     [DivinationType.Ziwei]: '#eb2f96',
+    [DivinationType.Daliuren]: '#13c2c2',
+    [DivinationType.XiaoLiuRen]: '#2f54eb',
+    [DivinationType.Tarot]: '#f5222d',
+    [DivinationType.Taiyi]: '#fadb14',
   };
 
   return {
@@ -745,4 +1091,192 @@ export function formatDivinationTypeTag(divinationType: DivinationType): {
     icon: DIVINATION_TYPE_ICONS[divinationType],
     color: colors[divinationType],
   };
+}
+
+// ==================== AI 模型配置系统（新增） ====================
+
+/**
+ * AI 模型配置接口
+ *
+ * 每种占卜类型可以配置不同的 AI 模型和费用
+ */
+export interface ModelConfig {
+  /** 占卜类型 */
+  divinationType: DivinationType;
+  /** 推荐的 AI 模型 ID */
+  recommendedModelId: string;
+  /** 最低模型版本要求 */
+  minModelVersion: number;
+  /** 费用倍率（万分比，10000 = 1.0x） */
+  feeMultiplier: number;
+  /** 最大响应长度 */
+  maxResponseLength: number;
+  /** 是否启用 */
+  enabled: boolean;
+  /** 最低 Oracle 评分要求 (0-100) */
+  minOracleRating: number;
+  /** 超时区块数 */
+  timeoutBlocks?: number;
+}
+
+/** 占卜类型默认费用倍率（万分比） */
+export const DIVINATION_FEE_MULTIPLIER: Record<DivinationType, number> = {
+  [DivinationType.Meihua]: 10000,      // 1.0x - 基础
+  [DivinationType.Bazi]: 15000,        // 1.5x - 八字较复杂
+  [DivinationType.Liuyao]: 12000,      // 1.2x - 六爻中等
+  [DivinationType.Qimen]: 20000,       // 2.0x - 奇门最复杂
+  [DivinationType.Ziwei]: 18000,       // 1.8x - 紫微复杂
+  [DivinationType.Daliuren]: 15000,    // 1.5x - 大六壬
+  [DivinationType.XiaoLiuRen]: 8000,   // 0.8x - 小六壬简单
+  [DivinationType.Tarot]: 10000,       // 1.0x - 塔罗基础
+  [DivinationType.Taiyi]: 15000,       // 1.5x - 太乙
+};
+
+/** 占卜类型推荐最大响应长度 */
+export const DIVINATION_MAX_RESPONSE_LENGTH: Record<DivinationType, number> = {
+  [DivinationType.Meihua]: 8000,
+  [DivinationType.Bazi]: 15000,
+  [DivinationType.Liuyao]: 12000,
+  [DivinationType.Qimen]: 20000,
+  [DivinationType.Ziwei]: 18000,
+  [DivinationType.Daliuren]: 12000,
+  [DivinationType.XiaoLiuRen]: 5000,
+  [DivinationType.Tarot]: 8000,
+  [DivinationType.Taiyi]: 12000,
+};
+
+/**
+ * Oracle 节点状态枚举
+ */
+export enum OracleStatus {
+  /** 活跃 */
+  Active = 0,
+  /** 暂停 */
+  Paused = 1,
+  /** 注销中 */
+  Unregistering = 2,
+}
+
+/** Oracle 状态名称 */
+export const ORACLE_STATUS_NAMES: Record<OracleStatus, string> = {
+  [OracleStatus.Active]: '活跃',
+  [OracleStatus.Paused]: '暂停',
+  [OracleStatus.Unregistering]: '注销中',
+};
+
+/** Oracle 状态颜色 */
+export const ORACLE_STATUS_COLORS: Record<OracleStatus, string> = {
+  [OracleStatus.Active]: '#52c41a',
+  [OracleStatus.Paused]: '#faad14',
+  [OracleStatus.Unregistering]: '#ff4d4f',
+};
+
+/**
+ * Oracle 节点支持的单个模型信息
+ */
+export interface OracleModelInfo {
+  /** 模型 ID */
+  modelId: string;
+  /** 模型版本 */
+  version: number;
+  /** 支持的占卜类型列表 */
+  supportedTypes: DivinationType[];
+  /** 是否为主要模型 */
+  isPrimary: boolean;
+}
+
+/**
+ * Oracle 节点接口
+ *
+ * 对应后端 OracleNode 结构
+ */
+export interface OracleNode {
+  /** 账户地址 */
+  account: string;
+  /** 名称 */
+  name: string;
+  /** 描述 */
+  description?: string;
+  /** 状态 */
+  status: OracleStatus;
+  /** 质押金额 */
+  stakeAmount: bigint;
+  /** 评分（0-100） */
+  rating: number;
+  /** 总完成请求数 */
+  totalCompleted: number;
+  /** 总失败请求数 */
+  totalFailed: number;
+  /** 注册时间（区块号） */
+  registeredAt: number;
+  /** 最后活跃时间（区块号） */
+  lastActiveAt: number;
+  /** 支持的模型列表 */
+  supportedModels: OracleModelInfo[];
+  /** 当前活跃请求数 */
+  activeRequests: number;
+  /** 最大并发请求数 */
+  maxConcurrent: number;
+}
+
+/**
+ * Oracle 模型支持信息
+ */
+export interface OracleModelSupport {
+  /** Oracle 账户 */
+  account: string;
+  /** 支持的模型列表 */
+  models: OracleModelInfo[];
+}
+
+/**
+ * 计算 Oracle 完成率
+ */
+export function calculateOracleCompletionRate(oracle: OracleNode): number {
+  const total = oracle.totalCompleted + oracle.totalFailed;
+  if (total === 0) return 100;
+  return (oracle.totalCompleted / total) * 100;
+}
+
+/**
+ * 检查 Oracle 是否支持指定占卜类型
+ */
+export function oracleSupportsDivinationType(
+  oracle: OracleNode,
+  divinationType: DivinationType
+): boolean {
+  return oracle.supportedModels.some(model =>
+    model.supportedTypes.includes(divinationType)
+  );
+}
+
+/**
+ * 获取 Oracle 支持的占卜类型列表
+ */
+export function getOracleSupportedDivinationTypes(oracle: OracleNode): DivinationType[] {
+  const types = new Set<DivinationType>();
+  for (const model of oracle.supportedModels) {
+    for (const t of model.supportedTypes) {
+      types.add(t);
+    }
+  }
+  return Array.from(types).sort((a, b) => a - b);
+}
+
+/**
+ * 计算带有占卜类型倍率的解读费用
+ *
+ * @param baseFee 基础费用
+ * @param interpretationType 解读类型
+ * @param divinationType 占卜类型
+ * @returns 最终费用
+ */
+export function calculateDivinationInterpretationFee(
+  baseFee: bigint,
+  interpretationType: InterpretationType,
+  divinationType: DivinationType
+): bigint {
+  const interpretationMultiplier = INTERPRETATION_FEE_MULTIPLIER[interpretationType];
+  const divinationMultiplier = DIVINATION_FEE_MULTIPLIER[divinationType] / 10000;
+  return BigInt(Math.floor(Number(baseFee) * interpretationMultiplier * divinationMultiplier));
 }

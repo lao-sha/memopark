@@ -76,8 +76,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     antIcon: <StarOutlined />,
     route: '#/liuyao',
     color: '#722ed1',
-    enabled: false,
-    comingSoon: true,
+    enabled: true,
   },
   {
     type: DivinationType.Qimen,
@@ -87,8 +86,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     antIcon: <CompassOutlined />,
     route: '#/qimen',
     color: '#fa8c16',
-    enabled: false,
-    comingSoon: true,
+    enabled: true,
   },
   {
     type: DivinationType.Ziwei,
@@ -98,8 +96,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     antIcon: <RadarChartOutlined />,
     route: '#/ziwei',
     color: '#eb2f96',
-    enabled: false,
-    comingSoon: true,
+    enabled: true,
   },
 ];
 
@@ -179,6 +176,14 @@ const DivinationEntryPage: React.FC = () => {
           <Button
             block
             size="large"
+            onClick={() => window.location.hash = '#/bounty'}
+            style={{ borderColor: '#faad14', color: '#faad14' }}
+          >
+            🏆 悬赏问答
+          </Button>
+          <Button
+            block
+            size="large"
             onClick={() => window.location.hash = '#/divination/market'}
           >
             🔮 找大师解读
@@ -207,6 +212,10 @@ const DivinationEntryPage: React.FC = () => {
           <div className="info-item">
             <Text strong>🔮 起卦占卜</Text>
             <Text type="secondary">根据不同玄学体系进行占卜，获得卦象或命盘</Text>
+          </div>
+          <div className="info-item">
+            <Text strong>🏆 悬赏问答</Text>
+            <Text type="secondary">设置悬赏金额，邀请多位大师解读，投票选出最佳答案</Text>
           </div>
           <div className="info-item">
             <Text strong>🤖 AI 解读</Text>

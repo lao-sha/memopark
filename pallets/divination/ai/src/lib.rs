@@ -226,6 +226,22 @@ pub mod pallet {
     pub type TypeStats<T: Config> =
         StorageMap<_, Blake2_128Concat, DivinationType, TypeInterpretationStats, ValueQuery>;
 
+    /// 占卜类型的 AI 模型配置
+    ///
+    /// 存储每种占卜类型的模型要求和费用配置
+    #[pallet::storage]
+    #[pallet::getter(fn model_configs)]
+    pub type ModelConfigs<T: Config> =
+        StorageMap<_, Blake2_128Concat, DivinationType, ModelConfig, OptionQuery>;
+
+    /// Oracle 节点的模型支持信息
+    ///
+    /// 存储每个 Oracle 节点声明支持的模型详情
+    #[pallet::storage]
+    #[pallet::getter(fn oracle_model_support)]
+    pub type OracleModelSupports<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, OracleModelSupport, ValueQuery>;
+
     // ==================== 事件 ====================
 
     #[pallet::event]
@@ -305,6 +321,20 @@ pub mod pallet {
             oracle_amount: BalanceOf<T>,
             treasury_amount: BalanceOf<T>,
         },
+
+        /// 模型配置已更新
+        ModelConfigUpdated {
+            divination_type: DivinationType,
+            fee_multiplier: u32,
+            enabled: bool,
+        },
+
+        /// Oracle 模型支持已更新
+        OracleModelSupportUpdated {
+            oracle: T::AccountId,
+            divination_type: DivinationType,
+            model_version: u32,
+        },
     }
 
     // ==================== 错误 ====================
@@ -369,6 +399,14 @@ pub mod pallet {
         InvalidDisputeStatus,
         /// 解读类型不适用于该占卜类型
         InterpretationTypeNotApplicable,
+        /// 占卜类型 AI 解读未启用
+        DivinationTypeNotEnabled,
+        /// 模型版本不满足要求
+        ModelVersionTooLow,
+        /// Oracle 模型列表已满
+        OracleModelListFull,
+        /// 无效的模型配置
+        InvalidModelConfig,
     }
 
     // ==================== 可调用函数 ====================
@@ -406,10 +444,21 @@ pub mod pallet {
                 Error::<T>::InterpretationTypeNotApplicable
             );
 
-            // 计算费用
+            // 获取模型配置（如果存在则使用，否则使用默认值）
+            let model_config = ModelConfigs::<T>::get(divination_type)
+                .unwrap_or_else(|| ModelConfig::new_default(divination_type));
+
+            // 检查该占卜类型是否启用
+            ensure!(model_config.enabled, Error::<T>::DivinationTypeNotEnabled);
+
+            // 计算费用：基础费用 × 解读类型倍数 × 占卜类型倍数
             let base_fee = T::BaseInterpretationFee::get();
-            let multiplier = interpretation_type.fee_multiplier();
-            let fee = base_fee.saturating_mul(multiplier.into()) / 100u32.into();
+            let interpretation_multiplier = interpretation_type.fee_multiplier();
+            let divination_multiplier = model_config.fee_multiplier;
+            let fee = base_fee
+                .saturating_mul(interpretation_multiplier.into())
+                .saturating_mul(divination_multiplier.into())
+                / 10000u32.into(); // 两个百分比相乘需要除以 10000
 
             // 扣除费用（暂存）
             T::AiCurrency::reserve(&who, fee)?;
@@ -461,6 +510,11 @@ pub mod pallet {
         }
 
         /// 预言机接收请求
+        ///
+        /// 在接收前会检查：
+        /// 1. Oracle 是否活跃
+        /// 2. Oracle 是否支持该占卜类型
+        /// 3. Oracle 的模型版本是否满足要求
         #[pallet::call_index(1)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
         pub fn accept_request(origin: OriginFor<T>, request_id: u64) -> DispatchResult {
@@ -486,7 +540,7 @@ pub mod pallet {
                     Error::<T>::RequestExpired
                 );
 
-                // 检查预言机是否支持该占卜类型
+                // 检查预言机是否支持该占卜类型（旧的位图检查）
                 ensure!(
                     oracle.supports_divination_type(request.divination_type),
                     Error::<T>::OracleDivinationTypeNotSupported
@@ -497,6 +551,30 @@ pub mod pallet {
                     oracle.supports_interpretation_type(request.interpretation_type),
                     Error::<T>::OracleInterpretationTypeNotSupported
                 );
+
+                // 新增：检查模型版本要求
+                let model_config = ModelConfigs::<T>::get(request.divination_type);
+                if let Some(config) = model_config {
+                    // 如果配置了最低版本要求，检查 Oracle 的模型版本
+                    if config.min_model_version > 1 {
+                        let oracle_models = OracleModelSupports::<T>::get(&who);
+                        ensure!(
+                            oracle_models.meets_version_requirement(
+                                request.divination_type,
+                                config.min_model_version
+                            ),
+                            Error::<T>::ModelVersionTooLow
+                        );
+                    }
+
+                    // 检查 Oracle 评分要求
+                    if config.min_oracle_rating > 0 {
+                        ensure!(
+                            oracle.average_rating >= config.min_oracle_rating,
+                            Error::<T>::OracleNotActive // 可添加专门的错误类型
+                        );
+                    }
+                }
 
                 // 更新请求状态
                 request.status = InterpretationStatus::Processing;
@@ -1046,6 +1124,180 @@ pub mod pallet {
             T::GovernanceOrigin::ensure_origin(origin)?;
             ensure!(distribution.is_valid(), Error::<T>::InvalidRating);
             FeeDistributionConfig::<T>::put(distribution);
+            Ok(())
+        }
+
+        /// 设置占卜类型的模型配置（仅限治理）
+        ///
+        /// # 参数
+        /// - `divination_type`: 占卜类型
+        /// - `recommended_model_id`: 推荐的模型标识
+        /// - `min_model_version`: 最低模型版本要求
+        /// - `fee_multiplier`: 费用倍数（100 = 1x）
+        /// - `max_response_length`: 最大响应长度
+        /// - `enabled`: 是否启用
+        /// - `min_oracle_rating`: 最低 Oracle 评分要求
+        /// - `timeout_blocks`: 超时区块数（可选）
+        #[pallet::call_index(12)]
+        #[pallet::weight(Weight::from_parts(20_000_000, 0))]
+        pub fn set_model_config(
+            origin: OriginFor<T>,
+            divination_type: DivinationType,
+            recommended_model_id: Vec<u8>,
+            min_model_version: u32,
+            fee_multiplier: u32,
+            max_response_length: u32,
+            enabled: bool,
+            min_oracle_rating: u16,
+            timeout_blocks: Option<u32>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            // 验证参数
+            ensure!(fee_multiplier > 0 && fee_multiplier <= 10000, Error::<T>::InvalidModelConfig);
+            ensure!(max_response_length > 0, Error::<T>::InvalidModelConfig);
+            ensure!(min_oracle_rating <= 500, Error::<T>::InvalidModelConfig);
+
+            let model_id_bounded: BoundedVec<u8, ConstU32<64>> =
+                BoundedVec::try_from(recommended_model_id).map_err(|_| Error::<T>::NameTooLong)?;
+
+            let config = ModelConfig {
+                divination_type,
+                recommended_model_id: model_id_bounded,
+                min_model_version,
+                fee_multiplier,
+                max_response_length,
+                enabled,
+                min_oracle_rating,
+                timeout_blocks,
+            };
+
+            ModelConfigs::<T>::insert(divination_type, config);
+
+            Self::deposit_event(Event::ModelConfigUpdated {
+                divination_type,
+                fee_multiplier,
+                enabled,
+            });
+
+            Ok(())
+        }
+
+        /// 移除占卜类型的模型配置（仅限治理）
+        ///
+        /// 移除后将使用默认配置
+        #[pallet::call_index(13)]
+        #[pallet::weight(Weight::from_parts(10_000_000, 0))]
+        pub fn remove_model_config(
+            origin: OriginFor<T>,
+            divination_type: DivinationType,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+            ModelConfigs::<T>::remove(divination_type);
+            Ok(())
+        }
+
+        /// Oracle 更新自己的模型支持信息
+        ///
+        /// # 参数
+        /// - `divination_type`: 占卜类型
+        /// - `model_id`: 模型标识
+        /// - `model_version`: 模型版本
+        /// - `is_active`: 是否启用
+        #[pallet::call_index(14)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn update_oracle_model_support(
+            origin: OriginFor<T>,
+            divination_type: DivinationType,
+            model_id: Vec<u8>,
+            model_version: u32,
+            is_active: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 验证是已注册的 Oracle
+            ensure!(Oracles::<T>::contains_key(&who), Error::<T>::OracleNotFound);
+
+            let model_id_bounded: BoundedVec<u8, ConstU32<64>> =
+                BoundedVec::try_from(model_id).map_err(|_| Error::<T>::NameTooLong)?;
+
+            OracleModelSupports::<T>::try_mutate(&who, |support| {
+                // 查找是否已存在该类型的配置
+                let existing_idx = support.models.iter().position(|m| m.divination_type == divination_type);
+
+                if let Some(idx) = existing_idx {
+                    // 更新现有配置
+                    support.models[idx].model_id = model_id_bounded.clone();
+                    support.models[idx].model_version = model_version;
+                    support.models[idx].is_active = is_active;
+                } else {
+                    // 添加新配置
+                    let model_info = OracleModelInfo {
+                        divination_type,
+                        model_id: model_id_bounded.clone(),
+                        model_version,
+                        accuracy_score: 0,
+                        requests_count: 0,
+                        is_active,
+                    };
+                    support.models.try_push(model_info).map_err(|_| Error::<T>::OracleModelListFull)?;
+                }
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            Self::deposit_event(Event::OracleModelSupportUpdated {
+                oracle: who,
+                divination_type,
+                model_version,
+            });
+
+            Ok(())
+        }
+
+        /// Oracle 批量更新模型支持信息
+        ///
+        /// # 参数
+        /// - `models`: 模型信息列表
+        #[pallet::call_index(15)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn batch_update_oracle_models(
+            origin: OriginFor<T>,
+            models: Vec<(DivinationType, Vec<u8>, u32, bool)>, // (type, model_id, version, active)
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 验证是已注册的 Oracle
+            ensure!(Oracles::<T>::contains_key(&who), Error::<T>::OracleNotFound);
+            ensure!(models.len() <= 16, Error::<T>::OracleModelListFull);
+
+            OracleModelSupports::<T>::try_mutate(&who, |support| {
+                for (divination_type, model_id, model_version, is_active) in models.iter() {
+                    let model_id_bounded: BoundedVec<u8, ConstU32<64>> =
+                        BoundedVec::try_from(model_id.clone()).map_err(|_| Error::<T>::NameTooLong)?;
+
+                    let existing_idx = support.models.iter().position(|m| m.divination_type == *divination_type);
+
+                    if let Some(idx) = existing_idx {
+                        support.models[idx].model_id = model_id_bounded;
+                        support.models[idx].model_version = *model_version;
+                        support.models[idx].is_active = *is_active;
+                    } else {
+                        let model_info = OracleModelInfo {
+                            divination_type: *divination_type,
+                            model_id: model_id_bounded,
+                            model_version: *model_version,
+                            accuracy_score: 0,
+                            requests_count: 0,
+                            is_active: *is_active,
+                        };
+                        support.models.try_push(model_info).map_err(|_| Error::<T>::OracleModelListFull)?;
+                    }
+                }
+
+                Ok::<_, DispatchError>(())
+            })?;
+
             Ok(())
         }
     }

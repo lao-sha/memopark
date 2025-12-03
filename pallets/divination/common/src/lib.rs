@@ -118,6 +118,8 @@ pub use traits::{
 };
 
 pub use types::{
+    BountyAnswerStatus,
+    BountyStatus,
     DisputeResolution,
     DisputeStatus,
     DivinationType,
@@ -128,6 +130,7 @@ pub use types::{
     Rarity,
     RarityInput,
     ServiceType,
+    Specialty,
 };
 
 /// 模块版本

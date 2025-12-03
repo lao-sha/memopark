@@ -355,8 +355,8 @@ pub struct Order<AccountId, Balance, BlockNumber, MaxCidLen: Get<u32>> {
     pub status: OrderStatus,
     /// 客户问题描述 CID
     pub question_cid: BoundedVec<u8, MaxCidLen>,
-    /// 解读结果 CID
-    pub answer_cid: Option<BoundedVec<u8, MaxCidLen>>,
+    /// 解读结果 CID（服务提供者提交的专业解读内容）
+    pub interpretation_cid: Option<BoundedVec<u8, MaxCidLen>>,
     /// 创建时间
     pub created_at: BlockNumber,
     /// 支付时间
@@ -379,12 +379,12 @@ pub struct Order<AccountId, Balance, BlockNumber, MaxCidLen: Get<u32>> {
 pub struct FollowUp<BlockNumber, MaxCidLen: Get<u32>> {
     /// 追问内容 CID
     pub question_cid: BoundedVec<u8, MaxCidLen>,
-    /// 回复内容 CID
-    pub answer_cid: Option<BoundedVec<u8, MaxCidLen>>,
+    /// 回复内容 CID（服务提供者对追问的回复）
+    pub reply_cid: Option<BoundedVec<u8, MaxCidLen>>,
     /// 追问时间
     pub asked_at: BlockNumber,
     /// 回复时间
-    pub answered_at: Option<BlockNumber>,
+    pub replied_at: Option<BlockNumber>,
 }
 
 /// 评价详情
@@ -630,7 +630,10 @@ impl RewardDistribution {
     }
 }
 
-/// 悬赏问题
+/// 悬赏问题（基于占卜结果）
+///
+/// **重要**: 悬赏问答必须基于已存在的占卜结果（盘/卦）
+/// 这确保解读者有完整的结构化数据进行专业分析
 #[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
 #[scale_info(skip_type_params(MaxCidLen))]
 pub struct BountyQuestion<AccountId, Balance, BlockNumber, MaxCidLen: Get<u32>> {
@@ -640,8 +643,9 @@ pub struct BountyQuestion<AccountId, Balance, BlockNumber, MaxCidLen: Get<u32>> 
     pub creator: AccountId,
     /// 占卜类型
     pub divination_type: DivinationType,
-    /// 关联的占卜结果 ID（可选，如卦象 ID）
-    pub result_id: Option<u64>,
+    /// 关联的占卜结果 ID（必填 - 如卦象 ID、命盘 ID）
+    /// 悬赏必须基于已存在的占卜结果
+    pub result_id: u64,
     /// 问题描述 IPFS CID
     pub question_cid: BoundedVec<u8, MaxCidLen>,
     /// 悬赏金额

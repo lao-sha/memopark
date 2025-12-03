@@ -412,10 +412,10 @@ pub mod pallet {
             provider: T::AccountId,
         },
 
-        /// 解读已提交
-        AnswerSubmitted {
+        /// 解读结果已提交（服务提供者完成解读）
+        InterpretationSubmitted {
             order_id: u64,
-            answer_cid: BoundedVec<u8, T::MaxCidLength>,
+            interpretation_cid: BoundedVec<u8, T::MaxCidLength>,
         },
 
         /// 订单已完成
@@ -437,8 +437,8 @@ pub mod pallet {
         /// 追问已提交
         FollowUpSubmitted { order_id: u64, index: u32 },
 
-        /// 追问已回复
-        FollowUpAnswered { order_id: u64, index: u32 },
+        /// 追问已回复（服务提供者回复追问）
+        FollowUpReplied { order_id: u64, index: u32 },
 
         /// 评价已提交
         ReviewSubmitted {
@@ -588,8 +588,18 @@ pub mod pallet {
         ProviderBanned,
         /// 占卜结果不存在
         DivinationResultNotFound,
+        /// 不是占卜结果的创建者
+        NotResultCreator,
         /// 提供者不支持该占卜类型
         DivinationTypeNotSupported,
+        /// 提供者状态无效（非预期的状态转换）
+        InvalidProviderStatus,
+        /// 加急服务不可用
+        UrgentNotAvailable,
+        /// 投票功能未启用
+        VotingNotAllowed,
+        /// 悬赏未被采纳
+        BountyNotAdopted,
 
         // ==================== 悬赏问答错误 ====================
 
@@ -793,7 +803,7 @@ pub mod pallet {
                 let provider = maybe_provider.as_mut().ok_or(Error::<T>::ProviderNotFound)?;
                 ensure!(
                     provider.status == ProviderStatus::Paused,
-                    Error::<T>::InvalidOrderStatus
+                    Error::<T>::InvalidProviderStatus
                 );
                 provider.status = ProviderStatus::Active;
                 provider.last_active_at = <frame_system::Pallet<T>>::block_number();
@@ -1016,7 +1026,7 @@ pub mod pallet {
             if is_urgent {
                 ensure!(
                     package.urgent_available && provider.accepts_urgent,
-                    Error::<T>::InvalidOrderStatus
+                    Error::<T>::UrgentNotAvailable
                 );
             }
 
@@ -1061,7 +1071,7 @@ pub mod pallet {
                 is_urgent,
                 status: OrderStatus::Paid,
                 question_cid: question_cid_bounded,
-                answer_cid: None,
+                interpretation_cid: None,
                 created_at: block_number,
                 paid_at: Some(block_number),
                 accepted_at: None,
@@ -1185,17 +1195,19 @@ pub mod pallet {
         }
 
         /// 提交解读结果
+        ///
+        /// 服务提供者完成对客户问题的专业解读并提交结果
         #[pallet::call_index(11)]
         #[pallet::weight(Weight::from_parts(40_000_000, 0))]
-        pub fn submit_answer(
+        pub fn submit_interpretation(
             origin: OriginFor<T>,
             order_id: u64,
-            answer_cid: Vec<u8>,
+            interpretation_cid: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let answer_cid_bounded: BoundedVec<u8, T::MaxCidLength> =
-                BoundedVec::try_from(answer_cid.clone()).map_err(|_| Error::<T>::CidTooLong)?;
+            let interpretation_cid_bounded: BoundedVec<u8, T::MaxCidLength> =
+                BoundedVec::try_from(interpretation_cid.clone()).map_err(|_| Error::<T>::CidTooLong)?;
 
             let divination_type = Orders::<T>::try_mutate(order_id, |maybe_order| {
                 let order = maybe_order.as_mut().ok_or(Error::<T>::OrderNotFound)?;
@@ -1205,7 +1217,7 @@ pub mod pallet {
                     Error::<T>::InvalidOrderStatus
                 );
 
-                order.answer_cid = Some(answer_cid_bounded.clone());
+                order.interpretation_cid = Some(interpretation_cid_bounded.clone());
                 order.status = OrderStatus::Completed;
                 order.completed_at = Some(<frame_system::Pallet<T>>::block_number());
 
@@ -1240,9 +1252,9 @@ pub mod pallet {
                 s.completed_count += 1;
             });
 
-            Self::deposit_event(Event::AnswerSubmitted {
+            Self::deposit_event(Event::InterpretationSubmitted {
                 order_id,
-                answer_cid: answer_cid_bounded,
+                interpretation_cid: interpretation_cid_bounded,
             });
 
             Self::deposit_event(Event::OrderCompleted {
@@ -1287,9 +1299,9 @@ pub mod pallet {
 
             let follow_up = FollowUp {
                 question_cid: question_cid_bounded,
-                answer_cid: None,
+                reply_cid: None,
                 asked_at: <frame_system::Pallet<T>>::block_number(),
-                answered_at: None,
+                replied_at: None,
             };
 
             let index = FollowUps::<T>::try_mutate(order_id, |list| {
@@ -1305,18 +1317,20 @@ pub mod pallet {
         }
 
         /// 回复追问
+        ///
+        /// 服务提供者对客户追问进行回复
         #[pallet::call_index(13)]
         #[pallet::weight(Weight::from_parts(30_000_000, 0))]
-        pub fn answer_follow_up(
+        pub fn reply_follow_up(
             origin: OriginFor<T>,
             order_id: u64,
             follow_up_index: u32,
-            answer_cid: Vec<u8>,
+            reply_cid: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let answer_cid_bounded: BoundedVec<u8, T::MaxCidLength> =
-                BoundedVec::try_from(answer_cid).map_err(|_| Error::<T>::CidTooLong)?;
+            let reply_cid_bounded: BoundedVec<u8, T::MaxCidLength> =
+                BoundedVec::try_from(reply_cid).map_err(|_| Error::<T>::CidTooLong)?;
 
             // 验证订单
             let order = Orders::<T>::get(order_id).ok_or(Error::<T>::OrderNotFound)?;
@@ -1326,12 +1340,12 @@ pub mod pallet {
                 let follow_up = list
                     .get_mut(follow_up_index as usize)
                     .ok_or(Error::<T>::FollowUpNotFound)?;
-                follow_up.answer_cid = Some(answer_cid_bounded);
-                follow_up.answered_at = Some(<frame_system::Pallet<T>>::block_number());
+                follow_up.reply_cid = Some(reply_cid_bounded);
+                follow_up.replied_at = Some(<frame_system::Pallet<T>>::block_number());
                 Ok::<_, DispatchError>(())
             })?;
 
-            Self::deposit_event(Event::FollowUpAnswered {
+            Self::deposit_event(Event::FollowUpReplied {
                 order_id,
                 index: follow_up_index,
             });
@@ -1580,7 +1594,7 @@ pub mod pallet {
         pub fn create_bounty(
             origin: OriginFor<T>,
             divination_type: DivinationType,
-            result_id: Option<u64>,
+            result_id: u64,
             question_cid: Vec<u8>,
             bounty_amount: BalanceOf<T>,
             deadline: BlockNumberFor<T>,
@@ -1602,13 +1616,16 @@ pub mod pallet {
             let current_block = <frame_system::Pallet<T>>::block_number();
             ensure!(deadline > current_block, Error::<T>::InvalidBountyDeadline);
 
-            // 验证关联占卜结果（如果提供）
-            if let Some(rid) = result_id {
-                ensure!(
-                    T::DivinationProvider::result_exists(divination_type, rid),
-                    Error::<T>::DivinationResultNotFound
-                );
-            }
+            // 验证占卜结果存在（悬赏必须基于已存在的占卜结果）
+            ensure!(
+                T::DivinationProvider::result_exists(divination_type, result_id),
+                Error::<T>::DivinationResultNotFound
+            );
+
+            // 验证调用者是占卜结果的创建者
+            let result_creator = T::DivinationProvider::result_creator(divination_type, result_id)
+                .ok_or(Error::<T>::DivinationResultNotFound)?;
+            ensure!(result_creator == who, Error::<T>::NotResultCreator);
 
             let question_cid_bounded: BoundedVec<u8, T::MaxCidLength> =
                 BoundedVec::try_from(question_cid).map_err(|_| Error::<T>::CidTooLong)?;
@@ -1839,7 +1856,7 @@ pub mod pallet {
             let bounty = BountyQuestions::<T>::get(bounty_id).ok_or(Error::<T>::BountyNotFound)?;
 
             // 验证投票功能已开启
-            ensure!(bounty.allow_voting, Error::<T>::InvalidOrderStatus);
+            ensure!(bounty.allow_voting, Error::<T>::VotingNotAllowed);
 
             // 验证状态：Open 或 Closed 时可投票
             ensure!(
@@ -1986,7 +2003,7 @@ pub mod pallet {
 
             ensure!(
                 bounty.status == BountyStatus::Adopted,
-                Error::<T>::InvalidOrderStatus
+                Error::<T>::BountyNotAdopted
             );
 
             let first_place_id = bounty.adopted_answer_id.ok_or(Error::<T>::NotEnoughAnswers)?;

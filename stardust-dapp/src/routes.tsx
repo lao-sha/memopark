@@ -110,6 +110,20 @@ export const routes: RouteItem[] = [
 
   // 🆕 八字命理模块
   { match: h => h === '#/bazi', component: lazy(() => import('./features/bazi/BaziPage')) },  // 八字排盘页面
+  { match: h => h.startsWith('#/bazi/'), component: lazy(() => import('./features/bazi/BaziDetailPage')) },  // 八字详情页面
+
+  // 🆕 六爻占卜模块
+  { match: h => h === '#/liuyao', component: lazy(() => import('./features/liuyao/LiuyaoPage')) },  // 六爻摇卦页面
+
+  // 🆕 紫微斗数模块
+  { match: h => h === '#/ziwei', component: lazy(() => import('./features/ziwei/ZiweiPage')) },  // 紫微斗数排盘页面
+
+  // 🆕 奇门遁甲模块
+  { match: h => h === '#/qimen', component: lazy(() => import('./features/qimen/QimenPage')) },  // 奇门遁甲排盘页面
+
+  // 🆕 悬赏问答系统（基于占卜结果）
+  { match: h => h === '#/bounty', component: lazy(() => import('./features/bounty/BountyListPage')) },  // 悬赏列表页面
+  { match: h => h.startsWith('#/bounty/'), component: lazy(() => import('./features/bounty/BountyDetailPage')) },  // 悬赏详情页面
 ];
 
 // UI 组件展示页仅在开发模式暴露

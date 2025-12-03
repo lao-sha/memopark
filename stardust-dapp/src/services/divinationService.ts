@@ -2,7 +2,7 @@
  * 通用占卜服务
  *
  * 提供与 pallet-divination-nft、pallet-divination-ai、pallet-divination-market 的交互
- * 支持多种玄学系统：梅花易数、八字命理、六爻占卜、奇门遁甲、紫微斗数
+ * 支持多种玄学系统：梅花易数、八字命理、六爻占卜、奇门遁甲、紫微斗数、大六壬、小六壬、塔罗牌、太乙神数
  */
 
 import { getApi, getSignedApi } from '../lib/polkadot';
@@ -15,6 +15,7 @@ import {
   Rarity,
   ProviderTier,
   Specialty,
+  OracleStatus,
   type DivinationResultBase,
   type ServiceProvider,
   type ServicePackage,
@@ -25,14 +26,21 @@ import {
   type DivinationNft,
   type NftCollection,
   type NftOffer,
+  type ModelConfig,
+  type OracleNode,
+  type OracleModelInfo,
+  type OracleModelSupport,
   DIVINATION_TYPE_NAMES,
   INTERPRETATION_FEE_MULTIPLIER,
+  DIVINATION_FEE_MULTIPLIER,
 } from '../types/divination';
 
 // ==================== 类型辅助 ====================
 
 /**
  * 将 DivinationType 转换为 pallet 名称
+ *
+ * 映射前端占卜类型枚举到对应的链上 pallet 名称
  */
 function getPalletName(divinationType: DivinationType): string {
   switch (divinationType) {
@@ -46,6 +54,14 @@ function getPalletName(divinationType: DivinationType): string {
       return 'qimen';
     case DivinationType.Ziwei:
       return 'ziwei';
+    case DivinationType.Daliuren:
+      return 'daliuren';
+    case DivinationType.XiaoLiuRen:
+      return 'xiaoliuren';
+    case DivinationType.Tarot:
+      return 'tarot';
+    case DivinationType.Taiyi:
+      return 'taiyi';
     default:
       return 'meihua';
   }
@@ -867,8 +883,8 @@ export async function getDivinationMarketOrder(orderId: number): Promise<MarketO
     isUrgent: data.isUrgent.isTrue,
     status: data.status.toNumber(),
     questionCid: new TextDecoder().decode(new Uint8Array(data.questionCid.toU8a())),
-    answerCid: data.answerCid.isSome
-      ? new TextDecoder().decode(new Uint8Array(data.answerCid.unwrap().toU8a()))
+    interpretationCid: data.interpretationCid.isSome
+      ? new TextDecoder().decode(new Uint8Array(data.interpretationCid.unwrap().toU8a()))
       : undefined,
     createdAt: data.createdAt.toNumber(),
     paidAt: data.paidAt.isSome ? data.paidAt.unwrap().toNumber() : undefined,
@@ -1069,4 +1085,391 @@ export function isDivinationTypeSupported(
  */
 export function buildSupportedDivinationTypes(types: DivinationType[]): number {
   return types.reduce((bitmap, type) => bitmap | (1 << type), 0);
+}
+
+// ==================== Oracle 节点服务（新增） ====================
+
+/**
+ * 获取所有 Oracle 节点列表
+ *
+ * 查询链上所有已注册的 AI 解读 Oracle 节点
+ */
+export async function getOracleNodes(): Promise<OracleNode[]> {
+  const api = await getApi();
+  const entries = await api.query.divinationAi.oracleNodes.entries();
+
+  const nodes: OracleNode[] = [];
+  for (const [, value] of entries) {
+    if (value.isNone) continue;
+    const data = value.unwrap();
+
+    // 解析支持的模型列表
+    const supportedModels: OracleModelInfo[] = [];
+    if (data.supportedModels) {
+      for (const model of data.supportedModels) {
+        const supportedTypes: DivinationType[] = [];
+        if (model.supportedTypes) {
+          for (const t of model.supportedTypes) {
+            supportedTypes.push(t.toNumber() as DivinationType);
+          }
+        }
+        supportedModels.push({
+          modelId: new TextDecoder().decode(new Uint8Array(model.modelId.toU8a())),
+          version: model.version.toNumber(),
+          supportedTypes,
+          isPrimary: model.isPrimary.isTrue,
+        });
+      }
+    }
+
+    nodes.push({
+      account: data.account.toString(),
+      name: new TextDecoder().decode(new Uint8Array(data.name.toU8a())),
+      description: data.description?.isSome
+        ? new TextDecoder().decode(new Uint8Array(data.description.unwrap().toU8a()))
+        : undefined,
+      status: data.status.toNumber() as OracleStatus,
+      stakeAmount: data.stakeAmount.toBigInt(),
+      rating: data.rating.toNumber(),
+      totalCompleted: data.totalCompleted.toNumber(),
+      totalFailed: data.totalFailed.toNumber(),
+      registeredAt: data.registeredAt.toNumber(),
+      lastActiveAt: data.lastActiveAt.toNumber(),
+      supportedModels,
+      activeRequests: data.activeRequests.toNumber(),
+      maxConcurrent: data.maxConcurrent.toNumber(),
+    });
+  }
+
+  // 按评分排序
+  return nodes.sort((a, b) => b.rating - a.rating);
+}
+
+/**
+ * 获取单个 Oracle 节点详情
+ *
+ * @param account Oracle 节点账户地址
+ */
+export async function getOracleNode(account: string): Promise<OracleNode | null> {
+  const api = await getApi();
+  const result = await api.query.divinationAi.oracleNodes(account);
+
+  if (result.isNone) return null;
+
+  const data = result.unwrap();
+
+  // 解析支持的模型列表
+  const supportedModels: OracleModelInfo[] = [];
+  if (data.supportedModels) {
+    for (const model of data.supportedModels) {
+      const supportedTypes: DivinationType[] = [];
+      if (model.supportedTypes) {
+        for (const t of model.supportedTypes) {
+          supportedTypes.push(t.toNumber() as DivinationType);
+        }
+      }
+      supportedModels.push({
+        modelId: new TextDecoder().decode(new Uint8Array(model.modelId.toU8a())),
+        version: model.version.toNumber(),
+        supportedTypes,
+        isPrimary: model.isPrimary.isTrue,
+      });
+    }
+  }
+
+  return {
+    account: data.account.toString(),
+    name: new TextDecoder().decode(new Uint8Array(data.name.toU8a())),
+    description: data.description?.isSome
+      ? new TextDecoder().decode(new Uint8Array(data.description.unwrap().toU8a()))
+      : undefined,
+    status: data.status.toNumber() as OracleStatus,
+    stakeAmount: data.stakeAmount.toBigInt(),
+    rating: data.rating.toNumber(),
+    totalCompleted: data.totalCompleted.toNumber(),
+    totalFailed: data.totalFailed.toNumber(),
+    registeredAt: data.registeredAt.toNumber(),
+    lastActiveAt: data.lastActiveAt.toNumber(),
+    supportedModels,
+    activeRequests: data.activeRequests.toNumber(),
+    maxConcurrent: data.maxConcurrent.toNumber(),
+  };
+}
+
+/**
+ * 获取支持指定占卜类型的 Oracle 节点列表
+ *
+ * @param divinationType 占卜类型
+ * @param minRating 最低评分要求（可选，默认 0）
+ */
+export async function getOracleNodesForDivinationType(
+  divinationType: DivinationType,
+  minRating: number = 0
+): Promise<OracleNode[]> {
+  const allNodes = await getOracleNodes();
+
+  return allNodes.filter((node) => {
+    // 过滤评分
+    if (node.rating < minRating) return false;
+
+    // 过滤状态（只返回活跃节点）
+    if (node.status !== OracleStatus.Active) return false;
+
+    // 检查是否支持该占卜类型
+    return node.supportedModels.some((model) =>
+      model.supportedTypes.includes(divinationType)
+    );
+  });
+}
+
+/**
+ * 获取 Oracle 节点的模型支持信息
+ *
+ * @param account Oracle 节点账户地址
+ */
+export async function getOracleModelSupport(account: string): Promise<OracleModelSupport | null> {
+  const node = await getOracleNode(account);
+  if (!node) return null;
+
+  return {
+    account: node.account,
+    models: node.supportedModels,
+  };
+}
+
+// ==================== 模型配置服务（新增） ====================
+
+/**
+ * 获取所有占卜类型的模型配置
+ *
+ * 查询链上每种占卜类型的 AI 模型配置
+ */
+export async function getModelConfigs(): Promise<ModelConfig[]> {
+  const api = await getApi();
+  const entries = await api.query.divinationAi.modelConfigs.entries();
+
+  const configs: ModelConfig[] = [];
+  for (const [key, value] of entries) {
+    if (value.isNone) continue;
+    const divinationType = key.args[0].toNumber() as DivinationType;
+    const data = value.unwrap();
+
+    configs.push({
+      divinationType,
+      recommendedModelId: new TextDecoder().decode(new Uint8Array(data.recommendedModelId.toU8a())),
+      minModelVersion: data.minModelVersion.toNumber(),
+      feeMultiplier: data.feeMultiplier.toNumber(),
+      maxResponseLength: data.maxResponseLength.toNumber(),
+      enabled: data.enabled.isTrue,
+      minOracleRating: data.minOracleRating.toNumber(),
+      timeoutBlocks: data.timeoutBlocks?.isSome ? data.timeoutBlocks.unwrap().toNumber() : undefined,
+    });
+  }
+
+  return configs;
+}
+
+/**
+ * 获取指定占卜类型的模型配置
+ *
+ * @param divinationType 占卜类型
+ */
+export async function getModelConfig(divinationType: DivinationType): Promise<ModelConfig | null> {
+  const api = await getApi();
+  const result = await api.query.divinationAi.modelConfigs(divinationType);
+
+  if (result.isNone) return null;
+
+  const data = result.unwrap();
+  return {
+    divinationType,
+    recommendedModelId: new TextDecoder().decode(new Uint8Array(data.recommendedModelId.toU8a())),
+    minModelVersion: data.minModelVersion.toNumber(),
+    feeMultiplier: data.feeMultiplier.toNumber(),
+    maxResponseLength: data.maxResponseLength.toNumber(),
+    enabled: data.enabled.isTrue,
+    minOracleRating: data.minOracleRating.toNumber(),
+    timeoutBlocks: data.timeoutBlocks?.isSome ? data.timeoutBlocks.unwrap().toNumber() : undefined,
+  };
+}
+
+/**
+ * 检查指定占卜类型是否启用 AI 解读
+ *
+ * @param divinationType 占卜类型
+ */
+export async function isDivinationAiEnabled(divinationType: DivinationType): Promise<boolean> {
+  const config = await getModelConfig(divinationType);
+  return config?.enabled ?? false;
+}
+
+// ==================== AI 解读费用计算（增强版） ====================
+
+/**
+ * 计算带有占卜类型倍率的解读费用（链上查询版本）
+ *
+ * 从链上查询模型配置中的费用倍率进行计算
+ *
+ * @param baseFee 基础费用
+ * @param interpretationType 解读类型
+ * @param divinationType 占卜类型
+ */
+export async function calculateDivinationInterpretationFeeFromChain(
+  baseFee: bigint,
+  interpretationType: InterpretationType,
+  divinationType: DivinationType
+): Promise<bigint> {
+  const modelConfig = await getModelConfig(divinationType);
+  const interpretationMultiplier = INTERPRETATION_FEE_MULTIPLIER[interpretationType];
+
+  // 如果有链上配置则使用链上费用倍率，否则使用默认值
+  const divinationMultiplier = modelConfig
+    ? modelConfig.feeMultiplier / 10000
+    : DIVINATION_FEE_MULTIPLIER[divinationType] / 10000;
+
+  return BigInt(Math.floor(Number(baseFee) * interpretationMultiplier * divinationMultiplier));
+}
+
+/**
+ * 计算带有占卜类型倍率的解读费用（本地版本）
+ *
+ * 使用本地配置的费用倍率进行快速计算
+ *
+ * @param baseFee 基础费用
+ * @param interpretationType 解读类型
+ * @param divinationType 占卜类型
+ */
+export function calculateDivinationInterpretationFeeLocal(
+  baseFee: bigint,
+  interpretationType: InterpretationType,
+  divinationType: DivinationType
+): bigint {
+  const interpretationMultiplier = INTERPRETATION_FEE_MULTIPLIER[interpretationType];
+  const divinationMultiplier = DIVINATION_FEE_MULTIPLIER[divinationType] / 10000;
+  return BigInt(Math.floor(Number(baseFee) * interpretationMultiplier * divinationMultiplier));
+}
+
+// ==================== Oracle 节点注册服务（新增） ====================
+
+/**
+ * 注册成为 Oracle 节点
+ *
+ * @param name 节点名称
+ * @param models 支持的模型列表
+ * @param stakeAmount 质押金额
+ */
+export async function registerOracleNode(
+  name: string,
+  models: Array<{
+    modelId: string;
+    version: number;
+    supportedTypes: DivinationType[];
+    isPrimary: boolean;
+  }>,
+  stakeAmount: bigint
+): Promise<void> {
+  const api = await getSignedApi();
+
+  // 转换模型列表格式
+  const modelParams = models.map((m) => ({
+    modelId: Array.from(new TextEncoder().encode(m.modelId)),
+    version: m.version,
+    supportedTypes: m.supportedTypes,
+    isPrimary: m.isPrimary,
+  }));
+
+  const tx = api.tx.divinationAi.registerOracle(
+    Array.from(new TextEncoder().encode(name)),
+    modelParams,
+    stakeAmount.toString()
+  );
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status }) => {
+      if (status.isInBlock) {
+        resolve();
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 更新 Oracle 节点支持的模型
+ *
+ * @param models 新的模型列表
+ */
+export async function updateOracleModels(
+  models: Array<{
+    modelId: string;
+    version: number;
+    supportedTypes: DivinationType[];
+    isPrimary: boolean;
+  }>
+): Promise<void> {
+  const api = await getSignedApi();
+
+  const modelParams = models.map((m) => ({
+    modelId: Array.from(new TextEncoder().encode(m.modelId)),
+    version: m.version,
+    supportedTypes: m.supportedTypes,
+    isPrimary: m.isPrimary,
+  }));
+
+  const tx = api.tx.divinationAi.updateModelSupport(modelParams);
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status }) => {
+      if (status.isInBlock) {
+        resolve();
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 注销 Oracle 节点
+ */
+export async function unregisterOracleNode(): Promise<void> {
+  const api = await getSignedApi();
+  const tx = api.tx.divinationAi.unregisterOracle();
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status }) => {
+      if (status.isInBlock) {
+        resolve();
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 暂停 Oracle 节点服务
+ */
+export async function pauseOracleNode(): Promise<void> {
+  const api = await getSignedApi();
+  const tx = api.tx.divinationAi.pauseOracle();
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status }) => {
+      if (status.isInBlock) {
+        resolve();
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 恢复 Oracle 节点服务
+ */
+export async function resumeOracleNode(): Promise<void> {
+  const api = await getSignedApi();
+  const tx = api.tx.divinationAi.resumeOracle();
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status }) => {
+      if (status.isInBlock) {
+        resolve();
+      }
+    }).catch(reject);
+  });
 }

@@ -32,6 +32,7 @@ import {
   CalendarOutlined,
   InfoCircleOutlined,
   DeleteOutlined,
+  GiftOutlined,
 } from '@ant-design/icons';
 import {
   getHexagram,
@@ -52,6 +53,8 @@ import {
   getHexagramName,
   formatLunarHour,
 } from '../../types/meihua';
+import { CreateBountyModal } from '../bounty/components/CreateBountyModal';
+import { DivinationType } from '../../types/divination';
 import './MeihuaPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -232,6 +235,8 @@ const HexagramDetailPage: React.FC = () => {
   const [interpretation, setInterpretation] = useState<InterpretationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
+  const [bountyModalVisible, setBountyModalVisible] = useState(false);
+  const [userAccount, setUserAccount] = useState<string>(''); // TODO: 从钱包获取当前用户账户
 
   /**
    * 加载卦象数据
@@ -437,6 +442,21 @@ const HexagramDetailPage: React.FC = () => {
           <Text type="secondary" className="service-hint">
             由认证大师提供个性化解读，可追问互动
           </Text>
+
+          <Divider />
+
+          <Button
+            icon={<GiftOutlined />}
+            size="large"
+            block
+            onClick={() => setBountyModalVisible(true)}
+            style={{ borderColor: '#faad14', color: '#faad14' }}
+          >
+            发起悬赏问答
+          </Button>
+          <Text type="secondary" className="service-hint">
+            设置悬赏金额，邀请多位大师解读，投票选出最佳答案
+          </Text>
         </Space>
       </Card>
 
@@ -471,6 +491,23 @@ const HexagramDetailPage: React.FC = () => {
           )}
         </Space>
       </div>
+
+      {/* 悬赏问答弹窗 */}
+      {hexagram && (
+        <CreateBountyModal
+          visible={bountyModalVisible}
+          divinationType={DivinationType.Meihua}
+          resultId={hexagram.id}
+          userAccount={userAccount}
+          onCancel={() => setBountyModalVisible(false)}
+          onSuccess={(bountyId) => {
+            setBountyModalVisible(false);
+            message.success('悬赏创建成功！');
+            // 跳转到悬赏详情页
+            window.location.hash = `#/bounty/${bountyId}`;
+          }}
+        />
+      )}
     </div>
   );
 };
