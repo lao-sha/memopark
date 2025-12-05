@@ -19,12 +19,15 @@ import {
   message,
   Result,
   Steps,
+  Switch,
 } from 'antd';
 import {
   ThunderboltOutlined,
   HistoryOutlined,
   ReloadOutlined,
   ArrowRightOutlined,
+  CloudOutlined,
+  DesktopOutlined,
 } from '@ant-design/icons';
 
 import {
@@ -41,6 +44,8 @@ import {
   isDongYao,
   type CoinResult,
 } from '../../types/liuyao';
+import * as liuyaoService from '../../services/liuyaoService';
+import { getGanZhiFromDate } from '../../services/liuyaoService';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -119,9 +124,16 @@ const LiuyaoPage: React.FC = () => {
   const [currentCoins, setCurrentCoins] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [shaking, setShaking] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [useChain, setUseChain] = useState(false); // 是否使用链端
+  const [chainGuaId, setChainGuaId] = useState<number | null>(null); // 链端卦象ID
+
+  // 时间起卦相关状态
+  const [divinationMethod, setDivinationMethod] = useState<'coin' | 'time' | 'random' | 'number'>('coin'); // 起卦方法
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // 选择的日期
+  const [selectedHour, setSelectedHour] = useState<number>(0); // 选择的时辰
 
   /**
-   * 摇铜钱
+   * 摇铜钱（本地模式）
    */
   const handleShake = useCallback(async () => {
     if (shaking) return;
@@ -166,6 +178,67 @@ const LiuyaoPage: React.FC = () => {
   }, [step, shaking]);
 
   /**
+   * 链端随机起卦
+   */
+  const handleChainDivine = useCallback(async () => {
+    setShaking(true);
+    try {
+      const guaId = await liuyaoService.divineRandom();
+      setChainGuaId(guaId);
+      setCompleted(true);
+      message.success(`链端起卦成功，卦象ID: ${guaId}`);
+    } catch (error: any) {
+      console.error('链端起卦失败:', error);
+      message.error(`链端起卦失败: ${error.message || '请检查钱包连接'}`);
+    } finally {
+      setShaking(false);
+    }
+  }, []);
+
+  /**
+   * 时间起卦
+   */
+  const handleTimeMethodDivine = useCallback(async () => {
+    setShaking(true);
+    try {
+      // 获取年月日时信息
+      const year = selectedDate.getFullYear();
+      const month = selectedDate.getMonth() + 1;
+      const day = selectedDate.getDate();
+
+      // 获取干支信息
+      const ganZhi = getGanZhiFromDate(selectedDate);
+
+      // 转换为地支数字（0-11）
+      const yearZhi = ganZhi.year[1]; // 年支
+      const monthNum = month; // 月数
+      const dayNum = day; // 日数
+      const hourZhi = selectedHour % 12; // 时支
+
+      // 调用链端时间起卦
+      const guaId = await liuyaoService.divineByTime(
+        yearZhi,
+        monthNum,
+        dayNum,
+        hourZhi,
+        ganZhi.year,
+        ganZhi.month,
+        ganZhi.day,
+        [ganZhi.hour[0], hourZhi]
+      );
+
+      setChainGuaId(guaId);
+      setCompleted(true);
+      message.success(`时间起卦成功，卦象ID: ${guaId}`);
+    } catch (error: any) {
+      console.error('时间起卦失败:', error);
+      message.error(`时间起卦失败: ${error.message || '请检查钱包连接'}`);
+    } finally {
+      setShaking(false);
+    }
+  }, [selectedDate, selectedHour]);
+
+  /**
    * 重新开始
    */
   const handleReset = useCallback(() => {
@@ -173,6 +246,10 @@ const LiuyaoPage: React.FC = () => {
     setCoinResults([]);
     setCurrentCoins([true, true, true]);
     setCompleted(false);
+    setChainGuaId(null);
+    setDivinationMethod('coin');
+    setSelectedDate(new Date());
+    setSelectedHour(0);
   }, []);
 
   /**
@@ -186,6 +263,83 @@ const LiuyaoPage: React.FC = () => {
       <Paragraph type="secondary" className="page-subtitle">
         心中默念所问之事，点击摇卦按钮
       </Paragraph>
+
+      {/* 链端/本地切换 */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch
+          checked={useChain}
+          onChange={setUseChain}
+          checkedChildren={<CloudOutlined />}
+          unCheckedChildren={<DesktopOutlined />}
+        />
+        <Text type="secondary">
+          {useChain ? '链端起卦（结果上链存储）' : '本地起卦（快速预览）'}
+        </Text>
+      </div>
+
+      {/* 起卦方法选择（仅链端模式） */}
+      {useChain && (
+        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fafafa', borderRadius: 4 }}>
+          <Text strong style={{ display: 'block', marginBottom: 8 }}>起卦方法：</Text>
+          <Space wrap>
+            <Button
+              type={divinationMethod === 'random' ? 'primary' : 'default'}
+              onClick={() => setDivinationMethod('random')}
+              size="small"
+            >
+              随机起卦
+            </Button>
+            <Button
+              type={divinationMethod === 'time' ? 'primary' : 'default'}
+              onClick={() => setDivinationMethod('time')}
+              size="small"
+            >
+              时间起卦
+            </Button>
+          </Space>
+        </div>
+      )}
+
+      {/* 时间起卦 - 时间选择器 */}
+      {useChain && divinationMethod === 'time' && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div>
+              <Text strong>选择日期和时辰：</Text>
+            </div>
+            <div>
+              <Text type="secondary">日期：</Text>
+              <div style={{ marginTop: 8 }}>
+                <input
+                  type="date"
+                  value={selectedDate.toISOString().split('T')[0]}
+                  onChange={(e) => {
+                    const newDate = new Date(e.target.value);
+                    setSelectedDate(newDate);
+                  }}
+                  style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 4 }}
+                />
+              </div>
+            </div>
+            <div>
+              <Text type="secondary">时辰：</Text>
+              <div style={{ marginTop: 8 }}>
+                <select
+                  value={selectedHour}
+                  onChange={(e) => setSelectedHour(parseInt(e.target.value))}
+                  style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 4 }}
+                >
+                  {DI_ZHI_NAMES.map((name, idx) => (
+                    <option key={idx} value={idx}>
+                      {name}时 ({[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22][idx]}-{[2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24][idx]}点)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Space>
+        </Card>
+      )}
 
       <Divider />
 
@@ -219,7 +373,8 @@ const LiuyaoPage: React.FC = () => {
       )}
 
       {/* 已摇结果 */}
-      {coinResults.length > 0 && (
+      {/* 本地模式：已摇卦爻显示 */}
+      {!useChain && coinResults.length > 0 && (
         <Card size="small" style={{ marginBottom: 16 }}>
           <Text strong>已摇卦爻：</Text>
           <div style={{ marginTop: 8 }}>
@@ -235,25 +390,65 @@ const LiuyaoPage: React.FC = () => {
         </Card>
       )}
 
+      {/* 链端模式：卦象ID显示 */}
+      {useChain && chainGuaId !== null && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Text strong>链端卦象ID：</Text>
+          <Tag color="blue" style={{ marginLeft: 8, fontSize: 14 }}>{chainGuaId}</Tag>
+        </Card>
+      )}
+
       {/* 操作按钮 */}
       <Space direction="vertical" style={{ width: '100%' }}>
         {!completed ? (
-          <Button
-            type="primary"
-            size="large"
-            block
-            onClick={handleShake}
-            loading={shaking}
-            icon={<ThunderboltOutlined />}
-          >
-            {shaking ? '摇卦中...' : '摇卦'}
-          </Button>
+          useChain ? (
+            divinationMethod === 'time' ? (
+              <Button
+                type="primary"
+                size="large"
+                block
+                onClick={handleTimeMethodDivine}
+                loading={shaking}
+                icon={<CloudOutlined />}
+              >
+                {shaking ? '时间起卦中...' : '时间起卦'}
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                size="large"
+                block
+                onClick={handleChainDivine}
+                loading={shaking}
+                icon={<CloudOutlined />}
+              >
+                {shaking ? '链端起卦中...' : '链端随机起卦'}
+              </Button>
+            )
+          ) : (
+            <Button
+              type="primary"
+              size="large"
+              block
+              onClick={handleShake}
+              loading={shaking}
+              icon={<ThunderboltOutlined />}
+            >
+              {shaking ? '摇卦中...' : '摇卦'}
+            </Button>
+          )
         ) : (
           <Button
             type="primary"
             size="large"
             block
-            onClick={() => message.info('排盘功能开发中...')}
+            onClick={() => {
+              if (useChain && chainGuaId) {
+                message.info(`查看链端卦象 ${chainGuaId} 的排盘结果...`);
+              } else {
+                message.info('排盘功能开发中...');
+              }
+            }}
             icon={<ArrowRightOutlined />}
           >
             查看排盘结果
