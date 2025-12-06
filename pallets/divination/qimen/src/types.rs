@@ -566,6 +566,33 @@ impl BaMen {
             Self::Sheng => JiuGong::Gen,
         }
     }
+
+    /// 根据原始宫位获取八门
+    ///
+    /// 每个宫位（除中宫外）都有一个原始八门：
+    /// - 一宫（坎）：休门
+    /// - 二宫（坤）：死门
+    /// - 三宫（震）：伤门
+    /// - 四宫（巽）：杜门
+    /// - 五宫（中）：无门（返回None）
+    /// - 六宫（乾）：开门
+    /// - 七宫（兑）：惊门
+    /// - 八宫（艮）：生门
+    /// - 九宫（离）：景门
+    pub fn from_palace(gong: u8) -> Option<Self> {
+        match gong {
+            1 => Some(Self::Xiu),   // 坎宫 - 休门
+            2 => Some(Self::Si),    // 坤宫 - 死门
+            3 => Some(Self::Shang), // 震宫 - 伤门
+            4 => Some(Self::Du),    // 巽宫 - 杜门
+            5 => None,              // 中宫 - 无门
+            6 => Some(Self::Kai),   // 乾宫 - 开门
+            7 => Some(Self::Jing2), // 兑宫 - 惊门
+            8 => Some(Self::Sheng), // 艮宫 - 生门
+            9 => Some(Self::Jing),  // 离宫 - 景门
+            _ => None,
+        }
+    }
 }
 
 // ==================== 八神 ====================
@@ -770,6 +797,163 @@ impl SanYuan {
 
 // ==================== 起卦方式 ====================
 
+/// 排盘类型（时家/日家/月家/年家）
+///
+/// 奇门遁甲有多种排盘类型，根据不同的时间单位起局
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum QimenType {
+    /// 时家奇门：以时辰为单位，最常用
+    #[default]
+    ShiJia,
+    /// 日家奇门：以日为单位
+    RiJia,
+    /// 月家奇门：以月为单位
+    YueJia,
+    /// 年家奇门：以年为单位
+    NianJia,
+}
+
+impl QimenType {
+    /// 获取类型名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::ShiJia => "时家奇门",
+            Self::RiJia => "日家奇门",
+            Self::YueJia => "月家奇门",
+            Self::NianJia => "年家奇门",
+        }
+    }
+
+    /// 获取简短描述
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::ShiJia => "以时辰为单位起局，每两小时一局，最常用的排盘方式",
+            Self::RiJia => "以日为单位起局，每日一局，适合日课择吉",
+            Self::YueJia => "以月为单位起局，每月一局，适合月度规划",
+            Self::NianJia => "以年为单位起局，每年一局，适合年度大运分析",
+        }
+    }
+}
+
+// ==================== 问事类型与用神 ====================
+
+/// 问事类型（占断事项分类）
+///
+/// 奇门遁甲中根据不同的问事类型，有不同的用神和取象规则
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum QuestionType {
+    /// 综合运势（默认）
+    #[default]
+    General,
+    /// 事业工作
+    Career,
+    /// 财运求财
+    Wealth,
+    /// 婚姻感情
+    Marriage,
+    /// 健康疾病
+    Health,
+    /// 学业考试
+    Study,
+    /// 出行远行
+    Travel,
+    /// 官司诉讼
+    Lawsuit,
+    /// 寻人寻物
+    Finding,
+    /// 投资理财
+    Investment,
+    /// 合作交易
+    Business,
+    /// 祈福求神
+    Prayer,
+}
+
+impl QuestionType {
+    /// 获取问事类型名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::General => "综合运势",
+            Self::Career => "事业工作",
+            Self::Wealth => "财运求财",
+            Self::Marriage => "婚姻感情",
+            Self::Health => "健康疾病",
+            Self::Study => "学业考试",
+            Self::Travel => "出行远行",
+            Self::Lawsuit => "官司诉讼",
+            Self::Finding => "寻人寻物",
+            Self::Investment => "投资理财",
+            Self::Business => "合作交易",
+            Self::Prayer => "祈福求神",
+        }
+    }
+
+    /// 获取问事类型描述
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::General => "整体运势分析，综合各方面情况",
+            Self::Career => "工作事业、升迁、求职、创业等",
+            Self::Wealth => "财运、求财、偏财、正财等",
+            Self::Marriage => "婚姻、恋爱、感情、桃花等",
+            Self::Health => "疾病、健康、医疗、康复等",
+            Self::Study => "考试、学业、资格证、进修等",
+            Self::Travel => "出行、旅游、搬迁、远行等",
+            Self::Lawsuit => "官司、诉讼、纠纷、仲裁等",
+            Self::Finding => "寻人、寻物、失物、走失等",
+            Self::Investment => "投资、理财、股票、基金等",
+            Self::Business => "合作、交易、谈判、签约等",
+            Self::Prayer => "祈福、求神、祭祀、许愿等",
+        }
+    }
+}
+
+/// 用神类型
+///
+/// 奇门遁甲中的用神，代表问事的主体或对象
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum YongShen {
+    /// 以九星为用神
+    Xing(JiuXing),
+    /// 以八门为用神
+    Men(BaMen),
+    /// 以八神为用神
+    Shen(BaShen),
+    /// 以天干为用神
+    Gan(TianGan),
+    /// 以宫位为用神
+    Gong(JiuGong),
+}
+
+impl YongShen {
+    /// 获取用神名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Xing(x) => x.name(),
+            Self::Men(m) => m.name(),
+            Self::Shen(s) => s.name(),
+            Self::Gan(g) => g.name(),
+            Self::Gong(g) => g.name(),
+        }
+    }
+}
+
+/// 用神配置
+///
+/// 每种问事类型对应的用神列表
+#[derive(Clone, Debug)]
+pub struct YongShenConfig {
+    /// 问事类型
+    pub question_type: QuestionType,
+    /// 主用神（最重要）
+    pub primary: YongShen,
+    /// 次用神（辅助参考）
+    pub secondary: Option<YongShen>,
+    /// 相关宫位
+    pub related_gongs: &'static [JiuGong],
+    /// 吉利条件描述
+    pub auspicious_condition: &'static str,
+}
+
 /// 起卦方式
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum DivinationMethod {
@@ -792,6 +976,61 @@ impl DivinationMethod {
             Self::Random => "随机起局",
             Self::Manual => "手动指定",
         }
+    }
+}
+
+/// 排盘方法（转盘/飞盘）
+///
+/// 奇门遁甲有两种主要的排盘方法：
+/// - 转盘奇门：九星、八门、八神作为整体旋转，是目前最常用的方法
+/// - 飞盘奇门：九星、八门、八神按洛书九宫飞布顺序分别飞入各宫
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum PanMethod {
+    /// 转盘奇门（默认）
+    ///
+    /// 九星、八门、八神作为整体随值符旋转
+    /// 特点：
+    /// - 整体旋转，关系固定
+    /// - 便于理解和计算
+    /// - 是当前主流的排盘方法
+    #[default]
+    ZhuanPan,
+
+    /// 飞盘奇门
+    ///
+    /// 九星、八门、八神按洛书九宫数序分别飞入各宫
+    /// 特点：
+    /// - 独立飞布，灵活多变
+    /// - 古法排盘方式
+    /// - 适合特定的占断场景
+    FeiPan,
+}
+
+impl PanMethod {
+    /// 获取方法名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::ZhuanPan => "转盘奇门",
+            Self::FeiPan => "飞盘奇门",
+        }
+    }
+
+    /// 获取简短描述
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::ZhuanPan => "九星、八门、八神作为整体旋转，是目前最常用的排盘方法",
+            Self::FeiPan => "九星、八门、八神按洛书九宫数序分别飞入各宫，古法排盘方式",
+        }
+    }
+
+    /// 判断是否为转盘
+    pub fn is_zhuan_pan(&self) -> bool {
+        matches!(self, Self::ZhuanPan)
+    }
+
+    /// 判断是否为飞盘
+    pub fn is_fei_pan(&self) -> bool {
+        matches!(self, Self::FeiPan)
     }
 }
 

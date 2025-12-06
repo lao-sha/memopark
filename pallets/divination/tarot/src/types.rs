@@ -192,6 +192,145 @@ impl TarotCard {
             _ => CourtRank::None,
         }
     }
+
+    // ========================================================================
+    // 牌义获取方法
+    // ========================================================================
+
+    /// 获取牌的正位含义
+    ///
+    /// # 返回
+    /// - 正位含义字符串
+    pub fn upright_meaning(&self) -> &'static str {
+        crate::constants::get_upright_meaning(self.id)
+    }
+
+    /// 获取牌的逆位含义
+    ///
+    /// # 返回
+    /// - 逆位含义字符串
+    pub fn reversed_meaning(&self) -> &'static str {
+        crate::constants::get_reversed_meaning(self.id)
+    }
+
+    /// 获取牌的关键词
+    ///
+    /// # 返回
+    /// - 关键词字符串
+    pub fn keywords(&self) -> &'static str {
+        crate::constants::get_keywords(self.id)
+    }
+
+    /// 获取大阿卡纳牌的详细描述
+    ///
+    /// # 返回
+    /// - 牌面描述，小阿卡纳返回 None
+    pub fn description(&self) -> Option<&'static str> {
+        crate::constants::get_major_description(self.id)
+    }
+
+    /// 获取大阿卡纳牌的星座/行星对应
+    ///
+    /// # 返回
+    /// - (天体/星座名称, 元素属性)，小阿卡纳返回 None
+    pub fn astrology(&self) -> Option<(&'static str, &'static str)> {
+        crate::constants::get_major_astrology(self.id)
+    }
+
+    /// 获取大阿卡纳牌的数字象征
+    ///
+    /// # 返回
+    /// - 数字象征意义，小阿卡纳返回 None
+    pub fn numerology(&self) -> Option<&'static str> {
+        crate::constants::get_major_numerology(self.id)
+    }
+
+    /// 获取牌的中文名称
+    ///
+    /// # 返回
+    /// - (主名称, 副名称Option)
+    ///   - 大阿卡纳: ("愚者", None)
+    ///   - 小阿卡纳: ("权杖", Some("Ace"))
+    pub fn display_name(&self) -> (&'static str, Option<&'static str>) {
+        crate::constants::get_card_display_name(self.id)
+    }
+
+    /// 获取牌的完整中文名称字符串
+    ///
+    /// # 返回
+    /// - 完整名称，如 "愚者" 或 "权杖Ace"
+    pub fn full_name(&self) -> &'static str {
+        if self.id < 22 {
+            crate::constants::MAJOR_ARCANA_NAMES_CN[self.id as usize]
+        } else {
+            // 小阿卡纳需要组合花色和牌面
+            // 这里返回花色名，完整名称需要在前端组合
+            let (suit_name, _) = self.display_name();
+            suit_name
+        }
+    }
+
+    /// 获取牌的英文名称
+    ///
+    /// # 返回
+    /// - 英文名称
+    pub fn english_name(&self) -> &'static str {
+        if self.id < 22 {
+            crate::constants::MAJOR_ARCANA_NAMES_EN[self.id as usize]
+        } else {
+            let suit_index = crate::constants::get_suit_index(self.id) as usize;
+            if suit_index < crate::constants::SUIT_NAMES_EN.len() {
+                crate::constants::SUIT_NAMES_EN[suit_index]
+            } else {
+                ""
+            }
+        }
+    }
+
+    /// 获取牌的元素属性
+    ///
+    /// # 返回
+    /// - 元素名称（火/水/风/土），大阿卡纳返回空字符串
+    pub fn element(&self) -> &'static str {
+        crate::constants::get_card_element(self.id)
+    }
+
+    /// 获取花色索引
+    ///
+    /// # 返回
+    /// - 花色索引: 0=无(大阿卡纳), 1=权杖, 2=圣杯, 3=宝剑, 4=星币
+    pub fn suit_index(&self) -> u8 {
+        crate::constants::get_suit_index(self.id)
+    }
+
+    /// 获取花色的详细描述
+    ///
+    /// # 返回
+    /// - 花色描述，大阿卡纳返回 None
+    pub fn suit_description(&self) -> Option<&'static str> {
+        let suit_index = self.suit_index();
+        crate::constants::get_suit_description(suit_index)
+    }
+
+    /// 获取数字牌的数字象征意义
+    ///
+    /// # 返回
+    /// - 数字象征意义，仅小阿卡纳数字牌有效（1-10）
+    pub fn number_symbolism(&self) -> Option<&'static str> {
+        if self.is_major() || self.number > 10 {
+            None
+        } else {
+            crate::constants::get_number_symbolism(self.number)
+        }
+    }
+
+    /// 获取牌的完整牌义信息
+    ///
+    /// # 返回
+    /// - CardMeaning 结构，包含所有牌义信息
+    pub fn get_meaning(&self) -> Option<crate::constants::CardMeaning> {
+        crate::constants::get_card_meaning(self.id)
+    }
 }
 
 /// 牌阵类型枚举
@@ -245,6 +384,129 @@ impl SpreadType {
             _ => SpreadType::SingleCard,
         }
     }
+
+    /// 获取牌阵各位置的含义名称
+    ///
+    /// 返回每个位置对应的解读主题，供前端展示和 AI 解读使用
+    pub fn position_names(&self) -> &'static [&'static str] {
+        match self {
+            SpreadType::SingleCard => &["当前指引"],
+            SpreadType::ThreeCardTime => &["过去", "现在", "未来"],
+            SpreadType::ThreeCardSituation => &["情况", "行动", "结果"],
+            SpreadType::LoveRelationship => &[
+                "你的感受",
+                "对方的感受",
+                "关系现状",
+                "挑战",
+                "未来发展",
+            ],
+            SpreadType::CareerGuidance => &[
+                "当前状况",
+                "优势",
+                "挑战",
+                "机会",
+                "建议行动",
+                "未来前景",
+            ],
+            SpreadType::DecisionMaking => &[
+                "当前情况",
+                "选择A",
+                "选择A结果",
+                "选择B",
+                "选择B结果",
+                "外在影响",
+                "最佳建议",
+            ],
+            SpreadType::CelticCross => &[
+                "当前状况",
+                "挑战",
+                "远因",
+                "近因",
+                "可能结果",
+                "近期发展",
+                "你的态度",
+                "外在影响",
+                "内心期望",
+                "最终结果",
+            ],
+            SpreadType::YearForecast => &[
+                "一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月",
+                "十一月", "十二月",
+            ],
+        }
+    }
+
+    /// 获取牌阵的中文名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            SpreadType::SingleCard => "单张牌指引",
+            SpreadType::ThreeCardTime => "时间三张牌",
+            SpreadType::ThreeCardSituation => "情况三张牌",
+            SpreadType::LoveRelationship => "爱情关系牌阵",
+            SpreadType::CareerGuidance => "事业指导牌阵",
+            SpreadType::DecisionMaking => "决策分析牌阵",
+            SpreadType::CelticCross => "凯尔特十字",
+            SpreadType::YearForecast => "年度运势",
+        }
+    }
+
+    /// 获取牌阵的描述说明
+    pub fn description(&self) -> &'static str {
+        match self {
+            SpreadType::SingleCard => "快速获得当下指导，适合日常决策和简单问题",
+            SpreadType::ThreeCardTime => "了解过去、现在、未来的发展趋势",
+            SpreadType::ThreeCardSituation => "分析问题的情况、行动和结果",
+            SpreadType::LoveRelationship => "深入了解感情状况和发展方向",
+            SpreadType::CareerGuidance => "全面分析职业发展和工作状况",
+            SpreadType::DecisionMaking => "帮助做出重要决定，分析多个选择",
+            SpreadType::CelticCross => "最全面的牌阵，深度分析复杂问题",
+            SpreadType::YearForecast => "预测一年中每个月的运势发展",
+        }
+    }
+
+    /// 获取指定位置的含义名称
+    ///
+    /// # 参数
+    /// - `index`: 位置索引（0-based）
+    ///
+    /// # 返回
+    /// - 位置名称，如果索引超出范围返回 None
+    pub fn get_position_name(&self, index: usize) -> Option<&'static str> {
+        self.position_names().get(index).copied()
+    }
+
+    /// 获取牌阵类型的数字标识（用于 constants 模块查询）
+    pub fn type_id(&self) -> u8 {
+        match self {
+            SpreadType::SingleCard => 1,
+            SpreadType::ThreeCardTime => 3,
+            SpreadType::ThreeCardSituation => 4,
+            SpreadType::LoveRelationship => 5,
+            SpreadType::CareerGuidance => 6,
+            SpreadType::DecisionMaking => 7,
+            SpreadType::CelticCross => 10,
+            SpreadType::YearForecast => 12,
+        }
+    }
+
+    /// 获取指定位置的详细信息
+    ///
+    /// # 参数
+    /// - `index`: 位置索引（0-based）
+    ///
+    /// # 返回
+    /// - 位置详情，包含名称、描述、解读指导
+    pub fn get_position_info(&self, index: usize) -> Option<&'static crate::constants::SpreadPositionInfo> {
+        crate::constants::get_spread_position_info(self.type_id(), index)
+    }
+
+    /// 获取所有位置的详细信息
+    ///
+    /// # 返回
+    /// - 所有位置的详情数组
+    pub fn get_all_position_info(&self) -> Option<&'static [crate::constants::SpreadPositionInfo]> {
+        crate::constants::get_spread_all_positions(self.type_id())
+    }
 }
 
 /// 抽取的牌（含位置信息）
@@ -267,6 +529,62 @@ impl DrawnCard {
             spread_position,
         }
     }
+
+    /// 根据正逆位获取牌义
+    ///
+    /// # 返回
+    /// - 正位返回正位含义，逆位返回逆位含义
+    pub fn meaning(&self) -> &'static str {
+        if self.position.is_reversed() {
+            self.card.reversed_meaning()
+        } else {
+            self.card.upright_meaning()
+        }
+    }
+
+    /// 获取牌的关键词
+    pub fn keywords(&self) -> &'static str {
+        self.card.keywords()
+    }
+
+    /// 获取牌的完整名称（含正逆位标识）
+    ///
+    /// # 返回
+    /// - 如 "愚者（正位）" 或 "魔术师（逆位）"
+    pub fn full_name_with_position(&self) -> (&'static str, &'static str) {
+        let name = self.card.full_name();
+        let position_str = if self.position.is_reversed() {
+            "逆位"
+        } else {
+            "正位"
+        };
+        (name, position_str)
+    }
+
+    /// 获取牌的显示名称
+    pub fn display_name(&self) -> (&'static str, Option<&'static str>) {
+        self.card.display_name()
+    }
+
+    /// 获取牌的元素属性
+    pub fn element(&self) -> &'static str {
+        self.card.element()
+    }
+
+    /// 判断是否为大阿卡纳
+    pub fn is_major(&self) -> bool {
+        self.card.is_major()
+    }
+
+    /// 判断是否为宫廷牌
+    pub fn is_court_card(&self) -> bool {
+        self.card.is_court_card()
+    }
+
+    /// 获取大阿卡纳的星座/行星对应
+    pub fn astrology(&self) -> Option<(&'static str, &'static str)> {
+        self.card.astrology()
+    }
 }
 
 /// 占卜方式枚举
@@ -281,6 +599,8 @@ pub enum DivinationMethod {
     ByNumbers = 2,
     /// 手动指定 - 直接指定牌面
     Manual = 3,
+    /// 带切牌的随机抽牌 - 模拟真实塔罗占卜仪式
+    RandomWithCut = 4,
 }
 
 /// 完整的塔罗牌占卜记录
@@ -388,5 +708,140 @@ mod tests {
         assert!(CardPosition::Reversed.is_reversed());
         assert_eq!(CardPosition::from_bool(true), CardPosition::Reversed);
         assert_eq!(CardPosition::from_bool(false), CardPosition::Upright);
+    }
+
+    // ========================================================================
+    // 牌义方法测试
+    // ========================================================================
+
+    #[test]
+    fn test_tarot_card_meaning_methods() {
+        // 测试大阿卡纳 - 愚者
+        let fool = TarotCard::from_id(0);
+        assert!(fool.upright_meaning().contains("新的开始"));
+        assert!(fool.reversed_meaning().contains("鲁莽"));
+        assert!(fool.keywords().contains("自由"));
+        assert!(fool.description().is_some());
+        assert!(fool.description().unwrap().contains("悬崖"));
+
+        // 测试星座对应
+        let astrology = fool.astrology();
+        assert!(astrology.is_some());
+        assert_eq!(astrology.unwrap().0, "天王星");
+
+        // 测试数字象征
+        let numerology = fool.numerology();
+        assert!(numerology.is_some());
+        assert!(numerology.unwrap().contains("0"));
+    }
+
+    #[test]
+    fn test_tarot_card_names() {
+        // 测试大阿卡纳名称
+        let magician = TarotCard::from_id(1);
+        assert_eq!(magician.full_name(), "魔术师");
+        assert_eq!(magician.english_name(), "The Magician");
+
+        let (name, sub_name) = magician.display_name();
+        assert_eq!(name, "魔术师");
+        assert!(sub_name.is_none());
+
+        // 测试小阿卡纳名称
+        let wands_ace = TarotCard::from_id(22);
+        let (suit_name, card_name) = wands_ace.display_name();
+        assert_eq!(suit_name, "权杖");
+        assert_eq!(card_name, Some("Ace"));
+    }
+
+    #[test]
+    fn test_tarot_card_element() {
+        // 大阿卡纳无元素
+        let fool = TarotCard::from_id(0);
+        assert_eq!(fool.element(), "");
+
+        // 权杖 - 火
+        let wands = TarotCard::from_id(22);
+        assert_eq!(wands.element(), "火");
+
+        // 圣杯 - 水
+        let cups = TarotCard::from_id(36);
+        assert_eq!(cups.element(), "水");
+
+        // 宝剑 - 风
+        let swords = TarotCard::from_id(50);
+        assert_eq!(swords.element(), "风");
+
+        // 星币 - 土
+        let pentacles = TarotCard::from_id(64);
+        assert_eq!(pentacles.element(), "土");
+    }
+
+    #[test]
+    fn test_minor_arcana_meanings() {
+        // 测试权杖 Ace
+        let wands_ace = TarotCard::from_id(22);
+        assert!(wands_ace.upright_meaning().contains("创意"));
+        assert!(wands_ace.suit_description().is_some());
+        assert!(wands_ace.suit_description().unwrap().contains("火元素"));
+
+        // 测试数字象征
+        let wands_two = TarotCard::from_id(23);
+        let symbolism = wands_two.number_symbolism();
+        assert!(symbolism.is_some());
+        assert!(symbolism.unwrap().contains("2"));
+    }
+
+    #[test]
+    fn test_court_card_meanings() {
+        // 测试权杖国王
+        let wands_king = TarotCard::from_id(35);
+        assert!(wands_king.is_court_card());
+        assert!(wands_king.upright_meaning().contains("领袖"));
+        assert!(wands_king.number_symbolism().is_none()); // 宫廷牌无数字象征
+    }
+
+    #[test]
+    fn test_drawn_card_meaning() {
+        // 正位牌
+        let upright_card = DrawnCard::new(0, false, 0);
+        assert!(upright_card.meaning().contains("新的开始"));
+        assert!(!upright_card.position.is_reversed());
+
+        // 逆位牌
+        let reversed_card = DrawnCard::new(0, true, 0);
+        assert!(reversed_card.meaning().contains("鲁莽"));
+        assert!(reversed_card.position.is_reversed());
+
+        // 名称带正逆位
+        let (name, pos) = upright_card.full_name_with_position();
+        assert_eq!(name, "愚者");
+        assert_eq!(pos, "正位");
+
+        let (name, pos) = reversed_card.full_name_with_position();
+        assert_eq!(name, "愚者");
+        assert_eq!(pos, "逆位");
+    }
+
+    #[test]
+    fn test_get_card_meaning() {
+        // 测试获取完整牌义
+        let fool = TarotCard::from_id(0);
+        let meaning = fool.get_meaning();
+        assert!(meaning.is_some());
+
+        let m = meaning.unwrap();
+        assert_eq!(m.name, "愚者");
+        assert_eq!(m.name_en, "The Fool");
+        assert!(m.description.is_some());
+        assert!(m.astrology.is_some());
+
+        // 测试小阿卡纳
+        let wands_ace = TarotCard::from_id(22);
+        let meaning = wands_ace.get_meaning();
+        assert!(meaning.is_some());
+
+        let m = meaning.unwrap();
+        assert_eq!(m.element, "火");
+        assert!(m.description.is_none()); // 小阿卡纳无描述
     }
 }

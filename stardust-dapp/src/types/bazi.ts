@@ -658,3 +658,457 @@ export function getWuXingLack(count: WuXingCount): WuXing[] {
   if (count.shui === 0) lack.push(WuXing.Shui);
   return lack;
 }
+
+// ==================== 神煞系统 ====================
+
+/**
+ * 神煞类型枚举
+ */
+export enum ShenSha {
+  // 贵人类
+  TianYiGuiRen = 0,   // 天乙贵人
+  TaiJiGuiRen = 1,    // 太极贵人
+  TianDeGuiRen = 2,   // 天德贵人
+  YueDeGuiRen = 3,    // 月德贵人
+  TianDeHe = 4,       // 天德合
+  YueDeHe = 5,        // 月德合
+  WenChangGuiRen = 6, // 文昌贵人
+  FuXingGuiRen = 7,   // 福星贵人
+  GuoYinGuiRen = 8,   // 国印贵人
+
+  // 桃花婚姻类
+  TaoHua = 9,         // 桃花（咸池）
+  HongLuan = 10,      // 红鸾
+  TianXi = 11,        // 天喜
+  GuChen = 12,        // 孤辰
+  GuaSu = 13,         // 寡宿
+
+  // 财官类
+  JinYu = 14,         // 金舆
+  JiangXing = 15,     // 将星
+  YiMa = 16,          // 驿马
+  HuaGai = 17,        // 华盖
+  TianChu = 18,       // 天厨
+
+  // 凶神类
+  YangRen = 19,       // 羊刃
+  WangShen = 20,      // 亡神
+  JieSha = 21,        // 劫煞
+  XueRen = 22,        // 血刃
+  YuanChen = 23,      // 元辰
+
+  // 特殊类
+  TianLuo = 24,       // 天罗
+  DiWang = 25,        // 地网
+  TongZiSha = 26,     // 童子煞
+  JiuChou = 27,       // 九丑
+  KongWang = 28,      // 空亡
+}
+
+/** 神煞中文名称 */
+export const SHEN_SHA_NAMES: Record<ShenSha, string> = {
+  [ShenSha.TianYiGuiRen]: '天乙贵人',
+  [ShenSha.TaiJiGuiRen]: '太极贵人',
+  [ShenSha.TianDeGuiRen]: '天德贵人',
+  [ShenSha.YueDeGuiRen]: '月德贵人',
+  [ShenSha.TianDeHe]: '天德合',
+  [ShenSha.YueDeHe]: '月德合',
+  [ShenSha.WenChangGuiRen]: '文昌贵人',
+  [ShenSha.FuXingGuiRen]: '福星贵人',
+  [ShenSha.GuoYinGuiRen]: '国印贵人',
+  [ShenSha.TaoHua]: '桃花',
+  [ShenSha.HongLuan]: '红鸾',
+  [ShenSha.TianXi]: '天喜',
+  [ShenSha.GuChen]: '孤辰',
+  [ShenSha.GuaSu]: '寡宿',
+  [ShenSha.JinYu]: '金舆',
+  [ShenSha.JiangXing]: '将星',
+  [ShenSha.YiMa]: '驿马',
+  [ShenSha.HuaGai]: '华盖',
+  [ShenSha.TianChu]: '天厨',
+  [ShenSha.YangRen]: '羊刃',
+  [ShenSha.WangShen]: '亡神',
+  [ShenSha.JieSha]: '劫煞',
+  [ShenSha.XueRen]: '血刃',
+  [ShenSha.YuanChen]: '元辰',
+  [ShenSha.TianLuo]: '天罗',
+  [ShenSha.DiWang]: '地网',
+  [ShenSha.TongZiSha]: '童子煞',
+  [ShenSha.JiuChou]: '九丑',
+  [ShenSha.KongWang]: '空亡',
+};
+
+/** 神煞吉凶分类 */
+export const SHEN_SHA_AUSPICIOUS: Set<ShenSha> = new Set([
+  ShenSha.TianYiGuiRen, ShenSha.TaiJiGuiRen, ShenSha.TianDeGuiRen,
+  ShenSha.YueDeGuiRen, ShenSha.TianDeHe, ShenSha.YueDeHe,
+  ShenSha.WenChangGuiRen, ShenSha.FuXingGuiRen, ShenSha.GuoYinGuiRen,
+  ShenSha.HongLuan, ShenSha.TianXi, ShenSha.JinYu,
+  ShenSha.JiangXing, ShenSha.TianChu,
+]);
+
+/** 单柱神煞信息 */
+export interface ZhuShenSha {
+  /** 该柱包含的神煞列表 */
+  shenShaList: ShenSha[];
+}
+
+/** 四柱神煞信息 */
+export interface SiZhuShenSha {
+  /** 年柱神煞 */
+  yearShenSha: ZhuShenSha;
+  /** 月柱神煞 */
+  monthShenSha: ZhuShenSha;
+  /** 日柱神煞 */
+  dayShenSha: ZhuShenSha;
+  /** 时柱神煞 */
+  hourShenSha: ZhuShenSha;
+}
+
+// ==================== 刑冲合会系统 ====================
+
+/**
+ * 地支关系类型
+ */
+export enum DiZhiGuanXi {
+  LiuHe = 0,      // 六合
+  SanHe = 1,      // 三合
+  BanHe = 2,      // 半合
+  LiuChong = 3,   // 六冲
+  SanXing = 4,    // 三刑
+  ZiXing = 5,     // 自刑
+  LiuHai = 6,     // 六害
+  LiuPo = 7,      // 六破
+}
+
+/** 地支关系名称 */
+export const DI_ZHI_GUAN_XI_NAMES: Record<DiZhiGuanXi, string> = {
+  [DiZhiGuanXi.LiuHe]: '六合',
+  [DiZhiGuanXi.SanHe]: '三合',
+  [DiZhiGuanXi.BanHe]: '半合',
+  [DiZhiGuanXi.LiuChong]: '六冲',
+  [DiZhiGuanXi.SanXing]: '三刑',
+  [DiZhiGuanXi.ZiXing]: '自刑',
+  [DiZhiGuanXi.LiuHai]: '六害',
+  [DiZhiGuanXi.LiuPo]: '六破',
+};
+
+/** 吉利关系 */
+export const FAVORABLE_GUAN_XI: Set<DiZhiGuanXi> = new Set([
+  DiZhiGuanXi.LiuHe, DiZhiGuanXi.SanHe, DiZhiGuanXi.BanHe,
+]);
+
+/**
+ * 天干关系类型
+ */
+export enum TianGanGuanXi {
+  WuHe = 0,       // 五合
+  XiangChong = 1, // 相冲
+}
+
+/** 天干关系名称 */
+export const TIAN_GAN_GUAN_XI_NAMES: Record<TianGanGuanXi, string> = {
+  [TianGanGuanXi.WuHe]: '五合',
+  [TianGanGuanXi.XiangChong]: '相冲',
+};
+
+/** 六合描述 */
+export const LIUHE_DESC: string[] = [
+  '子丑合土', '寅亥合木', '卯戌合火', '辰酉合金', '巳申合水', '午未合土',
+];
+
+/** 三合描述 */
+export const SANHE_DESC: string[] = [
+  '申子辰合水', '亥卯未合木', '寅午戌合火', '巳酉丑合金',
+];
+
+/** 六冲描述 */
+export const LIUCHONG_DESC: string[] = [
+  '子午冲', '丑未冲', '寅申冲', '卯酉冲', '辰戌冲', '巳亥冲',
+];
+
+/** 五合描述 */
+export const WUHE_DESC: string[] = [
+  '甲己合土', '乙庚合金', '丙辛合水', '丁壬合木', '戊癸合火',
+];
+
+/** 地支关系记录 */
+export interface GuanXiRecord {
+  /** 关系类型 */
+  guanXiType: DiZhiGuanXi;
+  /** 涉及的柱位置（0=年,1=月,2=日,3=时） */
+  zhuIdx1: number;
+  /** 涉及的柱位置 */
+  zhuIdx2: number;
+  /** 描述索引 */
+  descIndex: number;
+  /** 合化五行（如果适用） */
+  heHuaWuXing?: WuXing;
+}
+
+/** 天干关系记录 */
+export interface TianGanGuanXiRecord {
+  /** 关系类型 */
+  guanXiType: TianGanGuanXi;
+  /** 涉及的柱位置（0=年,1=月,2=日,3=时） */
+  zhuIdx1: number;
+  /** 涉及的柱位置 */
+  zhuIdx2: number;
+  /** 合化五行（如果适用） */
+  heHuaWuXing?: WuXing;
+  /** 描述索引 */
+  descIndex: number;
+}
+
+/** 四柱关系分析结果 */
+export interface SiZhuGuanXi {
+  /** 地支六合列表 */
+  liuHeList: GuanXiRecord[];
+  /** 地支半合列表 */
+  banHeList: GuanXiRecord[];
+  /** 地支六冲列表 */
+  liuChongList: GuanXiRecord[];
+  /** 地支三刑列表 */
+  xingList: GuanXiRecord[];
+  /** 地支六害列表 */
+  liuHaiList: GuanXiRecord[];
+  /** 天干五合列表 */
+  tianGanWuHeList: TianGanGuanXiRecord[];
+}
+
+// ==================== 解盘系统 ====================
+
+/**
+ * 格局类型
+ */
+export enum GeJuType {
+  ZhengGe = 0,      // 正格 - 身旺财官
+  CongQiangGe = 1,  // 从强格 - 身旺无制
+  CongRuoGe = 2,    // 从弱格 - 身弱无助
+  CongCaiGe = 3,    // 从财格 - 财星当令
+  CongGuanGe = 4,   // 从官格 - 官星当令
+  CongErGe = 5,     // 从儿格 - 食伤当令
+  HuaQiGe = 6,      // 化气格 - 干支化合
+  TeShuge = 7,      // 特殊格局
+}
+
+/** 格局名称 */
+export const GE_JU_NAMES: Record<GeJuType, string> = {
+  [GeJuType.ZhengGe]: '正格',
+  [GeJuType.CongQiangGe]: '从强格',
+  [GeJuType.CongRuoGe]: '从弱格',
+  [GeJuType.CongCaiGe]: '从财格',
+  [GeJuType.CongGuanGe]: '从官格',
+  [GeJuType.CongErGe]: '从儿格',
+  [GeJuType.HuaQiGe]: '化气格',
+  [GeJuType.TeShuge]: '特殊格',
+};
+
+/**
+ * 命局强弱
+ */
+export enum MingJuQiangRuo {
+  ShenWang = 0,  // 身旺
+  ShenRuo = 1,   // 身弱
+  ZhongHe = 2,   // 中和
+  TaiWang = 3,   // 太旺
+  TaiRuo = 4,    // 太弱
+}
+
+/** 命局强弱名称 */
+export const MING_JU_QIANG_RUO_NAMES: Record<MingJuQiangRuo, string> = {
+  [MingJuQiangRuo.ShenWang]: '身旺',
+  [MingJuQiangRuo.ShenRuo]: '身弱',
+  [MingJuQiangRuo.ZhongHe]: '中和',
+  [MingJuQiangRuo.TaiWang]: '太旺',
+  [MingJuQiangRuo.TaiRuo]: '太弱',
+};
+
+/**
+ * 用神类型
+ */
+export enum YongShenType {
+  FuYi = 0,      // 扶抑用神 - 扶弱抑强
+  DiaoHou = 1,   // 调候用神 - 调节寒暖
+  TongGuan = 2,  // 通关用神 - 化解冲突
+  ZhuanWang = 3, // 专旺用神 - 顺势而为
+}
+
+/** 用神类型名称 */
+export const YONG_SHEN_TYPE_NAMES: Record<YongShenType, string> = {
+  [YongShenType.FuYi]: '扶抑用神',
+  [YongShenType.DiaoHou]: '调候用神',
+  [YongShenType.TongGuan]: '通关用神',
+  [YongShenType.ZhuanWang]: '专旺用神',
+};
+
+/**
+ * 性格特征枚举
+ */
+export enum XingGeTrait {
+  ZhengZhi = 0,         // 正直
+  YouZhuJian = 1,       // 有主见
+  JiJiXiangShang = 2,   // 积极向上
+  GuZhi = 3,            // 固执
+  QueFaBianTong = 4,    // 缺乏变通
+  WenHe = 5,            // 温和
+  ShiYingXingQiang = 6, // 适应性强
+  YouYiShuTianFu = 7,   // 有艺术天赋
+  YouRouGuaDuan = 8,    // 优柔寡断
+  YiLaiXingQiang = 9,   // 依赖性强
+  ReQing = 10,          // 热情
+  KaiLang = 11,         // 开朗
+  YouLingDaoLi = 12,    // 有领导力
+  JiZao = 13,           // 急躁
+  QueFaNaiXin = 14,     // 缺乏耐心
+  XiXin = 15,           // 细心
+  YouChuangZaoLi = 16,  // 有创造力
+  ShanYuGouTong = 17,   // 善于沟通
+  QingXuHua = 18,       // 情绪化
+  MinGan = 19,          // 敏感
+  WenZhong = 20,        // 稳重
+  KeLao = 21,           // 可靠
+  YouZeRenXin = 22,     // 有责任心
+  BaoShou = 23,         // 保守
+  BianHuaMan = 24,      // 变化慢
+  // ... 其他特征
+}
+
+/** 性格特征名称 */
+export const XING_GE_TRAIT_NAMES: Record<number, string> = {
+  0: '正直', 1: '有主见', 2: '积极向上', 3: '固执', 4: '缺乏变通',
+  5: '温和', 6: '适应性强', 7: '有艺术天赋', 8: '优柔寡断', 9: '依赖性强',
+  10: '热情', 11: '开朗', 12: '有领导力', 13: '急躁', 14: '缺乏耐心',
+  15: '细心', 16: '有创造力', 17: '善于沟通', 18: '情绪化', 19: '敏感',
+  20: '稳重', 21: '可靠', 22: '有责任心', 23: '保守', 24: '变化慢',
+};
+
+/**
+ * 职业类型枚举
+ */
+export enum ZhiYeType {
+  JiaoYu = 0,       // 教育
+  WenHua = 1,       // 文化
+  HuanBao = 2,      // 环保
+  NongLin = 3,      // 农林
+  NengYuan = 4,     // 能源
+  YuLe = 5,         // 娱乐
+  CanYin = 6,       // 餐饮
+  HuaGong = 7,      // 化工
+  FangDiChan = 8,   // 房地产
+  JianZhu = 9,      // 建筑
+  NongYe = 10,      // 农业
+  FuWu = 11,        // 服务
+  JinRong = 12,     // 金融
+  JiXie = 13,       // 机械
+  JunJing = 14,     // 军警
+  WuJin = 15,       // 五金
+  MaoYi = 16,       // 贸易
+  YunShu = 17,      // 运输
+  ShuiLi = 18,      // 水利
+  XinXi = 19,       // 信息
+}
+
+/** 职业类型名称 */
+export const ZHI_YE_TYPE_NAMES: Record<ZhiYeType, string> = {
+  [ZhiYeType.JiaoYu]: '教育',
+  [ZhiYeType.WenHua]: '文化',
+  [ZhiYeType.HuanBao]: '环保',
+  [ZhiYeType.NongLin]: '农林',
+  [ZhiYeType.NengYuan]: '能源',
+  [ZhiYeType.YuLe]: '娱乐',
+  [ZhiYeType.CanYin]: '餐饮',
+  [ZhiYeType.HuaGong]: '化工',
+  [ZhiYeType.FangDiChan]: '房地产',
+  [ZhiYeType.JianZhu]: '建筑',
+  [ZhiYeType.NongYe]: '农业',
+  [ZhiYeType.FuWu]: '服务',
+  [ZhiYeType.JinRong]: '金融',
+  [ZhiYeType.JiXie]: '机械',
+  [ZhiYeType.JunJing]: '军警',
+  [ZhiYeType.WuJin]: '五金',
+  [ZhiYeType.MaoYi]: '贸易',
+  [ZhiYeType.YunShu]: '运输',
+  [ZhiYeType.ShuiLi]: '水利',
+  [ZhiYeType.XinXi]: '信息',
+};
+
+/** 性格特征 */
+export interface XingGeTeZheng {
+  /** 主要性格特点 */
+  zhuYaoTeDian: XingGeTrait[];
+  /** 优点 */
+  youDian: XingGeTrait[];
+  /** 缺点 */
+  queDian: XingGeTrait[];
+  /** 适合职业 */
+  shiHeZhiYe: ZhiYeType[];
+}
+
+/** 解盘结果 */
+export interface JiePanResult {
+  /** 格局类型 */
+  geJu: GeJuType;
+  /** 命局强弱 */
+  qiangRuo: MingJuQiangRuo;
+  /** 用神 */
+  yongShen: WuXing;
+  /** 用神类型 */
+  yongShenType: YongShenType;
+  /** 忌神 */
+  jiShen: WuXing[];
+  /** 性格分析 */
+  xingGe: XingGeTeZheng;
+  /** 综合评分 (0-100) */
+  zongHePingFen: number;
+  /** 解盘文本类型索引 */
+  jiePanText: number[];
+}
+
+// ==================== 五行强度 ====================
+
+/** 五行强度（链上数据格式） */
+export interface WuXingStrength {
+  /** 金 */
+  jin: number;
+  /** 木 */
+  mu: number;
+  /** 水 */
+  shui: number;
+  /** 火 */
+  huo: number;
+  /** 土 */
+  tu: number;
+}
+
+/** 喜用神信息 */
+export interface XiYongShen {
+  /** 用神 */
+  yongShen: WuXing;
+  /** 喜神 */
+  xiShen: WuXing;
+  /** 忌神 */
+  jiShen: WuXing;
+  /** 仇神 */
+  chouShen: WuXing;
+  /** 闲神 */
+  xianShen: WuXing;
+}
+
+// ==================== 扩展八字结果 ====================
+
+/**
+ * 扩展的八字排盘结果（包含新增功能）
+ */
+export interface BaziResultExtended extends BaziResult {
+  /** 五行强度分析 */
+  wuXingStrength?: WuXingStrength;
+  /** 喜用神分析 */
+  xiYongShen?: XiYongShen;
+  /** 神煞分析 */
+  shenSha?: SiZhuShenSha;
+  /** 刑冲合会分析 */
+  guanXi?: SiZhuGuanXi;
+  /** 解盘结果 */
+  jiePan?: JiePanResult;
+}

@@ -10,6 +10,9 @@
 //! - **天将**: 十二天将（贵人为首，顺逆排布）
 //! - **神煞**: 吉神凶煞判断
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::BoundedVec;
 use scale_info::TypeInfo;
@@ -998,6 +1001,21 @@ pub fn get_ji_gong(gan: TianGan) -> DiZhi {
     GAN_JI_GONG[gan.index() as usize].1
 }
 
+/// 获取某地支上寄宫的天干列表
+///
+/// 用于涉害法计算，需要知道某地支上有哪些天干寄宫
+/// 例如：巳上有丙、戊寄宫；未上有丁、己寄宫
+pub fn get_gan_of_ji_gong(zhi: DiZhi) -> Vec<TianGan> {
+    let mut result = Vec::new();
+    for i in 0..10 {
+        let gan = TianGan::from_index(i);
+        if get_ji_gong(gan) == zhi {
+            result.push(gan);
+        }
+    }
+    result
+}
+
 // ============================================================================
 // 贵人起法
 // ============================================================================
@@ -1054,4 +1072,112 @@ pub const BA_ZHUAN_DAYS: [(TianGan, DiZhi); 4] = [
 /// 判断是否为八专日
 pub fn is_ba_zhuan_day(gan: TianGan, zhi: DiZhi) -> bool {
     BA_ZHUAN_DAYS.iter().any(|(g, z)| *g == gan && *z == zhi)
+}
+
+// ============================================================================
+// 神煞系统
+// ============================================================================
+
+/// 神煞信息
+///
+/// 大六壬神煞分为：
+/// - 年神煞：根据太岁起算
+/// - 月神煞：根据月建起算
+/// - 日神煞：根据日干支起算
+#[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+pub struct ShenShaInfo {
+    // ===== 日神煞 =====
+    /// 驿马（日支起）
+    pub yi_ma: DiZhi,
+    /// 旬空（两个）
+    pub xun_kong: (DiZhi, DiZhi),
+    /// 旬奇
+    pub xun_qi: Option<DiZhi>,
+    /// 旬仪
+    pub xun_yi: DiZhi,
+    /// 日奇
+    pub ri_qi: DiZhi,
+    /// 支仪
+    pub zhi_yi: DiZhi,
+    /// 天罗
+    pub tian_luo: DiZhi,
+    /// 地网
+    pub di_wang: DiZhi,
+
+    // ===== 月神煞 =====
+    /// 月驿马
+    pub yue_yi_ma: DiZhi,
+    /// 天马
+    pub tian_ma: DiZhi,
+    /// 皇书
+    pub huang_shu: DiZhi,
+    /// 皇恩
+    pub huang_en: DiZhi,
+    /// 天诏/飞魂
+    pub tian_zhao: DiZhi,
+    /// 天喜
+    pub tian_xi: DiZhi,
+    /// 生气
+    pub sheng_qi: DiZhi,
+    /// 死气/谩语
+    pub si_qi: DiZhi,
+    /// 三丘
+    pub san_qiu: DiZhi,
+    /// 五墓
+    pub wu_mu: DiZhi,
+    /// 孤辰
+    pub gu_chen: DiZhi,
+    /// 寡宿
+    pub gua_su: DiZhi,
+    /// 天医/天巫
+    pub tian_yi_shen: DiZhi,
+    /// 地医/地巫
+    pub di_yi: DiZhi,
+    /// 破碎
+    pub po_sui: Option<DiZhi>,
+    /// 月厌
+    pub yue_yan: DiZhi,
+    /// 血支
+    pub xue_zhi: DiZhi,
+    /// 血忌
+    pub xue_ji: DiZhi,
+    /// 丧车
+    pub sang_che: DiZhi,
+    /// 丧魂
+    pub sang_hun: DiZhi,
+    /// 天鬼
+    pub tian_gui: DiZhi,
+    /// 信神
+    pub xin_shen: DiZhi,
+    /// 天鸡
+    pub tian_ji: DiZhi,
+    /// 大时
+    pub da_shi: DiZhi,
+    /// 小时
+    pub xiao_shi: DiZhi,
+
+    // ===== 年神煞 =====
+    /// 年驿马
+    pub nian_yi_ma: DiZhi,
+    /// 大耗
+    pub da_hao: DiZhi,
+    /// 小耗
+    pub xiao_hao: DiZhi,
+    /// 病符
+    pub bing_fu: DiZhi,
+}
+
+// ============================================================================
+// 年命信息
+// ============================================================================
+
+/// 年命信息（用于命盘占断）
+#[derive(Clone, Copy, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+pub struct NianMingInfo {
+    /// 本命（出生年干支）
+    pub ben_ming: (TianGan, DiZhi),
+    /// 行年（当年的行年干支）
+    pub xing_nian: (TianGan, DiZhi),
+    /// 性别（true=男，false=女）
+    pub is_male: bool,
 }

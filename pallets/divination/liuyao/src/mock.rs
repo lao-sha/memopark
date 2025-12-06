@@ -5,10 +5,8 @@
 use crate as pallet_liuyao;
 use frame_support::{
     derive_impl,
-    parameter_types,
     traits::{ConstU32, ConstU64, ConstU128, Hooks},
 };
-use frame_system::EnsureRoot;
 use sp_core::H256;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
@@ -81,11 +79,6 @@ impl pallet_timestamp::Config for Test {
     type WeightInfo = ();
 }
 
-parameter_types! {
-    /// 国库账户
-    pub const TreasuryAccount: u64 = 100;
-}
-
 /// 测试用随机数生成器
 pub struct TestRandomness;
 
@@ -107,15 +100,11 @@ impl frame_support::traits::Randomness<H256, u64> for TestRandomness {
 ///
 /// 注：RuntimeEvent 关联类型已从 Polkadot SDK 2506 版本开始自动附加
 impl pallet_liuyao::Config for Test {
-    type Currency = Balances;
     type Randomness = TestRandomness;
     type MaxUserGuas = ConstU32<100>;
     type MaxPublicGuas = ConstU32<1000>;
     type DailyFreeGuas = ConstU32<3>;
     type MaxDailyGuas = ConstU32<10>;
-    type AiInterpretationFee = ConstU128<1000>;
-    type TreasuryAccount = TreasuryAccount;
-    type AiOracleOrigin = EnsureRoot<u64>;
     type MaxCidLen = ConstU32<64>;
 }
 
@@ -135,7 +124,6 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
             (ALICE, 100_000),
             (BOB, 100_000),
             (CHARLIE, 100_000),
-            (TreasuryAccount::get(), 1),
         ],
         dev_accounts: None,
     }

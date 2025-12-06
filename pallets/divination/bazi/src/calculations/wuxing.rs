@@ -81,9 +81,15 @@ fn add_dizhi_strength(strength: &mut WuXingStrength, zhi: DiZhi, is_month: bool)
 
 /// 添加地支藏干的五行强度
 fn add_canggan_strength(strength: &mut WuXingStrength, zhi: DiZhi) {
+	use crate::constants::is_valid_canggan;
 	let hidden_stems = get_hidden_stems(zhi);
 
 	for (i, &(gan, _, _)) in hidden_stems.iter().enumerate() {
+		// 跳过无效藏干（255标记）
+		if !is_valid_canggan(gan.0) {
+			continue;
+		}
+
 		let wuxing = gan.to_wuxing();
 
 		// 根据藏干类型确定权重

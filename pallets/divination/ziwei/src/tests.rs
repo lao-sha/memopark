@@ -569,3 +569,249 @@ fn test_events_emitted() {
         }));
     });
 }
+
+// ============================================================================
+// 新增算法测试 - Phase 1: 算法修复
+// ============================================================================
+
+/// 测试天府星位置计算（修正后公式）
+#[test]
+fn test_calculate_tianfu_position() {
+    // 紫府对照表验证
+    // 紫微在子(0) → 天府在辰(4)
+    assert_eq!(calculate_tianfu_position(0), 4);
+    // 紫微在丑(1) → 天府在卯(3)
+    assert_eq!(calculate_tianfu_position(1), 3);
+    // 紫微在寅(2) → 天府在寅(2)（自对）
+    assert_eq!(calculate_tianfu_position(2), 2);
+    // 紫微在卯(3) → 天府在丑(1)
+    assert_eq!(calculate_tianfu_position(3), 1);
+    // 紫微在辰(4) → 天府在子(0)
+    assert_eq!(calculate_tianfu_position(4), 0);
+    // 紫微在巳(5) → 天府在亥(11)
+    assert_eq!(calculate_tianfu_position(5), 11);
+    // 紫微在午(6) → 天府在戌(10)
+    assert_eq!(calculate_tianfu_position(6), 10);
+    // 紫微在未(7) → 天府在酉(9)
+    assert_eq!(calculate_tianfu_position(7), 9);
+    // 紫微在申(8) → 天府在申(8)（自对）
+    assert_eq!(calculate_tianfu_position(8), 8);
+    // 紫微在酉(9) → 天府在未(7)
+    assert_eq!(calculate_tianfu_position(9), 7);
+    // 紫微在戌(10) → 天府在午(6)
+    assert_eq!(calculate_tianfu_position(10), 6);
+    // 紫微在亥(11) → 天府在巳(5)
+    assert_eq!(calculate_tianfu_position(11), 5);
+}
+
+/// 测试火星铃星安星（修正后规则）
+#[test]
+fn test_calculate_huo_ling() {
+    // 寅午戌年（2,6,10）丑宫起火星，卯宫起铃星
+    let (huo, ling) = calculate_huo_ling(DiZhi::Yin, DiZhi::Zi); // 寅年子时
+    assert_eq!(huo, 1); // 丑(1) + 子(0) = 1
+    assert_eq!(ling, 3); // 卯(3) + 子(0) = 3
+
+    // 申子辰年（8,0,4）寅宫起火星，戌宫起铃星
+    let (huo, ling) = calculate_huo_ling(DiZhi::Zi, DiZhi::Zi); // 子年子时
+    assert_eq!(huo, 2); // 寅(2) + 子(0) = 2
+    assert_eq!(ling, 10); // 戌(10) + 子(0) = 10
+
+    // 巳酉丑年（5,9,1）卯宫起火星，戌宫起铃星
+    let (huo, ling) = calculate_huo_ling(DiZhi::You, DiZhi::Wu); // 酉年午时
+    assert_eq!(huo, (3 + 6) % 12); // 卯(3) + 午(6) = 9
+    assert_eq!(ling, (10 + 6) % 12); // 戌(10) + 午(6) = 4
+
+    // 亥卯未年（11,3,7）酉宫起火星，戌宫起铃星
+    let (huo, ling) = calculate_huo_ling(DiZhi::Mao, DiZhi::Chen); // 卯年辰时
+    assert_eq!(huo, (9 + 4) % 12); // 酉(9) + 辰(4) = 1
+    assert_eq!(ling, (10 + 4) % 12); // 戌(10) + 辰(4) = 2
+}
+
+/// 测试天马安星
+#[test]
+fn test_calculate_tian_ma() {
+    // 申子辰年马在寅
+    assert_eq!(calculate_tian_ma(DiZhi::Shen), 2);
+    assert_eq!(calculate_tian_ma(DiZhi::Zi), 2);
+    assert_eq!(calculate_tian_ma(DiZhi::Chen), 2);
+
+    // 寅午戌年马在申
+    assert_eq!(calculate_tian_ma(DiZhi::Yin), 8);
+    assert_eq!(calculate_tian_ma(DiZhi::Wu), 8);
+    assert_eq!(calculate_tian_ma(DiZhi::Xu), 8);
+
+    // 亥卯未年马在巳
+    assert_eq!(calculate_tian_ma(DiZhi::Hai), 5);
+    assert_eq!(calculate_tian_ma(DiZhi::Mao), 5);
+    assert_eq!(calculate_tian_ma(DiZhi::Wei), 5);
+
+    // 巳酉丑年马在亥
+    assert_eq!(calculate_tian_ma(DiZhi::Si), 11);
+    assert_eq!(calculate_tian_ma(DiZhi::You), 11);
+    assert_eq!(calculate_tian_ma(DiZhi::Chou), 11);
+}
+
+// ============================================================================
+// 新增算法测试 - Phase 2: 庙旺表
+// ============================================================================
+
+/// 测试星曜亮度转换
+#[test]
+fn test_star_brightness_from_value() {
+    assert_eq!(StarBrightness::from_value(0), StarBrightness::Xian);
+    assert_eq!(StarBrightness::from_value(1), StarBrightness::Ping);
+    assert_eq!(StarBrightness::from_value(2), StarBrightness::De);
+    assert_eq!(StarBrightness::from_value(3), StarBrightness::BuDe);
+    assert_eq!(StarBrightness::from_value(4), StarBrightness::Wang);
+    assert_eq!(StarBrightness::from_value(5), StarBrightness::Miao);
+    assert_eq!(StarBrightness::from_value(99), StarBrightness::Ping); // 默认值
+}
+
+/// 测试主星亮度查表
+#[test]
+fn test_get_star_brightness() {
+    // 紫微在丑宫庙
+    assert_eq!(get_star_brightness(ZhuXing::ZiWei, DiZhi::Chou), StarBrightness::Miao);
+    // 天机在子宫庙
+    assert_eq!(get_star_brightness(ZhuXing::TianJi, DiZhi::Zi), StarBrightness::Miao);
+    // 太阳在午宫庙
+    assert_eq!(get_star_brightness(ZhuXing::TaiYang, DiZhi::Wu), StarBrightness::Miao);
+    // 太阴在子宫庙
+    assert_eq!(get_star_brightness(ZhuXing::TaiYin, DiZhi::Zi), StarBrightness::Miao);
+}
+
+// ============================================================================
+// 新增算法测试 - Phase 3: 杂曜星系
+// ============================================================================
+
+/// 测试博士十二星
+#[test]
+fn test_calculate_bo_shi_stars() {
+    // 禄存在寅(2)，顺行
+    let positions = calculate_bo_shi_stars(2, true);
+    assert_eq!(positions[0], 2);  // 博士在寅
+    assert_eq!(positions[1], 3);  // 力士在卯
+    assert_eq!(positions[11], 1); // 官府在丑
+
+    // 禄存在寅(2)，逆行
+    let positions = calculate_bo_shi_stars(2, false);
+    assert_eq!(positions[0], 2);  // 博士在寅
+    assert_eq!(positions[1], 1);  // 力士在丑
+    assert_eq!(positions[11], 3); // 官府在卯
+}
+
+/// 测试博士十二星类型
+#[test]
+fn test_bo_shi_xing() {
+    assert_eq!(BoShiXing::BoShi.name(), "博士");
+    assert!(BoShiXing::BoShi.is_ji());
+    assert!(BoShiXing::QingLong.is_ji());
+    assert!(BoShiXing::XiShen.is_ji());
+
+    assert!(BoShiXing::XiaoHao.is_xiong());
+    assert!(BoShiXing::DaHao.is_xiong());
+    assert!(BoShiXing::GuanFu.is_xiong());
+}
+
+/// 测试长生起点
+#[test]
+fn test_calculate_chang_sheng_start() {
+    assert_eq!(calculate_chang_sheng_start(WuXing::Water), 8); // 申
+    assert_eq!(calculate_chang_sheng_start(WuXing::Earth), 8); // 申
+    assert_eq!(calculate_chang_sheng_start(WuXing::Wood), 11); // 亥
+    assert_eq!(calculate_chang_sheng_start(WuXing::Metal), 5); // 巳
+    assert_eq!(calculate_chang_sheng_start(WuXing::Fire), 2);  // 寅
+}
+
+/// 测试长生十二宫
+#[test]
+fn test_calculate_chang_sheng_positions() {
+    // 水局，顺行
+    let positions = calculate_chang_sheng_positions(WuXing::Water, true);
+    assert_eq!(positions[0], 8);  // 长生在申
+    assert_eq!(positions[1], 9);  // 沐浴在酉
+    assert_eq!(positions[4], 0);  // 帝旺在子
+
+    // 木局，逆行
+    let positions = calculate_chang_sheng_positions(WuXing::Wood, false);
+    assert_eq!(positions[0], 11); // 长生在亥
+    assert_eq!(positions[1], 10); // 沐浴在戌
+}
+
+/// 测试长生十二宫类型
+#[test]
+fn test_chang_sheng() {
+    assert_eq!(ChangSheng::ChangSheng.name(), "长生");
+    assert!(ChangSheng::ChangSheng.is_ji());
+    assert!(ChangSheng::DiWang.is_ji());
+    assert!(ChangSheng::LinGuan.is_ji());
+
+    assert!(ChangSheng::MuYu.is_xiong());
+    assert!(ChangSheng::Si.is_xiong());
+    assert!(ChangSheng::Mu.is_xiong());
+}
+
+/// 测试命主计算
+#[test]
+fn test_calculate_ming_zhu() {
+    // 子宫命主贪狼
+    assert_eq!(get_ming_zhu_name(DiZhi::Zi), "贪狼");
+    assert_eq!(calculate_ming_zhu(DiZhi::Zi), Some(ZhuXing::TanLang));
+
+    // 丑宫命主巨门
+    assert_eq!(get_ming_zhu_name(DiZhi::Chou), "巨门");
+    assert_eq!(calculate_ming_zhu(DiZhi::Chou), Some(ZhuXing::JuMen));
+
+    // 寅宫命主禄存（辅星返回None）
+    assert_eq!(get_ming_zhu_name(DiZhi::Yin), "禄存");
+    assert_eq!(calculate_ming_zhu(DiZhi::Yin), None);
+
+    // 午宫命主破军
+    assert_eq!(get_ming_zhu_name(DiZhi::Wu), "破军");
+    assert_eq!(calculate_ming_zhu(DiZhi::Wu), Some(ZhuXing::PoJun));
+}
+
+/// 测试身主计算
+#[test]
+fn test_calculate_shen_zhu() {
+    // 子年身主火星
+    assert_eq!(get_shen_zhu_name(DiZhi::Zi), "火星");
+    assert_eq!(calculate_shen_zhu(DiZhi::Zi), None);
+
+    // 丑年身主天相
+    assert_eq!(get_shen_zhu_name(DiZhi::Chou), "天相");
+    assert_eq!(calculate_shen_zhu(DiZhi::Chou), Some(ZhuXing::TianXiang));
+
+    // 寅年身主天梁
+    assert_eq!(get_shen_zhu_name(DiZhi::Yin), "天梁");
+    assert_eq!(calculate_shen_zhu(DiZhi::Yin), Some(ZhuXing::TianLiang));
+}
+
+// ============================================================================
+// 新增算法测试 - Phase 4: 大限
+// ============================================================================
+
+/// 测试大限详情生成
+#[test]
+fn test_generate_da_xian_details() {
+    // 命宫在寅(2)，金四局，顺行，甲年
+    let da_xians = generate_da_xian_details(2, 4, true, TianGan::Jia);
+
+    // 第一大限：4-13岁，在寅宫
+    assert_eq!(da_xians[0].0, 1);  // 序号
+    assert_eq!(da_xians[0].1, 4);  // 起始年龄
+    assert_eq!(da_xians[0].2, 13); // 结束年龄
+    assert_eq!(da_xians[0].3, DiZhi::Yin); // 宫位
+
+    // 第二大限：14-23岁，在卯宫
+    assert_eq!(da_xians[1].0, 2);
+    assert_eq!(da_xians[1].1, 14);
+    assert_eq!(da_xians[1].2, 23);
+    assert_eq!(da_xians[1].3, DiZhi::Mao);
+
+    // 逆行测试
+    let da_xians_rev = generate_da_xian_details(2, 4, false, TianGan::Jia);
+    // 第二大限应在丑宫
+    assert_eq!(da_xians_rev[1].3, DiZhi::Chou);
+}

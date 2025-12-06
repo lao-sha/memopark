@@ -613,6 +613,199 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// 时刻分起课（道家流派）
+        ///
+        /// 使用时辰、刻、分进行起课，这是道家小六壬的特色起课方法。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者（签名账户）
+        /// - `hour`: 当前小时（0-23）
+        /// - `minute`: 当前分钟（0-59）
+        /// - `question_cid`: 占卜问题的 IPFS CID（可选）
+        /// - `is_public`: 是否公开此课盘
+        ///
+        /// # 算法
+        /// 1. 时辰值：根据小时计算时辰（1-12）
+        /// 2. 刻值：每个时辰分为8刻，计算当前刻数（1-8）
+        /// 3. 分值：取分钟数除以15的余数（1-15）
+        ///
+        /// 然后按数字起课法计算：
+        /// - 月宫 = (时辰 - 1) % 6
+        /// - 日宫 = (时辰 + 刻 - 2) % 6
+        /// - 时宫 = (时辰 + 刻 + 分 - 3) % 6
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn divine_by_hour_ke(
+            origin: OriginFor<T>,
+            hour: u8,
+            minute: u8,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(hour <= 23, Error::<T>::InvalidHour);
+            ensure!(minute <= 59, Error::<T>::InvalidParams);
+
+            // 计算时辰值（1-12）
+            let shi_chen = ShiChen::from_hour(hour);
+            let shi_chen_value = shi_chen.index();
+
+            // 计算刻数
+            // 每个时辰2小时=120分钟，分为8刻，每刻15分钟
+            // 刻数 = (分钟 / 15) + 1，但需要考虑时辰边界
+            // 对于偶数小时（如2点），属于丑时后半段，刻数从5开始
+            // 对于奇数小时（如1点），属于丑时前半段，刻数从1开始
+            let ke = if hour % 2 == 0 {
+                // 偶数小时：属于时辰后半段，刻数为5-8
+                let base_ke = (minute / 15) as u8;
+                if base_ke == 0 { 5 } else { base_ke + 4 }
+            } else {
+                // 奇数小时：属于时辰前半段，刻数为1-4
+                let base_ke = (minute / 15) as u8;
+                if base_ke == 0 { 1 } else { base_ke }
+            };
+
+            // 计算分值（1-15）
+            let fen = {
+                let remainder = minute % 15;
+                if remainder == 0 { 1 } else { remainder }
+            };
+
+            // 使用时刻分起课算法
+            let san_gong = algorithm::divine_by_hour_ke_fen(shi_chen_value, ke, fen);
+
+            // 创建课盘
+            Self::create_pan(
+                who,
+                DivinationMethod::TimeKeMethod,
+                san_gong,
+                shi_chen_value,
+                ke,
+                fen,
+                Some(shi_chen),
+                question_cid,
+                is_public,
+            )
+        }
+
+        /// 多位数字起课（活数起课法扩展）
+        ///
+        /// 输入一个多位数字，将各位数字相加求和后进行起课。
+        /// 这是活数起课法的便捷版本，适用于看到手机号、车牌号等数字时起课。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `digits`: 多位数字（如 1436 表示看到时间 14:36）
+        /// - `question_cid`: 问题 CID（可选）
+        /// - `is_public`: 是否公开
+        ///
+        /// # 算法
+        /// 1. 将数字拆分为各位：如 1436 → [1, 4, 3, 6]
+        /// 2. 计算各位数字之和：1 + 4 + 3 + 6 = 14
+        /// 3. 减去 (位数 - 1)：14 - 3 = 11
+        /// 4. 对 6 取模得到六神索引：11 % 6 = 5 → 空亡
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn divine_by_digits(
+            origin: OriginFor<T>,
+            digits: u32,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(digits >= 1, Error::<T>::NumberMustBePositive);
+
+            // 使用多位数字起课算法
+            let san_gong = algorithm::divine_by_multi_digit(digits);
+
+            // 存储原始数字（拆分为三个字节存储）
+            let param1 = ((digits >> 16) & 0xFF) as u8;
+            let param2 = ((digits >> 8) & 0xFF) as u8;
+            let param3 = (digits & 0xFF) as u8;
+
+            // 创建课盘
+            Self::create_pan(
+                who,
+                DivinationMethod::NumberMethod,
+                san_gong,
+                param1,
+                param2,
+                param3,
+                None,
+                question_cid,
+                is_public,
+            )
+        }
+
+        /// 三数字起课（活数起课法标准版）
+        ///
+        /// 使用三个任意大小的数字进行起课，数字可以是任意正整数。
+        /// 这是活数起课法的完整版本，适用于有明确三个数字时使用。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `num1`: 第一个数字（≥1）
+        /// - `num2`: 第二个数字（≥1）
+        /// - `num3`: 第三个数字（≥1）
+        /// - `question_cid`: 问题 CID（可选）
+        /// - `is_public`: 是否公开
+        ///
+        /// # 算法
+        /// 采用递推法：
+        /// - 月宫 = num1 对应的六神
+        /// - 日宫 = 从月宫起，前进 num2 步
+        /// - 时宫 = 从日宫起，前进 num3 步
+        #[pallet::call_index(9)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn divine_by_three_numbers(
+            origin: OriginFor<T>,
+            num1: u32,
+            num2: u32,
+            num3: u32,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数必须大于 0
+            ensure!(num1 >= 1 && num2 >= 1 && num3 >= 1, Error::<T>::NumberMustBePositive);
+
+            // 使用递推法计算
+            // 月宫：num1 对应的六神
+            let yue_index = ((num1 - 1) % 6) as u8;
+            // 日宫：从月宫起，前进 num2-1 步
+            let ri_index = ((yue_index as u32 + num2 - 1) % 6) as u8;
+            // 时宫：从日宫起，前进 num3-1 步
+            let shi_index = ((ri_index as u32 + num3 - 1) % 6) as u8;
+
+            let san_gong = algorithm::divine_manual(yue_index, ri_index, shi_index);
+
+            // 存储参数（取低8位）
+            let param1 = (num1 & 0xFF) as u8;
+            let param2 = (num2 & 0xFF) as u8;
+            let param3 = (num3 & 0xFF) as u8;
+
+            // 创建课盘
+            Self::create_pan(
+                who,
+                DivinationMethod::NumberMethod,
+                san_gong,
+                param1,
+                param2,
+                param3,
+                None,
+                question_cid,
+                is_public,
+            )
+        }
     }
 
     // ============================================================================

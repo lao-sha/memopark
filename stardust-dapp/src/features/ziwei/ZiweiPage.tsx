@@ -19,6 +19,7 @@ import {
   DatePicker,
   Radio,
   Spin,
+  Switch,
 } from 'antd';
 import {
   StarOutlined,
@@ -26,6 +27,8 @@ import {
   ReloadOutlined,
   UserOutlined,
   CalendarOutlined,
+  CloudOutlined,
+  DesktopOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -50,6 +53,7 @@ import {
   SiHua,
   getSiHuaDescription,
 } from '../../types/ziwei';
+import * as ziweiService from '../../services/ziweiService';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -235,37 +239,76 @@ const ZiweiPage: React.FC = () => {
   const [gender, setGender] = useState<Gender>(Gender.Male);
   const [loading, setLoading] = useState(false);
   const [chart, setChart] = useState<ZiweiChart | null>(null);
+  const [useChain, setUseChain] = useState(false); // 是否使用链端
+  const [chainChartId, setChainChartId] = useState<number | null>(null);
 
   /**
-   * 排盘
+   * 本地排盘
    */
-  const handleCalculate = useCallback(async () => {
+  const handleLocalCalculate = useCallback(async () => {
     if (!birthDate) {
       message.warning('请选择出生日期');
       return;
     }
 
+    const result = generateMockZiweiChart(
+      birthDate.year(),
+      birthDate.month() + 1,
+      birthDate.date(),
+      birthHour,
+      gender
+    );
+    setChart(result);
+    message.success('命盘排列完成');
+  }, [birthDate, birthHour, gender]);
+
+  /**
+   * 链端排盘
+   */
+  const handleChainCalculate = useCallback(async () => {
+    if (!birthDate) {
+      message.warning('请选择出生日期');
+      return;
+    }
+
+    try {
+      const chartId = await ziweiService.divineByTime(
+        birthDate.year(),
+        birthDate.month() + 1,  // 农历月份（简化处理）
+        birthDate.date(),       // 农历日期
+        birthHour as ziweiService.DiZhi,
+        gender as ziweiService.Gender,
+        false // 非闰月
+      );
+      setChainChartId(chartId);
+      message.success(`链端排盘成功，命盘ID: ${chartId}`);
+
+      // 可选：查询命盘详情并显示
+      // const chartData = await ziweiService.getChart(chartId);
+    } catch (error: any) {
+      console.error('链端排盘失败:', error);
+      message.error(`链端排盘失败: ${error.message || '请检查钱包连接'}`);
+    }
+  }, [birthDate, birthHour, gender]);
+
+  /**
+   * 排盘
+   */
+  const handleCalculate = useCallback(async () => {
     setLoading(true);
     try {
-      // 模拟API延迟
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const result = generateMockZiweiChart(
-        birthDate.year(),
-        birthDate.month() + 1,
-        birthDate.date(),
-        birthHour,
-        gender
-      );
-      setChart(result);
-      message.success('命盘排列完成');
+      if (useChain) {
+        await handleChainCalculate();
+      } else {
+        await handleLocalCalculate();
+      }
     } catch (error) {
       console.error('排盘失败:', error);
       message.error('排盘失败，请重试');
     } finally {
       setLoading(false);
     }
-  }, [birthDate, birthHour, gender]);
+  }, [useChain, handleChainCalculate, handleLocalCalculate]);
 
   /**
    * 重置
@@ -275,6 +318,7 @@ const ZiweiPage: React.FC = () => {
     setBirthHour(0);
     setGender(Gender.Male);
     setChart(null);
+    setChainChartId(null);
   }, []);
 
   /**
@@ -288,6 +332,19 @@ const ZiweiPage: React.FC = () => {
       <Paragraph type="secondary" className="page-subtitle">
         输入出生时间，排列紫微命盘
       </Paragraph>
+
+      {/* 链端/本地切换 */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch
+          checked={useChain}
+          onChange={setUseChain}
+          checkedChildren={<CloudOutlined />}
+          unCheckedChildren={<DesktopOutlined />}
+        />
+        <Text type="secondary">
+          {useChain ? '链端排盘（结果上链存储）' : '本地排盘（快速预览）'}
+        </Text>
+      </div>
 
       <Divider />
 

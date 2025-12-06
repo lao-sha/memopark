@@ -208,16 +208,28 @@ pub fn place_ziwei_series(ziwei_pos: u8) -> [(ZhuXing, u8); 6] {
 
 /// 计算天府星位置（根据紫微位置）
 /// 天府与紫微关于寅申轴对称
+///
+/// # 算法说明
+/// 紫府对照表规律：天府位置 = (16 - 紫微位置) % 12
+/// 等价于 (4 + 12 - ziwei_pos) % 12
+///
+/// | 紫微 | 天府 |
+/// |------|------|
+/// | 子0  | 辰4  |
+/// | 丑1  | 卯3  |
+/// | 寅2  | 寅2  |
+/// | 卯3  | 丑1  |
+/// | 辰4  | 子0  |
+/// | 巳5  | 亥11 |
+/// | 午6  | 戌10 |
+/// | 未7  | 酉9  |
+/// | 申8  | 申8  |
+/// | 酉9  | 未7  |
+/// | 戌10 | 午6  |
+/// | 亥11 | 巳5  |
 pub fn calculate_tianfu_position(ziwei_pos: u8) -> u8 {
-    // 紫微和天府关于寅(2)-申(8)轴对称
-    // 天府位置 = (4 - ziwei_pos + 12) % 12 当 ziwei <= 4
-    // 天府位置 = (16 - ziwei_pos) % 12 当 ziwei > 4
-
-    if ziwei_pos == 0 || ziwei_pos == 6 {
-        ziwei_pos
-    } else {
-        (12 - ziwei_pos) % 12
-    }
+    // 修正后的公式，与参考实现一致
+    (16 - ziwei_pos) % 12
 }
 
 /// 安天府星系（8颗主星）
@@ -332,24 +344,44 @@ pub fn calculate_lu_cun(year_gan: TianGan) -> u8 {
 }
 
 /// 安火星铃星（根据年支和时辰）
+///
+/// # 火星起点口诀
+/// 寅午戌年丑宫起，申子辰年寅宫起，巳酉丑年卯宫起，亥卯未年酉宫起
+///
+/// # 铃星起点口诀
+/// 寅午戌年卯宫起，其他年戌宫起
+///
+/// # 参数
+/// - year_zhi: 年支（决定起点宫位）
+/// - birth_hour: 出生时辰（从起点宫位顺数）
+///
+/// # 返回
+/// (火星位置, 铃星位置)
 pub fn calculate_huo_ling(year_zhi: DiZhi, birth_hour: DiZhi) -> (u8, u8) {
     let year_idx = year_zhi.index();
     let hour_idx = birth_hour.index();
 
-    // 火星起点（根据年支三合局）
-    let huo_start = match year_idx % 4 {
-        0 => 2,  // 申子辰年，寅宫起
-        1 => 3,  // 巳酉丑年，卯宫起
-        2 => 2,  // 寅午戌年，丑宫起（特殊）
-        _ => 9,  // 亥卯未年，酉宫起
+    // 火星起点（根据年支三合局分组）
+    // 寅午戌 (2,6,10) → 丑宫(1)起
+    // 申子辰 (8,0,4)  → 寅宫(2)起
+    // 巳酉丑 (5,9,1)  → 卯宫(3)起
+    // 亥卯未 (11,3,7) → 酉宫(9)起
+    let huo_start = match year_idx {
+        2 | 6 | 10 => 1,   // 寅午戌年，丑宫起
+        8 | 0 | 4 => 2,    // 申子辰年，寅宫起
+        5 | 9 | 1 => 3,    // 巳酉丑年，卯宫起
+        11 | 3 | 7 => 9,   // 亥卯未年，酉宫起
+        _ => 2,            // 默认寅宫
     };
 
     // 铃星起点
-    let ling_start = match year_idx % 4 {
-        0 | 1 | 3 => 10, // 戌宫起
-        _ => 10,         // 戌宫起
+    // 寅午戌年卯宫起，其他年戌宫起
+    let ling_start = match year_idx {
+        2 | 6 | 10 => 3,   // 寅午戌年，卯宫起
+        _ => 10,           // 其他年，戌宫起
     };
 
+    // 从起点宫位顺数到出生时辰
     let huo_xing = (huo_start + hour_idx) % 12;
     let ling_xing = (ling_start + hour_idx) % 12;
 
@@ -526,40 +558,129 @@ pub fn calculate_da_yun_direction(year_gan: TianGan, gender: Gender) -> bool {
 // 星曜亮度
 // ============================================================================
 
-/// 获取主星在某宫位的亮度
-pub fn get_star_brightness(star: ZhuXing, di_zhi: DiZhi) -> StarBrightness {
-    // 简化版亮度表，实际应根据完整的庙旺利陷表
-    let zhi_idx = di_zhi.index();
+/// 14主星庙旺表常量（索引：星曜, 地支）
+/// 值: 0=陷, 1=平, 2=得, 3=利, 4=旺, 5=庙
+/// 顺序：子丑寅卯辰巳午未申酉戌亥
+///
+/// 数据来源：《紫微斗数全书》安星诀 / 三合派庙旺表
+const ZHU_XING_BRIGHTNESS: [[u8; 12]; 14] = [
+    // 紫微: 平庙旺旺陷旺庙庙旺平陷旺
+    [1, 5, 4, 4, 0, 4, 5, 5, 4, 1, 0, 4],
+    // 天机: 庙陷旺旺庙平庙陷平旺庙平
+    [5, 0, 4, 4, 5, 1, 5, 0, 1, 4, 5, 1],
+    // 太阳: 陷陷旺庙旺庙庙得得陷陷陷
+    [0, 0, 4, 5, 4, 5, 5, 2, 2, 0, 0, 0],
+    // 武曲: 旺庙利旺陷庙旺庙利旺陷庙
+    [4, 5, 3, 4, 0, 5, 4, 5, 3, 4, 0, 5],
+    // 天同: 旺旺陷庙平旺陷平陷庙平旺
+    [4, 4, 0, 5, 1, 4, 0, 1, 0, 5, 1, 4],
+    // 廉贞: 平庙陷平旺庙平庙陷平旺庙
+    [1, 5, 0, 1, 4, 5, 1, 5, 0, 1, 4, 5],
+    // 天府: 庙得旺庙庙旺庙得旺庙庙旺
+    [5, 2, 4, 5, 5, 4, 5, 2, 4, 5, 5, 4],
+    // 太阴: 庙庙得陷陷陷陷陷得旺庙庙
+    [5, 5, 2, 0, 0, 0, 0, 0, 2, 4, 5, 5],
+    // 贪狼: 庙平庙旺旺旺旺平庙旺旺旺
+    [5, 1, 5, 4, 4, 4, 4, 1, 5, 4, 4, 4],
+    // 巨门: 旺陷庙旺陷平平陷庙旺陷平
+    [4, 0, 5, 4, 0, 1, 1, 0, 5, 4, 0, 1],
+    // 天相: 庙得旺庙陷旺庙得旺庙陷旺
+    [5, 2, 4, 5, 0, 4, 5, 2, 4, 5, 0, 4],
+    // 天梁: 庙庙庙旺陷旺庙庙庙旺陷旺
+    [5, 5, 5, 4, 0, 4, 5, 5, 5, 4, 0, 4],
+    // 七杀: 庙平旺旺平庙旺平旺旺平庙
+    [5, 1, 4, 4, 1, 5, 4, 1, 4, 4, 1, 5],
+    // 破军: 旺陷庙旺陷平旺陷庙旺陷平
+    [4, 0, 5, 4, 0, 1, 4, 0, 5, 4, 0, 1],
+];
 
-    match star {
-        ZhuXing::ZiWei => match zhi_idx {
-            1 | 6 | 7 => StarBrightness::Miao,
-            2 | 5 | 8 | 9 | 11 => StarBrightness::Wang,
-            4 | 10 => StarBrightness::De,
-            _ => StarBrightness::Ping,
-        },
-        ZhuXing::TianJi => match zhi_idx {
-            0 | 6 => StarBrightness::Miao,
-            3 | 9 => StarBrightness::Wang,
-            2 | 8 => StarBrightness::De,
-            1 | 7 => StarBrightness::Xian,
-            _ => StarBrightness::Ping,
-        },
-        ZhuXing::TaiYang => match zhi_idx {
-            3 | 5 | 6 => StarBrightness::Miao,
-            2 | 4 => StarBrightness::Wang,
-            7 | 8 => StarBrightness::De,
-            0 | 10 | 11 => StarBrightness::Xian,
-            _ => StarBrightness::Ping,
-        },
-        ZhuXing::TaiYin => match zhi_idx {
-            0 | 1 | 10 | 11 => StarBrightness::Miao,
-            9 => StarBrightness::Wang,
-            2 | 8 => StarBrightness::Wang,
-            3 | 4 | 5 | 6 | 7 => StarBrightness::Xian,
-            _ => StarBrightness::Ping,
-        },
-        _ => StarBrightness::Ping, // 其他星曜简化处理
+/// 六吉星庙旺表常量
+/// 顺序：文昌、文曲、左辅、右弼、天魁、天钺
+const LIU_JI_BRIGHTNESS: [[u8; 12]; 6] = [
+    // 文昌: 平庙平庙陷陷陷庙平庙平平
+    [1, 5, 1, 5, 0, 0, 0, 5, 1, 5, 1, 1],
+    // 文曲: 平平庙庙陷陷庙平平庙陷平
+    [1, 1, 5, 5, 0, 0, 5, 1, 1, 5, 0, 1],
+    // 左辅: 庙庙庙庙庙庙庙庙庙庙庙庙 (全庙)
+    [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+    // 右弼: 庙庙庙庙庙庙庙庙庙庙庙庙 (全庙)
+    [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+    // 天魁: 平庙庙平平庙平平平旺平庙
+    [1, 5, 5, 1, 1, 5, 1, 1, 1, 4, 1, 5],
+    // 天钺: 庙平平庙庙平旺庙庙平平平
+    [5, 1, 1, 5, 5, 1, 4, 5, 5, 1, 1, 1],
+];
+
+/// 六煞星庙旺表常量
+/// 顺序：擎羊、陀罗、火星、铃星、地空、地劫
+const LIU_SHA_BRIGHTNESS: [[u8; 12]; 6] = [
+    // 擎羊: 陷陷庙陷陷旺陷陷庙陷陷旺
+    [0, 0, 5, 0, 0, 4, 0, 0, 5, 0, 0, 4],
+    // 陀罗: 旺陷陷庙旺陷陷庙旺陷陷庙
+    [4, 0, 0, 5, 4, 0, 0, 5, 4, 0, 0, 5],
+    // 火星: 利陷庙旺利陷庙旺利陷庙旺
+    [3, 0, 5, 4, 3, 0, 5, 4, 3, 0, 5, 4],
+    // 铃星: 利陷旺庙利陷旺庙利陷旺庙
+    [3, 0, 4, 5, 3, 0, 4, 5, 3, 0, 4, 5],
+    // 地空: 平平平平平平平平平平平平 (无庙旺)
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    // 地劫: 平平平平平平平平平平平平 (无庙旺)
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+];
+
+/// 获取主星在某宫位的亮度（完整版）
+///
+/// # 参数
+/// - star: 主星类型
+/// - di_zhi: 宫位地支
+///
+/// # 返回
+/// 星曜亮度
+pub fn get_star_brightness(star: ZhuXing, di_zhi: DiZhi) -> StarBrightness {
+    let zhi_idx = di_zhi.index() as usize;
+    let star_idx = star as usize;
+
+    if star_idx < ZHU_XING_BRIGHTNESS.len() {
+        let brightness_val = ZHU_XING_BRIGHTNESS[star_idx][zhi_idx];
+        StarBrightness::from_value(brightness_val)
+    } else {
+        StarBrightness::Ping
+    }
+}
+
+/// 获取六吉星在某宫位的亮度
+///
+/// # 参数
+/// - star_type: 0=文昌, 1=文曲, 2=左辅, 3=右弼, 4=天魁, 5=天钺
+/// - di_zhi: 宫位地支
+///
+/// # 返回
+/// 星曜亮度
+pub fn get_liu_ji_brightness(star_type: u8, di_zhi: DiZhi) -> StarBrightness {
+    let zhi_idx = di_zhi.index() as usize;
+    if (star_type as usize) < LIU_JI_BRIGHTNESS.len() {
+        let brightness_val = LIU_JI_BRIGHTNESS[star_type as usize][zhi_idx];
+        StarBrightness::from_value(brightness_val)
+    } else {
+        StarBrightness::Ping
+    }
+}
+
+/// 获取六煞星在某宫位的亮度
+///
+/// # 参数
+/// - star_type: 0=擎羊, 1=陀罗, 2=火星, 3=铃星, 4=地空, 5=地劫
+/// - di_zhi: 宫位地支
+///
+/// # 返回
+/// 星曜亮度
+pub fn get_liu_sha_brightness(star_type: u8, di_zhi: DiZhi) -> StarBrightness {
+    let zhi_idx = di_zhi.index() as usize;
+    if (star_type as usize) < LIU_SHA_BRIGHTNESS.len() {
+        let brightness_val = LIU_SHA_BRIGHTNESS[star_type as usize][zhi_idx];
+        StarBrightness::from_value(brightness_val)
+    } else {
+        StarBrightness::Ping
     }
 }
 
@@ -582,4 +703,287 @@ pub fn init_palaces(year_gan: TianGan, ming_gong_pos: u8) -> [Palace; 12] {
     }
 
     palaces
+}
+
+// ============================================================================
+// 天马安星
+// ============================================================================
+
+/// 安天马（根据年支）
+///
+/// # 口诀
+/// 申子辰年马在寅，寅午戌年马在申，亥卯未年马在巳，巳酉丑年马在亥
+///
+/// # 三合局原理
+/// 天马落在年支三合局的冲位：
+/// - 申子辰三合水局，马星在寅（申冲寅）
+/// - 寅午戌三合火局，马星在申（寅冲申）
+/// - 亥卯未三合木局，马星在巳（亥冲巳）
+/// - 巳酉丑三合金局，马星在亥（巳冲亥）
+///
+/// # 参数
+/// - year_zhi: 年支
+///
+/// # 返回
+/// 天马所在宫位索引（0-11）
+pub fn calculate_tian_ma(year_zhi: DiZhi) -> u8 {
+    let year_idx = year_zhi.index();
+
+    match year_idx {
+        // 申子辰年（8,0,4）→ 寅(2)
+        8 | 0 | 4 => 2,
+        // 寅午戌年（2,6,10）→ 申(8)
+        2 | 6 | 10 => 8,
+        // 亥卯未年（11,3,7）→ 巳(5)
+        11 | 3 | 7 => 5,
+        // 巳酉丑年（5,9,1）→ 亥(11)
+        5 | 9 | 1 => 11,
+        _ => 2, // 默认寅宫
+    }
+}
+
+// ============================================================================
+// 命主身主计算
+// ============================================================================
+
+/// 计算命主星（根据命宫地支）
+///
+/// # 口诀
+/// 命宫地支定命主：
+/// - 子宫 → 贪狼
+/// - 丑亥宫 → 巨门
+/// - 寅戌宫 → 禄存（此处返回 None，禄存属于辅星）
+/// - 卯酉宫 → 文曲（此处返回 None，文曲属于辅星）
+/// - 辰申宫 → 廉贞
+/// - 巳未宫 → 武曲
+/// - 午宫 → 破军
+///
+/// # 参数
+/// - ming_gong_zhi: 命宫地支
+///
+/// # 返回
+/// 命主星（主星类型，禄存/文曲返回 None）
+pub fn calculate_ming_zhu(ming_gong_zhi: DiZhi) -> Option<ZhuXing> {
+    match ming_gong_zhi {
+        DiZhi::Zi => Some(ZhuXing::TanLang),
+        DiZhi::Chou | DiZhi::Hai => Some(ZhuXing::JuMen),
+        DiZhi::Yin | DiZhi::Xu => None, // 禄存（辅星，需特殊处理）
+        DiZhi::Mao | DiZhi::You => None, // 文曲（辅星，需特殊处理）
+        DiZhi::Chen | DiZhi::Shen => Some(ZhuXing::LianZhen),
+        DiZhi::Si | DiZhi::Wei => Some(ZhuXing::WuQu),
+        DiZhi::Wu => Some(ZhuXing::PoJun),
+    }
+}
+
+/// 获取命主星名称（包含辅星）
+///
+/// # 参数
+/// - ming_gong_zhi: 命宫地支
+///
+/// # 返回
+/// 命主星名称
+pub fn get_ming_zhu_name(ming_gong_zhi: DiZhi) -> &'static str {
+    match ming_gong_zhi {
+        DiZhi::Zi => "贪狼",
+        DiZhi::Chou | DiZhi::Hai => "巨门",
+        DiZhi::Yin | DiZhi::Xu => "禄存",
+        DiZhi::Mao | DiZhi::You => "文曲",
+        DiZhi::Chen | DiZhi::Shen => "廉贞",
+        DiZhi::Si | DiZhi::Wei => "武曲",
+        DiZhi::Wu => "破军",
+    }
+}
+
+/// 计算身主星（根据年支）
+///
+/// # 口诀
+/// 年支定身主：
+/// - 子午年 → 火星
+/// - 丑未年 → 天相
+/// - 寅申年 → 天梁
+/// - 卯酉年 → 天同
+/// - 辰戌年 → 文昌
+/// - 巳亥年 → 天机
+///
+/// # 参数
+/// - year_zhi: 年支
+///
+/// # 返回
+/// 身主星名称
+pub fn get_shen_zhu_name(year_zhi: DiZhi) -> &'static str {
+    match year_zhi {
+        DiZhi::Zi | DiZhi::Wu => "火星",
+        DiZhi::Chou | DiZhi::Wei => "天相",
+        DiZhi::Yin | DiZhi::Shen => "天梁",
+        DiZhi::Mao | DiZhi::You => "天同",
+        DiZhi::Chen | DiZhi::Xu => "文昌",
+        DiZhi::Si | DiZhi::Hai => "天机",
+    }
+}
+
+/// 计算身主星（返回可能的主星类型）
+///
+/// # 参数
+/// - year_zhi: 年支
+///
+/// # 返回
+/// 身主星（主星类型，火星/文昌返回 None）
+pub fn calculate_shen_zhu(year_zhi: DiZhi) -> Option<ZhuXing> {
+    match year_zhi {
+        DiZhi::Zi | DiZhi::Wu => None, // 火星（煞星）
+        DiZhi::Chou | DiZhi::Wei => Some(ZhuXing::TianXiang),
+        DiZhi::Yin | DiZhi::Shen => Some(ZhuXing::TianLiang),
+        DiZhi::Mao | DiZhi::You => Some(ZhuXing::TianTong),
+        DiZhi::Chen | DiZhi::Xu => None, // 文昌（辅星）
+        DiZhi::Si | DiZhi::Hai => Some(ZhuXing::TianJi),
+    }
+}
+
+// ============================================================================
+// 博士十二星
+// ============================================================================
+
+/// 安博士十二星（从禄存起博士）
+///
+/// # 口诀
+/// 禄存起博士，阳男阴女顺行，阴男阳女逆行
+///
+/// # 参数
+/// - lu_cun_pos: 禄存位置（0-11）
+/// - is_shun: 是否顺行
+///
+/// # 返回
+/// 12个位置数组，索引对应博士十二星（0=博士, 1=力士, ... 11=官府）
+pub fn calculate_bo_shi_stars(lu_cun_pos: u8, is_shun: bool) -> [u8; 12] {
+    let mut positions = [0u8; 12];
+    for i in 0..12 {
+        if is_shun {
+            positions[i] = (lu_cun_pos + i as u8) % 12;
+        } else {
+            positions[i] = (lu_cun_pos + 12 - i as u8) % 12;
+        }
+    }
+    positions
+}
+
+/// 获取博士十二星在各宫的分布
+///
+/// # 参数
+/// - lu_cun_pos: 禄存位置
+/// - is_shun: 是否顺行
+///
+/// # 返回
+/// 12元素数组，索引为宫位，值为所在星的索引（0-11），None表示无博士星
+pub fn get_bo_shi_in_palaces(lu_cun_pos: u8, is_shun: bool) -> [Option<BoShiXing>; 12] {
+    let positions = calculate_bo_shi_stars(lu_cun_pos, is_shun);
+    let mut result = [None; 12];
+    for (star_idx, &palace_pos) in positions.iter().enumerate() {
+        result[palace_pos as usize] = Some(BoShiXing::from_index(star_idx as u8));
+    }
+    result
+}
+
+// ============================================================================
+// 长生十二宫
+// ============================================================================
+
+/// 获取长生起点（根据五行局）
+///
+/// # 口诀
+/// 水土局长生在申，木局长生在亥，金局长生在巳，火局长生在寅
+///
+/// # 参数
+/// - wu_xing: 五行局
+///
+/// # 返回
+/// 长生起点宫位（0-11）
+pub fn calculate_chang_sheng_start(wu_xing: WuXing) -> u8 {
+    match wu_xing {
+        WuXing::Water | WuXing::Earth => 8, // 申
+        WuXing::Wood => 11,                  // 亥
+        WuXing::Metal => 5,                  // 巳
+        WuXing::Fire => 2,                   // 寅
+    }
+}
+
+/// 安长生十二宫
+///
+/// # 参数
+/// - wu_xing: 五行局
+/// - is_shun: 是否顺行（阳男阴女顺行，阴男阳女逆行）
+///
+/// # 返回
+/// 12个位置数组，索引对应长生十二宫（0=长生, 1=沐浴, ... 11=养）
+pub fn calculate_chang_sheng_positions(wu_xing: WuXing, is_shun: bool) -> [u8; 12] {
+    let start = calculate_chang_sheng_start(wu_xing);
+    let mut positions = [0u8; 12];
+    for i in 0..12 {
+        if is_shun {
+            positions[i] = (start + i as u8) % 12;
+        } else {
+            positions[i] = (start + 12 - i as u8) % 12;
+        }
+    }
+    positions
+}
+
+/// 获取长生十二宫在各宫的分布
+///
+/// # 参数
+/// - wu_xing: 五行局
+/// - is_shun: 是否顺行
+///
+/// # 返回
+/// 12元素数组，索引为宫位，值为长生十二宫的枚举
+pub fn get_chang_sheng_in_palaces(wu_xing: WuXing, is_shun: bool) -> [ChangSheng; 12] {
+    let positions = calculate_chang_sheng_positions(wu_xing, is_shun);
+    let mut result = [ChangSheng::ChangSheng; 12];
+    for (cs_idx, &palace_pos) in positions.iter().enumerate() {
+        result[palace_pos as usize] = ChangSheng::from_index(cs_idx as u8);
+    }
+    result
+}
+
+// ============================================================================
+// 大限计算
+// ============================================================================
+
+/// 生成十二大限详情
+///
+/// # 参数
+/// - ming_gong_pos: 命宫位置
+/// - ju_shu: 五行局数（起运年龄）
+/// - is_shun: 是否顺行（阳男阴女顺行，阴男阳女逆行）
+/// - year_gan: 年干（用于计算各大限宫干）
+///
+/// # 返回
+/// 12个大限信息元组：(序号, 起始年龄, 结束年龄, 宫位地支, 宫位天干)
+pub fn generate_da_xian_details(
+    ming_gong_pos: u8,
+    ju_shu: u8,
+    is_shun: bool,
+    year_gan: TianGan,
+) -> [(u8, u8, u8, DiZhi, TianGan); 12] {
+    let mut da_xians = [(0u8, 0u8, 0u8, DiZhi::Zi, TianGan::Jia); 12];
+    let mut current_age = ju_shu;
+
+    for i in 0..12 {
+        let gong_pos = if is_shun {
+            (ming_gong_pos + i as u8) % 12
+        } else {
+            (ming_gong_pos + 12 - i as u8) % 12
+        };
+
+        da_xians[i] = (
+            (i + 1) as u8,                        // 序号
+            current_age,                           // 起始年龄
+            current_age + 9,                       // 结束年龄
+            DiZhi::from_index(gong_pos),          // 宫位地支
+            get_gong_gan(year_gan, gong_pos),     // 宫位天干
+        );
+
+        current_age += 10;
+    }
+
+    da_xians
 }

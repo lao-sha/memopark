@@ -1,0 +1,49 @@
+[package]
+name = "xuanxue-oracle"
+version = "0.1.0"
+edition = "2021"
+authors = ["Stardust Team"]
+description = "Oracle node service for AI-powered divination interpretation"
+
+[dependencies]
+# Substrate & Polkadot
+subxt = "0.35"
+sp-core = { version = "31.0.0", default-features = false }
+sp-runtime = { version = "34.0.0", default-features = false }
+
+# 异步运行时
+tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+codec = { package = "parity-scale-codec", version = "3.6", features = ["derive"] }
+
+# HTTP客户端
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# IPFS
+ipfs-api = "0.17"
+ipfs-api-backend-hyper = "0.6"
+
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 配置
+config = "0.14"
+dotenv = "0.15"
+
+# 时间
+chrono = { version = "0.4", features = ["serde"] }
+
+# 缓存
+sled = "0.34"
+
+[dev-dependencies]
+tokio-test = "0.4"

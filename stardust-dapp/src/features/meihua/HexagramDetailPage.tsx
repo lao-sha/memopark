@@ -39,8 +39,9 @@ import {
   archiveHexagram,
   getInterpretationRequest,
   getInterpretationResult,
+  getHexagramDetail,
 } from '../../services/meihuaService';
-import type { Hexagram, InterpretationResult } from '../../types/meihua';
+import type { Hexagram, InterpretationResult, FullDivinationDetail } from '../../types/meihua';
 import {
   Trigram,
   WuXing,
@@ -232,6 +233,7 @@ const HexagramDetailPage: React.FC = () => {
   }, []);
 
   const [hexagram, setHexagram] = useState<Hexagram | null>(null);
+  const [hexagramDetail, setHexagramDetail] = useState<FullDivinationDetail | null>(null);
   const [interpretation, setInterpretation] = useState<InterpretationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
@@ -249,6 +251,10 @@ const HexagramDetailPage: React.FC = () => {
       const hexagramId = parseInt(id, 10);
       const data = await getHexagram(hexagramId);
       setHexagram(data);
+
+      // 加载完整详细信息（包含伏卦和体用解读）
+      const detail = await getHexagramDetail(hexagramId);
+      setHexagramDetail(detail);
 
       // TODO: 加载已有的解读结果
     } catch (error) {
@@ -385,6 +391,9 @@ const HexagramDetailPage: React.FC = () => {
         <Descriptions column={1} size="small">
           <Descriptions.Item label="动爻">
             第 {hexagram.changingLine} 爻
+            {hexagramDetail?.benGua?.dongYaoMing && (
+              <Text style={{ marginLeft: 8 }}>（{hexagramDetail.benGua.dongYaoMing}）</Text>
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="体卦">
             {TRIGRAM_NAMES[hexagram.bodyTrigram]}（{TRIGRAM_MEANINGS[hexagram.bodyTrigram]}）
@@ -406,12 +415,117 @@ const HexagramDetailPage: React.FC = () => {
 
         <Divider />
 
-        <Paragraph className="analysis-hint">
-          <InfoCircleOutlined style={{ marginRight: 8 }} />
-          梅花易数以"体用"论吉凶。体卦代表自身，用卦代表所问之事。
-          用生体、体克用为吉；体生用、用克体为凶；比和中平。
-        </Paragraph>
+        {/* 体用关系详细解读（来自 Pallet） */}
+        {hexagramDetail?.tiyongInterpretation ? (
+          <Paragraph className="tiyong-interpretation">
+            <InfoCircleOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+            <Text strong>体用解读：</Text>
+            <Text>{hexagramDetail.tiyongInterpretation}</Text>
+          </Paragraph>
+        ) : (
+          <Paragraph className="analysis-hint">
+            <InfoCircleOutlined style={{ marginRight: 8 }} />
+            梅花易数以"体用"论吉凶。体卦代表自身，用卦代表所问之事。
+            用生体、体克用为吉；体生用、用克体为凶；比和中平。
+          </Paragraph>
+        )}
       </Card>
+
+      {/* 卦辞爻辞展示 */}
+      {hexagramDetail?.benGua && (
+        <Card title="卦辞爻辞" className="guaci-card">
+          <Descriptions column={1} size="small">
+            <Descriptions.Item label="卦辞">
+              <Text>{hexagramDetail.benGua.guaci || '暂无'}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="动爻爻辞">
+              <Text>{hexagramDetail.benGua.dongYaoCi || '暂无'}</Text>
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
+
+      {/* 互卦、错卦、综卦、伏卦展示 */}
+      {hexagramDetail && (
+        <Card title="衍生卦象" className="derived-hexagrams-card">
+          <Row gutter={[16, 16]}>
+            {/* 互卦 */}
+            <Col span={12}>
+              <div className="derived-hexagram">
+                <div className="derived-title">互卦</div>
+                <div className="derived-symbol">
+                  {hexagramDetail.huGua.shangGuaSymbol}{hexagramDetail.huGua.xiaGuaSymbol}
+                </div>
+                <div className="derived-name">{hexagramDetail.huGua.name}</div>
+                <div className="derived-wuxing">
+                  <Tag>{hexagramDetail.huGua.shangGuaWuxing}</Tag>
+                  <Tag>{hexagramDetail.huGua.xiaGuaWuxing}</Tag>
+                </div>
+              </div>
+            </Col>
+
+            {/* 伏卦（新增） */}
+            <Col span={12}>
+              <div className="derived-hexagram fu-gua">
+                <div className="derived-title">
+                  伏卦
+                  <Text type="secondary" style={{ fontSize: '12px', marginLeft: 4 }}>（飞伏神）</Text>
+                </div>
+                <div className="derived-symbol">
+                  {hexagramDetail.fuGua.shangGuaSymbol}{hexagramDetail.fuGua.xiaGuaSymbol}
+                </div>
+                <div className="derived-name">{hexagramDetail.fuGua.name}</div>
+                <div className="derived-wuxing">
+                  <Tag color="purple">{hexagramDetail.fuGua.shangGuaWuxing}</Tag>
+                  <Tag color="purple">{hexagramDetail.fuGua.xiaGuaWuxing}</Tag>
+                </div>
+              </div>
+            </Col>
+
+            {/* 错卦 */}
+            <Col span={12}>
+              <div className="derived-hexagram">
+                <div className="derived-title">错卦</div>
+                <div className="derived-symbol">
+                  {hexagramDetail.cuoGua.shangGuaSymbol}{hexagramDetail.cuoGua.xiaGuaSymbol}
+                </div>
+                <div className="derived-name">{hexagramDetail.cuoGua.name}</div>
+                <div className="derived-wuxing">
+                  <Tag>{hexagramDetail.cuoGua.shangGuaWuxing}</Tag>
+                  <Tag>{hexagramDetail.cuoGua.xiaGuaWuxing}</Tag>
+                </div>
+              </div>
+            </Col>
+
+            {/* 综卦 */}
+            <Col span={12}>
+              <div className="derived-hexagram">
+                <div className="derived-title">综卦</div>
+                <div className="derived-symbol">
+                  {hexagramDetail.zongGua.shangGuaSymbol}{hexagramDetail.zongGua.xiaGuaSymbol}
+                </div>
+                <div className="derived-name">{hexagramDetail.zongGua.name}</div>
+                <div className="derived-wuxing">
+                  <Tag>{hexagramDetail.zongGua.shangGuaWuxing}</Tag>
+                  <Tag>{hexagramDetail.zongGua.xiaGuaWuxing}</Tag>
+                </div>
+              </div>
+            </Col>
+          </Row>
+
+          <Divider />
+
+          <Paragraph className="derived-hint">
+            <InfoCircleOutlined style={{ marginRight: 8 }} />
+            <Text type="secondary">
+              <strong>互卦</strong>：取本卦2-4爻为下卦、3-5爻为上卦，反映事物内在变化。
+              <strong>伏卦</strong>：八卦各有其对应的伏卦，代表隐藏的五行因素。
+              <strong>错卦</strong>：本卦所有爻阴阳互变，从对立角度看问题。
+              <strong>综卦</strong>：本卦上下颠倒，从他人角度看问题。
+            </Text>
+          </Paragraph>
+        </Card>
+      )}
 
       {/* 解读服务 */}
       <Card title="获取解读" className="service-card">

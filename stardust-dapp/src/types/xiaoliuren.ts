@@ -1,7 +1,7 @@
 /**
  * 小六壬类型定义
  *
- * 本模块采用**道家小六壬**体系，与传统流派在五行配属上有所不同：
+ * 本模块支持**道家小六壬**和**传统流派**两种体系，两者在五行配属上有所不同：
  *
  * | 六神 | 道家流派 | 传统流派 |
  * |------|---------|---------|
@@ -12,6 +12,138 @@
  * | 小吉 | 水/阳   | 木      |
  * | 空亡 | 土/阴   | 土      |
  */
+
+// ==================== 流派定义 ====================
+
+/**
+ * 小六壬流派枚举
+ *
+ * 不同流派在六神的五行配属上有所不同
+ */
+export enum XiaoLiuRenSchool {
+  /** 道家流派 - 留连属土，小吉属水（默认） */
+  DaoJia = 0,
+  /** 传统流派 - 留连属水，小吉属木 */
+  ChuanTong = 1,
+}
+
+/** 流派名称 */
+export const SCHOOL_NAMES: Record<XiaoLiuRenSchool, string> = {
+  [XiaoLiuRenSchool.DaoJia]: '道家流派',
+  [XiaoLiuRenSchool.ChuanTong]: '传统流派',
+};
+
+/** 流派描述 */
+export const SCHOOL_DESCRIPTIONS: Record<XiaoLiuRenSchool, string> = {
+  [XiaoLiuRenSchool.DaoJia]: '道家小六壬体系，留连属土临玄武，小吉属水临六合，注重体用关系分析',
+  [XiaoLiuRenSchool.ChuanTong]: '传统小六壬体系，留连属水临玄武，小吉属木临六合，注重时辰吉凶判断',
+};
+
+// ==================== 子时类型 ====================
+
+/**
+ * 子时类型枚举
+ *
+ * 子时横跨两天，在某些流派中需要区分早子时和晚子时
+ */
+export enum ZiShiType {
+  /** 早子时（夜子时）- 23:00-24:00，属于当天 */
+  EarlyZi = 0,
+  /** 晚子时（正子时）- 00:00-01:00，属于次日 */
+  LateZi = 1,
+}
+
+/** 子时类型名称 */
+export const ZI_SHI_TYPE_NAMES: Record<ZiShiType, string> = {
+  [ZiShiType.EarlyZi]: '早子时',
+  [ZiShiType.LateZi]: '晚子时',
+};
+
+/** 子时类型别名 */
+export const ZI_SHI_TYPE_ALIASES: Record<ZiShiType, string> = {
+  [ZiShiType.EarlyZi]: '夜子时',
+  [ZiShiType.LateZi]: '正子时',
+};
+
+/** 子时类型时间范围 */
+export const ZI_SHI_TYPE_RANGES: Record<ZiShiType, string> = {
+  [ZiShiType.EarlyZi]: '23:00-24:00',
+  [ZiShiType.LateZi]: '00:00-01:00',
+};
+
+// ==================== 十二宫定义 ====================
+
+/**
+ * 十二宫枚举
+ *
+ * 六神对应的命理十二宫，每个六神对应一对宫位（外宫/内宫）
+ */
+export enum TwelvePalace {
+  /** 命宫 - 代表自身命运、性格特点 */
+  MingGong = 0,
+  /** 事业宫 - 代表事业发展、工作状态 */
+  ShiYeGong = 1,
+  /** 田宅宫 - 代表房产、家庭环境 */
+  TianZhaiGong = 2,
+  /** 奴仆宫 - 代表下属、仆从关系 */
+  NuPuGong = 3,
+  /** 感情宫 - 代表感情状态、情感发展 */
+  GanQingGong = 4,
+  /** 夫妻宫 - 代表婚姻、配偶 */
+  FuQiGong = 5,
+  /** 疾厄宫 - 代表健康、疾病 */
+  JiEGong = 6,
+  /** 兄弟宫 - 代表兄弟姐妹、朋友同事 */
+  XiongDiGong = 7,
+  /** 驿马宫 - 代表出行、变动 */
+  YiMaGong = 8,
+  /** 子女宫 - 代表子女、晚辈 */
+  ZiNvGong = 9,
+  /** 福德宫 - 代表福气、精神状态 */
+  FuDeGong = 10,
+  /** 父母宫 - 代表父母、长辈 */
+  FuMuGong = 11,
+}
+
+/** 十二宫名称 */
+export const TWELVE_PALACE_NAMES: Record<TwelvePalace, string> = {
+  [TwelvePalace.MingGong]: '命宫',
+  [TwelvePalace.ShiYeGong]: '事业宫',
+  [TwelvePalace.TianZhaiGong]: '田宅宫',
+  [TwelvePalace.NuPuGong]: '奴仆宫',
+  [TwelvePalace.GanQingGong]: '感情宫',
+  [TwelvePalace.FuQiGong]: '夫妻宫',
+  [TwelvePalace.JiEGong]: '疾厄宫',
+  [TwelvePalace.XiongDiGong]: '兄弟宫',
+  [TwelvePalace.YiMaGong]: '驿马宫',
+  [TwelvePalace.ZiNvGong]: '子女宫',
+  [TwelvePalace.FuDeGong]: '福德宫',
+  [TwelvePalace.FuMuGong]: '父母宫',
+};
+
+/** 十二宫描述 */
+export const TWELVE_PALACE_DESCRIPTIONS: Record<TwelvePalace, string> = {
+  [TwelvePalace.MingGong]: '代表自身命运、性格特点、整体运势',
+  [TwelvePalace.ShiYeGong]: '代表事业发展、工作状态、官运仕途',
+  [TwelvePalace.TianZhaiGong]: '代表房产置业、家庭环境、安居状况',
+  [TwelvePalace.NuPuGong]: '代表下属仆从、支配欲望、阴暗私事',
+  [TwelvePalace.GanQingGong]: '代表感情状态、情感发展、桃花运势',
+  [TwelvePalace.FuQiGong]: '代表婚姻状况、配偶信息、夫妻关系',
+  [TwelvePalace.JiEGong]: '代表健康状况、疾病灾祸、外部伤害',
+  [TwelvePalace.XiongDiGong]: '代表兄弟姐妹、朋友同事、人际关系',
+  [TwelvePalace.YiMaGong]: '代表出行远行、变动迁移、交通运势',
+  [TwelvePalace.ZiNvGong]: '代表子女晚辈、生育状况、子孙运势',
+  [TwelvePalace.FuDeGong]: '代表福气福报、精神状态、内心修养',
+  [TwelvePalace.FuMuGong]: '代表父母长辈、祖业遗产、根基来源',
+};
+
+/** 宫位对（外宫/内宫） */
+export interface PalacePair {
+  /** 外宫（动态宫，表现在外） */
+  outer: TwelvePalace;
+  /** 内宫（静态宫，表现在内） */
+  inner: TwelvePalace;
+}
 
 // ==================== 五行定义 ====================
 
@@ -185,6 +317,170 @@ export const LIU_GONG_GUA_CI: Record<LiuGong, string> = {
   [LiuGong.ChiKou]: '赤口主口舌，官非切要防，失物速速讨。行人有惊慌，六畜多作怪，病者出西方。更须防咀咒，诚恐染瘟皇。',
   [LiuGong.XiaoJi]: '小吉最吉昌，路上好商量，阴人来报喜。失物在坤方，行人即便至，交关甚是强。凡事皆和合，病者叩穷苍。',
   [LiuGong.KongWang]: '空亡事不祥，阴人多乖张，求财无利益。行人有灾殃，失物寻不见，官事有刑伤。病人逢暗鬼，祈解可安康。',
+};
+
+/** 六宫吉凶值（正数为吉，负数为凶，0为平） */
+export const LIU_GONG_JI_XIONG: Record<LiuGong, number> = {
+  [LiuGong.DaAn]: 2,      // 大吉
+  [LiuGong.SuXi]: 1,      // 吉
+  [LiuGong.XiaoJi]: 1,    // 吉
+  [LiuGong.LiuLian]: 0,   // 平
+  [LiuGong.ChiKou]: -1,   // 凶
+  [LiuGong.KongWang]: -2, // 大凶
+};
+
+/** 六宫事项断语 */
+export const LIU_GONG_AFFAIR_READINGS: Record<LiuGong, Record<string, string>> = {
+  [LiuGong.DaAn]: {
+    '求财': '财运稳定，求财可得，宜稳妥保守',
+    '婚姻': '感情稳定，婚姻可成，宜静待良缘',
+    '出行': '行人未动，出行宜缓，安居为上',
+    '疾病': '病情平稳，无大碍，宜调养身心',
+    '失物': '失物在近处，可以找回',
+    '官司': '官事宜静不宜动，可化解',
+  },
+  [LiuGong.LiuLian]: {
+    '求财': '财运迟缓，事多拖延，需耐心等待',
+    '婚姻': '感情纠缠，婚事延迟，需多加考虑',
+    '出行': '行人未归，出行多阻，不宜远行',
+    '疾病': '病情反复，久病难愈，需细心调养',
+    '失物': '失物难寻，或被他人转移',
+    '官司': '官事缠身，宜缓不宜急',
+  },
+  [LiuGong.SuXi]: {
+    '求财': '财运亨通，速见喜事，宜积极进取',
+    '婚姻': '喜事将近，婚姻可成，良缘天定',
+    '出行': '行人将至，出行顺利，逢凶化吉',
+    '疾病': '病情好转，速愈可期，吉人天相',
+    '失物': '失物可寻回，午未申时见',
+    '官司': '官事有福德，逢凶化吉',
+  },
+  [LiuGong.ChiKou]: {
+    '求财': '财运不佳，易有口舌，慎防小人',
+    '婚姻': '感情多争执，婚事有变，需三思',
+    '出行': '行人有惊，出行不利，宜谨慎',
+    '疾病': '病情凶险，需速求医，注意口腔',
+    '失物': '失物难回，或有人争夺',
+    '官司': '官事凶险，有口舌是非，宜和解',
+  },
+  [LiuGong.XiaoJi]: {
+    '求财': '财运吉祥，事事顺遂，宜把握时机',
+    '婚姻': '良缘美满，婚姻大吉，百年好合',
+    '出行': '行人即至，出行大吉，诸事顺利',
+    '疾病': '病情可愈，得遇良医，吉祥如意',
+    '失物': '失物可得，在西南方',
+    '官司': '官事和顺，可得贵人相助',
+  },
+  [LiuGong.KongWang]: {
+    '求财': '财运空虚，求财无望，不宜投资',
+    '婚姻': '感情虚空，婚事难成，缘分未到',
+    '出行': '行人有灾，出行不利，宜取消计划',
+    '疾病': '病情严重，需防暗疾，多加小心',
+    '失物': '失物难寻，永无音讯',
+    '官司': '官事有刑伤，难以解脱',
+  },
+};
+
+// ==================== 六神扩展属性 ====================
+
+/** 六神对应十二宫位对（外宫/内宫） */
+export const LIU_GONG_TWELVE_PALACE: Record<LiuGong, PalacePair> = {
+  [LiuGong.DaAn]: { outer: TwelvePalace.ShiYeGong, inner: TwelvePalace.MingGong },
+  [LiuGong.LiuLian]: { outer: TwelvePalace.TianZhaiGong, inner: TwelvePalace.NuPuGong },
+  [LiuGong.SuXi]: { outer: TwelvePalace.GanQingGong, inner: TwelvePalace.FuQiGong },
+  [LiuGong.ChiKou]: { outer: TwelvePalace.JiEGong, inner: TwelvePalace.XiongDiGong },
+  [LiuGong.XiaoJi]: { outer: TwelvePalace.YiMaGong, inner: TwelvePalace.ZiNvGong },
+  [LiuGong.KongWang]: { outer: TwelvePalace.FuDeGong, inner: TwelvePalace.FuMuGong },
+};
+
+/** 六神藏干 */
+export const LIU_GONG_HIDDEN_STEMS: Record<LiuGong, [string, string]> = {
+  [LiuGong.DaAn]: ['甲', '丁'],
+  [LiuGong.LiuLian]: ['丁', '己'],
+  [LiuGong.SuXi]: ['丙', '辛'],
+  [LiuGong.ChiKou]: ['庚', '癸'],
+  [LiuGong.XiaoJi]: ['壬', '甲'],
+  [LiuGong.KongWang]: ['戊', '乙'],
+};
+
+/** 六神对应天干 */
+export const LIU_GONG_TIAN_GAN: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '甲乙',
+  [LiuGong.LiuLian]: '戊己',   // 道家流派（土）
+  [LiuGong.SuXi]: '丙丁',
+  [LiuGong.ChiKou]: '庚辛',
+  [LiuGong.XiaoJi]: '壬癸',    // 道家流派（水）
+  [LiuGong.KongWang]: '戊己',
+};
+
+/** 六神对应季节 */
+export const LIU_GONG_SEASONS: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '春季',
+  [LiuGong.LiuLian]: '春夏之交',
+  [LiuGong.SuXi]: '夏季',
+  [LiuGong.ChiKou]: '秋季',
+  [LiuGong.XiaoJi]: '冬季',
+  [LiuGong.KongWang]: '冬春之交',
+};
+
+/** 六神对应月份（地支月） */
+export const LIU_GONG_MONTHS: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '寅卯辰月',
+  [LiuGong.LiuLian]: '辰巳月',
+  [LiuGong.SuXi]: '巳午未月',
+  [LiuGong.ChiKou]: '申酉戌月',
+  [LiuGong.XiaoJi]: '亥子丑月',
+  [LiuGong.KongWang]: '丑寅月',
+};
+
+/** 六神对应数字范围 */
+export const LIU_GONG_NUMBERS: Record<LiuGong, [number, number, number, number]> = {
+  [LiuGong.DaAn]: [1, 7, 4, 5],
+  [LiuGong.LiuLian]: [2, 8, 7, 8],
+  [LiuGong.SuXi]: [3, 9, 6, 9],
+  [LiuGong.ChiKou]: [4, 10, 1, 2],
+  [LiuGong.XiaoJi]: [5, 11, 3, 8],
+  [LiuGong.KongWang]: [6, 12, 5, 10],
+};
+
+/** 六神详细解释 */
+export const LIU_GONG_DETAILED_EXPLANATIONS: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '大安事事昌，求财在坤方，失物去不远，宅舍保安康，行人身未动，病者主无妨。将军回田野，仔细与推详，丢失在附近，可能西南向，安居得吉日，不可动身祥。办事别出屋，求借邀自房，得病凶化吉，久疾得安康，寻人知音信，可能归村庄。口舌能消散，远行要提防，交易别出村，离屯细推详，求财有八分，得全不出房。',
+  [LiuGong.LiuLian]: '留连事未当，求事日莫光，凡事只宜缓，去者未回向，失物南方去，急急行便访。紧记防口舌，人口且平祥，丢失难寻找，窃者又转场，出行定不归，久去拖延长。办事不果断，牵连又返往，求借不易成，被求而彷徨，此日患疾病，几天不复康。找人迷雾中，迷迷又恍惚，口舌继续有，拖拉又伸长，女方嫁吉日，求财六分量。',
+  [LiuGong.SuXi]: '速喜喜临乡，求财往南方，失物申午未，逢人路寻详，官事有福德，病者无大伤。六畜田稼庆，行人有音向，丢失得音信，微乐在面上，出行遇吉利，小喜而顺当。办事如逢春，吉利又荣光，小量可求借，大事难全强，久病见小愈，得病速回康，寻人得知见，口舌见消亡，交易可得成，但不太久长，求财有十分，吉时得顺当。',
+  [LiuGong.ChiKou]: '赤口主口伤，官事且紧防，失物急去找，行人有惊慌，鸡犬多作怪，病者上西方。更须防咒咀，恐怕染瘟殃，找物犯谎口，寻问无音向，出门千口怨，言谈万骂伤。办事犯口舌，难成有阻挡，求借不全顺，闭口无事张，得病千口猜，求医还无妨。寻人得凶音，人心不安详，口舌犯最重，交易口舌防，求财只四分，逢吉才成当。',
+  [LiuGong.XiaoJi]: '小吉最吉昌，路上好商量，阴人来报喜，失物在坤方，行人立刻至，交易甚是强。凡事皆合好，病者保安康，大吉又大顺，万事如意详，出行可得喜，千里吉安祥。诸事可心顺，有忧皆消光，求借自来助，众友愿相帮，重病莫要愁，久病得安康。不见得相见，不打自归庄，千人称赞君，无限上荣光，交易成兴隆，十二分财量。',
+  [LiuGong.KongWang]: '空亡事不长，阴人无主张，求财心白费，行人有灾殃，失物永不见，官事有刑伤。病人逢邪鬼，久病添祸殃，失物难找见，找寻空荡荡，出行不吉利，凶多不吉祥。办事凶为多，处处有阻挡，求借不能成，成事化败伤，得病凶多噩，久患雪加霜。寻人无音信，知音变空想，万口都诽骂，小舟遭狂浪，求财有二分，不吉不利亡。',
+};
+
+/** 传统流派六神五行 */
+export const LIU_GONG_WU_XING_TRADITIONAL: Record<LiuGong, WuXing> = {
+  [LiuGong.DaAn]: WuXing.Wood,     // 木
+  [LiuGong.LiuLian]: WuXing.Water, // 水（传统流派）
+  [LiuGong.SuXi]: WuXing.Fire,     // 火
+  [LiuGong.ChiKou]: WuXing.Metal,  // 金
+  [LiuGong.XiaoJi]: WuXing.Wood,   // 木（传统流派）
+  [LiuGong.KongWang]: WuXing.Earth,// 土
+};
+
+/** 传统流派六神方位 */
+export const LIU_GONG_DIRECTIONS_TRADITIONAL: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '东方',
+  [LiuGong.LiuLian]: '北方',   // 传统流派：北方（水）
+  [LiuGong.SuXi]: '南方',
+  [LiuGong.ChiKou]: '西方',
+  [LiuGong.XiaoJi]: '东方',    // 传统流派：东方（木）
+  [LiuGong.KongWang]: '中央',
+};
+
+/** 传统流派六神颜色 */
+export const LIU_GONG_COLORS_TRADITIONAL: Record<LiuGong, string> = {
+  [LiuGong.DaAn]: '#52c41a',     // 青色 - 木
+  [LiuGong.LiuLian]: '#1890ff',  // 蓝色 - 水（传统流派）
+  [LiuGong.SuXi]: '#f5222d',     // 红色 - 火
+  [LiuGong.ChiKou]: '#ffffff',   // 白色 - 金
+  [LiuGong.XiaoJi]: '#52c41a',   // 青色 - 木（传统流派）
+  [LiuGong.KongWang]: '#faad14', // 黄色 - 土
 };
 
 // ==================== 起课方式 ====================
@@ -399,6 +695,19 @@ export const TI_YONG_COLORS: Record<TiYongRelation, string> = {
   [TiYongRelation.YongKeTi]: '#f5222d',    // 红色 - 大凶
 };
 
+/** 体用关系颜色（页面使用的别名） */
+export const TI_YONG_RELATION_COLORS: Record<TiYongRelation, string> = TI_YONG_COLORS;
+
+/** 体用关系详细描述 */
+export const TI_YONG_DESCRIPTIONS: Record<TiYongRelation, string> = {
+  [TiYongRelation.YongShengTi]: '外部环境对自身有利，时机成熟，贵人相助，事情顺利',
+  [TiYongRelation.TiKeYong]: '自身能力强于环境阻力，可以克服困难，成事有望',
+  [TiYongRelation.BiJian]: '五行相同阴阳相同，力量均衡，结果平平，需靠自身努力',
+  [TiYongRelation.BiZhu]: '五行相同阴阳不同，有助力但有限，中规中矩',
+  [TiYongRelation.TiShengYong]: '自身精力外泄于环境，付出多回报少，劳而无功',
+  [TiYongRelation.YongKeTi]: '外部环境克制自身，阻碍重重，不宜行事，需等待时机',
+};
+
 // ==================== 八卦定义 ====================
 
 /**
@@ -569,14 +878,37 @@ export function getShiChenFromHour(hour: number): ShiChen {
 
 /**
  * 计算体用关系
- * @param tiGong 体（人宫/时宫的六宫）
- * @param yongShiChen 用（时辰）
+ *
+ * 支持两种调用方式：
+ * 1. calculateTiYongRelation(sanGong) - 传入三宫，月宫为体，时宫为用
+ * 2. calculateTiYongRelation(tiGong, yongShiChen) - 传入体宫和时辰
+ *
+ * @param tiGongOrSanGong 体宫或三宫结果
+ * @param yongShiChen 用（时辰），当第一个参数为三宫时可省略
  */
-export function calculateTiYongRelation(tiGong: LiuGong, yongShiChen: ShiChen): TiYongRelation {
-  const tiWuXing = LIU_GONG_WU_XING[tiGong];
-  const tiYinYang = LIU_GONG_YIN_YANG[tiGong];
-  const yongWuXing = SHI_CHEN_WU_XING[yongShiChen];
-  const yongYinYang = SHI_CHEN_YIN_YANG[yongShiChen];
+export function calculateTiYongRelation(sanGong: SanGong): TiYongRelation;
+export function calculateTiYongRelation(tiGong: LiuGong, yongShiChen: ShiChen): TiYongRelation;
+export function calculateTiYongRelation(tiGongOrSanGong: LiuGong | SanGong, yongShiChen?: ShiChen): TiYongRelation {
+  let tiWuXing: WuXing;
+  let tiYinYang: YinYang;
+  let yongWuXing: WuXing;
+  let yongYinYang: YinYang;
+
+  // 判断是三宫还是单独的六宫
+  if (typeof tiGongOrSanGong === 'object' && 'yueGong' in tiGongOrSanGong) {
+    // 传入的是 SanGong，月宫为体，时宫为用
+    const sanGong = tiGongOrSanGong;
+    tiWuXing = LIU_GONG_WU_XING[sanGong.yueGong];
+    tiYinYang = LIU_GONG_YIN_YANG[sanGong.yueGong];
+    yongWuXing = LIU_GONG_WU_XING[sanGong.shiGong];
+    yongYinYang = LIU_GONG_YIN_YANG[sanGong.shiGong];
+  } else {
+    // 传入的是 LiuGong 和 ShiChen
+    tiWuXing = LIU_GONG_WU_XING[tiGongOrSanGong as LiuGong];
+    tiYinYang = LIU_GONG_YIN_YANG[tiGongOrSanGong as LiuGong];
+    yongWuXing = SHI_CHEN_WU_XING[yongShiChen!];
+    yongYinYang = SHI_CHEN_YIN_YANG[yongShiChen!];
+  }
 
   // 五行相同的情况
   if (tiWuXing === yongWuXing) {
@@ -750,4 +1082,132 @@ export function getFortuneDescription(level: number): string {
   if (level >= 3) return '平';
   if (level >= 2) return '凶';
   return '大凶';
+}
+
+// ==================== 流派相关辅助函数 ====================
+
+/**
+ * 根据流派获取六神五行
+ * @param gong 六神
+ * @param school 流派（默认道家流派）
+ */
+export function getLiuGongWuXingBySchool(gong: LiuGong, school: XiaoLiuRenSchool = XiaoLiuRenSchool.DaoJia): WuXing {
+  if (school === XiaoLiuRenSchool.ChuanTong) {
+    return LIU_GONG_WU_XING_TRADITIONAL[gong];
+  }
+  return LIU_GONG_WU_XING[gong];
+}
+
+/**
+ * 根据流派获取六神方位
+ * @param gong 六神
+ * @param school 流派（默认道家流派）
+ */
+export function getLiuGongDirectionBySchool(gong: LiuGong, school: XiaoLiuRenSchool = XiaoLiuRenSchool.DaoJia): string {
+  if (school === XiaoLiuRenSchool.ChuanTong) {
+    return LIU_GONG_DIRECTIONS_TRADITIONAL[gong];
+  }
+  return LIU_GONG_DIRECTIONS[gong];
+}
+
+/**
+ * 根据流派获取六神颜色
+ * @param gong 六神
+ * @param school 流派（默认道家流派）
+ */
+export function getLiuGongColorBySchool(gong: LiuGong, school: XiaoLiuRenSchool = XiaoLiuRenSchool.DaoJia): string {
+  if (school === XiaoLiuRenSchool.ChuanTong) {
+    return LIU_GONG_COLORS_TRADITIONAL[gong];
+  }
+  return LIU_GONG_COLORS[gong];
+}
+
+/**
+ * 从小时数计算时辰，并返回子时类型（如果是子时）
+ * @param hour 小时（0-23）
+ */
+export function getShiChenFromHourDetailed(hour: number): { shiChen: ShiChen; ziShiType: ZiShiType | null } {
+  const shiChen = getShiChenFromHour(hour);
+  let ziShiType: ZiShiType | null = null;
+
+  if (hour === 23) {
+    ziShiType = ZiShiType.EarlyZi;
+  } else if (hour === 0) {
+    ziShiType = ZiShiType.LateZi;
+  }
+
+  return { shiChen, ziShiType };
+}
+
+/**
+ * 获取六神的十二宫信息
+ * @param gong 六神
+ */
+export function getLiuGongPalaceInfo(gong: LiuGong): {
+  palacePair: PalacePair;
+  outerName: string;
+  innerName: string;
+  outerDesc: string;
+  innerDesc: string;
+} {
+  const palacePair = LIU_GONG_TWELVE_PALACE[gong];
+  return {
+    palacePair,
+    outerName: TWELVE_PALACE_NAMES[palacePair.outer],
+    innerName: TWELVE_PALACE_NAMES[palacePair.inner],
+    outerDesc: TWELVE_PALACE_DESCRIPTIONS[palacePair.outer],
+    innerDesc: TWELVE_PALACE_DESCRIPTIONS[palacePair.inner],
+  };
+}
+
+/**
+ * 获取六神的完整信息
+ * @param gong 六神
+ * @param school 流派（默认道家流派）
+ */
+export function getLiuGongFullInfo(gong: LiuGong, school: XiaoLiuRenSchool = XiaoLiuRenSchool.DaoJia): {
+  name: string;
+  wuXing: WuXing;
+  wuXingName: string;
+  yinYang: YinYang;
+  yinYangName: string;
+  direction: string;
+  color: string;
+  tianJiang: string;
+  fortuneLevel: number;
+  isAuspicious: boolean;
+  brief: string;
+  guaCi: string;
+  detailedExplanation: string;
+  hiddenStems: [string, string];
+  tianGan: string;
+  season: string;
+  months: string;
+  numbers: [number, number, number, number];
+  palaceInfo: ReturnType<typeof getLiuGongPalaceInfo>;
+} {
+  const wuXing = getLiuGongWuXingBySchool(gong, school);
+  const palaceInfo = getLiuGongPalaceInfo(gong);
+
+  return {
+    name: LIU_GONG_NAMES[gong],
+    wuXing,
+    wuXingName: WU_XING_NAMES[wuXing],
+    yinYang: LIU_GONG_YIN_YANG[gong],
+    yinYangName: YIN_YANG_NAMES[LIU_GONG_YIN_YANG[gong]],
+    direction: getLiuGongDirectionBySchool(gong, school),
+    color: getLiuGongColorBySchool(gong, school),
+    tianJiang: LIU_GONG_TIAN_JIANG[gong],
+    fortuneLevel: LIU_GONG_FORTUNE_LEVELS[gong],
+    isAuspicious: LIU_GONG_IS_AUSPICIOUS[gong],
+    brief: LIU_GONG_BRIEFS[gong],
+    guaCi: LIU_GONG_GUA_CI[gong],
+    detailedExplanation: LIU_GONG_DETAILED_EXPLANATIONS[gong],
+    hiddenStems: LIU_GONG_HIDDEN_STEMS[gong],
+    tianGan: LIU_GONG_TIAN_GAN[gong],
+    season: LIU_GONG_SEASONS[gong],
+    months: LIU_GONG_MONTHS[gong],
+    numbers: LIU_GONG_NUMBERS[gong],
+    palaceInfo,
+  };
 }

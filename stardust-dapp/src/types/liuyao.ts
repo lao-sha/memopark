@@ -25,16 +25,16 @@ export enum YaoType {
  * 六亲关系
  */
 export enum LiuQin {
-  /** 父母 */
-  FuMu = 0,
   /** 兄弟 */
-  XiongDi = 1,
-  /** 子孙 */
-  ZiSun = 2,
+  XiongDi = 0,
+  /** 父母 */
+  FuMu = 1,
+  /** 官鬼 */
+  GuanGui = 2,
   /** 妻财 */
   QiCai = 3,
-  /** 官鬼 */
-  GuanGui = 4,
+  /** 子孙 */
+  ZiSun = 4,
 }
 
 /**
@@ -94,6 +94,126 @@ export enum DiZhi {
   Hai = 11, // 亥
 }
 
+/**
+ * 天干
+ */
+export enum TianGan {
+  Jia = 0,  // 甲
+  Yi = 1,   // 乙
+  Bing = 2, // 丙
+  Ding = 3, // 丁
+  Wu = 4,   // 戊
+  Ji = 5,   // 己
+  Geng = 6, // 庚
+  Xin = 7,  // 辛
+  Ren = 8,  // 壬
+  Gui = 9,  // 癸
+}
+
+/**
+ * 神煞类型（14种）
+ */
+export enum ShenSha {
+  /** 天乙贵人 - 最大吉神 */
+  TianYiGuiRen = 0,
+  /** 驿马 - 主奔波变动 */
+  YiMa = 1,
+  /** 桃花 - 主感情人缘 */
+  TaoHua = 2,
+  /** 禄神 - 主财禄俸禄 */
+  LuShen = 3,
+  /** 文昌 - 主文才学业 */
+  WenChang = 4,
+  /** 劫煞 - 凶煞 */
+  JieSha = 5,
+  /** 华盖 - 主孤独艺术 */
+  HuaGai = 6,
+  /** 将星 - 主权威领导 */
+  JiangXing = 7,
+  /** 亡神 - 主破败损失 */
+  WangShen = 8,
+  /** 天喜 - 主喜庆婚姻 */
+  TianXi = 9,
+  /** 天医 - 主医药治疗 */
+  TianYi = 10,
+  /** 阳刃 - 主刚烈凶险 */
+  YangRen = 11,
+  /** 灾煞 - 主灾难血光 */
+  ZaiSha = 12,
+  /** 谋星 - 主谋划策略 */
+  MouXing = 13,
+}
+
+/**
+ * 旺衰状态
+ */
+export enum WangShuai {
+  /** 旺 - 当令最强 */
+  Wang = 0,
+  /** 相 - 得令生次强 */
+  Xiang = 1,
+  /** 休 - 休息力弱 */
+  Xiu = 2,
+  /** 囚 - 被克较弱 */
+  Qiu = 3,
+  /** 死 - 克令最弱 */
+  Si = 4,
+}
+
+/**
+ * 日辰关系
+ */
+export enum RiChenGuanXi {
+  /** 无特殊关系 */
+  None = 0,
+  /** 日辰冲爻 */
+  RiChong = 1,
+  /** 日辰合爻 */
+  RiHe = 2,
+  /** 日辰生爻 */
+  RiSheng = 3,
+  /** 日辰克爻 */
+  RiKe = 4,
+  /** 爻泄气 */
+  XieQi = 5,
+  /** 爻耗气 */
+  HaoQi = 6,
+}
+
+/**
+ * 动爻作用类型
+ */
+export enum DongYaoZuoYong {
+  /** 动生静 */
+  DongShengJing = 0,
+  /** 动克静 */
+  DongKeJing = 1,
+  /** 动泄静 */
+  DongXieJing = 2,
+  /** 动耗静 */
+  DongHaoJing = 3,
+  /** 比和 */
+  BiHe = 4,
+  /** 无作用 */
+  None = 5,
+}
+
+/**
+ * 回头生克类型
+ */
+export enum HuiTouZuoYong {
+  /** 回头生 */
+  HuiTouSheng = 0,
+  /** 回头克 */
+  HuiTouKe = 1,
+  /** 回头泄 */
+  HuiTouXie = 2,
+  /** 回头耗 */
+  HuiTouHao = 3,
+  /** 比和 */
+  BiHe = 4,
+}
+
 // ==================== 数据结构 ====================
 
 /**
@@ -106,6 +226,8 @@ export interface YaoInfo {
   type: YaoType;
   /** 地支 */
   diZhi: DiZhi;
+  /** 天干 */
+  tianGan?: TianGan;
   /** 五行 */
   wuXing: WuXing;
   /** 六亲 */
@@ -124,6 +246,16 @@ export interface YaoInfo {
   bianWuXing?: WuXing;
   /** 变爻六亲 */
   bianLiuQin?: LiuQin;
+  /** 旺衰状态 */
+  wangShuai?: WangShuai;
+  /** 日辰关系 */
+  riChenGuanXi?: RiChenGuanXi;
+  /** 神煞列表 */
+  shenShaList?: ShenSha[];
+  /** 回头生克（动爻时有效） */
+  huiTouZuoYong?: HuiTouZuoYong;
+  /** 是否旬空 */
+  isXunKong?: boolean;
 }
 
 /**
@@ -146,7 +278,7 @@ export interface LiuyaoGua {
   id: number;
   /** 创建者地址 */
   creator: string;
-  /** 本卦序号 (1-64) */
+  /** 本卦序号 (0-63) */
   benGuaIndex: number;
   /** 本卦名称 */
   benGuaName: string;
@@ -154,14 +286,36 @@ export interface LiuyaoGua {
   bianGuaIndex?: number;
   /** 变卦名称 */
   bianGuaName?: string;
+  /** 互卦序号 */
+  huGuaIndex?: number;
+  /** 互卦名称 */
+  huGuaName?: string;
   /** 六爻详情 */
   yaos: YaoInfo[];
   /** 铜钱摇卦记录 */
   coinResults?: CoinResult[];
+  /** 日干 */
+  riGan: TianGan;
   /** 日辰（占卜日的地支） */
   riChen: DiZhi;
   /** 月建（占卜月的地支） */
   yueJian: DiZhi;
+  /** 卦宫五行 */
+  gongWuXing?: WuXing;
+  /** 卦身地支 */
+  guaShen?: DiZhi;
+  /** 旬空地支 */
+  xunKong?: [DiZhi, DiZhi];
+  /** 是否六冲卦 */
+  isLiuChong?: boolean;
+  /** 是否六合卦 */
+  isLiuHe?: boolean;
+  /** 是否反吟（本变卦六冲） */
+  isFanYin?: boolean;
+  /** 是否伏吟（本变卦相同） */
+  isFuYin?: boolean;
+  /** 神煞信息 */
+  shenShaInfo?: ShenShaInfo;
   /** 问题（加密存储） */
   questionHash?: string;
   /** 占卜时间戳 */
@@ -170,6 +324,40 @@ export interface LiuyaoGua {
   createdAt: number;
   /** 是否公开 */
   isPublic: boolean;
+}
+
+/**
+ * 神煞信息结构
+ */
+export interface ShenShaInfo {
+  /** 天乙贵人（两个地支） */
+  tianYiGuiRen: [DiZhi, DiZhi];
+  /** 驿马 */
+  yiMa: DiZhi;
+  /** 桃花 */
+  taoHua: DiZhi;
+  /** 禄神 */
+  luShen: DiZhi;
+  /** 文昌 */
+  wenChang: DiZhi;
+  /** 劫煞 */
+  jieSha: DiZhi;
+  /** 华盖 */
+  huaGai: DiZhi;
+  /** 将星 */
+  jiangXing: DiZhi;
+  /** 亡神 */
+  wangShen: DiZhi;
+  /** 天喜 */
+  tianXi: DiZhi;
+  /** 天医 */
+  tianYi: DiZhi;
+  /** 阳刃 */
+  yangRen: DiZhi;
+  /** 灾煞 */
+  zaiSha: DiZhi;
+  /** 谋星 */
+  mouXing: DiZhi;
 }
 
 /**
@@ -342,6 +530,164 @@ export const GUA_NAMES: string[] = [
  * 八卦名称（用于组合）
  */
 export const BA_GUA_NAMES: string[] = ['乾', '兑', '离', '震', '巽', '坎', '艮', '坤'];
+
+/**
+ * 天干名称
+ */
+export const TIAN_GAN_NAMES: Record<TianGan, string> = {
+  [TianGan.Jia]: '甲',
+  [TianGan.Yi]: '乙',
+  [TianGan.Bing]: '丙',
+  [TianGan.Ding]: '丁',
+  [TianGan.Wu]: '戊',
+  [TianGan.Ji]: '己',
+  [TianGan.Geng]: '庚',
+  [TianGan.Xin]: '辛',
+  [TianGan.Ren]: '壬',
+  [TianGan.Gui]: '癸',
+};
+
+/**
+ * 神煞名称
+ */
+export const SHEN_SHA_NAMES: Record<ShenSha, string> = {
+  [ShenSha.TianYiGuiRen]: '天乙贵人',
+  [ShenSha.YiMa]: '驿马',
+  [ShenSha.TaoHua]: '桃花',
+  [ShenSha.LuShen]: '禄神',
+  [ShenSha.WenChang]: '文昌',
+  [ShenSha.JieSha]: '劫煞',
+  [ShenSha.HuaGai]: '华盖',
+  [ShenSha.JiangXing]: '将星',
+  [ShenSha.WangShen]: '亡神',
+  [ShenSha.TianXi]: '天喜',
+  [ShenSha.TianYi]: '天医',
+  [ShenSha.YangRen]: '阳刃',
+  [ShenSha.ZaiSha]: '灾煞',
+  [ShenSha.MouXing]: '谋星',
+};
+
+/**
+ * 神煞简短描述
+ */
+export const SHEN_SHA_DESC: Record<ShenSha, string> = {
+  [ShenSha.TianYiGuiRen]: '贵人相助',
+  [ShenSha.YiMa]: '奔波变动',
+  [ShenSha.TaoHua]: '感情人缘',
+  [ShenSha.LuShen]: '财禄俸禄',
+  [ShenSha.WenChang]: '文才学业',
+  [ShenSha.JieSha]: '灾祸劫难',
+  [ShenSha.HuaGai]: '孤独艺术',
+  [ShenSha.JiangXing]: '权威领导',
+  [ShenSha.WangShen]: '破败损失',
+  [ShenSha.TianXi]: '喜庆婚姻',
+  [ShenSha.TianYi]: '医药治疗',
+  [ShenSha.YangRen]: '刚烈凶险',
+  [ShenSha.ZaiSha]: '灾难血光',
+  [ShenSha.MouXing]: '谋划策略',
+};
+
+/**
+ * 判断神煞是否为吉神
+ */
+export function isShenShaAuspicious(shenSha: ShenSha): boolean {
+  return [
+    ShenSha.TianYiGuiRen,
+    ShenSha.LuShen,
+    ShenSha.WenChang,
+    ShenSha.JiangXing,
+    ShenSha.TianXi,
+    ShenSha.TianYi,
+  ].includes(shenSha);
+}
+
+/**
+ * 判断神煞是否为凶煞
+ */
+export function isShenShaInauspicious(shenSha: ShenSha): boolean {
+  return [
+    ShenSha.JieSha,
+    ShenSha.WangShen,
+    ShenSha.YangRen,
+    ShenSha.ZaiSha,
+  ].includes(shenSha);
+}
+
+/**
+ * 旺衰名称
+ */
+export const WANG_SHUAI_NAMES: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '旺',
+  [WangShuai.Xiang]: '相',
+  [WangShuai.Xiu]: '休',
+  [WangShuai.Qiu]: '囚',
+  [WangShuai.Si]: '死',
+};
+
+/**
+ * 旺衰描述
+ */
+export const WANG_SHUAI_DESC: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '当令最强',
+  [WangShuai.Xiang]: '得令生次强',
+  [WangShuai.Xiu]: '休息力弱',
+  [WangShuai.Qiu]: '被克较弱',
+  [WangShuai.Si]: '克令最弱',
+};
+
+/**
+ * 旺衰颜色
+ */
+export const WANG_SHUAI_COLORS: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '#f5222d',  // 红色 - 最强
+  [WangShuai.Xiang]: '#fa8c16', // 橙色 - 次强
+  [WangShuai.Xiu]: '#fadb14',   // 黄色 - 中等
+  [WangShuai.Qiu]: '#52c41a',   // 绿色 - 较弱
+  [WangShuai.Si]: '#1890ff',    // 蓝色 - 最弱
+};
+
+/**
+ * 判断旺衰是否有力
+ */
+export function isWangShuaiStrong(wangShuai: WangShuai): boolean {
+  return wangShuai === WangShuai.Wang || wangShuai === WangShuai.Xiang;
+}
+
+/**
+ * 日辰关系名称
+ */
+export const RI_CHEN_GUANXI_NAMES: Record<RiChenGuanXi, string> = {
+  [RiChenGuanXi.None]: '无',
+  [RiChenGuanXi.RiChong]: '日冲',
+  [RiChenGuanXi.RiHe]: '日合',
+  [RiChenGuanXi.RiSheng]: '日生',
+  [RiChenGuanXi.RiKe]: '日克',
+  [RiChenGuanXi.XieQi]: '泄气',
+  [RiChenGuanXi.HaoQi]: '耗气',
+};
+
+/**
+ * 动爻作用名称
+ */
+export const DONG_YAO_ZUOYONG_NAMES: Record<DongYaoZuoYong, string> = {
+  [DongYaoZuoYong.DongShengJing]: '动生静',
+  [DongYaoZuoYong.DongKeJing]: '动克静',
+  [DongYaoZuoYong.DongXieJing]: '动泄静',
+  [DongYaoZuoYong.DongHaoJing]: '动耗静',
+  [DongYaoZuoYong.BiHe]: '比和',
+  [DongYaoZuoYong.None]: '无作用',
+};
+
+/**
+ * 回头生克名称
+ */
+export const HUI_TOU_ZUOYONG_NAMES: Record<HuiTouZuoYong, string> = {
+  [HuiTouZuoYong.HuiTouSheng]: '回头生',
+  [HuiTouZuoYong.HuiTouKe]: '回头克',
+  [HuiTouZuoYong.HuiTouXie]: '回头泄',
+  [HuiTouZuoYong.HuiTouHao]: '回头耗',
+  [HuiTouZuoYong.BiHe]: '比和',
+};
 
 // ==================== 辅助函数 ====================
 

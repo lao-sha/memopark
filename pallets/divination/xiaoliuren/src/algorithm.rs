@@ -200,8 +200,36 @@ pub fn divine_by_number(x: u8, y: u8, z: u8) -> SanGong {
 /// - `number`: 输入数字
 ///
 /// # 返回
-/// 返回一个六宫结果（简化版，只返回最终结果）
-pub fn divine_by_multi_digit(number: u32) -> LiuGong {
+/// 返回三宫结果（月宫=结果，日宫=结果，时宫=结果）
+///
+/// 注意：此为简化版，三宫结果相同。如需更复杂的计算，
+/// 请使用 divine_by_three_numbers 传入三个数字。
+pub fn divine_by_multi_digit(number: u32) -> SanGong {
+    let digits: Vec<u32> = number
+        .to_string()
+        .chars()
+        .filter_map(|c| c.to_digit(10))
+        .collect();
+
+    let digit_count = digits.len() as u32;
+    let digit_sum: u32 = digits.iter().sum();
+
+    // 位数为1时不减，否则减去（位数-1）
+    let adjustment = if digit_count <= 1 { 0 } else { digit_count - 1 };
+    let result = digit_sum.saturating_sub(adjustment);
+
+    // 取模得到六宫索引（1-6对应0-5）
+    let index = if result % 6 == 0 { 5 } else { (result % 6) as u8 - 1 };
+    let gong = LiuGong::from_index(index);
+
+    // 返回三宫（简化版，三宫相同）
+    SanGong::new(gong, gong, gong)
+}
+
+/// 从多位数字起课，返回单个六神
+///
+/// 这是 divine_by_multi_digit 的简化版本
+pub fn divine_by_multi_digit_single(number: u32) -> LiuGong {
     let digits: Vec<u32> = number
         .to_string()
         .chars()
@@ -464,6 +492,294 @@ pub fn full_analysis(san_gong: &SanGong, shi_chen: Option<ShiChen>) -> FullAnaly
     }
 }
 
+// ============================================================================
+// 三宫具象法（三盘分析）
+// ============================================================================
+
+/// 三盘结果
+///
+/// 三宫具象法将三宫转换为天盘、地盘、人盘，
+/// 通过不同的排列顺序得到不同的八卦具象
+#[derive(Clone, Debug)]
+pub struct SanPan {
+    /// 天盘（人-天-地顺序）
+    pub tian_pan: PanResult,
+    /// 地盘（天-地-人顺序）
+    pub di_pan: PanResult,
+    /// 人盘（天-人-地顺序）
+    pub ren_pan: PanResult,
+}
+
+/// 单盘分析结果
+#[derive(Clone, Debug)]
+pub struct PanResult {
+    /// 三宫排列
+    pub gongs: [LiuGong; 3],
+    /// 转换得到的八卦
+    pub ba_gua: BaGua,
+    /// 八卦五行
+    pub ba_gua_wu_xing: WuXing,
+    /// 与主宫的五行关系
+    pub relation: WuXingRelation,
+    /// 关系描述
+    pub relation_desc: &'static str,
+}
+
+/// 计算三宫具象法
+///
+/// 将三宫通过不同排列得到三个盘：
+/// - 天盘：人-天-地顺序，主看官事、贵人
+/// - 地盘：天-地-人顺序，主看财运、居所
+/// - 人盘：天-人-地顺序，主看人事、感情
+pub fn calculate_san_gong_juxiang(san_gong: &SanGong) -> SanPan {
+    let tian_pan = calculate_tian_pan(san_gong);
+    let di_pan = calculate_di_pan(san_gong);
+    let ren_pan = calculate_ren_pan(san_gong);
+
+    SanPan { tian_pan, di_pan, ren_pan }
+}
+
+/// 计算天盘（人-天-地顺序）
+fn calculate_tian_pan(san_gong: &SanGong) -> PanResult {
+    // 重排为：人宫-天宫-地宫
+    let gongs = [san_gong.shi_gong, san_gong.yue_gong, san_gong.ri_gong];
+
+    // 计算八卦
+    let ba_gua = BaGua::from_yao(
+        gongs[0].yin_yang(),
+        gongs[1].yin_yang(),
+        gongs[2].yin_yang(),
+    );
+
+    let ba_gua_wu_xing = ba_gua.wu_xing();
+
+    // 计算八卦与天宫的五行关系
+    let tian_gong_wu_xing = san_gong.yue_gong.wu_xing();
+    let relation = calculate_wuxing_relation(ba_gua_wu_xing, tian_gong_wu_xing);
+
+    PanResult {
+        gongs,
+        ba_gua,
+        ba_gua_wu_xing,
+        relation,
+        relation_desc: relation.name(),
+    }
+}
+
+/// 计算地盘（天-地-人顺序）
+fn calculate_di_pan(san_gong: &SanGong) -> PanResult {
+    // 保持原顺序：天宫-地宫-人宫
+    let gongs = [san_gong.yue_gong, san_gong.ri_gong, san_gong.shi_gong];
+
+    // 计算八卦
+    let ba_gua = BaGua::from_yao(
+        gongs[0].yin_yang(),
+        gongs[1].yin_yang(),
+        gongs[2].yin_yang(),
+    );
+
+    let ba_gua_wu_xing = ba_gua.wu_xing();
+
+    // 计算八卦与地宫的五行关系
+    let di_gong_wu_xing = san_gong.ri_gong.wu_xing();
+    let relation = calculate_wuxing_relation(ba_gua_wu_xing, di_gong_wu_xing);
+
+    PanResult {
+        gongs,
+        ba_gua,
+        ba_gua_wu_xing,
+        relation,
+        relation_desc: relation.name(),
+    }
+}
+
+/// 计算人盘（天-人-地顺序）
+fn calculate_ren_pan(san_gong: &SanGong) -> PanResult {
+    // 重排为：天宫-人宫-地宫
+    let gongs = [san_gong.yue_gong, san_gong.shi_gong, san_gong.ri_gong];
+
+    // 计算八卦
+    let ba_gua = BaGua::from_yao(
+        gongs[0].yin_yang(),
+        gongs[1].yin_yang(),
+        gongs[2].yin_yang(),
+    );
+
+    let ba_gua_wu_xing = ba_gua.wu_xing();
+
+    // 计算八卦与人宫的五行关系
+    let ren_gong_wu_xing = san_gong.shi_gong.wu_xing();
+    let relation = calculate_wuxing_relation(ba_gua_wu_xing, ren_gong_wu_xing);
+
+    PanResult {
+        gongs,
+        ba_gua,
+        ba_gua_wu_xing,
+        relation,
+        relation_desc: relation.name(),
+    }
+}
+
+/// 计算两个五行之间的关系
+fn calculate_wuxing_relation(wx1: WuXing, wx2: WuXing) -> WuXingRelation {
+    if wx1 == wx2 {
+        WuXingRelation::BiHe // 比和
+    } else if wx1.generates() == wx2 {
+        WuXingRelation::Sheng // 生出
+    } else if wx1.restrains() == wx2 {
+        WuXingRelation::Ke // 克出
+    } else if wx1.generated_by() == wx2 {
+        WuXingRelation::XieSheng // 被生/泄
+    } else {
+        WuXingRelation::BeiKe // 被克
+    }
+}
+
+// ============================================================================
+// 详细五行关系分析
+// ============================================================================
+
+/// 详细五行关系分析结果
+#[derive(Clone, Debug)]
+pub struct DetailedWuXingAnalysis {
+    /// 天地关系（月宫-日宫）
+    pub tian_di: WuXingRelationDetail,
+    /// 天人关系（月宫-时宫）
+    pub tian_ren: WuXingRelationDetail,
+    /// 地人关系（日宫-时宫）
+    pub di_ren: WuXingRelationDetail,
+    /// 体用关系（如果有时辰）
+    pub ti_yong: Option<TiYongRelation>,
+    /// 综合吉凶
+    pub overall_fortune: FortuneSummary,
+}
+
+/// 五行关系详情
+#[derive(Clone, Debug)]
+pub struct WuXingRelationDetail {
+    /// 源五行
+    pub from_wu_xing: WuXing,
+    /// 目标五行
+    pub to_wu_xing: WuXing,
+    /// 关系类型
+    pub relation: WuXingRelation,
+    /// 关系名称
+    pub name: &'static str,
+    /// 对吉凶的影响
+    pub fortune_impact: i8,
+}
+
+/// 综合吉凶摘要
+#[derive(Clone, Debug)]
+pub struct FortuneSummary {
+    /// 吉凶等级（1-10，10最吉）
+    pub level: u8,
+    /// 吉凶描述
+    pub description: &'static str,
+    /// 建议
+    pub advice: &'static str,
+}
+
+/// 分析详细五行关系
+pub fn analyze_detailed_wuxing(san_gong: &SanGong, shi_chen: Option<ShiChen>) -> DetailedWuXingAnalysis {
+    // 获取三宫五行
+    let yue_wx = san_gong.yue_gong.wu_xing();
+    let ri_wx = san_gong.ri_gong.wu_xing();
+    let shi_wx = san_gong.shi_gong.wu_xing();
+
+    // 计算天地关系
+    let tian_di_rel = calculate_wuxing_relation(yue_wx, ri_wx);
+    let tian_di = WuXingRelationDetail {
+        from_wu_xing: yue_wx,
+        to_wu_xing: ri_wx,
+        relation: tian_di_rel,
+        name: tian_di_rel.name(),
+        fortune_impact: tian_di_rel.fortune_modifier(),
+    };
+
+    // 计算天人关系
+    let tian_ren_rel = calculate_wuxing_relation(yue_wx, shi_wx);
+    let tian_ren = WuXingRelationDetail {
+        from_wu_xing: yue_wx,
+        to_wu_xing: shi_wx,
+        relation: tian_ren_rel,
+        name: tian_ren_rel.name(),
+        fortune_impact: tian_ren_rel.fortune_modifier(),
+    };
+
+    // 计算地人关系
+    let di_ren_rel = calculate_wuxing_relation(ri_wx, shi_wx);
+    let di_ren = WuXingRelationDetail {
+        from_wu_xing: ri_wx,
+        to_wu_xing: shi_wx,
+        relation: di_ren_rel,
+        name: di_ren_rel.name(),
+        fortune_impact: di_ren_rel.fortune_modifier(),
+    };
+
+    // 计算体用关系
+    let ti_yong = shi_chen.map(|sc| TiYongRelation::calculate(san_gong.shi_gong, sc));
+
+    // 计算综合吉凶
+    let overall_fortune = calculate_overall_fortune(san_gong, &tian_di, &tian_ren, &di_ren, ti_yong);
+
+    DetailedWuXingAnalysis {
+        tian_di,
+        tian_ren,
+        di_ren,
+        ti_yong,
+        overall_fortune,
+    }
+}
+
+/// 计算综合吉凶
+fn calculate_overall_fortune(
+    san_gong: &SanGong,
+    tian_di: &WuXingRelationDetail,
+    tian_ren: &WuXingRelationDetail,
+    di_ren: &WuXingRelationDetail,
+    ti_yong: Option<TiYongRelation>,
+) -> FortuneSummary {
+    // 基础分数：三宫吉凶平均值 * 2
+    let base_score = san_gong.fortune_level() as i16 * 2;
+
+    // 五行关系加成
+    let relation_score = (tian_di.fortune_impact + tian_ren.fortune_impact + di_ren.fortune_impact) as i16;
+
+    // 体用关系加成
+    let ti_yong_score = ti_yong.map(|ty| ty.fortune_level() as i16 - 3).unwrap_or(0);
+
+    // 特殊情况加成
+    let special_score = if san_gong.is_pure() {
+        3 // 纯宫加分
+    } else if san_gong.is_all_auspicious() {
+        2 // 全吉加分
+    } else if san_gong.is_all_inauspicious() {
+        -2 // 全凶减分
+    } else {
+        0
+    };
+
+    // 计算最终分数（限制在1-10范围）
+    let total_score = base_score + relation_score + ti_yong_score + special_score;
+    let level = total_score.clamp(1, 10) as u8;
+
+    // 根据分数确定描述和建议
+    let (description, advice) = match level {
+        9..=10 => ("大吉大利", "诸事皆宜，可大胆行事，贵人相助，心想事成"),
+        7..=8 => ("吉祥顺遂", "事情顺利，稍加努力即可成功，宜积极进取"),
+        5..=6 => ("中平之象", "平稳无大碍，宜守不宜进，谨慎行事可保平安"),
+        3..=4 => ("小有阻碍", "事多波折，需耐心等待，不宜冒进，宜静观其变"),
+        _ => ("诸事不顺", "凶险当道，宜守勿进，多加小心，避免大事"),
+    };
+
+    FortuneSummary {
+        level,
+        description,
+        advice,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,16 +833,22 @@ mod tests {
     #[test]
     fn test_divine_by_multi_digit() {
         // 测试1436
-        let result = divine_by_multi_digit(1436);
+        let result = divine_by_multi_digit_single(1436);
         // 1+4+3+6 = 14, 14-3 = 11, 11 % 6 = 5
         // 5不为0，所以 index = 5 - 1 = 4 → 小吉(索引4)
         assert_eq!(result, LiuGong::XiaoJi);
 
         // 测试18
-        let result = divine_by_multi_digit(18);
+        let result = divine_by_multi_digit_single(18);
         // 1+8 = 9, 9-1 = 8, 8 % 6 = 2
         // 2不为0，所以 index = 2 - 1 = 1 → 留连(索引1)
         assert_eq!(result, LiuGong::LiuLian);
+
+        // 测试返回三宫的版本
+        let san_gong = divine_by_multi_digit(1436);
+        assert_eq!(san_gong.yue_gong, LiuGong::XiaoJi);
+        assert_eq!(san_gong.ri_gong, LiuGong::XiaoJi);
+        assert_eq!(san_gong.shi_gong, LiuGong::XiaoJi);
     }
 
     #[test]

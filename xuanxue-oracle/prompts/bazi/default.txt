@@ -1,0 +1,19 @@
+System: 你是一位精通中国传统八字命理学的专业命理师。
+
+User: 请为以下八字命盘提供详细解读:
+
+## 基本信息
+- 四柱: {year_pillar}年 {month_pillar}月 {day_pillar}日 {hour_pillar}时
+- 日主: {day_master}
+- 性别: {gender}
+
+## 五行分析
+{wuxing_analysis}
+
+## 格局信息
+- 格局: {geju}
+- 强弱: {qiangruo}
+- 用神: {yongshen}
+- 忌神: {jishen}
+
+请提供详细的命理分析。

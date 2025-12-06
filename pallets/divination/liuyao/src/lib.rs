@@ -44,6 +44,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod algorithm;
+pub mod shensha;
 pub mod types;
 
 #[cfg(test)]
@@ -52,6 +53,7 @@ mod mock;
 mod tests;
 
 pub use pallet::*;
+pub use shensha::*;
 pub use types::*;
 
 #[frame_support::pallet]
@@ -60,15 +62,10 @@ pub mod pallet {
     use crate::algorithm::*;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, ExistenceRequirement, Randomness},
+        traits::Randomness,
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::Zero;
-
-    /// 余额类型别名
-    pub type BalanceOf<T> =
-        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -78,9 +75,6 @@ pub mod pallet {
     /// 注：RuntimeEvent 关联类型已从 Polkadot SDK 2506 版本开始自动附加
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_timestamp::Config {
-        /// 货币类型
-        type Currency: Currency<Self::AccountId>;
-
         /// 随机数生成器
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
 
@@ -99,16 +93,6 @@ pub mod pallet {
         /// 每日最大起卦次数
         #[pallet::constant]
         type MaxDailyGuas: Get<u32>;
-
-        /// AI 解读费用
-        #[pallet::constant]
-        type AiInterpretationFee: Get<BalanceOf<Self>>;
-
-        /// 国库账户
-        type TreasuryAccount: Get<Self::AccountId>;
-
-        /// AI 预言机权限
-        type AiOracleOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         /// IPFS CID 最大长度
         #[pallet::constant]
@@ -156,11 +140,6 @@ pub mod pallet {
     pub type DailyGuaCount<T: Config> =
         StorageMap<_, Blake2_128Concat, (T::AccountId, u32), u32, ValueQuery>;
 
-    /// AI 解读请求状态
-    #[pallet::storage]
-    #[pallet::getter(fn ai_interpretation_requests)]
-    pub type AiInterpretationRequests<T: Config> = StorageMap<_, Blake2_128Concat, u64, bool, ValueQuery>;
-
     /// 用户统计数据
     #[pallet::storage]
     #[pallet::getter(fn user_stats)]
@@ -180,16 +159,6 @@ pub mod pallet {
             creator: T::AccountId,
             method: DivinationMethod,
             original_name_idx: u8,
-        },
-        /// 请求 AI 解读
-        AiInterpretationRequested {
-            gua_id: u64,
-            requester: T::AccountId,
-        },
-        /// AI 解读完成
-        AiInterpretationSubmitted {
-            gua_id: u64,
-            cid: BoundedVec<u8, T::MaxCidLen>,
         },
         /// 可见性变更
         VisibilityChanged {
@@ -220,12 +189,6 @@ pub mod pallet {
         UserGuaLimitExceeded,
         /// 超过公开列表上限
         PublicGuaLimitExceeded,
-        /// AI 解读已请求
-        AiInterpretationAlreadyRequested,
-        /// AI 解读未请求
-        AiInterpretationNotRequested,
-        /// 余额不足
-        InsufficientBalance,
     }
 
     // ========================================================================
@@ -294,15 +257,15 @@ pub mod pallet {
         /// 数字起卦 - 报数法
         ///
         /// # 参数
-        /// - `num1`: 上卦数
-        /// - `num2`: 下卦数
-        /// - `dong`: 动爻位置（1-6）
+        /// - `upper_num`: 上卦数（对应外卦，用户报的第一个数）
+        /// - `lower_num`: 下卦数（对应内卦，用户报的第二个数）
+        /// - `dong`: 动爻位置（1-6，从初爻到上爻）
         #[pallet::call_index(1)]
         #[pallet::weight(Weight::from_parts(100_000_000, 0))]
         pub fn divine_by_numbers(
             origin: OriginFor<T>,
-            num1: u16,
-            num2: u16,
+            upper_num: u16,
+            lower_num: u16,
             dong: u8,
             year_gz: (u8, u8),
             month_gz: (u8, u8),
@@ -312,14 +275,14 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // 参数校验
-            ensure!(num1 > 0 && num2 > 0, Error::<T>::InvalidNumber);
+            ensure!(upper_num > 0 && lower_num > 0, Error::<T>::InvalidNumber);
             ensure!(dong >= 1 && dong <= 6, Error::<T>::InvalidDongYao);
 
             // 检查每日限制
             Self::check_daily_limit(&who)?;
 
             // 从数字生成六爻
-            let yaos = numbers_to_yaos(num1, num2, dong);
+            let yaos = numbers_to_yaos(upper_num, lower_num, dong);
 
             // 执行排卦
             let gua_id = Self::do_divine(
@@ -468,109 +431,72 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 请求 AI 解读（已废弃）
+        /// 时间起卦 - 根据年月日时起卦
         ///
-        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`
-        /// 新的统一 AI 解读系统支持：
-        /// - 多种 AI 模型选择
-        /// - Oracle 质押和评分机制
-        /// - 争议和退款处理
-        ///
-        /// # 废弃原因
-        /// 为统一 AI 解读逻辑、减少代码重复，所有 AI 解读请求已移至
-        /// `pallet-divination-ai` 模块统一处理。
+        /// # 参数
+        /// - `year_zhi`: 年地支索引 (0-11，子=0)
+        /// - `month_num`: 月数 (1-12)
+        /// - `day_num`: 日数 (1-31)
+        /// - `hour_zhi`: 时辰地支索引 (0-11)
+        /// - `year_gz`: 年干支（用于排盘）
+        /// - `month_gz`: 月干支
+        /// - `day_gz`: 日干支
+        /// - `hour_gz`: 时干支
         #[pallet::call_index(4)]
-        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
-        #[deprecated(
-            since = "0.2.0",
-            note = "请使用 pallet_divination_ai::request_interpretation"
-        )]
-        pub fn request_ai_interpretation(
+        #[pallet::weight(Weight::from_parts(100_000_000, 0))]
+        pub fn divine_by_time(
             origin: OriginFor<T>,
-            gua_id: u64,
+            year_zhi: u8,
+            month_num: u8,
+            day_num: u8,
+            hour_zhi: u8,
+            year_gz: (u8, u8),
+            month_gz: (u8, u8),
+            day_gz: (u8, u8),
+            hour_gz: (u8, u8),
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // 检查卦象存在且属于调用者
+            // 参数校验
+            ensure!(year_zhi < 12, Error::<T>::InvalidNumber);
+            ensure!(month_num >= 1 && month_num <= 12, Error::<T>::InvalidNumber);
+            ensure!(day_num >= 1 && day_num <= 31, Error::<T>::InvalidNumber);
+            ensure!(hour_zhi < 12, Error::<T>::InvalidNumber);
+
+            // 检查每日限制
+            Self::check_daily_limit(&who)?;
+
+            // 调用时间起卦算法
+            let yaos = time_to_yaos(year_zhi, month_num, day_num, hour_zhi);
+
+            // 执行排卦
+            let gua_id = Self::do_divine(
+                &who,
+                yaos,
+                DivinationMethod::TimeMethod,
+                (TianGan::from_index(year_gz.0), DiZhi::from_index(year_gz.1)),
+                (TianGan::from_index(month_gz.0), DiZhi::from_index(month_gz.1)),
+                (TianGan::from_index(day_gz.0), DiZhi::from_index(day_gz.1)),
+                (TianGan::from_index(hour_gz.0), DiZhi::from_index(hour_gz.1)),
+            )?;
+
+            // 更新每日计数
+            Self::increment_daily_count(&who);
+
+            // 发出事件
             let gua = Guas::<T>::get(gua_id).ok_or(Error::<T>::GuaNotFound)?;
-            ensure!(gua.creator == who, Error::<T>::NotGuaOwner);
-
-            // 检查是否已请求
-            ensure!(
-                !AiInterpretationRequests::<T>::get(gua_id),
-                Error::<T>::AiInterpretationAlreadyRequested
-            );
-
-            // 收取费用
-            let fee = T::AiInterpretationFee::get();
-            if !fee.is_zero() {
-                T::Currency::transfer(
-                    &who,
-                    &T::TreasuryAccount::get(),
-                    fee,
-                    ExistenceRequirement::KeepAlive,
-                )?;
-            }
-
-            // 记录请求
-            AiInterpretationRequests::<T>::insert(gua_id, true);
-
-            // 更新用户统计
-            UserStatsStorage::<T>::mutate(&who, |stats| {
-                stats.ai_interpretations = stats.ai_interpretations.saturating_add(1);
-            });
-
-            Self::deposit_event(Event::AiInterpretationRequested {
+            Self::deposit_event(Event::GuaCreated {
                 gua_id,
-                requester: who,
+                creator: who,
+                method: DivinationMethod::TimeMethod,
+                original_name_idx: gua.original_name_idx,
             });
-
-            Ok(())
-        }
-
-        /// 提交 AI 解读结果（预言机调用）（已废弃）
-        ///
-        /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::submit_result`
-        /// 新的统一 AI 解读系统支持更完善的结果提交和验证机制。
-        #[pallet::call_index(5)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
-        #[deprecated(
-            since = "0.2.0",
-            note = "请使用 pallet_divination_ai::submit_result"
-        )]
-        pub fn submit_ai_interpretation(
-            origin: OriginFor<T>,
-            gua_id: u64,
-            cid: BoundedVec<u8, T::MaxCidLen>,
-        ) -> DispatchResult {
-            T::AiOracleOrigin::ensure_origin(origin)?;
-
-            // 检查卦象存在
-            ensure!(Guas::<T>::contains_key(gua_id), Error::<T>::GuaNotFound);
-
-            // 检查是否已请求
-            ensure!(
-                AiInterpretationRequests::<T>::get(gua_id),
-                Error::<T>::AiInterpretationNotRequested
-            );
-
-            // 更新卦象
-            Guas::<T>::mutate(gua_id, |maybe_gua| {
-                if let Some(gua) = maybe_gua {
-                    gua.ai_interpretation_cid = Some(cid.clone());
-                }
-            });
-
-            // 清除请求状态
-            AiInterpretationRequests::<T>::remove(gua_id);
-
-            Self::deposit_event(Event::AiInterpretationSubmitted { gua_id, cid });
 
             Ok(())
         }
 
         /// 设置卦象可见性
-        #[pallet::call_index(6)]
+        #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]
         pub fn set_gua_visibility(
             origin: OriginFor<T>,
@@ -748,6 +674,15 @@ pub mod pallet {
             // 计算动爻位图
             let moving_yaos = calculate_moving_bitmap(&yaos);
 
+            // 计算互卦
+            let (hu_inner, hu_outer) = calculate_hu_gua(&yaos);
+            let hu_name_idx = calculate_gua_index(hu_inner, hu_outer);
+
+            // 计算卦身
+            let shi_pos = gua_xu.shi_yao_pos();
+            let shi_is_yang = yaos[(shi_pos - 1) as usize].is_yang();
+            let gua_shen = calculate_gua_shen(shi_pos, shi_is_yang);
+
             // 查找伏神
             let fu_shen = find_fu_shen(gong, &liu_qin_array);
 
@@ -773,11 +708,14 @@ pub mod pallet {
                 changed_inner,
                 changed_outer,
                 changed_name_idx,
+                hu_inner,
+                hu_outer,
+                hu_name_idx,
+                gua_shen,
                 moving_yaos,
                 xun_kong,
                 fu_shen,
                 is_public: false,
-                ai_interpretation_cid: None,
             };
 
             // 存储卦象

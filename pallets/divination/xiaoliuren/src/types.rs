@@ -9,7 +9,7 @@
 //!
 //! ## 流派说明
 //!
-//! 本模块采用**道家小六壬**体系，与传统流派在五行配属上有所不同：
+//! 本模块支持**道家小六壬**和**传统流派**两种体系，两者在五行配属上有所不同：
 //!
 //! | 六神 | 道家流派 | 传统流派 |
 //! |------|---------|---------|
@@ -28,11 +28,145 @@
 //! - **赤口**：属金/阴，临白虎，口舌是非，方位西方
 //! - **小吉**：属水/阳，临六合，和合吉利，方位北方
 //! - **空亡**：属土/阴，临勾陈，无果忧虑，方位中央
+//!
+//! ## 十二宫对应
+//!
+//! 六神对应的十二宫位：
+//! - **大安**：事业宫（外）+ 命宫（内）
+//! - **留连**：田宅宫（外）+ 奴仆宫（内）
+//! - **速喜**：感情宫（外）+ 夫妻宫（内）
+//! - **赤口**：疾厄宫（外）+ 兄弟宫（内）
+//! - **小吉**：驿马宫（外）+ 子女宫（内）
+//! - **空亡**：福德宫（外）+ 父母宫（内）
 
 use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use frame_support::{pallet_prelude::*, BoundedVec};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
+
+// ============================================================================
+// 流派定义
+// ============================================================================
+
+/// 小六壬流派枚举
+///
+/// 不同流派在六神的五行配属上有所不同，主要差异在留连和小吉：
+/// - 道家流派：留连属土，小吉属水
+/// - 传统流派：留连属水，小吉属木
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum XiaoLiuRenSchool {
+    /// 道家流派 - 留连属土，小吉属水（默认）
+    #[default]
+    DaoJia = 0,
+    /// 传统流派 - 留连属水，小吉属木
+    ChuanTong = 1,
+}
+
+impl XiaoLiuRenSchool {
+    /// 获取流派名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::DaoJia => "道家流派",
+            Self::ChuanTong => "传统流派",
+        }
+    }
+
+    /// 获取流派说明
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::DaoJia => "道家小六壬体系，留连属土临玄武，小吉属水临六合，注重体用关系分析",
+            Self::ChuanTong => "传统小六壬体系，留连属水临玄武，小吉属木临六合，注重时辰吉凶判断",
+        }
+    }
+}
+
+// ============================================================================
+// 十二宫定义
+// ============================================================================
+
+/// 十二宫枚举
+///
+/// 六神对应的命理十二宫，每个六神对应一对宫位（外宫/内宫）
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum TwelvePalace {
+    /// 命宫 - 代表自身命运、性格特点
+    #[default]
+    MingGong = 0,
+    /// 事业宫 - 代表事业发展、工作状态
+    ShiYeGong = 1,
+    /// 田宅宫 - 代表房产、家庭环境
+    TianZhaiGong = 2,
+    /// 奴仆宫 - 代表下属、仆从关系
+    NuPuGong = 3,
+    /// 感情宫 - 代表感情状态、情感发展
+    GanQingGong = 4,
+    /// 夫妻宫 - 代表婚姻、配偶
+    FuQiGong = 5,
+    /// 疾厄宫 - 代表健康、疾病
+    JiEGong = 6,
+    /// 兄弟宫 - 代表兄弟姐妹、朋友同事
+    XiongDiGong = 7,
+    /// 驿马宫 - 代表出行、变动
+    YiMaGong = 8,
+    /// 子女宫 - 代表子女、晚辈
+    ZiNvGong = 9,
+    /// 福德宫 - 代表福气、精神状态
+    FuDeGong = 10,
+    /// 父母宫 - 代表父母、长辈
+    FuMuGong = 11,
+}
+
+impl TwelvePalace {
+    /// 获取宫位名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::MingGong => "命宫",
+            Self::ShiYeGong => "事业宫",
+            Self::TianZhaiGong => "田宅宫",
+            Self::NuPuGong => "奴仆宫",
+            Self::GanQingGong => "感情宫",
+            Self::FuQiGong => "夫妻宫",
+            Self::JiEGong => "疾厄宫",
+            Self::XiongDiGong => "兄弟宫",
+            Self::YiMaGong => "驿马宫",
+            Self::ZiNvGong => "子女宫",
+            Self::FuDeGong => "福德宫",
+            Self::FuMuGong => "父母宫",
+        }
+    }
+
+    /// 获取宫位说明
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::MingGong => "代表自身命运、性格特点、整体运势",
+            Self::ShiYeGong => "代表事业发展、工作状态、官运仕途",
+            Self::TianZhaiGong => "代表房产置业、家庭环境、安居状况",
+            Self::NuPuGong => "代表下属仆从、支配欲望、阴暗私事",
+            Self::GanQingGong => "代表感情状态、情感发展、桃花运势",
+            Self::FuQiGong => "代表婚姻状况、配偶信息、夫妻关系",
+            Self::JiEGong => "代表健康状况、疾病灾祸、外部伤害",
+            Self::XiongDiGong => "代表兄弟姐妹、朋友同事、人际关系",
+            Self::YiMaGong => "代表出行远行、变动迁移、交通运势",
+            Self::ZiNvGong => "代表子女晚辈、生育状况、子孙运势",
+            Self::FuDeGong => "代表福气福报、精神状态、内心修养",
+            Self::FuMuGong => "代表父母长辈、祖业遗产、根基来源",
+        }
+    }
+}
+
+/// 宫位对（外宫/内宫）
+///
+/// 每个六神对应一对宫位，外宫表现在外，内宫表现在内
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub struct PalacePair {
+    /// 外宫（动态宫，表现在外）
+    pub outer: TwelvePalace,
+    /// 内宫（静态宫，表现在内）
+    pub inner: TwelvePalace,
+}
 
 // ============================================================================
 // 六宫（六神）定义
@@ -214,6 +348,194 @@ impl LiuGong {
             Self::KongWang => "音信稀时，五行属土，阴性，颜色黄色，方位中央。临勾陈。有不吉、无结果、忧虑之含义。",
         }
     }
+
+    // ========================================================================
+    // 流派支持方法
+    // ========================================================================
+
+    /// 根据流派获取五行属性
+    ///
+    /// 道家流派与传统流派在留连和小吉的五行配属上有差异
+    pub fn wu_xing_by_school(&self, school: XiaoLiuRenSchool) -> WuXing {
+        match school {
+            XiaoLiuRenSchool::DaoJia => self.wu_xing(),
+            XiaoLiuRenSchool::ChuanTong => self.wu_xing_traditional(),
+        }
+    }
+
+    /// 传统流派五行配属
+    ///
+    /// 与道家流派的主要差异：
+    /// - 留连：水（道家为土）
+    /// - 小吉：木（道家为水）
+    pub fn wu_xing_traditional(&self) -> WuXing {
+        match self {
+            Self::DaAn => WuXing::Wood,     // 木
+            Self::LiuLian => WuXing::Water, // 水（传统流派）
+            Self::SuXi => WuXing::Fire,     // 火
+            Self::ChiKou => WuXing::Metal,  // 金
+            Self::XiaoJi => WuXing::Wood,   // 木（传统流派）
+            Self::KongWang => WuXing::Earth,// 土
+        }
+    }
+
+    /// 根据流派获取方位
+    pub fn direction_by_school(&self, school: XiaoLiuRenSchool) -> &'static str {
+        match school {
+            XiaoLiuRenSchool::DaoJia => self.direction(),
+            XiaoLiuRenSchool::ChuanTong => self.direction_traditional(),
+        }
+    }
+
+    /// 传统流派方位
+    pub fn direction_traditional(&self) -> &'static str {
+        match self {
+            Self::DaAn => "东方",
+            Self::LiuLian => "北方",   // 传统流派：北方（水）
+            Self::SuXi => "南方",
+            Self::ChiKou => "西方",
+            Self::XiaoJi => "东方",    // 传统流派：东方（木）
+            Self::KongWang => "中央",
+        }
+    }
+
+    /// 根据流派获取颜色
+    pub fn color_by_school(&self, school: XiaoLiuRenSchool) -> &'static str {
+        match school {
+            XiaoLiuRenSchool::DaoJia => self.color(),
+            XiaoLiuRenSchool::ChuanTong => self.color_traditional(),
+        }
+    }
+
+    /// 传统流派颜色
+    pub fn color_traditional(&self) -> &'static str {
+        match self {
+            Self::DaAn => "青色",
+            Self::LiuLian => "黑色",   // 传统流派：黑色（水）
+            Self::SuXi => "红色",
+            Self::ChiKou => "白色",
+            Self::XiaoJi => "青色",    // 传统流派：青色（木）
+            Self::KongWang => "黄色",
+        }
+    }
+
+    // ========================================================================
+    // 十二宫对应方法
+    // ========================================================================
+
+    /// 获取对应的十二宫位对
+    ///
+    /// 六神对应的十二宫：
+    /// - 大安：事业宫（外）+ 命宫（内）
+    /// - 留连：田宅宫（外）+ 奴仆宫（内）
+    /// - 速喜：感情宫（外）+ 夫妻宫（内）
+    /// - 赤口：疾厄宫（外）+ 兄弟宫（内）
+    /// - 小吉：驿马宫（外）+ 子女宫（内）
+    /// - 空亡：福德宫（外）+ 父母宫（内）
+    pub fn twelve_palace(&self) -> PalacePair {
+        match self {
+            Self::DaAn => PalacePair {
+                outer: TwelvePalace::ShiYeGong,
+                inner: TwelvePalace::MingGong,
+            },
+            Self::LiuLian => PalacePair {
+                outer: TwelvePalace::TianZhaiGong,
+                inner: TwelvePalace::NuPuGong,
+            },
+            Self::SuXi => PalacePair {
+                outer: TwelvePalace::GanQingGong,
+                inner: TwelvePalace::FuQiGong,
+            },
+            Self::ChiKou => PalacePair {
+                outer: TwelvePalace::JiEGong,
+                inner: TwelvePalace::XiongDiGong,
+            },
+            Self::XiaoJi => PalacePair {
+                outer: TwelvePalace::YiMaGong,
+                inner: TwelvePalace::ZiNvGong,
+            },
+            Self::KongWang => PalacePair {
+                outer: TwelvePalace::FuDeGong,
+                inner: TwelvePalace::FuMuGong,
+            },
+        }
+    }
+
+    /// 获取藏干
+    ///
+    /// 六神对应的藏干（天干隐藏于地支中）
+    pub fn hidden_stems(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::DaAn => ("甲", "丁"),
+            Self::LiuLian => ("丁", "己"),
+            Self::SuXi => ("丙", "辛"),
+            Self::ChiKou => ("庚", "癸"),
+            Self::XiaoJi => ("壬", "甲"),
+            Self::KongWang => ("戊", "乙"),
+        }
+    }
+
+    /// 获取对应天干
+    pub fn tian_gan(&self) -> &'static str {
+        match self {
+            Self::DaAn => "甲乙",
+            Self::LiuLian => "戊己",   // 道家流派（土）
+            Self::SuXi => "丙丁",
+            Self::ChiKou => "庚辛",
+            Self::XiaoJi => "壬癸",    // 道家流派（水）
+            Self::KongWang => "戊己",
+        }
+    }
+
+    /// 获取对应地支月份
+    pub fn di_zhi_months(&self) -> &'static str {
+        match self {
+            Self::DaAn => "寅卯辰月",
+            Self::LiuLian => "辰巳月",
+            Self::SuXi => "巳午未月",
+            Self::ChiKou => "申酉戌月",
+            Self::XiaoJi => "亥子丑月",
+            Self::KongWang => "丑寅月",
+        }
+    }
+
+    /// 获取对应季节
+    pub fn season(&self) -> &'static str {
+        match self {
+            Self::DaAn => "春季",
+            Self::LiuLian => "春夏之交",
+            Self::SuXi => "夏季",
+            Self::ChiKou => "秋季",
+            Self::XiaoJi => "冬季",
+            Self::KongWang => "冬春之交",
+        }
+    }
+
+    /// 获取扩展数字范围
+    ///
+    /// 返回四个关联数字
+    pub fn number_range(&self) -> [u8; 4] {
+        match self {
+            Self::DaAn => [1, 7, 4, 5],
+            Self::LiuLian => [2, 8, 7, 8],
+            Self::SuXi => [3, 9, 6, 9],
+            Self::ChiKou => [4, 10, 1, 2],
+            Self::XiaoJi => [5, 11, 3, 8],
+            Self::KongWang => [6, 12, 5, 10],
+        }
+    }
+
+    /// 获取详细解释（扩展版）
+    pub fn detailed_explanation(&self) -> &'static str {
+        match self {
+            Self::DaAn => "大安事事昌，求财在坤方，失物去不远，宅舍保安康，行人身未动，病者主无妨。将军回田野，仔细与推详，丢失在附近，可能西南向，安居得吉日，不可动身祥。办事别出屋，求借邀自房，得病凶化吉，久疾得安康，寻人知音信，可能归村庄。口舌能消散，远行要提防，交易别出村，离屯细推详，求财有八分，得全不出房。",
+            Self::LiuLian => "留连事未当，求事日莫光，凡事只宜缓，去者未回向，失物南方去，急急行便访。紧记防口舌，人口且平祥，丢失难寻找，窃者又转场，出行定不归，久去拖延长。办事不果断，牵连又返往，求借不易成，被求而彷徨，此日患疾病，几天不复康。找人迷雾中，迷迷又恍惚，口舌继续有，拖拉又伸长，女方嫁吉日，求财六分量。",
+            Self::SuXi => "速喜喜临乡，求财往南方，失物申午未，逢人路寻详，官事有福德，病者无大伤。六畜田稼庆，行人有音向，丢失得音信，微乐在面上，出行遇吉利，小喜而顺当。办事如逢春，吉利又荣光，小量可求借，大事难全强，久病见小愈，得病速回康，寻人得知见，口舌见消亡，交易可得成，但不太久长，求财有十分，吉时得顺当。",
+            Self::ChiKou => "赤口主口伤，官事且紧防，失物急去找，行人有惊慌，鸡犬多作怪，病者上西方。更须防咒咀，恐怕染瘟殃，找物犯谎口，寻问无音向，出门千口怨，言谈万骂伤。办事犯口舌，难成有阻挡，求借不全顺，闭口无事张，得病千口猜，求医还无妨。寻人得凶音，人心不安详，口舌犯最重，交易口舌防，求财只四分，逢吉才成当。",
+            Self::XiaoJi => "小吉最吉昌，路上好商量，阴人来报喜，失物在坤方，行人立刻至，交易甚是强。凡事皆合好，病者保安康，大吉又大顺，万事如意详，出行可得喜，千里吉安祥。诸事可心顺，有忧皆消光，求借自来助，众友愿相帮，重病莫要愁，久病得安康。不见得相见，不打自归庄，千人称赞君，无限上荣光，交易成兴隆，十二分财量。",
+            Self::KongWang => "空亡事不长，阴人无主张，求财心白费，行人有灾殃，失物永不见，官事有刑伤。病人遇邪鬼，久病添祸殃，失物难找见，找寻空荡荡，出行不吉利，凶多不吉祥。办事凶为多，处处有阻挡，求借不能成，成事化败伤，得病凶多噩，久患雪加霜。寻人无音信，知音变空想，万口都诽骂，小舟遭狂浪，求财有二分，不吉不利亡。",
+        }
+    }
 }
 
 // ============================================================================
@@ -332,6 +654,60 @@ impl YinYang {
 }
 
 // ============================================================================
+// 子时类型区分
+// ============================================================================
+
+/// 子时类型枚举
+///
+/// 子时横跨两天，在某些流派中需要区分早子时和晚子时：
+/// - 早子时（夜子时）：23:00-24:00，属于当天
+/// - 晚子时（正子时）：00:00-01:00，属于次日
+///
+/// 在日干支计算中，早子时算当天，晚子时算次日
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub enum ZiShiType {
+    /// 早子时（夜子时）- 23:00-24:00，属于当天
+    #[default]
+    EarlyZi = 0,
+    /// 晚子时（正子时）- 00:00-01:00，属于次日
+    LateZi = 1,
+}
+
+impl ZiShiType {
+    /// 获取子时类型名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::EarlyZi => "早子时",
+            Self::LateZi => "晚子时",
+        }
+    }
+
+    /// 获取别名
+    pub fn alias(&self) -> &'static str {
+        match self {
+            Self::EarlyZi => "夜子时",
+            Self::LateZi => "正子时",
+        }
+    }
+
+    /// 获取时间范围
+    pub fn time_range(&self) -> &'static str {
+        match self {
+            Self::EarlyZi => "23:00-24:00",
+            Self::LateZi => "00:00-01:00",
+        }
+    }
+
+    /// 是否算作当天
+    ///
+    /// 早子时算当天，晚子时算次日
+    pub fn is_current_day(&self) -> bool {
+        matches!(self, Self::EarlyZi)
+    }
+}
+
+// ============================================================================
 // 起课方式
 // ============================================================================
 
@@ -434,9 +810,35 @@ impl ShiChen {
         }
     }
 
+    /// 从小时数计算时辰，并返回子时类型（如果是子时）
+    ///
+    /// 此方法区分早子时（23:00-24:00）和晚子时（00:00-01:00）
+    pub fn from_hour_detailed(hour: u8) -> (Self, Option<ZiShiType>) {
+        match hour {
+            23 => (Self::Zi, Some(ZiShiType::EarlyZi)),  // 早子时
+            0 => (Self::Zi, Some(ZiShiType::LateZi)),    // 晚子时
+            1 | 2 => (Self::Chou, None),
+            3 | 4 => (Self::Yin, None),
+            5 | 6 => (Self::Mao, None),
+            7 | 8 => (Self::Chen, None),
+            9 | 10 => (Self::Si, None),
+            11 | 12 => (Self::Wu, None),
+            13 | 14 => (Self::Wei, None),
+            15 | 16 => (Self::Shen, None),
+            17 | 18 => (Self::You, None),
+            19 | 20 => (Self::Xu, None),
+            _ => (Self::Hai, None), // 21, 22
+        }
+    }
+
     /// 获取时辰索引（1-12，用于计算）
     pub fn index(&self) -> u8 {
         (*self as u8) + 1
+    }
+
+    /// 获取时辰索引（0-11，用于数组索引）
+    pub fn zero_index(&self) -> u8 {
+        *self as u8
     }
 
     /// 获取时辰名称

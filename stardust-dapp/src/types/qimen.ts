@@ -3,7 +3,152 @@
  *
  * 奇门遁甲是中国古代用于预测和决策的术数，由天盘、地盘、人盘、神盘
  * 四层构成，通过分析各盘之间的关系来推断吉凶。
+ *
+ * 本模块包含：
+ * - 基础枚举（九宫、天干、八门、九星、八神等）
+ * - 排盘方法（转盘/飞盘）
+ * - 排盘类型（时家/日家/月家/年家）
+ * - 问事类型（12种）
+ * - 格局类型（九遁、凶格等）
+ * - 用神系统
+ * - 解读文案
  */
+
+// ==================== 排盘方法与类型 ====================
+
+/**
+ * 排盘方法（转盘/飞盘）
+ *
+ * 奇门遁甲有两种主要的排盘方法：
+ * - 转盘奇门：九星、八门、八神作为整体旋转，是目前最常用的方法
+ * - 飞盘奇门：九星、八门、八神按洛书九宫飞布顺序分别飞入各宫
+ */
+export enum PanMethod {
+  /** 转盘奇门（默认） */
+  ZhuanPan = 0,
+  /** 飞盘奇门 */
+  FeiPan = 1,
+}
+
+/**
+ * 排盘方法名称
+ */
+export const PAN_METHOD_NAMES: Record<PanMethod, string> = {
+  [PanMethod.ZhuanPan]: '转盘奇门',
+  [PanMethod.FeiPan]: '飞盘奇门',
+};
+
+/**
+ * 排盘方法描述
+ */
+export const PAN_METHOD_DESC: Record<PanMethod, string> = {
+  [PanMethod.ZhuanPan]: '九星、八门、八神作为整体旋转，是目前最常用的排盘方法',
+  [PanMethod.FeiPan]: '九星、八门、八神按洛书九宫数序分别飞入各宫，古法排盘方式',
+};
+
+/**
+ * 排盘类型（时家/日家/月家/年家）
+ *
+ * 奇门遁甲有多种排盘类型，根据不同的时间单位起局
+ */
+export enum QimenType {
+  /** 时家奇门：以时辰为单位，最常用 */
+  ShiJia = 0,
+  /** 日家奇门：以日为单位 */
+  RiJia = 1,
+  /** 月家奇门：以月为单位 */
+  YueJia = 2,
+  /** 年家奇门：以年为单位 */
+  NianJia = 3,
+}
+
+/**
+ * 排盘类型名称
+ */
+export const QIMEN_TYPE_NAMES: Record<QimenType, string> = {
+  [QimenType.ShiJia]: '时家奇门',
+  [QimenType.RiJia]: '日家奇门',
+  [QimenType.YueJia]: '月家奇门',
+  [QimenType.NianJia]: '年家奇门',
+};
+
+/**
+ * 排盘类型描述
+ */
+export const QIMEN_TYPE_DESC: Record<QimenType, string> = {
+  [QimenType.ShiJia]: '以时辰为单位起局，每两小时一局，最常用的排盘方式',
+  [QimenType.RiJia]: '以日为单位起局，每日一局，适合日课择吉',
+  [QimenType.YueJia]: '以月为单位起局，每月一局，适合月度规划',
+  [QimenType.NianJia]: '以年为单位起局，每年一局，适合年度大运分析',
+};
+
+/**
+ * 问事类型（占断事项分类）
+ *
+ * 奇门遁甲中根据不同的问事类型，有不同的用神和取象规则
+ */
+export enum QuestionType {
+  /** 综合运势（默认） */
+  General = 0,
+  /** 事业工作 */
+  Career = 1,
+  /** 财运求财 */
+  Wealth = 2,
+  /** 婚姻感情 */
+  Marriage = 3,
+  /** 健康疾病 */
+  Health = 4,
+  /** 学业考试 */
+  Study = 5,
+  /** 出行远行 */
+  Travel = 6,
+  /** 官司诉讼 */
+  Lawsuit = 7,
+  /** 寻人寻物 */
+  Finding = 8,
+  /** 投资理财 */
+  Investment = 9,
+  /** 合作交易 */
+  Business = 10,
+  /** 祈福求神 */
+  Prayer = 11,
+}
+
+/**
+ * 问事类型名称
+ */
+export const QUESTION_TYPE_NAMES: Record<QuestionType, string> = {
+  [QuestionType.General]: '综合运势',
+  [QuestionType.Career]: '事业工作',
+  [QuestionType.Wealth]: '财运求财',
+  [QuestionType.Marriage]: '婚姻感情',
+  [QuestionType.Health]: '健康疾病',
+  [QuestionType.Study]: '学业考试',
+  [QuestionType.Travel]: '出行远行',
+  [QuestionType.Lawsuit]: '官司诉讼',
+  [QuestionType.Finding]: '寻人寻物',
+  [QuestionType.Investment]: '投资理财',
+  [QuestionType.Business]: '合作交易',
+  [QuestionType.Prayer]: '祈福求神',
+};
+
+/**
+ * 问事类型描述
+ */
+export const QUESTION_TYPE_DESC: Record<QuestionType, string> = {
+  [QuestionType.General]: '整体运势分析，综合各方面情况',
+  [QuestionType.Career]: '工作事业、升迁、求职、创业等',
+  [QuestionType.Wealth]: '财运、求财、偏财、正财等',
+  [QuestionType.Marriage]: '婚姻、恋爱、感情、桃花等',
+  [QuestionType.Health]: '疾病、健康、医疗、康复等',
+  [QuestionType.Study]: '考试、学业、资格证、进修等',
+  [QuestionType.Travel]: '出行、旅游、搬迁、远行等',
+  [QuestionType.Lawsuit]: '官司、诉讼、纠纷、仲裁等',
+  [QuestionType.Finding]: '寻人、寻物、失物、走失等',
+  [QuestionType.Investment]: '投资、理财、股票、基金等',
+  [QuestionType.Business]: '合作、交易、谈判、签约等',
+  [QuestionType.Prayer]: '祈福、求神、祭祀、许愿等',
+};
 
 // ==================== 基础枚举 ====================
 

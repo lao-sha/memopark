@@ -20,7 +20,10 @@ import type {
   NftOffer,
   NftTradeHistory,
   NftRarity,
+  HexagramDetail,
+  FullDivinationDetail,
 } from '../types/meihua';
+import { parseBoundedVecToString } from '../types/meihua';
 
 // ==================== 起卦服务 ====================
 
@@ -1188,4 +1191,169 @@ export async function removeNftFromCollection(collectionId: number, nftId: numbe
       }
     }).catch(reject);
   });
+}
+
+// ==================== 完整排盘详情 API ====================
+
+/**
+ * 解析 HexagramDetail 原始数据
+ *
+ * 将 Pallet 返回的 HexagramDetail 结构转换为前端可用的格式
+ *
+ * @param raw - Pallet 返回的原始数据
+ * @returns 解析后的 HexagramDetail
+ */
+function parseHexagramDetail(raw: Record<string, unknown>): HexagramDetail {
+  return {
+    name: parseBoundedVecToString(raw.name),
+    shangGuaName: parseBoundedVecToString(raw.shangGuaName || raw.shang_gua_name),
+    xiaGuaName: parseBoundedVecToString(raw.xiaGuaName || raw.xia_gua_name),
+    shangGuaSymbol: parseBoundedVecToString(raw.shangGuaSymbol || raw.shang_gua_symbol),
+    xiaGuaSymbol: parseBoundedVecToString(raw.xiaGuaSymbol || raw.xia_gua_symbol),
+    shangGuaWuxing: parseBoundedVecToString(raw.shangGuaWuxing || raw.shang_gua_wuxing),
+    xiaGuaWuxing: parseBoundedVecToString(raw.xiaGuaWuxing || raw.xia_gua_wuxing),
+    guaci: parseBoundedVecToString(raw.guaci),
+    dongYaoName: parseBoundedVecToString(raw.dongYaoName || raw.dong_yao_name),
+    dongYaoMing: parseBoundedVecToString(raw.dongYaoMing || raw.dong_yao_ming),
+    dongYaoCi: parseBoundedVecToString(raw.dongYaoCi || raw.dong_yao_ci),
+    tiyongName: parseBoundedVecToString(raw.tiyongName || raw.tiyong_name),
+    fortuneName: parseBoundedVecToString(raw.fortuneName || raw.fortune_name),
+  };
+}
+
+/**
+ * 获取卦象完整详细信息
+ *
+ * 调用 Pallet 的 get_hexagram_detail runtime API 获取完整排盘信息
+ * 包含：本卦、变卦、互卦、错卦、综卦、伏卦的详细信息及体用解读
+ *
+ * @param hexagramId - 卦象 ID
+ * @returns 完整排盘详细信息，如果卦象不存在则返回 null
+ */
+export async function getHexagramDetail(hexagramId: number): Promise<FullDivinationDetail | null> {
+  const api = await getApi();
+
+  // 检查 meihua pallet 是否存在
+  if (!api.call || !api.call.meihua || !api.call.meihua.getHexagramDetail) {
+    console.warn('[getHexagramDetail] meihua runtime API 不存在，尝试使用替代方法');
+
+    // 如果 runtime API 不可用，尝试通过 RPC 调用 state.call
+    try {
+      const result = await api.rpc.state.call(
+        'MeihuaApi_get_hexagram_detail',
+        api.createType('u64', hexagramId).toHex()
+      );
+
+      if (!result || result.isEmpty) {
+        console.log('[getHexagramDetail] 卦象不存在');
+        return null;
+      }
+
+      // 解码返回数据
+      const decoded = api.createType('Option<FullDivinationDetail>', result);
+      if (decoded.isNone) {
+        return null;
+      }
+
+      const data = decoded.unwrap().toJSON() as Record<string, unknown>;
+      return parseFullDivinationDetail(data);
+    } catch (rpcError) {
+      console.warn('[getHexagramDetail] RPC 调用失败:', rpcError);
+      // 继续尝试手动计算
+    }
+  } else {
+    // 使用 runtime API
+    try {
+      const result = await api.call.meihua.getHexagramDetail(hexagramId) as { isNone?: boolean; unwrap?: () => { toJSON: () => Record<string, unknown> } } | null;
+
+      if (!result || (result as { isNone?: boolean }).isNone) {
+        console.log('[getHexagramDetail] 卦象不存在');
+        return null;
+      }
+
+      const data = (result as { unwrap: () => { toJSON: () => Record<string, unknown> } }).unwrap().toJSON() as Record<string, unknown>;
+      return parseFullDivinationDetail(data);
+    } catch (apiError) {
+      console.warn('[getHexagramDetail] Runtime API 调用失败:', apiError);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 解析 FullDivinationDetail 原始数据
+ *
+ * @param data - Pallet 返回的原始数据
+ * @returns 解析后的 FullDivinationDetail
+ */
+function parseFullDivinationDetail(data: Record<string, unknown>): FullDivinationDetail {
+  return {
+    benGua: parseHexagramDetail((data.benGua || data.ben_gua || {}) as Record<string, unknown>),
+    bianGua: parseHexagramDetail((data.bianGua || data.bian_gua || {}) as Record<string, unknown>),
+    huGua: parseHexagramDetail((data.huGua || data.hu_gua || {}) as Record<string, unknown>),
+    cuoGua: parseHexagramDetail((data.cuoGua || data.cuo_gua || {}) as Record<string, unknown>),
+    zongGua: parseHexagramDetail((data.zongGua || data.zong_gua || {}) as Record<string, unknown>),
+    fuGua: parseHexagramDetail((data.fuGua || data.fu_gua || {}) as Record<string, unknown>),
+    tiyongInterpretation: parseBoundedVecToString(data.tiyongInterpretation || data.tiyong_interpretation),
+  };
+}
+
+/**
+ * 计算卦象详细信息（不需要存储）
+ *
+ * 调用 Pallet 的 calculate_hexagram_detail API 根据卦数直接计算详情
+ *
+ * @param shangGuaNum - 上卦数（1-8）
+ * @param xiaGuaNum - 下卦数（1-8）
+ * @param dongYao - 动爻（1-6）
+ * @returns 完整排盘详细信息
+ */
+export async function calculateHexagramDetail(
+  shangGuaNum: number,
+  xiaGuaNum: number,
+  dongYao: number
+): Promise<FullDivinationDetail | null> {
+  const api = await getApi();
+
+  // 检查 meihua pallet 是否存在
+  if (!api.call || !api.call.meihua || !api.call.meihua.calculateHexagramDetail) {
+    console.warn('[calculateHexagramDetail] meihua runtime API 不存在，尝试使用 RPC');
+
+    try {
+      // 构建参数
+      const params = api.createType('(u8, u8, u8)', [shangGuaNum, xiaGuaNum, dongYao]);
+
+      const result = await api.rpc.state.call(
+        'MeihuaApi_calculate_hexagram_detail',
+        params.toHex()
+      );
+
+      if (!result || result.isEmpty) {
+        console.log('[calculateHexagramDetail] 计算失败');
+        return null;
+      }
+
+      const decoded = api.createType('FullDivinationDetail', result);
+      const data = decoded.toJSON() as Record<string, unknown>;
+      return parseFullDivinationDetail(data);
+    } catch (rpcError) {
+      console.warn('[calculateHexagramDetail] RPC 调用失败:', rpcError);
+      return null;
+    }
+  }
+
+  try {
+    const result = await api.call.meihua.calculateHexagramDetail(
+      shangGuaNum,
+      xiaGuaNum,
+      dongYao
+    );
+
+    const data = result.toJSON() as Record<string, unknown>;
+    return parseFullDivinationDetail(data);
+  } catch (apiError) {
+    console.warn('[calculateHexagramDetail] Runtime API 调用失败:', apiError);
+    return null;
+  }
 }

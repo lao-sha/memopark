@@ -631,6 +631,156 @@ impl StarBrightness {
             Self::Xian => 10,
         }
     }
+
+    /// 从数值创建亮度枚举
+    ///
+    /// # 映射规则
+    /// 庙旺表数值: 0=陷, 1=平, 2=得, 3=利(不得), 4=旺, 5=庙
+    ///
+    /// # 参数
+    /// - value: 庙旺表中的数值
+    ///
+    /// # 返回
+    /// 对应的亮度枚举
+    pub fn from_value(value: u8) -> Self {
+        match value {
+            0 => Self::Xian,   // 陷
+            1 => Self::Ping,   // 平
+            2 => Self::De,     // 得
+            3 => Self::BuDe,   // 利（介于得与平之间）
+            4 => Self::Wang,   // 旺
+            5 => Self::Miao,   // 庙
+            _ => Self::Ping,   // 默认平
+        }
+    }
+}
+
+// ============================================================================
+// 博士十二星
+// ============================================================================
+
+/// 博士十二星
+/// 从禄存起博士，依次顺排（阳男阴女顺行，阴男阳女逆行）
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+pub enum BoShiXing {
+    #[default]
+    BoShi = 0,    // 博士 - 聪明才智
+    LiShi = 1,    // 力士 - 权力威势
+    QingLong = 2, // 青龙 - 喜庆吉祥
+    XiaoHao = 3,  // 小耗 - 小破财
+    JiangJun = 4, // 将军 - 威武刚强
+    ZouShu = 5,   // 奏书 - 文书事务
+    FeiLian = 6,  // 飞廉 - 是非口舌
+    XiShen = 7,   // 喜神 - 喜庆之事
+    BingFu = 8,   // 病符 - 疾病灾厄
+    DaHao = 9,    // 大耗 - 大破财
+    FuBing = 10,  // 伏兵 - 暗藏危机
+    GuanFu = 11,  // 官府 - 官司诉讼
+}
+
+impl BoShiXing {
+    /// 博士十二星名称
+    pub const NAMES: [&'static str; 12] = [
+        "博士", "力士", "青龙", "小耗", "将军", "奏书",
+        "飞廉", "喜神", "病符", "大耗", "伏兵", "官府",
+    ];
+
+    /// 获取星名
+    pub fn name(&self) -> &'static str {
+        Self::NAMES[*self as usize]
+    }
+
+    /// 从索引创建
+    pub fn from_index(idx: u8) -> Self {
+        match idx % 12 {
+            0 => Self::BoShi,
+            1 => Self::LiShi,
+            2 => Self::QingLong,
+            3 => Self::XiaoHao,
+            4 => Self::JiangJun,
+            5 => Self::ZouShu,
+            6 => Self::FeiLian,
+            7 => Self::XiShen,
+            8 => Self::BingFu,
+            9 => Self::DaHao,
+            10 => Self::FuBing,
+            _ => Self::GuanFu,
+        }
+    }
+
+    /// 是否为吉星
+    pub fn is_ji(&self) -> bool {
+        matches!(self, Self::BoShi | Self::QingLong | Self::XiShen)
+    }
+
+    /// 是否为凶星
+    pub fn is_xiong(&self) -> bool {
+        matches!(self, Self::XiaoHao | Self::FeiLian | Self::BingFu | Self::DaHao | Self::FuBing | Self::GuanFu)
+    }
+}
+
+// ============================================================================
+// 长生十二宫
+// ============================================================================
+
+/// 长生十二宫
+/// 从五行局起长生，依次顺/逆排
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+pub enum ChangSheng {
+    #[default]
+    ChangSheng = 0, // 长生 - 生命开始
+    MuYu = 1,       // 沐浴 - 洗礼净化
+    GuanDai = 2,    // 冠带 - 成年礼
+    LinGuan = 3,    // 临官 - 任职做官
+    DiWang = 4,     // 帝旺 - 最旺盛期
+    Shuai = 5,      // 衰 - 开始衰退
+    Bing = 6,       // 病 - 生病状态
+    Si = 7,         // 死 - 死亡阶段
+    Mu = 8,         // 墓 - 入墓安葬
+    Jue = 9,        // 绝 - 断绝时期
+    Tai = 10,       // 胎 - 受胎阶段
+    Yang = 11,      // 养 - 养育阶段
+}
+
+impl ChangSheng {
+    /// 长生十二宫名称
+    pub const NAMES: [&'static str; 12] = [
+        "长生", "沐浴", "冠带", "临官", "帝旺", "衰",
+        "病", "死", "墓", "绝", "胎", "养",
+    ];
+
+    /// 获取宫名
+    pub fn name(&self) -> &'static str {
+        Self::NAMES[*self as usize]
+    }
+
+    /// 从索引创建
+    pub fn from_index(idx: u8) -> Self {
+        match idx % 12 {
+            0 => Self::ChangSheng,
+            1 => Self::MuYu,
+            2 => Self::GuanDai,
+            3 => Self::LinGuan,
+            4 => Self::DiWang,
+            5 => Self::Shuai,
+            6 => Self::Bing,
+            7 => Self::Si,
+            8 => Self::Mu,
+            9 => Self::Jue,
+            10 => Self::Tai,
+            _ => Self::Yang,
+        }
+    }
+
+    /// 是否为吉位
+    pub fn is_ji(&self) -> bool {
+        matches!(self, Self::ChangSheng | Self::GuanDai | Self::LinGuan | Self::DiWang)
+    }
+
+    /// 是否为凶位
+    pub fn is_xiong(&self) -> bool {
+        matches!(self, Self::MuYu | Self::Bing | Self::Si | Self::Mu | Self::Jue)
+    }
 }
 
 // ============================================================================

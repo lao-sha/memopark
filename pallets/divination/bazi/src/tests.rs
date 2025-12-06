@@ -2,7 +2,10 @@
 //!
 //! 测试所有核心功能的正确性
 
-use crate::{mock::*, types::*, constants::*};
+use crate::{mock::*, constants::*};
+use crate::types::{TianGan, DiZhi, WuXing, GanZhi, Gender, ZiShiMode, NaYin, ShiShen};
+use frame_support::assert_ok;
+use sp_runtime::traits::Hash;
 
 // ================================
 // 基础类型测试
@@ -87,6 +90,36 @@ fn test_chen_hidden_stems() {
 	assert_eq!(stems[0].2, 500); // 主气权重
 	assert_eq!(stems[1].2, 300); // 中气权重
 	assert_eq!(stems[2].2, 200); // 余气权重
+}
+
+#[test]
+fn test_hai_hidden_stems() {
+	// ⚠️ 关键测试：确保亥藏干为"壬甲"（两个藏干）
+	let hai = DiZhi(11); // 亥
+	let stems = get_hidden_stems(hai);
+
+	// 主气：壬(8)
+	assert_eq!(stems[0].0 .0, 8, "亥主气应该是壬(8)");
+	// 中气：甲(0)
+	assert_eq!(stems[1].0 .0, 0, "亥中气应该是甲(0)");
+	// 余气：无效(255)
+	assert_eq!(stems[2].0 .0, 255, "亥余气应该是无效(255)");
+
+	// 验证有效藏干数量
+	assert_eq!(get_hidden_stems_count(hai), 2, "亥应该有2个藏干");
+}
+
+#[test]
+fn test_zi_hidden_stems() {
+	// 测试子藏干（只有一个：癸）
+	let zi = DiZhi(0); // 子
+	let stems = get_hidden_stems(zi);
+
+	assert_eq!(stems[0].0 .0, 9, "子主气应该是癸(9)");
+	assert_eq!(stems[1].0 .0, 255, "子中气应该是无效(255)");
+	assert_eq!(stems[2].0 .0, 255, "子余气应该是无效(255)");
+
+	assert_eq!(get_hidden_stems_count(zi), 1, "子应该有1个藏干");
 }
 
 #[test]
@@ -218,4 +251,45 @@ fn test_jieqi_1990_lidong_daxue() {
 	assert_eq!(daxue.year, 1990, "大雪年份");
 	assert_eq!(daxue.month, 12, "大雪月份");
 	assert!(daxue.day >= 6 && daxue.day <= 8, "1990年大雪应该在12月6-8日，实际: {}日", daxue.day);
+}
+
+// ================================
+// 解盘功能测试
+// ================================
+
+#[test]
+fn test_interpretation_integration() {
+	new_test_ext().execute_with(|| {
+		// 集成测试：创建八字并进行解盘
+		let account_id = 1u64;
+
+		// 创建八字
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart(
+			RuntimeOrigin::signed(account_id),
+			1990, 11, 15, 14, 30,
+			Gender::Male,
+			ZiShiMode::Modern,
+		));
+
+		// 获取创建的八字ID
+		let charts = crate::pallet::BaziCharts::<Test>::get(&account_id);
+		assert_eq!(charts.len(), 1);
+
+		let chart = &charts[0];
+		let chart_id = <Test as frame_system::Config>::Hashing::hash_of(chart);
+
+		// 执行解盘
+		assert_ok!(crate::pallet::Pallet::<Test>::interpret_bazi_chart(
+			RuntimeOrigin::signed(account_id),
+			chart_id,
+		));
+
+		// 验证解盘结果已存储
+		let interpretation = crate::pallet::InterpretationById::<Test>::get(&chart_id);
+		assert!(interpretation.is_some());
+
+		let result = interpretation.unwrap();
+		assert!(result.zong_he_ping_fen > 0 && result.zong_he_ping_fen <= 100);
+		assert!(!result.jie_pan_text.is_empty());
+	});
 }

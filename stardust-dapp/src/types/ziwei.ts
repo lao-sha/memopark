@@ -209,6 +209,68 @@ export enum Gender {
   Female = 1,
 }
 
+/**
+ * 博士十二星
+ * 从禄存起博士，依次顺/逆排
+ */
+export enum BoShiXing {
+  /** 博士 - 聪明才智 */
+  BoShi = 0,
+  /** 力士 - 权力威势 */
+  LiShi = 1,
+  /** 青龙 - 喜庆吉祥 */
+  QingLong = 2,
+  /** 小耗 - 小破财 */
+  XiaoHao = 3,
+  /** 将军 - 威武刚强 */
+  JiangJun = 4,
+  /** 奏书 - 文书事务 */
+  ZouShu = 5,
+  /** 飞廉 - 是非口舌 */
+  FeiLian = 6,
+  /** 喜神 - 喜庆之事 */
+  XiShen = 7,
+  /** 病符 - 疾病灾厄 */
+  BingFu = 8,
+  /** 大耗 - 大破财 */
+  DaHao = 9,
+  /** 伏兵 - 暗藏危机 */
+  FuBing = 10,
+  /** 官府 - 官司诉讼 */
+  GuanFu = 11,
+}
+
+/**
+ * 长生十二宫
+ * 从五行局起长生，依次顺/逆排
+ */
+export enum ChangSheng {
+  /** 长生 - 生命开始 */
+  ChangSheng = 0,
+  /** 沐浴 - 洗礼净化 */
+  MuYu = 1,
+  /** 冠带 - 成年礼 */
+  GuanDai = 2,
+  /** 临官 - 任职做官 */
+  LinGuan = 3,
+  /** 帝旺 - 最旺盛期 */
+  DiWang = 4,
+  /** 衰 - 开始衰退 */
+  Shuai = 5,
+  /** 病 - 生病状态 */
+  Bing = 6,
+  /** 死 - 死亡阶段 */
+  Si = 7,
+  /** 墓 - 入墓安葬 */
+  Mu = 8,
+  /** 绝 - 断绝时期 */
+  Jue = 9,
+  /** 胎 - 受胎阶段 */
+  Tai = 10,
+  /** 养 - 养育阶段 */
+  Yang = 11,
+}
+
 // ==================== 数据结构 ====================
 
 /**
@@ -499,6 +561,42 @@ export const BRIGHTNESS_COLORS: Record<number, string> = {
 };
 
 /**
+ * 博士十二星名称
+ */
+export const BO_SHI_XING_NAMES: Record<BoShiXing, string> = {
+  [BoShiXing.BoShi]: '博士',
+  [BoShiXing.LiShi]: '力士',
+  [BoShiXing.QingLong]: '青龙',
+  [BoShiXing.XiaoHao]: '小耗',
+  [BoShiXing.JiangJun]: '将军',
+  [BoShiXing.ZouShu]: '奏书',
+  [BoShiXing.FeiLian]: '飞廉',
+  [BoShiXing.XiShen]: '喜神',
+  [BoShiXing.BingFu]: '病符',
+  [BoShiXing.DaHao]: '大耗',
+  [BoShiXing.FuBing]: '伏兵',
+  [BoShiXing.GuanFu]: '官府',
+};
+
+/**
+ * 长生十二宫名称
+ */
+export const CHANG_SHENG_NAMES: Record<ChangSheng, string> = {
+  [ChangSheng.ChangSheng]: '长生',
+  [ChangSheng.MuYu]: '沐浴',
+  [ChangSheng.GuanDai]: '冠带',
+  [ChangSheng.LinGuan]: '临官',
+  [ChangSheng.DiWang]: '帝旺',
+  [ChangSheng.Shuai]: '衰',
+  [ChangSheng.Bing]: '病',
+  [ChangSheng.Si]: '死',
+  [ChangSheng.Mu]: '墓',
+  [ChangSheng.Jue]: '绝',
+  [ChangSheng.Tai]: '胎',
+  [ChangSheng.Yang]: '养',
+};
+
+/**
  * 地支名称
  */
 export const DI_ZHI_NAMES: string[] = [
@@ -619,4 +717,76 @@ export function fuXingToSiHuaStar(fuXing: FuXing): SiHuaStar | undefined {
     default:
       return undefined; // 天魁、天钺、禄存、天马不参与四化
   }
+}
+
+// ==================== 博士十二星辅助函数 ====================
+
+/**
+ * 获取博士十二星名称
+ * @param star 博士十二星枚举值
+ * @returns 星名
+ */
+export function getBoShiXingName(star: BoShiXing): string {
+  return BO_SHI_XING_NAMES[star] || '未知';
+}
+
+/**
+ * 判断博士十二星是否为吉星
+ * @param star 博士十二星
+ * @returns 是否吉星
+ */
+export function isBoShiXingJi(star: BoShiXing): boolean {
+  return star === BoShiXing.BoShi ||
+         star === BoShiXing.QingLong ||
+         star === BoShiXing.XiShen;
+}
+
+/**
+ * 判断博士十二星是否为凶星
+ * @param star 博士十二星
+ * @returns 是否凶星
+ */
+export function isBoShiXingXiong(star: BoShiXing): boolean {
+  return star === BoShiXing.XiaoHao ||
+         star === BoShiXing.FeiLian ||
+         star === BoShiXing.BingFu ||
+         star === BoShiXing.DaHao ||
+         star === BoShiXing.FuBing ||
+         star === BoShiXing.GuanFu;
+}
+
+// ==================== 长生十二宫辅助函数 ====================
+
+/**
+ * 获取长生十二宫名称
+ * @param stage 长生十二宫枚举值
+ * @returns 宫名
+ */
+export function getChangShengName(stage: ChangSheng): string {
+  return CHANG_SHENG_NAMES[stage] || '未知';
+}
+
+/**
+ * 判断长生十二宫是否为吉位
+ * @param stage 长生十二宫
+ * @returns 是否吉位
+ */
+export function isChangShengJi(stage: ChangSheng): boolean {
+  return stage === ChangSheng.ChangSheng ||
+         stage === ChangSheng.GuanDai ||
+         stage === ChangSheng.LinGuan ||
+         stage === ChangSheng.DiWang;
+}
+
+/**
+ * 判断长生十二宫是否为凶位
+ * @param stage 长生十二宫
+ * @returns 是否凶位
+ */
+export function isChangShengXiong(stage: ChangSheng): boolean {
+  return stage === ChangSheng.MuYu ||
+         stage === ChangSheng.Bing ||
+         stage === ChangSheng.Si ||
+         stage === ChangSheng.Mu ||
+         stage === ChangSheng.Jue;
 }

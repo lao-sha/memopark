@@ -19,12 +19,15 @@ import {
   DatePicker,
   Radio,
   Spin,
+  Switch,
 } from 'antd';
 import {
   CompassOutlined,
   HistoryOutlined,
   ReloadOutlined,
   CalendarOutlined,
+  CloudOutlined,
+  DesktopOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -57,6 +60,7 @@ import {
   analyzePalace,
   getYiMaGong,
 } from '../../types/qimen';
+import * as qimenService from '../../services/qimenService';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -257,36 +261,60 @@ const QimenPage: React.FC = () => {
   const [selectedHour, setSelectedHour] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [pan, setPan] = useState<QimenPan | null>(null);
+  const [useChain, setUseChain] = useState(false); // 是否使用链端
+  const [chainChartId, setChainChartId] = useState<number | null>(null);
 
   /**
-   * 排盘
+   * 本地排盘
    */
-  const handleCalculate = useCallback(async () => {
+  const handleLocalCalculate = useCallback(async () => {
     if (!selectedDate) {
       message.warning('请选择占测日期');
       return;
     }
 
+    const result = generateMockQimenPan(
+      selectedDate.year(),
+      selectedDate.month() + 1,
+      selectedDate.date(),
+      selectedHour
+    );
+    setPan(result);
+    message.success('奇门盘排列完成');
+  }, [selectedDate, selectedHour]);
+
+  /**
+   * 链端排盘
+   */
+  const handleChainCalculate = useCallback(async () => {
+    try {
+      const chartId = await qimenService.divineRandom(undefined, false);
+      setChainChartId(chartId);
+      message.success(`链端排盘成功，排盘ID: ${chartId}`);
+    } catch (error: any) {
+      console.error('链端排盘失败:', error);
+      message.error(`链端排盘失败: ${error.message || '请检查钱包连接'}`);
+    }
+  }, []);
+
+  /**
+   * 排盘
+   */
+  const handleCalculate = useCallback(async () => {
     setLoading(true);
     try {
-      // 模拟API延迟
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const result = generateMockQimenPan(
-        selectedDate.year(),
-        selectedDate.month() + 1,
-        selectedDate.date(),
-        selectedHour
-      );
-      setPan(result);
-      message.success('奇门盘排列完成');
+      if (useChain) {
+        await handleChainCalculate();
+      } else {
+        await handleLocalCalculate();
+      }
     } catch (error) {
       console.error('排盘失败:', error);
       message.error('排盘失败，请重试');
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, selectedHour]);
+  }, [useChain, handleChainCalculate, handleLocalCalculate]);
 
   /**
    * 重置
@@ -295,6 +323,7 @@ const QimenPage: React.FC = () => {
     setSelectedDate(null);
     setSelectedHour(0);
     setPan(null);
+    setChainChartId(null);
   }, []);
 
   /**
@@ -303,11 +332,24 @@ const QimenPage: React.FC = () => {
   const renderInputForm = () => (
     <Card className="input-card">
       <Title level={4} className="page-title">
-        <CompassOutlined /> 奇门遁甲 · 排盘
+        <CompassOutlined /> 奇门遁甲 · 起局
       </Title>
       <Paragraph type="secondary" className="page-subtitle">
-        输入占测时间，排列奇门遁甲盘
+        帝王之学，运筹帷幄
       </Paragraph>
+
+      {/* 链端/本地切换 */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch
+          checked={useChain}
+          onChange={setUseChain}
+          checkedChildren={<CloudOutlined />}
+          unCheckedChildren={<DesktopOutlined />}
+        />
+        <Text type="secondary">
+          {useChain ? '链端起局（结果上链存储）' : '本地起局（快速预览）'}
+        </Text>
+      </div>
 
       <Divider />
 

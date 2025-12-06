@@ -22,6 +22,7 @@ import {
   Spin,
   InputNumber,
   Collapse,
+  Switch,
 } from 'antd';
 import {
   FieldTimeOutlined,
@@ -30,6 +31,8 @@ import {
   NumberOutlined,
   ThunderboltOutlined,
   EditOutlined,
+  CloudOutlined,
+  DesktopOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -48,6 +51,8 @@ import {
   TI_YONG_RELATION_NAMES,
   TI_YONG_RELATION_COLORS,
   TI_YONG_DESCRIPTIONS,
+  WU_XING_NAMES,
+  BA_GUA_NAMES,
   type SanGong,
   type XiaoLiuRenPan,
   getShiChenFromHour,
@@ -56,6 +61,7 @@ import {
   calculateFortuneLevel,
   formatSanGong,
 } from '../../types/xiaoliuren';
+import * as xiaoliurenService from '../../services/xiaoliurenService';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -198,7 +204,7 @@ const GongCard: React.FC<{
         <Tag color={jiXiong > 0 ? 'green' : jiXiong < 0 ? 'red' : 'default'}>
           {jiXiong > 0 ? '吉' : jiXiong < 0 ? '凶' : '平'}
         </Tag>
-        <Tag>{wuXing}</Tag>
+        <Tag>{WU_XING_NAMES[wuXing]}</Tag>
       </Space>
       <div style={{ marginTop: 8 }}>
         <Text type="secondary" style={{ fontSize: 11 }}>
@@ -225,61 +231,134 @@ const XiaoLiuRenPage: React.FC = () => {
   ]);
   const [loading, setLoading] = useState(false);
   const [pan, setPan] = useState<XiaoLiuRenPan | null>(null);
+  const [useChain, setUseChain] = useState(false); // 是否使用链端
 
   /**
-   * 起课
+   * 本地起课（模拟算法）
    */
-  const handleCalculate = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 模拟API延迟
-      await new Promise(resolve => setTimeout(resolve, 300));
+  const handleLocalCalculate = useCallback(async () => {
+    let param1: number, param2: number, param3: number;
 
-      let param1: number, param2: number, param3: number;
+    switch (method) {
+      case DivinationMethod.TimeMethod:
+      case DivinationMethod.TimeKeMethod:
+        if (!selectedDate) {
+          message.warning('请选择日期');
+          return;
+        }
+        param1 = selectedDate.month() + 1;
+        param2 = selectedDate.date();
+        param3 = selectedHour;
+        break;
+      case DivinationMethod.NumberMethod:
+        param1 = numbers[0];
+        param2 = numbers[1];
+        param3 = numbers[2];
+        break;
+      case DivinationMethod.RandomMethod:
+        param1 = 0;
+        param2 = 0;
+        param3 = 0;
+        break;
+      case DivinationMethod.ManualMethod:
+        param1 = manualGongs[0];
+        param2 = manualGongs[1];
+        param3 = manualGongs[2];
+        break;
+      default:
+        param1 = 1;
+        param2 = 1;
+        param3 = 0;
+    }
+
+    const result = generateXiaoLiuRenPan(method, param1, param2, param3);
+    setPan(result);
+    message.success('起课完成');
+  }, [method, selectedDate, selectedHour, numbers, manualGongs]);
+
+  /**
+   * 链端起课
+   */
+  const handleChainCalculate = useCallback(async () => {
+    try {
+      let panId: number;
 
       switch (method) {
         case DivinationMethod.TimeMethod:
         case DivinationMethod.TimeKeMethod:
           if (!selectedDate) {
             message.warning('请选择日期');
-            setLoading(false);
             return;
           }
-          param1 = selectedDate.month() + 1; // 月份
-          param2 = selectedDate.date();       // 日期
-          param3 = selectedHour;              // 时辰
+          // 调用链端时间起课
+          panId = await xiaoliurenService.divineByTime(
+            selectedDate.month() + 1, // 农历月份
+            selectedDate.date(),       // 农历日期
+            selectedHour * 2,          // 转换为24小时制的近似值
+            undefined,
+            false
+          );
           break;
         case DivinationMethod.NumberMethod:
-          param1 = numbers[0];
-          param2 = numbers[1];
-          param3 = numbers[2];
+          // 调用链端数字起课
+          panId = await xiaoliurenService.divineByNumber(
+            numbers[0],
+            numbers[1],
+            numbers[2],
+            undefined,
+            false
+          );
           break;
         case DivinationMethod.RandomMethod:
-          param1 = 0;
-          param2 = 0;
-          param3 = 0;
+          // 调用链端随机起课
+          panId = await xiaoliurenService.divineRandom(undefined, false);
           break;
         case DivinationMethod.ManualMethod:
-          param1 = manualGongs[0];
-          param2 = manualGongs[1];
-          param3 = manualGongs[2];
+          // 调用链端手动起课
+          panId = await xiaoliurenService.divineManual(
+            manualGongs[0],
+            manualGongs[1],
+            manualGongs[2],
+            undefined,
+            false
+          );
           break;
         default:
-          param1 = 1;
-          param2 = 1;
-          param3 = 0;
+          throw new Error('未知起课方式');
       }
 
-      const result = generateXiaoLiuRenPan(method, param1, param2, param3);
-      setPan(result);
-      message.success('起课完成');
+      // 查询课盘详情
+      const panData = await xiaoliurenService.getPan(panId);
+      if (panData) {
+        setPan(panData);
+        message.success(`链端起课成功，课盘ID: ${panId}`);
+      } else {
+        throw new Error('课盘数据获取失败');
+      }
+    } catch (error: any) {
+      console.error('链端起课失败:', error);
+      message.error(`链端起课失败: ${error.message || '请检查钱包连接'}`);
+    }
+  }, [method, selectedDate, selectedHour, numbers, manualGongs]);
+
+  /**
+   * 起课（根据模式选择本地或链端）
+   */
+  const handleCalculate = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (useChain) {
+        await handleChainCalculate();
+      } else {
+        await handleLocalCalculate();
+      }
     } catch (error) {
       console.error('起课失败:', error);
       message.error('起课失败，请重试');
     } finally {
       setLoading(false);
     }
-  }, [method, selectedDate, selectedHour, numbers, manualGongs]);
+  }, [useChain, handleChainCalculate, handleLocalCalculate]);
 
   /**
    * 重置
@@ -441,6 +520,19 @@ const XiaoLiuRenPage: React.FC = () => {
         快速占卜吉凶的简易术数
       </Paragraph>
 
+      {/* 链端/本地切换 */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch
+          checked={useChain}
+          onChange={setUseChain}
+          checkedChildren={<CloudOutlined />}
+          unCheckedChildren={<DesktopOutlined />}
+        />
+        <Text type="secondary">
+          {useChain ? '链端起课（结果上链存储）' : '本地起课（快速预览）'}
+        </Text>
+      </div>
+
       <Divider />
 
       {renderMethodSelector()}
@@ -567,11 +659,11 @@ const XiaoLiuRenPage: React.FC = () => {
         </div>
 
         {/* 八卦转换 */}
-        {baGua && (
+        {baGua !== null && baGua !== undefined && (
           <div style={{ marginBottom: 16 }}>
             <Text strong>八卦对应：</Text>
             <Tag color="purple" style={{ marginLeft: 8, fontSize: 14 }}>
-              {baGua}
+              {BA_GUA_NAMES[baGua]}
             </Tag>
           </div>
         )}

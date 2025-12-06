@@ -48,6 +48,9 @@ mod tests;
 pub mod types;
 pub mod constants;
 pub mod calculations;
+pub mod interpretation;
+pub mod shensha;
+pub mod xingchong;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -121,6 +124,16 @@ pub mod pallet {
 	#[pallet::getter(fn chart_count)]
 	pub type ChartCount<T: Config> = StorageValue<_, u64, ValueQuery>;
 
+	/// 存储映射: 八字ID -> 解盘结果
+	#[pallet::storage]
+	#[pallet::getter(fn interpretation_by_id)]
+	pub type InterpretationById<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::Hash,
+		crate::interpretation::JiePanResult,
+	>;
+
 	/// Pallet 事件
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -141,6 +154,11 @@ pub mod pallet {
 		BaziChartDeleted {
 			owner: T::AccountId,
 			chart_id: T::Hash,
+		},
+		/// 八字解盘完成 [八字ID, 所有者]
+		BaziInterpretationCompleted {
+			chart_id: T::Hash,
+			owner: T::AccountId,
 		},
 	}
 
@@ -291,6 +309,10 @@ pub mod pallet {
 				let hidden_stems = crate::constants::get_hidden_stems(gz.zhi);
 				let mut canggan_shishen = BoundedVec::<ShiShen, T::MaxCangGan>::default();
 				for (cg_gan, _, _) in hidden_stems.iter() {
+					// 跳过无效藏干
+					if !crate::constants::is_valid_canggan(cg_gan.0) {
+						continue;
+					}
 					let cg_shishen = crate::constants::calculate_shishen(day_ganzhi.gan, *cg_gan);
 					canggan_shishen.try_push(cg_shishen).map_err(|_| Error::<T>::TooManyCangGan)?;
 				}
@@ -426,6 +448,58 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		/// 八字解盘
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者
+		/// - `chart_id`: 八字ID
+		///
+		/// # 功能
+		///
+		/// 1. 验证八字存在和所有权
+		/// 2. 执行格局分析
+		/// 3. 执行用神分析
+		/// 4. 执行性格分析
+		/// 5. 生成解盘结果
+		/// 6. 存储解盘信息
+		///
+		/// # 权限
+		///
+		/// 只有八字所有者可以解盘自己的八字
+		#[pallet::call_index(2)]
+		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
+		pub fn interpret_bazi_chart(
+			origin: OriginFor<T>,
+			chart_id: T::Hash,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 获取八字信息
+			let chart = ChartById::<T>::get(&chart_id)
+				.ok_or(Error::<T>::ChartNotFound)?;
+
+			// 验证所有权
+			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
+
+			// 执行解盘分析
+			let interpretation_result = crate::interpretation::full_interpretation(
+				&chart.sizhu,
+				&chart.wuxing_strength,
+			);
+
+			// 存储解盘结果
+			InterpretationById::<T>::insert(&chart_id, interpretation_result);
+
+			// 触发事件
+			Self::deposit_event(Event::BaziInterpretationCompleted {
+				chart_id,
+				owner: who,
+			});
+
+			Ok(())
+		}
 	}
 
 	// 辅助函数
@@ -458,13 +532,18 @@ pub mod pallet {
 
 		/// 构建单个柱（填充藏干和纳音）
 		fn build_zhu(ganzhi: GanZhi, rizhu: TianGan) -> Result<Zhu<T>, Error<T>> {
-			use crate::constants::{get_hidden_stems, calculate_nayin};
+			use crate::constants::{get_hidden_stems, calculate_nayin, is_valid_canggan};
 
 			// 获取藏干信息
 			let hidden_stems = get_hidden_stems(ganzhi.zhi);
 			let mut canggan = BoundedVec::<CangGanInfo, T::MaxCangGan>::default();
 
 			for (gan, canggan_type, weight) in hidden_stems.iter() {
+				// 跳过无效藏干（255表示该位置无藏干）
+				if !is_valid_canggan(gan.0) {
+					continue;
+				}
+
 				// 计算藏干的十神关系
 				let shishen = crate::constants::calculate_shishen(rizhu, *gan);
 

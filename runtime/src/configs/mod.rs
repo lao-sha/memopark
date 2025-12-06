@@ -4481,15 +4481,11 @@ impl pallet_ziwei::Config for Runtime {
 /// - **伏神查找**: 缺失六亲从本宫纯卦寻伏
 /// - **变卦生成**: 动爻变化形成变卦
 impl pallet_liuyao::Config for Runtime {
-    type Currency = Balances;
     type Randomness = SimpleRandomness;
     type MaxUserGuas = frame_support::traits::ConstU32<100>;
     type MaxPublicGuas = frame_support::traits::ConstU32<1000>;
     type DailyFreeGuas = frame_support::traits::ConstU32<3>;
     type MaxDailyGuas = frame_support::traits::ConstU32<20>;
-    type AiInterpretationFee = frame_support::traits::ConstU128<{ 10 * UNIT }>;
-    type TreasuryAccount = TreasuryAccount;
-    type AiOracleOrigin = frame_system::EnsureRoot<AccountId>;
     type MaxCidLen = frame_support::traits::ConstU32<64>;
 }
 

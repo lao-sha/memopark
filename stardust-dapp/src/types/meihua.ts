@@ -567,3 +567,141 @@ export function getRarityFeeMultiplier(rarity: NftRarity): number {
       return 1;
   }
 }
+
+// ==================== 完整排盘详情类型（对应 Pallet FullDivinationDetail） ====================
+
+/**
+ * 体用关系枚举
+ *
+ * 梅花易数核心概念：体卦代表自身，用卦代表所占之事
+ */
+export enum TiYongRelation {
+  BiHe = 0,        // 比和 - 体用五行相同，次吉
+  YongShengTi = 1, // 用生体 - 大吉
+  TiShengYong = 2, // 体生用 - 小凶（泄气）
+  YongKeTi = 3,    // 用克体 - 大凶
+  TiKeYong = 4,    // 体克用 - 中平（需耗力）
+}
+
+/** 体用关系名称 */
+export const TIYONG_RELATION_NAMES: Record<TiYongRelation, string> = {
+  [TiYongRelation.BiHe]: '比和',
+  [TiYongRelation.YongShengTi]: '用生体',
+  [TiYongRelation.TiShengYong]: '体生用',
+  [TiYongRelation.YongKeTi]: '用克体',
+  [TiYongRelation.TiKeYong]: '体克用',
+};
+
+/**
+ * 吉凶判断结果
+ */
+export enum Fortune {
+  DaXiong = 0,   // 大凶
+  XiaoXiong = 1, // 小凶
+  Ping = 2,      // 平
+  XiaoJi = 3,    // 小吉
+  DaJi = 4,      // 大吉
+}
+
+/** 吉凶名称 */
+export const FORTUNE_NAMES: Record<Fortune, string> = {
+  [Fortune.DaXiong]: '大凶',
+  [Fortune.XiaoXiong]: '小凶',
+  [Fortune.Ping]: '平',
+  [Fortune.XiaoJi]: '小吉',
+  [Fortune.DaJi]: '大吉',
+};
+
+/**
+ * 单卦详细信息
+ *
+ * 对应 Pallet 的 HexagramDetail 结构
+ */
+export interface HexagramDetail {
+  /** 六十四卦名称（如"乾为天"） */
+  name: string;
+  /** 上卦名称（如"乾"） */
+  shangGuaName: string;
+  /** 下卦名称（如"乾"） */
+  xiaGuaName: string;
+  /** 上卦符号（如"☰"） */
+  shangGuaSymbol: string;
+  /** 下卦符号（如"☰"） */
+  xiaGuaSymbol: string;
+  /** 上卦五行（如"金"） */
+  shangGuaWuxing: string;
+  /** 下卦五行（如"金"） */
+  xiaGuaWuxing: string;
+  /** 卦辞 */
+  guaci: string;
+  /** 动爻名称（如"初爻"） */
+  dongYaoName: string;
+  /** 动爻爻名（如"初九"、"六二"） */
+  dongYaoMing: string;
+  /** 动爻爻辞 */
+  dongYaoCi: string;
+  /** 体用关系名称（如"用生体"） */
+  tiyongName: string;
+  /** 吉凶名称（如"大吉"） */
+  fortuneName: string;
+}
+
+/**
+ * 完整排盘详细信息
+ *
+ * 对应 Pallet 的 FullDivinationDetail 结构
+ * 包含本卦、变卦、互卦、错卦、综卦、伏卦的详细信息
+ */
+export interface FullDivinationDetail {
+  /** 本卦详细信息 */
+  benGua: HexagramDetail;
+  /** 变卦详细信息 */
+  bianGua: HexagramDetail;
+  /** 互卦详细信息 */
+  huGua: HexagramDetail;
+  /** 错卦详细信息 */
+  cuoGua: HexagramDetail;
+  /** 综卦详细信息 */
+  zongGua: HexagramDetail;
+  /** 伏卦详细信息（飞伏神卦）*/
+  fuGua: HexagramDetail;
+  /** 体用关系详细解读 */
+  tiyongInterpretation: string;
+}
+
+/**
+ * 解析 BoundedVec<u8> 为字符串
+ *
+ * @param data - 原始数据（字节数组或已解码的字符串）
+ * @returns 解码后的字符串
+ */
+export function parseBoundedVecToString(data: unknown): string {
+  if (!data) return '';
+
+  // 如果已经是字符串，直接返回
+  if (typeof data === 'string') return data;
+
+  // 如果是数组，尝试转换为字符串
+  if (Array.isArray(data)) {
+    try {
+      const bytes = data.map((b: number | { toNumber?: () => number }) =>
+        typeof b === 'number' ? b : b.toNumber?.() ?? 0
+      );
+      return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    } catch {
+      return '';
+    }
+  }
+
+  // 如果有 toHuman 方法
+  if (typeof (data as { toHuman?: () => string }).toHuman === 'function') {
+    return (data as { toHuman: () => string }).toHuman();
+  }
+
+  // 如果有 toString 方法
+  if (typeof (data as { toString?: () => string }).toString === 'function') {
+    return (data as { toString: () => string }).toString();
+  }
+
+  return '';
+}

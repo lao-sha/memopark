@@ -663,6 +663,10 @@ pub mod pallet {
             let lu_cun = calculate_lu_cun(year_gan);
             palaces[lu_cun as usize].lu_cun = true;
 
+            // 安天马（使用新增的天马计算函数）
+            let tian_ma_pos = calculate_tian_ma(year_zhi);
+            palaces[tian_ma_pos as usize].tian_ma = true;
+
             // 获取四化星（使用完整版支持辅星）
             let si_hua_stars = get_si_hua_stars_full(year_gan);
 

@@ -6,7 +6,20 @@ use sp_std::vec::Vec;
 
 use crate::types::{Gender, GanZhi};
 
-/// 计算起运年龄
+/// 起运信息（精确版）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QiYunInfo {
+	/// 起运年龄（整数部分）
+	pub age_years: u8,
+	/// 起运月数（0-11）
+	pub age_months: u8,
+	/// 起运天数（0-29）
+	pub age_days: u8,
+	/// 是否顺排
+	pub is_shun: bool,
+}
+
+/// 计算起运年龄（精确版）
 ///
 /// 起运年龄决定了一个人从几岁开始进入第一步大运。
 ///
@@ -14,7 +27,10 @@ use crate::types::{Gender, GanZhi};
 ///
 /// 1. **阳男阴女顺排**：出生后顺数到下一个节气的天数
 /// 2. **阴男阳女逆排**：出生后逆数到上一个节气的天数
-/// 3. **起运年龄** = 距离天数 / 3（向下取整）
+/// 3. **精确换算**：
+///    - 3天 = 1年
+///    - 1天 = 4个月
+///    - 1时辰(2小时) = 10天
 ///
 /// ## 阴阳判断
 ///
@@ -25,20 +41,18 @@ use crate::types::{Gender, GanZhi};
 ///
 /// - `year_gan`: 年柱天干
 /// - `gender`: 性别
-/// - `days_to_next_jieqi`: 距离下一个节气的天数（简化版）
+/// - `days_to_jieqi`: 距离节气的天数
+/// - `hours_to_jieqi`: 距离节气的小时数（0-23）
 ///
 /// ## 返回
 ///
-/// - `(qiyun_age, is_shun)`: 起运年龄和是否顺排
-///
-/// ## 注意
-///
-/// 本实现使用简化的节气天数计算，生产环境应使用精确的节气时刻计算
-pub fn calculate_qiyun_age(
+/// - `QiYunInfo`: 精确的起运信息
+pub fn calculate_qiyun_precise(
 	year_gan: u8,
 	gender: Gender,
-	days_to_next_jieqi: u8,
-) -> (u8, bool) {
+	days_to_jieqi: u16,
+	hours_to_jieqi: u8,
+) -> QiYunInfo {
 	// 判断年干阴阳
 	let is_yang_year = year_gan % 2 == 0;
 
@@ -50,11 +64,49 @@ pub fn calculate_qiyun_age(
 		_ => false,                      // 阴男阳女逆排
 	};
 
-	// 计算起运年龄：天数 / 3
-	// 注意：这里使用简化算法，实际应该精确到时辰
-	let qiyun_age = days_to_next_jieqi / 3;
+	// 精确计算起运时间
+	// 总小时数
+	let total_hours = days_to_jieqi as u32 * 24 + hours_to_jieqi as u32;
 
-	(qiyun_age, is_shun)
+	// 换算规则：3天 = 1年，即 72小时 = 1年
+	// 1小时 = 1/72年 = 12/72月 = 1/6月 ≈ 5天
+	let age_years = (total_hours / 72) as u8;
+	let remaining_hours = total_hours % 72;
+
+	// 剩余小时换算成月：1小时 = 1/6月
+	// 6小时 = 1月
+	let age_months = (remaining_hours / 6) as u8;
+	let remaining_hours_2 = remaining_hours % 6;
+
+	// 剩余小时换算成天：1小时 ≈ 5天
+	let age_days = (remaining_hours_2 * 5) as u8;
+
+	QiYunInfo {
+		age_years,
+		age_months,
+		age_days,
+		is_shun,
+	}
+}
+
+/// 计算起运年龄（简化版，向后兼容）
+///
+/// ## 参数
+///
+/// - `year_gan`: 年柱天干
+/// - `gender`: 性别
+/// - `days_to_next_jieqi`: 距离下一个节气的天数
+///
+/// ## 返回
+///
+/// - `(qiyun_age, is_shun)`: 起运年龄和是否顺排
+pub fn calculate_qiyun_age(
+	year_gan: u8,
+	gender: Gender,
+	days_to_next_jieqi: u8,
+) -> (u8, bool) {
+	let info = calculate_qiyun_precise(year_gan, gender, days_to_next_jieqi as u16, 0);
+	(info.age_years, info.is_shun)
 }
 
 /// 计算大运序列

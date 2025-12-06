@@ -164,12 +164,24 @@ fn calculate_jieqi_jd(year: i32, longitude: f64) -> f64 {
 }
 
 /// 估算节气的初始儒略日
+///
+/// 对于小寒(285°)到惊蛰(345°)的节气，需要从上一年的春分开始计算
+/// 因为这些节气的黄经接近360°，从当年春分算会超过一年
 fn estimate_jieqi_jd(year: i32, longitude: f64) -> f64 {
+    // 对于黄经 >= 270° 的节气（冬至、小寒、大寒、立春、雨水、惊蛰）
+    // 需要从上一年的春分开始计算，否则会算到下一年
+    let (base_year, effective_longitude) = if longitude >= 270.0 {
+        // 从上一年春分开始，黄经保持不变
+        (year - 1, longitude)
+    } else {
+        (year, longitude)
+    };
+
     // 春分点近似日期
-    let spring_equinox = gregorian_to_jd(year, 3, 21);
+    let spring_equinox = gregorian_to_jd(base_year, 3, 21);
 
     // 根据黄经差估算天数
-    let days = longitude / 360.0 * 365.2422;
+    let days = effective_longitude / 360.0 * 365.2422;
 
     spring_equinox + days
 }

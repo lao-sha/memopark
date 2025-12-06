@@ -1,0 +1,33 @@
+# Oracle Node Configuration
+
+[chain]
+ws_endpoint = "ws://127.0.0.1:9944"
+oracle_account_seed = "//Alice"
+
+[deepseek]
+api_key = "${DEEPSEEK_API_KEY}"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+temperature = 0.7
+max_tokens = 4096
+
+[ipfs]
+api_url = "http://127.0.0.1:5001"
+# Pinata配置(可选)
+# pinata_api_key = "${IPFS_PINATA_API_KEY}"
+# pinata_secret = "${IPFS_PINATA_SECRET}"
+
+[oracle]
+name = "AI-Oracle-1"
+# 支持的占卜类型(位图): Meihua=1, Bazi=2, Liuyao=4, etc.
+supported_divination_types = 255  # 支持所有类型
+supported_interpretation_types = 511  # 支持所有解读类型
+min_oracle_rating = 0
+
+[cache]
+db_path = "./data/cache"
+ttl_seconds = 3600
+
+[logging]
+level = "info"
+filter = "xuanxue_oracle=debug"

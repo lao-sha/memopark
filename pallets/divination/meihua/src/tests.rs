@@ -5,8 +5,11 @@
 //! - 双数起卦
 //! - 随机起卦
 //! - 手动起卦
+//! - 单数起卦
 //! - AI 解卦请求
 //! - 卦象公开状态管理
+
+#![allow(deprecated)]
 
 use crate::{mock::*, Error, pallet::Event};
 use crate::types::{Bagua, DivinationMethod};
@@ -365,6 +368,205 @@ fn events_are_emitted() {
                 method: DivinationMethod::Random,
             }
             .into(),
+        );
+    });
+}
+
+/// 测试单数起卦功能
+#[test]
+fn divine_by_single_number_works() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [0u8; 32];
+
+        // 使用数字 38271 起卦
+        // 算法：前半 3+8=11，后半 2+7+1=10
+        // 上卦 = 11 % 8 = 3（离）
+        // 下卦 = 10 % 8 = 2（兑）
+        assert_ok!(Meihua::divine_by_single_number(
+            RuntimeOrigin::signed(1),
+            38271,
+            question_hash,
+            false
+        ));
+
+        // 验证卦象创建
+        assert_eq!(Meihua::next_hexagram_id(), 1);
+
+        let hexagram = Meihua::hexagrams(0).unwrap();
+
+        // 验证上下卦
+        assert_eq!(hexagram.ben_gua.shang_gua.bagua, Bagua::Li);  // 3 = 离
+        assert_eq!(hexagram.ben_gua.xia_gua.bagua, Bagua::Dui);   // 2 = 兑
+
+        // 验证起卦方式
+        assert_eq!(hexagram.ben_gua.method, DivinationMethod::SingleNumber);
+    });
+}
+
+/// 测试单数起卦 - 两位数
+#[test]
+fn divine_by_single_number_two_digits() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [0u8; 32];
+
+        // 使用数字 36 起卦
+        // 前半 3，后半 6
+        // 上卦 = 3（离），下卦 = 6（坎）
+        assert_ok!(Meihua::divine_by_single_number(
+            RuntimeOrigin::signed(1),
+            36,
+            question_hash,
+            false
+        ));
+
+        let hexagram = Meihua::hexagrams(0).unwrap();
+        assert_eq!(hexagram.ben_gua.shang_gua.bagua, Bagua::Li);  // 3 = 离
+        assert_eq!(hexagram.ben_gua.xia_gua.bagua, Bagua::Kan);   // 6 = 坎
+    });
+}
+
+/// 测试单数起卦 - 事件发送
+#[test]
+fn divine_by_single_number_emits_event() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+        let question_hash = [0u8; 32];
+
+        assert_ok!(Meihua::divine_by_single_number(
+            RuntimeOrigin::signed(1),
+            12345,
+            question_hash,
+            true
+        ));
+
+        // 检查事件
+        System::assert_has_event(
+            Event::<Test>::HexagramCreated {
+                hexagram_id: 0,
+                diviner: 1,
+                method: DivinationMethod::SingleNumber,
+            }
+            .into(),
+        );
+    });
+}
+
+/// 测试卦象详细信息 API
+#[test]
+fn get_hexagram_detail_works() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [0u8; 32];
+
+        // 创建一个卦象
+        assert_ok!(Meihua::divine_manual(
+            RuntimeOrigin::signed(1),
+            1, // 乾
+            1, // 乾
+            1, // 初爻
+            question_hash,
+            false
+        ));
+
+        // 获取详细信息
+        let detail = Meihua::get_hexagram_detail(0);
+        assert!(detail.is_some());
+
+        let detail = detail.unwrap();
+
+        // 验证本卦名称包含"乾"
+        let name_str = core::str::from_utf8(&detail.ben_gua.name).unwrap();
+        assert!(name_str.contains("乾"));
+
+        // 验证上下卦名称
+        let shang_name = core::str::from_utf8(&detail.ben_gua.shang_gua_name).unwrap();
+        assert_eq!(shang_name, "乾");
+    });
+}
+
+/// 测试 calculate_hexagram_detail API
+#[test]
+fn calculate_hexagram_detail_works() {
+    new_test_ext().execute_with(|| {
+        // 直接计算卦象详细信息（不需要存储）
+        let detail = Meihua::calculate_hexagram_detail(3, 4, 6);
+
+        // 验证本卦（火雷噬嗑）
+        let name_str = core::str::from_utf8(&detail.ben_gua.name).unwrap();
+        assert!(name_str.contains("火雷"));
+
+        // 验证上卦（离）
+        let shang_name = core::str::from_utf8(&detail.ben_gua.shang_gua_name).unwrap();
+        assert_eq!(shang_name, "离");
+
+        // 验证下卦（震）
+        let xia_name = core::str::from_utf8(&detail.ben_gua.xia_gua_name).unwrap();
+        assert_eq!(xia_name, "震");
+
+        // 验证动爻名称
+        let yao_name = core::str::from_utf8(&detail.ben_gua.dong_yao_name).unwrap();
+        assert_eq!(yao_name, "上爻");  // 第6爻
+    });
+}
+
+/// 测试卦象详细信息 - 错卦和综卦
+#[test]
+fn hexagram_detail_includes_cuo_zong() {
+    new_test_ext().execute_with(|| {
+        // 计算乾为天的详细信息
+        let detail = Meihua::calculate_hexagram_detail(1, 1, 1);
+
+        // 乾为天的错卦是坤为地
+        let cuo_name = core::str::from_utf8(&detail.cuo_gua.name).unwrap();
+        assert!(cuo_name.contains("坤"));
+
+        // 乾为天的综卦还是乾为天（因为对称）
+        let zong_name = core::str::from_utf8(&detail.zong_gua.name).unwrap();
+        assert!(zong_name.contains("乾"));
+    });
+}
+
+/// 测试卦象详细信息 - 伏卦
+#[test]
+fn hexagram_detail_includes_fu_gua() {
+    new_test_ext().execute_with(|| {
+        // 计算乾为天的详细信息
+        let detail = Meihua::calculate_hexagram_detail(1, 1, 1);
+
+        // 乾卦的伏卦是巽卦
+        let fu_name = core::str::from_utf8(&detail.fu_gua.name).unwrap();
+        assert!(fu_name.contains("巽"), "乾卦的伏卦应该包含巽，实际是: {}", fu_name);
+    });
+}
+
+/// 测试伏卦计算 - 坤卦的伏卦
+#[test]
+fn fu_gua_for_kun() {
+    new_test_ext().execute_with(|| {
+        // 坤为地：上坤下坤
+        let detail = Meihua::calculate_hexagram_detail(8, 8, 1);
+
+        // 坤卦的伏卦是乾卦
+        let fu_name = core::str::from_utf8(&detail.fu_gua.name).unwrap();
+        assert!(fu_name.contains("乾"), "坤卦的伏卦应该包含乾，实际是: {}", fu_name);
+    });
+}
+
+/// 测试体用关系详细解读
+#[test]
+fn tiyong_interpretation_works() {
+    new_test_ext().execute_with(|| {
+        // 计算一个卦象
+        let detail = Meihua::calculate_hexagram_detail(1, 8, 1);
+
+        // 验证体用解读文本非空
+        let tiyong_interp = core::str::from_utf8(&detail.tiyong_interpretation).unwrap();
+        assert!(!tiyong_interp.is_empty(), "体用解读不应为空");
+
+        // 应该包含体用相关关键词
+        assert!(
+            tiyong_interp.contains("体") || tiyong_interp.contains("用"),
+            "体用解读应包含关键词，实际是: {}",
+            tiyong_interp
         );
     });
 }

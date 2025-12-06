@@ -5,6 +5,7 @@
 //! - 时间起卦（基于时间戳生成）
 //! - 数字起卦（基于用户数字生成）
 //! - 手动指定（直接指定牌面）
+//! - 带切牌的随机抽牌（模拟真实塔罗仪式）
 //! - 多种牌阵支持（单张、三牌、凯尔特十字等）
 //! - 占卜记录存储与查询
 //! - AI 解读请求（链下工作机触发）
@@ -15,12 +16,14 @@
 //! - **小阿卡纳**: 56张副牌，分四种花色（权杖、圣杯、宝剑、星币）
 //! - **正逆位**: 牌的朝向影响解读
 //! - **牌阵**: 不同的摆牌方式，适用于不同问题
+//! - **切牌**: 模拟真实塔罗仪式的切牌过程
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
 
 pub mod algorithm;
+pub mod constants;
 pub mod types;
 
 #[cfg(test)]
@@ -169,6 +172,24 @@ pub mod pallet {
     pub type UserStats<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, DivinationStats, ValueQuery>;
 
+    /// 用户各牌出现频率
+    ///
+    /// 记录每个用户抽到每张牌的次数，用于统计最常出现的牌
+    /// 键1：用户账户
+    /// 键2：牌ID (0-77)
+    /// 值：出现次数
+    #[pallet::storage]
+    #[pallet::getter(fn user_card_frequency)]
+    pub type UserCardFrequency<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Twox64Concat,
+        u8,  // card_id
+        u32, // count
+        ValueQuery,
+    >;
+
     // ==================== 事件 ====================
 
     #[pallet::event]
@@ -312,9 +333,15 @@ pub mod pallet {
                 .try_into()
                 .unwrap_or([0u8; 32]);
 
-            // 抽取牌
+            // 获取区块号作为额外熵源
+            let block_number: u64 = <frame_system::Pallet<T>>::block_number()
+                .try_into()
+                .unwrap_or(0);
+
+            // 抽取牌（使用增强版时间起卦）
             let card_count = spread_type.card_count();
-            let drawn = algorithm::draw_cards_by_time(timestamp, &block_hash_bytes, card_count);
+            let drawn =
+                algorithm::draw_cards_by_time(timestamp, &block_hash_bytes, block_number, card_count);
 
             Self::create_reading(
                 who,
@@ -414,6 +441,47 @@ pub mod pallet {
                 who,
                 spread_type,
                 DivinationMethod::Manual,
+                drawn,
+                question_hash,
+                is_public,
+            )
+        }
+
+        /// 带切牌的随机占卜
+        ///
+        /// 模拟真实塔罗牌占卜仪式，包含洗牌-切牌-抽牌的完整流程。
+        /// 用户可以指定切牌位置，增加占卜的仪式感和参与感。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者（签名账户）
+        /// - `spread_type`: 牌阵类型
+        /// - `cut_position`: 切牌位置（1-77），None 表示随机切牌
+        /// - `question_hash`: 占卜问题的哈希值
+        /// - `is_public`: 是否公开此占卜
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(55_000_000, 0))]
+        pub fn divine_random_with_cut(
+            origin: OriginFor<T>,
+            spread_type: SpreadType,
+            cut_position: Option<u8>,
+            question_hash: [u8; 32],
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 使用链上随机源
+            let random_seed = T::Randomness::random(&b"tarot_cut"[..]).0;
+            let random_bytes: [u8; 32] = random_seed.as_ref().try_into().unwrap_or([0u8; 32]);
+
+            // 使用带切牌的抽牌算法
+            let card_count = spread_type.card_count();
+            let drawn = algorithm::draw_cards_with_cut(&random_bytes, cut_position, card_count);
+
+            Self::create_reading(
+                who,
+                spread_type,
+                DivinationMethod::RandomWithCut,
                 drawn,
                 question_hash,
                 is_public,
@@ -677,8 +745,35 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 更新用户统计信息
+        /// 更新用户统计信息（完整实现）
+        ///
+        /// 统计包括：
+        /// - 总占卜次数
+        /// - 大阿卡纳出现次数
+        /// - 逆位出现次数
+        /// - 最常出现的牌及其次数
         fn update_user_stats(who: &T::AccountId, drawn: &[(u8, bool)]) {
+            // 先更新每张牌的频率，同时跟踪最大频率
+            let mut max_card_id: u8 = 0;
+            let mut max_count: u32 = 0;
+
+            for (card_id, _) in drawn {
+                if *card_id < 78 {
+                    // 更新该牌的频率
+                    let new_count = UserCardFrequency::<T>::mutate(who, card_id, |count| {
+                        *count = count.saturating_add(1);
+                        *count
+                    });
+
+                    // 检查是否为新的最高频率
+                    if new_count > max_count {
+                        max_count = new_count;
+                        max_card_id = *card_id;
+                    }
+                }
+            }
+
+            // 更新用户统计
             UserStats::<T>::mutate(who, |stats| {
                 stats.total_readings = stats.total_readings.saturating_add(1);
 
@@ -691,6 +786,20 @@ pub mod pallet {
                     // 统计逆位
                     if *reversed {
                         stats.reversed_count = stats.reversed_count.saturating_add(1);
+                    }
+                }
+
+                // 更新最常出现的牌
+                // 如果本次更新后的最大频率超过了历史记录，则更新
+                if max_count > stats.most_frequent_count {
+                    stats.most_frequent_card = max_card_id;
+                    stats.most_frequent_count = max_count;
+                } else if max_count == stats.most_frequent_count && max_card_id != stats.most_frequent_card {
+                    // 频率相同时，检查当前记录的牌的实际频率
+                    let current_max_freq = UserCardFrequency::<T>::get(who, stats.most_frequent_card);
+                    if max_count > current_max_freq {
+                        stats.most_frequent_card = max_card_id;
+                        stats.most_frequent_count = max_count;
                     }
                 }
             });

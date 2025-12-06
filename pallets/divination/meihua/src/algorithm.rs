@@ -2,6 +2,7 @@
 //!
 //! 本模块实现梅花易数排盘的核心计算逻辑，包括：
 //! - 卦数计算（上卦、下卦、动爻）
+//! - 时间起卦、双数起卦、单数起卦、随机起卦
 //! - 变卦计算
 //! - 互卦计算
 //! - 错卦、综卦计算
@@ -10,6 +11,9 @@
 
 use crate::lunar::LunarDate;
 use crate::types::*;
+
+#[cfg(not(feature = "std"))]
+use alloc::format;
 
 /// 计算卦数（处理余数为0的情况）
 ///
@@ -106,6 +110,92 @@ pub fn divine_by_numbers(num1: u16, num2: u16, hour_zhi_num: u8) -> (u8, u8, u8)
 
     // 动爻数：(两数之和 + 时辰数) % 6
     let dong_yao = calc_dong_yao(num1 as u32 + num2 as u32 + hour_zhi_num as u32);
+
+    (shang_gua_num, xia_gua_num, dong_yao)
+}
+
+/// 单数起卦算法
+///
+/// 将一个多位数字拆分为前后两半，分别计算上卦和下卦
+///
+/// # 算法
+/// - 将数字拆分为前半段和后半段（奇数位时后半多一位）
+/// - 上卦数 = 前半段各位数字之和 % 8
+/// - 下卦数 = 后半段各位数字之和 % 8
+/// - 动爻数 = (前半 + 后半 + 时支数) % 6
+///
+/// # 示例
+/// - 输入 38271（5位）：前半 3+8=11，后半 2+7+1=10
+/// - 上卦 = 11 % 8 = 3（离），下卦 = 10 % 8 = 2（兑）
+/// - 动爻 = (11 + 10 + 时辰数) % 6
+///
+/// # 参数
+/// - `number`: 多位数字（至少2位）
+/// - `hour_zhi_num`: 时辰地支数（1-12）
+///
+/// # 返回
+/// - (上卦数, 下卦数, 动爻数)
+pub fn divine_by_single_number(number: u32, hour_zhi_num: u8) -> (u8, u8, u8) {
+    // 将数字转换为各位数字（正序存储：高位在前）
+    let mut digits: [u8; 10] = [0; 10]; // 最多支持10位数
+    let digit_count: u8;
+    let mut n = number;
+
+    // 先计算位数
+    if n == 0 {
+        digits[0] = 0;
+        digit_count = 1;
+    } else {
+        // 临时存储（逆序）
+        let mut temp: [u8; 10] = [0; 10];
+        let mut temp_count = 0u8;
+        while n > 0 && temp_count < 10 {
+            temp[temp_count as usize] = (n % 10) as u8;
+            n /= 10;
+            temp_count += 1;
+        }
+        digit_count = temp_count;
+
+        // 逆转为正序（高位在前）
+        for i in 0..digit_count {
+            digits[i as usize] = temp[(digit_count - 1 - i) as usize];
+        }
+    }
+
+    // 处理单位数情况：直接作为上下卦
+    if digit_count == 1 {
+        let single_digit = digits[0] as u32;
+        let shang_gua_num = calc_gua_num(single_digit);
+        let xia_gua_num = calc_gua_num(single_digit);
+        let dong_yao = calc_dong_yao(single_digit * 2 + hour_zhi_num as u32);
+        return (shang_gua_num, xia_gua_num, dong_yao);
+    }
+
+    // 计算前半段和后半段的数字之和
+    // 前半段取 0 ~ (digit_count / 2) 位
+    // 后半段取 (digit_count / 2) ~ digit_count 位
+    let split_point = digit_count / 2;
+    let mut first_half_sum: u32 = 0;
+    let mut second_half_sum: u32 = 0;
+
+    for i in 0..digit_count {
+        if i < split_point {
+            // 前半段（高位数字）
+            first_half_sum += digits[i as usize] as u32;
+        } else {
+            // 后半段（低位数字）
+            second_half_sum += digits[i as usize] as u32;
+        }
+    }
+
+    // 上卦数：前半段数字之和 % 8
+    let shang_gua_num = calc_gua_num(first_half_sum);
+
+    // 下卦数：后半段数字之和 % 8
+    let xia_gua_num = calc_gua_num(second_half_sum);
+
+    // 动爻数：(前半 + 后半 + 时辰数) % 6
+    let dong_yao = calc_dong_yao(first_half_sum + second_half_sum + hour_zhi_num as u32);
 
     (shang_gua_num, xia_gua_num, dong_yao)
 }
@@ -257,6 +347,36 @@ pub fn calc_zong_gua(shang_gua: &SingleGua, xia_gua: &SingleGua) -> (SingleGua, 
     )
 }
 
+/// 计算伏卦（飞伏神）
+///
+/// 伏卦规则：
+/// - 上卦、下卦各自对应一个伏卦
+/// - 八卦各有其对应的伏卦关系
+///
+/// 梅花易数中伏卦用于：
+/// - 判断隐藏的五行因素
+/// - 推算飞伏神煞
+/// - 断卦时参考隐伏之象
+///
+/// # 参数
+/// - `shang_gua`: 上卦
+/// - `xia_gua`: 下卦
+///
+/// # 返回
+/// - (伏卦上卦, 伏卦下卦)
+pub fn calc_fu_gua(shang_gua: &SingleGua, xia_gua: &SingleGua) -> (SingleGua, SingleGua) {
+    use crate::constants::get_fu_gua_num;
+
+    // 分别获取上下卦的伏卦
+    let fu_shang_num = get_fu_gua_num(shang_gua.number());
+    let fu_xia_num = get_fu_gua_num(xia_gua.number());
+
+    (
+        SingleGua::from_num(fu_shang_num),
+        SingleGua::from_num(fu_xia_num),
+    )
+}
+
 /// 计算体用关系
 ///
 /// # 参数
@@ -284,6 +404,188 @@ pub fn calc_fortune(
     bian_relation: Option<&TiYongRelation>,
 ) -> Fortune {
     Fortune::from_relations(ben_relation, bian_relation)
+}
+
+/// 计算卦气旺衰
+///
+/// 根据体卦五行和当前季节（农历月份）判断体卦的旺衰状态
+///
+/// # 参数
+/// - `ti_gua`: 体卦
+/// - `lunar_month`: 农历月份（1-12）
+///
+/// # 返回
+/// - 体卦的旺衰状态
+pub fn calc_wangshuai(ti_gua: &SingleGua, lunar_month: u8) -> WangShuai {
+    let ti_wuxing = ti_gua.wuxing();
+    let season = Season::from_lunar_month(lunar_month);
+    WangShuai::calculate(&ti_wuxing, &season)
+}
+
+/// 计算应期推算结果
+///
+/// 梅花易数应期推算规则：
+/// 1. 体卦旺相时：应期在生体之五行的卦数，或体用卦数之和
+/// 2. 体卦休囚时：应期在体所生之五行的卦数，或体卦卦数
+/// 3. 用卦克体时：应期在克用之五行的卦数
+/// 4. 用卦生体时：应期较快，在用卦卦数
+///
+/// 应期数可对应：年、月、日、时
+///
+/// # 参数
+/// - `ti_gua`: 体卦
+/// - `yong_gua`: 用卦
+/// - `lunar_month`: 农历月份（用于判断旺衰）
+///
+/// # 返回
+/// - 应期推算结果
+pub fn calc_yingqi(
+    ti_gua: &SingleGua,
+    yong_gua: &SingleGua,
+    lunar_month: u8,
+) -> YingQiResult {
+    let ti_wuxing = ti_gua.wuxing();
+    let yong_wuxing = yong_gua.wuxing();
+    let season = Season::from_lunar_month(lunar_month);
+    let ti_wangshuai = WangShuai::calculate(&ti_wuxing, &season);
+
+    // 生体五行（喜神）
+    let sheng_ti_wuxing = ti_wuxing.generated_by();
+    // 克体五行（忌神）
+    let ke_ti_wuxing = ti_wuxing.conquered_by();
+
+    // 体用卦数
+    let ti_gua_num = ti_gua.number();
+    let yong_gua_num = yong_gua.number();
+
+    // 计算应期数
+    let (primary_num, secondary_nums) = calc_yingqi_nums(
+        &ti_wuxing,
+        &yong_wuxing,
+        &ti_wangshuai,
+        ti_gua_num,
+        yong_gua_num,
+    );
+
+    // 生成分析文本
+    let analysis = generate_yingqi_analysis(
+        &ti_wuxing,
+        &yong_wuxing,
+        &ti_wangshuai,
+        &sheng_ti_wuxing,
+        ti_gua_num,
+        yong_gua_num,
+        primary_num,
+    );
+
+    YingQiResult {
+        ti_wuxing,
+        yong_wuxing,
+        ti_wangshuai,
+        sheng_ti_wuxing,
+        ke_ti_wuxing,
+        ti_gua_num,
+        yong_gua_num,
+        primary_num,
+        secondary_nums,
+        analysis,
+    }
+}
+
+/// 计算应期数
+///
+/// 根据体卦旺衰和体用关系计算主要和次要应期数
+fn calc_yingqi_nums(
+    ti_wuxing: &WuXing,
+    yong_wuxing: &WuXing,
+    ti_wangshuai: &WangShuai,
+    ti_gua_num: u8,
+    yong_gua_num: u8,
+) -> (u8, [u8; 2]) {
+    let relation = TiYongRelation::calculate(ti_wuxing, yong_wuxing);
+
+    // 主要应期数
+    let primary_num = if ti_wangshuai.is_strong() {
+        // 体卦旺相：应期在用卦数或体用之和
+        if relation == TiYongRelation::YongShengTi {
+            // 用生体：应期较快，取用卦数
+            yong_gua_num
+        } else {
+            // 其他：取体用卦数之和
+            let sum = ti_gua_num as u16 + yong_gua_num as u16;
+            if sum > 12 { (sum % 12) as u8 } else { sum as u8 }
+        }
+    } else {
+        // 体卦休囚死：应期较慢
+        if relation == TiYongRelation::YongKeTi {
+            // 用克体：需等克用五行出现
+            let ke_yong = yong_wuxing.conquered_by();
+            let (num1, _) = ke_yong.gua_numbers();
+            num1
+        } else {
+            // 其他：取体卦数
+            ti_gua_num
+        }
+    };
+
+    // 次要应期数（基于生体五行的卦数）
+    let sheng_ti = ti_wuxing.generated_by();
+    let (sec1, sec2_opt) = sheng_ti.gua_numbers();
+    let secondary_nums = [sec1, sec2_opt.unwrap_or(sec1)];
+
+    (primary_num, secondary_nums)
+}
+
+/// 生成应期分析文本
+fn generate_yingqi_analysis(
+    ti_wuxing: &WuXing,
+    yong_wuxing: &WuXing,
+    ti_wangshuai: &WangShuai,
+    sheng_ti_wuxing: &WuXing,
+    ti_gua_num: u8,
+    yong_gua_num: u8,
+    primary_num: u8,
+) -> frame_support::BoundedVec<u8, frame_support::pallet_prelude::ConstU32<512>> {
+    use crate::constants::WUXING_NAMES;
+
+    let ti_name = WUXING_NAMES[*ti_wuxing as usize];
+    let _yong_name = WUXING_NAMES[*yong_wuxing as usize];
+    let sheng_ti_name = WUXING_NAMES[*sheng_ti_wuxing as usize];
+
+    let wangshuai_str = match ti_wangshuai {
+        WangShuai::Wang => "旺",
+        WangShuai::Xiang => "相",
+        WangShuai::Xiu => "休",
+        WangShuai::Qiu => "囚",
+        WangShuai::Si => "死",
+    };
+
+    let relation = TiYongRelation::calculate(ti_wuxing, yong_wuxing);
+    let relation_str = match relation {
+        TiYongRelation::BiHe => "比和",
+        TiYongRelation::YongShengTi => "用生体",
+        TiYongRelation::TiShengYong => "体生用",
+        TiYongRelation::YongKeTi => "用克体",
+        TiYongRelation::TiKeYong => "体克用",
+    };
+
+    // 构建分析文本
+    let analysis_text = if ti_wangshuai.is_strong() {
+        format!(
+            "体卦{}{}，{}。喜神为{}。应期数：{}（可应年、月、日、时）。体卦数{}，用卦数{}。",
+            ti_name, wangshuai_str, relation_str, sheng_ti_name,
+            primary_num, ti_gua_num, yong_gua_num
+        )
+    } else {
+        format!(
+            "体卦{}{}，力弱，{}。喜神为{}生体。应期数：{}（须待时机成熟）。体卦数{}，用卦数{}。",
+            ti_name, wangshuai_str, relation_str, sheng_ti_name,
+            primary_num, ti_gua_num, yong_gua_num
+        )
+    };
+
+    frame_support::BoundedVec::try_from(analysis_text.into_bytes())
+        .unwrap_or_default()
 }
 
 /// 完整排盘计算
@@ -472,5 +774,302 @@ mod tests {
         // 离（101）上卦动第6爻变为震（001）
         assert_eq!(result.2.bagua, Bagua::Zhen); // 变卦上卦
         assert_eq!(result.3.bagua, Bagua::Zhen); // 变卦下卦不变
+    }
+
+    #[test]
+    fn test_divine_by_single_number() {
+        // 测试单数起卦算法
+        // 输入 38271：
+        // 数字拆分：前半 3,8 = 11，后半 2,7,1 = 10
+        // 上卦 = 11 % 8 = 3（离）
+        // 下卦 = 10 % 8 = 2（兑）
+        // 动爻 = (11 + 10 + 1) % 6 = 22 % 6 = 4
+        let (shang, xia, dong) = divine_by_single_number(38271, 1);
+
+        assert_eq!(shang, 3); // 离
+        assert_eq!(xia, 2);   // 兑
+        assert_eq!(dong, 4);
+    }
+
+    #[test]
+    fn test_divine_by_single_number_two_digits() {
+        // 测试两位数
+        // 输入 36：前半 3，后半 6
+        // 上卦 = 3 % 8 = 3（离）
+        // 下卦 = 6 % 8 = 6（坎）
+        // 动爻 = (3 + 6 + 1) % 6 = 10 % 6 = 4
+        let (shang, xia, dong) = divine_by_single_number(36, 1);
+
+        assert_eq!(shang, 3); // 离
+        assert_eq!(xia, 6);   // 坎
+        assert_eq!(dong, 4);
+    }
+
+    #[test]
+    fn test_divine_by_single_number_four_digits() {
+        // 测试四位数
+        // 输入 1234：前半 1+2=3，后半 3+4=7
+        // 上卦 = 3 % 8 = 3（离）
+        // 下卦 = 7 % 8 = 7（艮）
+        // 动爻 = (3 + 7 + 1) % 6 = 11 % 6 = 5
+        let (shang, xia, dong) = divine_by_single_number(1234, 1);
+
+        assert_eq!(shang, 3); // 离
+        assert_eq!(xia, 7);   // 艮
+        assert_eq!(dong, 5);
+    }
+
+    #[test]
+    fn test_divine_by_single_number_single_digit() {
+        // 测试单位数
+        // 输入 5：上下卦都是5
+        // 上卦 = 5 % 8 = 5（巽）
+        // 下卦 = 5 % 8 = 5（巽）
+        // 动爻 = (5 * 2 + 1) % 6 = 11 % 6 = 5
+        let (shang, xia, dong) = divine_by_single_number(5, 1);
+
+        assert_eq!(shang, 5); // 巽
+        assert_eq!(xia, 5);   // 巽
+        assert_eq!(dong, 5);
+    }
+
+    #[test]
+    fn test_divine_by_single_number_remainder_zero() {
+        // 测试余数为0的情况
+        // 输入 88：前半 8，后半 8
+        // 上卦 = 8 % 8 = 0 → 8（坤）
+        // 下卦 = 8 % 8 = 0 → 8（坤）
+        // 动爻 = (8 + 8 + 1) % 6 = 17 % 6 = 5
+        let (shang, xia, dong) = divine_by_single_number(88, 1);
+
+        assert_eq!(shang, 8); // 坤
+        assert_eq!(xia, 8);   // 坤
+        assert_eq!(dong, 5);
+    }
+
+    // ==================== P2 功能测试：卦气旺衰 ====================
+
+    #[test]
+    fn test_calc_wangshuai_spring() {
+        // 春季（正月）：木旺
+        // 震卦属木 -> 旺
+        let zhen = SingleGua::from_num(4); // 震 = 木
+        assert_eq!(calc_wangshuai(&zhen, 1), WangShuai::Wang);
+
+        // 离卦属火 -> 相（木生火）
+        let li = SingleGua::from_num(3); // 离 = 火
+        assert_eq!(calc_wangshuai(&li, 1), WangShuai::Xiang);
+
+        // 坎卦属水 -> 休（水生木）
+        let kan = SingleGua::from_num(6); // 坎 = 水
+        assert_eq!(calc_wangshuai(&kan, 1), WangShuai::Xiu);
+
+        // 乾卦属金 -> 囚（金克木）
+        let qian = SingleGua::from_num(1); // 乾 = 金
+        assert_eq!(calc_wangshuai(&qian, 1), WangShuai::Qiu);
+
+        // 坤卦属土 -> 死（木克土）
+        let kun = SingleGua::from_num(8); // 坤 = 土
+        assert_eq!(calc_wangshuai(&kun, 1), WangShuai::Si);
+    }
+
+    #[test]
+    fn test_calc_wangshuai_summer() {
+        // 夏季（四月）：火旺
+        // 离卦属火 -> 旺
+        let li = SingleGua::from_num(3); // 离 = 火
+        assert_eq!(calc_wangshuai(&li, 4), WangShuai::Wang);
+
+        // 坤卦属土 -> 相（火生土）
+        let kun = SingleGua::from_num(8); // 坤 = 土
+        assert_eq!(calc_wangshuai(&kun, 4), WangShuai::Xiang);
+
+        // 震卦属木 -> 休（木生火）
+        let zhen = SingleGua::from_num(4); // 震 = 木
+        assert_eq!(calc_wangshuai(&zhen, 4), WangShuai::Xiu);
+
+        // 坎卦属水 -> 囚（水克火）
+        let kan = SingleGua::from_num(6); // 坎 = 水
+        assert_eq!(calc_wangshuai(&kan, 4), WangShuai::Qiu);
+
+        // 乾卦属金 -> 死（火克金）
+        let qian = SingleGua::from_num(1); // 乾 = 金
+        assert_eq!(calc_wangshuai(&qian, 4), WangShuai::Si);
+    }
+
+    #[test]
+    fn test_calc_wangshuai_autumn() {
+        // 秋季（七月）：金旺
+        // 乾卦属金 -> 旺
+        let qian = SingleGua::from_num(1); // 乾 = 金
+        assert_eq!(calc_wangshuai(&qian, 7), WangShuai::Wang);
+
+        // 坎卦属水 -> 相（金生水）
+        let kan = SingleGua::from_num(6); // 坎 = 水
+        assert_eq!(calc_wangshuai(&kan, 7), WangShuai::Xiang);
+    }
+
+    #[test]
+    fn test_calc_wangshuai_winter() {
+        // 冬季（十月）：水旺
+        // 坎卦属水 -> 旺
+        let kan = SingleGua::from_num(6); // 坎 = 水
+        assert_eq!(calc_wangshuai(&kan, 10), WangShuai::Wang);
+
+        // 震卦属木 -> 相（水生木）
+        let zhen = SingleGua::from_num(4); // 震 = 木
+        assert_eq!(calc_wangshuai(&zhen, 10), WangShuai::Xiang);
+    }
+
+    #[test]
+    fn test_wangshuai_is_strong() {
+        // 测试旺相为有力
+        assert!(WangShuai::Wang.is_strong());
+        assert!(WangShuai::Xiang.is_strong());
+        assert!(!WangShuai::Xiu.is_strong());
+        assert!(!WangShuai::Qiu.is_strong());
+        assert!(!WangShuai::Si.is_strong());
+    }
+
+    // ==================== P2 功能测试：应期推算 ====================
+
+    #[test]
+    fn test_calc_yingqi_basic() {
+        // 测试应期推算基本功能
+        // 体卦：乾（金），用卦：离（火），春季
+        let ti_gua = SingleGua::from_num(1);  // 乾 = 金
+        let yong_gua = SingleGua::from_num(3); // 离 = 火
+
+        let result = calc_yingqi(&ti_gua, &yong_gua, 1);
+
+        // 验证基本信息
+        assert_eq!(result.ti_wuxing, WuXing::Jin);
+        assert_eq!(result.yong_wuxing, WuXing::Huo);
+        assert_eq!(result.ti_gua_num, 1);
+        assert_eq!(result.yong_gua_num, 3);
+
+        // 春季金囚
+        assert_eq!(result.ti_wangshuai, WangShuai::Qiu);
+
+        // 生金的是土
+        assert_eq!(result.sheng_ti_wuxing, WuXing::Tu);
+
+        // 克金的是火
+        assert_eq!(result.ke_ti_wuxing, WuXing::Huo);
+    }
+
+    #[test]
+    fn test_calc_yingqi_strong_ti() {
+        // 体卦旺相时的应期推算
+        // 体卦：震（木），用卦：坎（水），春季（木旺）
+        let ti_gua = SingleGua::from_num(4);  // 震 = 木
+        let yong_gua = SingleGua::from_num(6); // 坎 = 水
+
+        let result = calc_yingqi(&ti_gua, &yong_gua, 1);
+
+        // 体卦春季木旺
+        assert!(result.ti_wangshuai.is_strong());
+
+        // 用生体（水生木），应期取用卦数
+        assert_eq!(result.primary_num, 6); // 坎卦数
+    }
+
+    #[test]
+    fn test_calc_yingqi_weak_ti_ke() {
+        // 体卦休囚死且被克时的应期推算
+        // 体卦：震（木），用卦：乾（金），秋季（金旺克木）
+        let ti_gua = SingleGua::from_num(4);  // 震 = 木
+        let yong_gua = SingleGua::from_num(1); // 乾 = 金
+
+        let result = calc_yingqi(&ti_gua, &yong_gua, 7);
+
+        // 体卦秋季木死（被金克）
+        assert!(result.ti_wangshuai.is_weak());
+
+        // 用克体，需等克用五行（火克金）出现
+        // 火对应离卦(3)
+        assert_eq!(result.primary_num, 3);
+    }
+
+    #[test]
+    fn test_calc_yingqi_analysis_text() {
+        // 验证分析文本生成
+        let ti_gua = SingleGua::from_num(1);  // 乾 = 金
+        let yong_gua = SingleGua::from_num(3); // 离 = 火
+
+        let result = calc_yingqi(&ti_gua, &yong_gua, 1);
+
+        // 分析文本应该包含关键信息
+        let analysis_str = core::str::from_utf8(&result.analysis).unwrap_or("");
+        assert!(analysis_str.contains("金"));  // 体卦五行
+        assert!(analysis_str.contains("囚"));  // 旺衰状态
+    }
+
+    #[test]
+    fn test_season_from_lunar_month() {
+        // 测试农历月份到季节的转换
+        assert_eq!(Season::from_lunar_month(1), Season::Spring);
+        assert_eq!(Season::from_lunar_month(2), Season::Spring);
+        assert_eq!(Season::from_lunar_month(3), Season::Spring);
+        assert_eq!(Season::from_lunar_month(4), Season::Summer);
+        assert_eq!(Season::from_lunar_month(5), Season::Summer);
+        assert_eq!(Season::from_lunar_month(6), Season::Summer);
+        assert_eq!(Season::from_lunar_month(7), Season::Autumn);
+        assert_eq!(Season::from_lunar_month(8), Season::Autumn);
+        assert_eq!(Season::from_lunar_month(9), Season::Autumn);
+        assert_eq!(Season::from_lunar_month(10), Season::Winter);
+        assert_eq!(Season::from_lunar_month(11), Season::Winter);
+        assert_eq!(Season::from_lunar_month(12), Season::Winter);
+    }
+
+    #[test]
+    fn test_wuxing_gua_numbers() {
+        // 测试五行对应的卦数
+        assert_eq!(WuXing::Jin.gua_numbers(), (1, Some(2)));  // 乾1、兑2
+        assert_eq!(WuXing::Mu.gua_numbers(), (4, Some(5)));   // 震4、巽5
+        assert_eq!(WuXing::Shui.gua_numbers(), (6, None));    // 坎6
+        assert_eq!(WuXing::Huo.gua_numbers(), (3, None));     // 离3
+        assert_eq!(WuXing::Tu.gua_numbers(), (7, Some(8)));   // 艮7、坤8
+    }
+
+    #[test]
+    fn test_wuxing_relationships() {
+        // 测试五行生克关系
+        // 金生水
+        assert_eq!(WuXing::Jin.generates_to(), WuXing::Shui);
+        assert_eq!(WuXing::Shui.generated_by(), WuXing::Jin);
+
+        // 金克木
+        assert_eq!(WuXing::Jin.conquers_to(), WuXing::Mu);
+        assert_eq!(WuXing::Mu.conquered_by(), WuXing::Jin);
+
+        // 木生火
+        assert_eq!(WuXing::Mu.generates_to(), WuXing::Huo);
+        assert_eq!(WuXing::Huo.generated_by(), WuXing::Mu);
+
+        // 水克火
+        assert_eq!(WuXing::Shui.conquers_to(), WuXing::Huo);
+        assert_eq!(WuXing::Huo.conquered_by(), WuXing::Shui);
+    }
+
+    #[test]
+    fn test_calc_fu_gua() {
+        // 乾卦的伏卦是巽卦
+        let qian = SingleGua::from_num(1);
+        let (fu_shang, fu_xia) = calc_fu_gua(&qian, &qian);
+        assert_eq!(fu_shang.bagua, Bagua::Xun);
+        assert_eq!(fu_xia.bagua, Bagua::Xun);
+
+        // 坤卦的伏卦是乾卦
+        let kun = SingleGua::from_num(8);
+        let (fu_shang, fu_xia) = calc_fu_gua(&kun, &kun);
+        assert_eq!(fu_shang.bagua, Bagua::Qian);
+        assert_eq!(fu_xia.bagua, Bagua::Qian);
+
+        // 离坎互为伏卦
+        let li = SingleGua::from_num(3);
+        let kan = SingleGua::from_num(6);
+        let (fu_shang, _) = calc_fu_gua(&li, &kan);
+        assert_eq!(fu_shang.bagua, Bagua::Kan);  // 离的伏卦是坎
     }
 }

@@ -253,6 +253,79 @@ impl ShiShen {
 // 高级类型定义
 // ================================
 
+/// 十二长生（星运）
+///
+/// 表示天干在地支中的生旺死绝状态
+/// 用于判断日主在四柱各支的旺衰程度
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum ShiErChangSheng {
+	/// 长生 - 如人之初生，生命开始
+	ChangSheng = 0,
+	/// 沐浴 - 如婴儿沐浴，脆弱之时
+	MuYu = 1,
+	/// 冠带 - 如人戴冠束带，渐成气象
+	GuanDai = 2,
+	/// 临官 - 如人临官任职，得意之时
+	LinGuan = 3,
+	/// 帝旺 - 如帝王当朝，最旺盛时
+	DiWang = 4,
+	/// 衰 - 如人年老体衰
+	Shuai = 5,
+	/// 病 - 如人疾病缠身
+	Bing = 6,
+	/// 死 - 如人气绝身亡
+	Si = 7,
+	/// 墓 - 如人入墓归土
+	Mu = 8,
+	/// 绝 - 如人形骸俱灭
+	Jue = 9,
+	/// 胎 - 如人受胎于母腹
+	Tai = 10,
+	/// 养 - 如人在母腹中成形
+	Yang = 11,
+}
+
+impl ShiErChangSheng {
+	/// 获取十二长生名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			ShiErChangSheng::ChangSheng => "长生",
+			ShiErChangSheng::MuYu => "沐浴",
+			ShiErChangSheng::GuanDai => "冠带",
+			ShiErChangSheng::LinGuan => "临官",
+			ShiErChangSheng::DiWang => "帝旺",
+			ShiErChangSheng::Shuai => "衰",
+			ShiErChangSheng::Bing => "病",
+			ShiErChangSheng::Si => "死",
+			ShiErChangSheng::Mu => "墓",
+			ShiErChangSheng::Jue => "绝",
+			ShiErChangSheng::Tai => "胎",
+			ShiErChangSheng::Yang => "养",
+		}
+	}
+
+	/// 判断是否为旺相状态（长生、冠带、临官、帝旺）
+	pub fn is_prosperous(&self) -> bool {
+		matches!(self,
+			ShiErChangSheng::ChangSheng |
+			ShiErChangSheng::GuanDai |
+			ShiErChangSheng::LinGuan |
+			ShiErChangSheng::DiWang
+		)
+	}
+
+	/// 判断是否为衰败状态（衰、病、死、墓、绝）
+	pub fn is_declining(&self) -> bool {
+		matches!(self,
+			ShiErChangSheng::Shuai |
+			ShiErChangSheng::Bing |
+			ShiErChangSheng::Si |
+			ShiErChangSheng::Mu |
+			ShiErChangSheng::Jue
+		)
+	}
+}
+
 /// 藏干类型
 ///
 /// 每个地支藏有1-3个天干，分为主气、中气、余气

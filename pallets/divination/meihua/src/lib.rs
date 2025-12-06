@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 pub use pallet::*;
 
 pub mod algorithm;
@@ -397,6 +400,57 @@ pub mod pallet {
             )
         }
 
+        /// 单数起卦
+        ///
+        /// 使用一个多位数字进行起卦，将数字拆分为前后两半分别计算上下卦。
+        ///
+        /// # 算法
+        /// - 将数字拆分为前半段和后半段
+        /// - 上卦数 = 前半段各位数字之和 % 8
+        /// - 下卦数 = 后半段各位数字之和 % 8
+        /// - 动爻数 = (前半 + 后半 + 时辰数) % 6
+        ///
+        /// # 示例
+        /// 输入 38271：前半 3+8=11，后半 2+7+1=10
+        /// - 上卦 = 11 % 8 = 3（离）
+        /// - 下卦 = 10 % 8 = 2（兑）
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `number`: 多位数字（建议至少2位）
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn divine_by_single_number(
+            origin: OriginFor<T>,
+            number: u32,
+            question_hash: [u8; 32],
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 获取当前时辰
+            let timestamp = Self::get_timestamp_secs();
+            let lunar_date = Self::convert_timestamp_to_lunar(timestamp)?;
+            let hour_zhi_num = lunar_date.hour_zhi_num;
+
+            // 计算卦数
+            let (shang_gua_num, xia_gua_num, dong_yao) =
+                algorithm::divine_by_single_number(number, hour_zhi_num);
+
+            Self::create_hexagram(
+                who,
+                shang_gua_num,
+                xia_gua_num,
+                dong_yao,
+                DivinationMethod::SingleNumber,
+                question_hash,
+                is_public,
+            )
+        }
+
         /// 请求 AI 解卦（已废弃）
         ///
         /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`
@@ -669,6 +723,245 @@ pub mod pallet {
             });
 
             Ok(())
+        }
+
+        /// 获取卦象详细信息（公共查询 API）
+        ///
+        /// 根据卦象 ID 获取完整的详细信息，包括文本名称、符号等
+        /// 适合前端展示使用
+        ///
+        /// # 参数
+        /// - `hexagram_id`: 卦象 ID
+        ///
+        /// # 返回
+        /// - 完整排盘详细信息（包含本卦、变卦、互卦、错卦、综卦、伏卦）
+        pub fn get_hexagram_detail(hexagram_id: u64) -> Option<FullDivinationDetail> {
+            use crate::constants::get_tiyong_interpretation;
+
+            let full_div = Hexagrams::<T>::get(hexagram_id)?;
+
+            // 计算错卦和综卦
+            let (cuo_shang, cuo_xia) = algorithm::calc_cuo_gua(
+                &full_div.ben_gua.shang_gua,
+                &full_div.ben_gua.xia_gua,
+            );
+            let (zong_shang, zong_xia) = algorithm::calc_zong_gua(
+                &full_div.ben_gua.shang_gua,
+                &full_div.ben_gua.xia_gua,
+            );
+
+            // 计算伏卦（新增）
+            let (fu_shang, fu_xia) = algorithm::calc_fu_gua(
+                &full_div.ben_gua.shang_gua,
+                &full_div.ben_gua.xia_gua,
+            );
+
+            // 错卦体用关系（使用本卦的体用位置）
+            let cuo_relation = if full_div.ben_gua.ti_is_shang {
+                TiYongRelation::calculate(&cuo_shang.wuxing(), &cuo_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&cuo_xia.wuxing(), &cuo_shang.wuxing())
+            };
+
+            // 综卦体用关系
+            let zong_relation = if full_div.ben_gua.ti_is_shang {
+                TiYongRelation::calculate(&zong_shang.wuxing(), &zong_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&zong_xia.wuxing(), &zong_shang.wuxing())
+            };
+
+            // 互卦体用关系
+            let hu_relation = if full_div.ben_gua.ti_is_shang {
+                TiYongRelation::calculate(&full_div.hu_gua.0.wuxing(), &full_div.hu_gua.1.wuxing())
+            } else {
+                TiYongRelation::calculate(&full_div.hu_gua.1.wuxing(), &full_div.hu_gua.0.wuxing())
+            };
+
+            // 伏卦体用关系（新增）
+            let fu_relation = if full_div.ben_gua.ti_is_shang {
+                TiYongRelation::calculate(&fu_shang.wuxing(), &fu_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&fu_xia.wuxing(), &fu_shang.wuxing())
+            };
+
+            // 获取体用关系详细解读（新增）
+            let tiyong_interp = get_tiyong_interpretation(full_div.ben_gua_relation as u8);
+
+            Some(FullDivinationDetail {
+                ben_gua: HexagramDetail::from_hexagram(
+                    &full_div.ben_gua.shang_gua,
+                    &full_div.ben_gua.xia_gua,
+                    full_div.ben_gua.dong_yao,
+                    &full_div.ben_gua_relation,
+                    &full_div.fortune,
+                ),
+                bian_gua: HexagramDetail::from_hexagram(
+                    &full_div.bian_gua.0,
+                    &full_div.bian_gua.1,
+                    full_div.ben_gua.dong_yao,
+                    &full_div.bian_gua_relation,
+                    &Fortune::from_relations(&full_div.bian_gua_relation, None),
+                ),
+                hu_gua: HexagramDetail::from_hexagram(
+                    &full_div.hu_gua.0,
+                    &full_div.hu_gua.1,
+                    full_div.ben_gua.dong_yao,
+                    &hu_relation,
+                    &Fortune::from_relations(&hu_relation, None),
+                ),
+                cuo_gua: HexagramDetail::from_hexagram(
+                    &cuo_shang,
+                    &cuo_xia,
+                    full_div.ben_gua.dong_yao,
+                    &cuo_relation,
+                    &Fortune::from_relations(&cuo_relation, None),
+                ),
+                zong_gua: HexagramDetail::from_hexagram(
+                    &zong_shang,
+                    &zong_xia,
+                    full_div.ben_gua.dong_yao,
+                    &zong_relation,
+                    &Fortune::from_relations(&zong_relation, None),
+                ),
+                fu_gua: HexagramDetail::from_hexagram(
+                    &fu_shang,
+                    &fu_xia,
+                    full_div.ben_gua.dong_yao,
+                    &fu_relation,
+                    &Fortune::from_relations(&fu_relation, None),
+                ),
+                tiyong_interpretation: BoundedVec::try_from(tiyong_interp.as_bytes().to_vec())
+                    .unwrap_or_default(),
+            })
+        }
+
+        /// 获取单个卦象详细信息（不需要存储ID）
+        ///
+        /// 根据上卦数、下卦数、动爻直接计算详细信息
+        /// 适合快速查询使用
+        ///
+        /// # 参数
+        /// - `shang_gua_num`: 上卦数（1-8）
+        /// - `xia_gua_num`: 下卦数（1-8）
+        /// - `dong_yao`: 动爻（1-6）
+        ///
+        /// # 返回
+        /// - 完整排盘详细信息
+        pub fn calculate_hexagram_detail(
+            shang_gua_num: u8,
+            xia_gua_num: u8,
+            dong_yao: u8,
+        ) -> FullDivinationDetail {
+            use crate::constants::get_tiyong_interpretation;
+
+            // 验证参数
+            let shang_num = if shang_gua_num == 0 || shang_gua_num > 8 { 1 } else { shang_gua_num };
+            let xia_num = if xia_gua_num == 0 || xia_gua_num > 8 { 1 } else { xia_gua_num };
+            let dong = if dong_yao == 0 || dong_yao > 6 { 1 } else { dong_yao };
+
+            // 创建本卦
+            let shang_gua = SingleGua::from_num(shang_num);
+            let xia_gua = SingleGua::from_num(xia_num);
+
+            // 判断体用
+            let ti_is_shang = algorithm::determine_ti_is_shang(dong);
+
+            // 计算各卦
+            let (bian_shang, bian_xia) = algorithm::calc_bian_gua(&shang_gua, &xia_gua, dong);
+            let (hu_shang, hu_xia) = algorithm::calc_hu_gua(&shang_gua, &xia_gua);
+            let (cuo_shang, cuo_xia) = algorithm::calc_cuo_gua(&shang_gua, &xia_gua);
+            let (zong_shang, zong_xia) = algorithm::calc_zong_gua(&shang_gua, &xia_gua);
+            let (fu_shang, fu_xia) = algorithm::calc_fu_gua(&shang_gua, &xia_gua);
+
+            // 计算体用关系
+            let ben_relation = if ti_is_shang {
+                TiYongRelation::calculate(&shang_gua.wuxing(), &xia_gua.wuxing())
+            } else {
+                TiYongRelation::calculate(&xia_gua.wuxing(), &shang_gua.wuxing())
+            };
+
+            let bian_relation = if ti_is_shang {
+                TiYongRelation::calculate(&bian_shang.wuxing(), &bian_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&bian_xia.wuxing(), &bian_shang.wuxing())
+            };
+
+            let hu_relation = if ti_is_shang {
+                TiYongRelation::calculate(&hu_shang.wuxing(), &hu_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&hu_xia.wuxing(), &hu_shang.wuxing())
+            };
+
+            let cuo_relation = if ti_is_shang {
+                TiYongRelation::calculate(&cuo_shang.wuxing(), &cuo_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&cuo_xia.wuxing(), &cuo_shang.wuxing())
+            };
+
+            let zong_relation = if ti_is_shang {
+                TiYongRelation::calculate(&zong_shang.wuxing(), &zong_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&zong_xia.wuxing(), &zong_shang.wuxing())
+            };
+
+            let fu_relation = if ti_is_shang {
+                TiYongRelation::calculate(&fu_shang.wuxing(), &fu_xia.wuxing())
+            } else {
+                TiYongRelation::calculate(&fu_xia.wuxing(), &fu_shang.wuxing())
+            };
+
+            // 综合吉凶
+            let fortune = Fortune::from_relations(&ben_relation, Some(&bian_relation));
+
+            // 获取体用关系详细解读
+            let tiyong_interp = get_tiyong_interpretation(ben_relation as u8);
+
+            FullDivinationDetail {
+                ben_gua: HexagramDetail::from_hexagram(
+                    &shang_gua,
+                    &xia_gua,
+                    dong,
+                    &ben_relation,
+                    &fortune,
+                ),
+                bian_gua: HexagramDetail::from_hexagram(
+                    &bian_shang,
+                    &bian_xia,
+                    dong,
+                    &bian_relation,
+                    &Fortune::from_relations(&bian_relation, None),
+                ),
+                hu_gua: HexagramDetail::from_hexagram(
+                    &hu_shang,
+                    &hu_xia,
+                    dong,
+                    &hu_relation,
+                    &Fortune::from_relations(&hu_relation, None),
+                ),
+                cuo_gua: HexagramDetail::from_hexagram(
+                    &cuo_shang,
+                    &cuo_xia,
+                    dong,
+                    &cuo_relation,
+                    &Fortune::from_relations(&cuo_relation, None),
+                ),
+                zong_gua: HexagramDetail::from_hexagram(
+                    &zong_shang,
+                    &zong_xia,
+                    dong,
+                    &zong_relation,
+                    &Fortune::from_relations(&zong_relation, None),
+                ),
+                fu_gua: HexagramDetail::from_hexagram(
+                    &fu_shang,
+                    &fu_xia,
+                    dong,
+                    &fu_relation,
+                    &Fortune::from_relations(&fu_relation, None),
+                ),
+                tiyong_interpretation: BoundedVec::try_from(tiyong_interp.as_bytes().to_vec())
+                    .unwrap_or_default(),
+            }
         }
     }
 }

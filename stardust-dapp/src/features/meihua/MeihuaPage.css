@@ -219,6 +219,73 @@
   margin-bottom: 0 !important;
 }
 
+.tiyong-interpretation {
+  background: #e6f7ff;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 0 !important;
+  border-left: 3px solid #1890ff;
+}
+
+.guaci-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* ==================== 衍生卦象卡片 ==================== */
+
+.derived-hexagrams-card {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.derived-hexagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.derived-hexagram.fu-gua {
+  background: linear-gradient(135deg, #f5f0ff 0%, #efe6ff 100%);
+  border: 1px solid #d3adf7;
+}
+
+.derived-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 8px;
+}
+
+.derived-symbol {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.derived-name {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 8px;
+}
+
+.derived-wuxing {
+  display: flex;
+  gap: 4px;
+}
+
+.derived-hint {
+  background: #f6f6f6;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 0 !important;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
 .service-card {
   border-radius: 12px;
   margin-bottom: 12px;

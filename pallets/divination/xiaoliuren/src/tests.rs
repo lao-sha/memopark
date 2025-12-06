@@ -350,6 +350,7 @@ fn test_set_visibility_not_owner() {
 // ============================================================================
 
 #[test]
+#[allow(deprecated)]
 fn test_request_ai_interpretation_works() {
     new_test_ext().execute_with(|| {
         // 创建课盘
@@ -378,6 +379,7 @@ fn test_request_ai_interpretation_works() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_submit_ai_interpretation_works() {
     new_test_ext().execute_with(|| {
         // 创建课盘
@@ -420,6 +422,7 @@ fn test_submit_ai_interpretation_works() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_ai_interpretation_not_owner() {
     new_test_ext().execute_with(|| {
         // 账户 1 创建课盘
@@ -442,6 +445,7 @@ fn test_ai_interpretation_not_owner() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_ai_interpretation_duplicate_request() {
     new_test_ext().execute_with(|| {
         // 创建课盘并请求解读
@@ -649,4 +653,249 @@ fn test_wu_xing_relations() {
     assert_eq!(WuXing::Metal.restrains(), WuXing::Wood);
     // 水克火
     assert_eq!(WuXing::Water.restrains(), WuXing::Fire);
+}
+
+// ============================================================================
+// 新增功能测试
+// ============================================================================
+
+#[test]
+fn test_divine_by_hour_ke_works() {
+    new_test_ext().execute_with(|| {
+        // 使用 14:36 (下午2:36) 进行时刻分起课
+        assert_ok!(XiaoLiuRen::divine_by_hour_ke(
+            RuntimeOrigin::signed(1),
+            14,  // 14点 = 未时
+            36,  // 36分
+            None,
+            false,
+        ));
+
+        let pan = Pans::<Test>::get(0).expect("Pan should exist");
+        assert_eq!(pan.method, DivinationMethod::TimeKeMethod);
+        assert_eq!(pan.shi_chen, Some(ShiChen::Wei));
+
+        // 验证三宫已计算
+        assert!(pan.san_gong.yue_gong.index() < 6);
+        assert!(pan.san_gong.ri_gong.index() < 6);
+        assert!(pan.san_gong.shi_gong.index() < 6);
+    });
+}
+
+#[test]
+fn test_divine_by_hour_ke_invalid_params() {
+    new_test_ext().execute_with(|| {
+        // 无效小时
+        assert_noop!(
+            XiaoLiuRen::divine_by_hour_ke(
+                RuntimeOrigin::signed(1),
+                25,  // 无效小时
+                30,
+                None,
+                false,
+            ),
+            Error::<Test>::InvalidHour
+        );
+
+        // 无效分钟
+        assert_noop!(
+            XiaoLiuRen::divine_by_hour_ke(
+                RuntimeOrigin::signed(1),
+                14,
+                60,  // 无效分钟
+                None,
+                false,
+            ),
+            Error::<Test>::InvalidParams
+        );
+    });
+}
+
+#[test]
+fn test_divine_by_digits_works() {
+    new_test_ext().execute_with(|| {
+        // 使用数字 1436 起课
+        assert_ok!(XiaoLiuRen::divine_by_digits(
+            RuntimeOrigin::signed(1),
+            1436,
+            None,
+            false,
+        ));
+
+        let pan = Pans::<Test>::get(0).expect("Pan should exist");
+        assert_eq!(pan.method, DivinationMethod::NumberMethod);
+
+        // 验证三宫已计算（对于纯数字起课，三宫相同）
+        assert!(pan.san_gong.yue_gong.index() < 6);
+    });
+}
+
+#[test]
+fn test_divine_by_three_numbers_works() {
+    new_test_ext().execute_with(|| {
+        // 使用三个数字起课
+        assert_ok!(XiaoLiuRen::divine_by_three_numbers(
+            RuntimeOrigin::signed(1),
+            7,
+            14,
+            21,
+            None,
+            false,
+        ));
+
+        let pan = Pans::<Test>::get(0).expect("Pan should exist");
+        assert_eq!(pan.method, DivinationMethod::NumberMethod);
+
+        // 验证三宫计算
+        // 月宫 = (7-1) % 6 = 0 → 大安
+        assert_eq!(pan.san_gong.yue_gong, LiuGong::DaAn);
+        // 日宫 = (0 + 14 - 1) % 6 = 13 % 6 = 1 → 留连
+        assert_eq!(pan.san_gong.ri_gong, LiuGong::LiuLian);
+        // 时宫 = (1 + 21 - 1) % 6 = 21 % 6 = 3 → 赤口
+        assert_eq!(pan.san_gong.shi_gong, LiuGong::ChiKou);
+    });
+}
+
+// ============================================================================
+// 多流派支持测试
+// ============================================================================
+
+#[test]
+fn test_liu_gong_school_wuxing() {
+    // 测试道家流派五行
+    assert_eq!(LiuGong::LiuLian.wu_xing(), WuXing::Earth); // 道家：土
+    assert_eq!(LiuGong::XiaoJi.wu_xing(), WuXing::Water);  // 道家：水
+
+    // 测试传统流派五行
+    assert_eq!(LiuGong::LiuLian.wu_xing_traditional(), WuXing::Water); // 传统：水
+    assert_eq!(LiuGong::XiaoJi.wu_xing_traditional(), WuXing::Wood);   // 传统：木
+
+    // 测试按流派获取
+    assert_eq!(
+        LiuGong::LiuLian.wu_xing_by_school(XiaoLiuRenSchool::DaoJia),
+        WuXing::Earth
+    );
+    assert_eq!(
+        LiuGong::LiuLian.wu_xing_by_school(XiaoLiuRenSchool::ChuanTong),
+        WuXing::Water
+    );
+}
+
+// ============================================================================
+// 十二宫对应测试
+// ============================================================================
+
+#[test]
+fn test_twelve_palace_mapping() {
+    // 大安对应事业宫（外）+ 命宫（内）
+    let da_an_palace = LiuGong::DaAn.twelve_palace();
+    assert_eq!(da_an_palace.outer, TwelvePalace::ShiYeGong);
+    assert_eq!(da_an_palace.inner, TwelvePalace::MingGong);
+
+    // 留连对应田宅宫（外）+ 奴仆宫（内）
+    let liu_lian_palace = LiuGong::LiuLian.twelve_palace();
+    assert_eq!(liu_lian_palace.outer, TwelvePalace::TianZhaiGong);
+    assert_eq!(liu_lian_palace.inner, TwelvePalace::NuPuGong);
+
+    // 速喜对应感情宫（外）+ 夫妻宫（内）
+    let su_xi_palace = LiuGong::SuXi.twelve_palace();
+    assert_eq!(su_xi_palace.outer, TwelvePalace::GanQingGong);
+    assert_eq!(su_xi_palace.inner, TwelvePalace::FuQiGong);
+}
+
+// ============================================================================
+// 藏干测试
+// ============================================================================
+
+#[test]
+fn test_hidden_stems() {
+    assert_eq!(LiuGong::DaAn.hidden_stems(), ("甲", "丁"));
+    assert_eq!(LiuGong::LiuLian.hidden_stems(), ("丁", "己"));
+    assert_eq!(LiuGong::SuXi.hidden_stems(), ("丙", "辛"));
+    assert_eq!(LiuGong::ChiKou.hidden_stems(), ("庚", "癸"));
+    assert_eq!(LiuGong::XiaoJi.hidden_stems(), ("壬", "甲"));
+    assert_eq!(LiuGong::KongWang.hidden_stems(), ("戊", "乙"));
+}
+
+// ============================================================================
+// 早子时/晚子时测试
+// ============================================================================
+
+#[test]
+fn test_zi_shi_type() {
+    // 23点为早子时
+    let (shi_chen, zi_type) = ShiChen::from_hour_detailed(23);
+    assert_eq!(shi_chen, ShiChen::Zi);
+    assert_eq!(zi_type, Some(ZiShiType::EarlyZi));
+
+    // 0点为晚子时
+    let (shi_chen, zi_type) = ShiChen::from_hour_detailed(0);
+    assert_eq!(shi_chen, ShiChen::Zi);
+    assert_eq!(zi_type, Some(ZiShiType::LateZi));
+
+    // 其他时辰没有子时类型
+    let (shi_chen, zi_type) = ShiChen::from_hour_detailed(7);
+    assert_eq!(shi_chen, ShiChen::Chen);
+    assert_eq!(zi_type, None);
+}
+
+// ============================================================================
+// 体用关系测试
+// ============================================================================
+
+#[test]
+fn test_ti_yong_relation() {
+    // 用生体测试：人宫为木，时辰为水
+    // 水生木 = 用生体（大吉）
+    let relation = TiYongRelation::calculate(LiuGong::DaAn, ShiChen::Zi);
+    // 大安属木，子时属水，水生木 = 用生体
+    assert_eq!(relation, TiYongRelation::YongShengTi);
+    assert_eq!(relation.fortune_desc(), "大吉");
+
+    // 体克用测试：人宫为木，时辰为土
+    // 木克土 = 体克用（小吉）
+    let relation = TiYongRelation::calculate(LiuGong::DaAn, ShiChen::Chou);
+    // 大安属木，丑时属土，木克土 = 体克用
+    assert_eq!(relation, TiYongRelation::TiKeYong);
+    assert_eq!(relation.fortune_desc(), "小吉");
+}
+
+// ============================================================================
+// 八卦具象法测试
+// ============================================================================
+
+#[test]
+fn test_ba_gua_from_san_gong() {
+    // 阳阳阳 = 乾
+    let san_gong = SanGong::new(LiuGong::DaAn, LiuGong::SuXi, LiuGong::XiaoJi);
+    let ba_gua = BaGua::from_san_gong(&san_gong);
+    assert_eq!(ba_gua, BaGua::Qian);
+
+    // 阴阴阴 = 坤
+    let san_gong = SanGong::new(LiuGong::LiuLian, LiuGong::ChiKou, LiuGong::KongWang);
+    let ba_gua = BaGua::from_san_gong(&san_gong);
+    assert_eq!(ba_gua, BaGua::Kun);
+}
+
+// ============================================================================
+// 六神扩展属性测试
+// ============================================================================
+
+#[test]
+fn test_liu_gong_extended_properties() {
+    // 测试对应季节
+    assert_eq!(LiuGong::DaAn.season(), "春季");
+    assert_eq!(LiuGong::SuXi.season(), "夏季");
+    assert_eq!(LiuGong::ChiKou.season(), "秋季");
+    assert_eq!(LiuGong::XiaoJi.season(), "冬季");
+
+    // 测试对应天干
+    assert_eq!(LiuGong::DaAn.tian_gan(), "甲乙");
+    assert_eq!(LiuGong::SuXi.tian_gan(), "丙丁");
+    assert_eq!(LiuGong::ChiKou.tian_gan(), "庚辛");
+    assert_eq!(LiuGong::XiaoJi.tian_gan(), "壬癸");
+
+    // 测试数字范围
+    assert_eq!(LiuGong::DaAn.number_range(), [1, 7, 4, 5]);
+    assert_eq!(LiuGong::SuXi.number_range(), [3, 9, 6, 9]);
 }

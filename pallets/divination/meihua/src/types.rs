@@ -166,6 +166,251 @@ impl WuXing {
             (WuXing::Huo, WuXing::Jin)
         )
     }
+
+    /// 获取生我的五行
+    ///
+    /// 用于应期推算：体卦旺时应期在生体之五行
+    pub fn generated_by(&self) -> WuXing {
+        match self {
+            WuXing::Jin => WuXing::Tu,   // 土生金
+            WuXing::Mu => WuXing::Shui,  // 水生木
+            WuXing::Shui => WuXing::Jin, // 金生水
+            WuXing::Huo => WuXing::Mu,   // 木生火
+            WuXing::Tu => WuXing::Huo,   // 火生土
+        }
+    }
+
+    /// 获取我生的五行
+    ///
+    /// 用于应期推算：体卦休囚时应期在体所生之五行
+    pub fn generates_to(&self) -> WuXing {
+        match self {
+            WuXing::Jin => WuXing::Shui, // 金生水
+            WuXing::Mu => WuXing::Huo,   // 木生火
+            WuXing::Shui => WuXing::Mu,  // 水生木
+            WuXing::Huo => WuXing::Tu,   // 火生土
+            WuXing::Tu => WuXing::Jin,   // 土生金
+        }
+    }
+
+    /// 获取克我的五行
+    ///
+    /// 用于判断忌神
+    pub fn conquered_by(&self) -> WuXing {
+        match self {
+            WuXing::Jin => WuXing::Huo,  // 火克金
+            WuXing::Mu => WuXing::Jin,   // 金克木
+            WuXing::Shui => WuXing::Tu,  // 土克水
+            WuXing::Huo => WuXing::Shui, // 水克火
+            WuXing::Tu => WuXing::Mu,    // 木克土
+        }
+    }
+
+    /// 获取我克的五行
+    pub fn conquers_to(&self) -> WuXing {
+        match self {
+            WuXing::Jin => WuXing::Mu,   // 金克木
+            WuXing::Mu => WuXing::Tu,    // 木克土
+            WuXing::Shui => WuXing::Huo, // 水克火
+            WuXing::Huo => WuXing::Jin,  // 火克金
+            WuXing::Tu => WuXing::Shui,  // 土克水
+        }
+    }
+
+    /// 获取五行对应的先天卦数
+    ///
+    /// 用于应期推算
+    /// 金：乾1、兑2
+    /// 木：震4、巽5
+    /// 水：坎6
+    /// 火：离3
+    /// 土：艮7、坤8
+    pub fn gua_numbers(&self) -> (u8, Option<u8>) {
+        match self {
+            WuXing::Jin => (1, Some(2)),   // 乾1、兑2
+            WuXing::Mu => (4, Some(5)),    // 震4、巽5
+            WuXing::Shui => (6, None),     // 坎6
+            WuXing::Huo => (3, None),      // 离3
+            WuXing::Tu => (7, Some(8)),    // 艮7、坤8
+        }
+    }
+}
+
+/// 季节枚举
+///
+/// 用于判断五行旺衰
+#[derive(Clone, Copy, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug, Default)]
+pub enum Season {
+    /// 春季（正月、二月、三月）- 木旺
+    #[default]
+    Spring = 0,
+    /// 夏季（四月、五月、六月）- 火旺
+    Summer = 1,
+    /// 秋季（七月、八月、九月）- 金旺
+    Autumn = 2,
+    /// 冬季（十月、十一月、十二月）- 水旺
+    Winter = 3,
+}
+
+impl Season {
+    /// 从农历月份获取季节
+    ///
+    /// # 参数
+    /// - `lunar_month`: 农历月份（1-12）
+    pub fn from_lunar_month(lunar_month: u8) -> Self {
+        match lunar_month {
+            1 | 2 | 3 => Season::Spring,   // 正、二、三月
+            4 | 5 | 6 => Season::Summer,   // 四、五、六月
+            7 | 8 | 9 => Season::Autumn,   // 七、八、九月
+            10 | 11 | 12 => Season::Winter, // 十、十一、十二月
+            _ => Season::Spring,
+        }
+    }
+
+    /// 获取当令五行（旺）
+    pub fn wang_wuxing(&self) -> WuXing {
+        match self {
+            Season::Spring => WuXing::Mu,   // 春木旺
+            Season::Summer => WuXing::Huo,  // 夏火旺
+            Season::Autumn => WuXing::Jin,  // 秋金旺
+            Season::Winter => WuXing::Shui, // 冬水旺
+        }
+    }
+}
+
+/// 五行旺衰状态枚举
+///
+/// 梅花易数中五行在不同季节的状态：
+/// - 旺：当令，最强
+/// - 相：被当令五行所生，次强
+/// - 休：生当令五行，力弱
+/// - 囚：克当令五行，受制
+/// - 死：被当令五行所克，最弱
+#[derive(Clone, Copy, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug, Default)]
+pub enum WangShuai {
+    /// 旺 - 当令，最强（如春天的木）
+    Wang = 4,
+    /// 相 - 被当令所生，次强（如春天的火，木生火）
+    Xiang = 3,
+    /// 休 - 生当令五行，休息（如春天的水，水生木）
+    #[default]
+    Xiu = 2,
+    /// 囚 - 克当令五行，受制（如春天的金，金克木但反被木势所制）
+    Qiu = 1,
+    /// 死 - 被当令所克，最弱（如春天的土，木克土）
+    Si = 0,
+}
+
+impl WangShuai {
+    /// 计算五行在指定季节的旺衰状态
+    ///
+    /// # 算法
+    /// - 旺：当令五行
+    /// - 相：被当令所生（当令生我）
+    /// - 休：生当令五行（我生当令）
+    /// - 囚：克当令五行（我克当令）
+    /// - 死：被当令所克（当令克我）
+    ///
+    /// # 参数
+    /// - `wuxing`: 要判断的五行
+    /// - `season`: 当前季节
+    pub fn calculate(wuxing: &WuXing, season: &Season) -> Self {
+        let wang = season.wang_wuxing(); // 当令五行
+
+        if *wuxing == wang {
+            // 当令五行为旺
+            WangShuai::Wang
+        } else if wang.generates(wuxing) {
+            // 当令生我为相
+            WangShuai::Xiang
+        } else if wuxing.generates(&wang) {
+            // 我生当令为休
+            WangShuai::Xiu
+        } else if wuxing.conquers(&wang) {
+            // 我克当令为囚
+            WangShuai::Qiu
+        } else if wang.conquers(wuxing) {
+            // 当令克我为死
+            WangShuai::Si
+        } else {
+            WangShuai::Xiu // fallback
+        }
+    }
+
+    /// 获取旺衰等级（0-4，4最旺）
+    pub fn level(&self) -> u8 {
+        *self as u8
+    }
+
+    /// 判断是否为旺相状态（有力）
+    pub fn is_strong(&self) -> bool {
+        matches!(self, WangShuai::Wang | WangShuai::Xiang)
+    }
+
+    /// 判断是否为休囚死状态（无力）
+    pub fn is_weak(&self) -> bool {
+        matches!(self, WangShuai::Xiu | WangShuai::Qiu | WangShuai::Si)
+    }
+}
+
+/// 应期类型枚举
+///
+/// 梅花易数应期推算的时间单位
+#[derive(Clone, Copy, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug, Default)]
+pub enum YingQiType {
+    /// 年应期
+    Year = 0,
+    /// 月应期
+    Month = 1,
+    /// 日应期
+    #[default]
+    Day = 2,
+    /// 时应期
+    Hour = 3,
+}
+
+/// 应期推算结果
+///
+/// 包含多种可能的应期时间点
+#[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+pub struct YingQiResult {
+    /// 体卦五行
+    pub ti_wuxing: WuXing,
+    /// 用卦五行
+    pub yong_wuxing: WuXing,
+    /// 体卦旺衰状态
+    pub ti_wangshuai: WangShuai,
+    /// 生体五行（喜神）
+    pub sheng_ti_wuxing: WuXing,
+    /// 克体五行（忌神）
+    pub ke_ti_wuxing: WuXing,
+    /// 体卦卦数（用于应期）
+    pub ti_gua_num: u8,
+    /// 用卦卦数
+    pub yong_gua_num: u8,
+    /// 主要应期数（基于体用卦数）
+    pub primary_num: u8,
+    /// 次要应期数（基于五行卦数）
+    pub secondary_nums: [u8; 2],
+    /// 应期分析文本
+    pub analysis: BoundedVec<u8, ConstU32<512>>,
+}
+
+impl Default for YingQiResult {
+    fn default() -> Self {
+        Self {
+            ti_wuxing: WuXing::default(),
+            yong_wuxing: WuXing::default(),
+            ti_wangshuai: WangShuai::default(),
+            sheng_ti_wuxing: WuXing::default(),
+            ke_ti_wuxing: WuXing::default(),
+            ti_gua_num: 1,
+            yong_gua_num: 1,
+            primary_num: 1,
+            secondary_nums: [1, 1],
+            analysis: BoundedVec::default(),
+        }
+    }
 }
 
 /// 体用关系枚举
@@ -241,6 +486,12 @@ pub enum DivinationMethod {
     Random = 2,
     /// 手动指定 - 直接指定上卦、下卦、动爻
     Manual = 3,
+    /// 单数起卦 - 使用一个多位数字起卦
+    /// 将数字拆分为前后两半
+    /// 上卦：前半段数字之和 % 8
+    /// 下卦：后半段数字之和 % 8
+    /// 动爻：(前半+后半+时支数) % 6
+    SingleNumber = 4,
 }
 
 /// 吉凶判断结果
@@ -379,14 +630,18 @@ impl<AccountId, BlockNumber> Hexagram<AccountId, BlockNumber> {
     /// 获取六十四卦索引 (0-63)
     ///
     /// 用于查表获取卦名、卦辞等
-    /// 索引计算：(上卦先天数-1) * 8 + (下卦先天数-1)
+    /// 索引计算规则：
+    /// - 内部索引使用 0-7 对应：坤(0)、乾(1)、兑(2)、离(3)、震(4)、巽(5)、坎(6)、艮(7)
+    /// - 先天八卦数 8(坤) 转为索引 0，其他保持不变
+    /// - 最终索引 = 上卦索引 * 8 + 下卦索引
     pub fn hexagram_index(&self) -> u8 {
         let shang_num = self.shang_gua.number();
         let xia_num = self.xia_gua.number();
-        // 转换为0-7范围
+        // 先天数转内部索引：8(坤)→0，其他1-7保持不变
         let shang_idx = if shang_num == 8 { 0 } else { shang_num };
         let xia_idx = if xia_num == 8 { 0 } else { xia_num };
-        shang_idx * 8 + xia_idx - 9 // 调整为0-63范围
+        // 直接计算索引，范围 0-63
+        shang_idx * 8 + xia_idx
     }
 
     /// 获取体卦
@@ -543,6 +798,127 @@ pub struct DivinationParams {
     pub question_hash: [u8; 32],
     /// 是否公开
     pub is_public: bool,
+}
+
+/// 卦象详细信息结构（用于 API 查询返回）
+///
+/// 包含卦象的完整文本信息，适合前端展示
+#[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+pub struct HexagramDetail {
+    /// 六十四卦名称（如"乾为天"）
+    pub name: BoundedVec<u8, ConstU32<32>>,
+    /// 上卦名称（如"乾"）
+    pub shang_gua_name: BoundedVec<u8, ConstU32<16>>,
+    /// 下卦名称（如"乾"）
+    pub xia_gua_name: BoundedVec<u8, ConstU32<16>>,
+    /// 上卦符号（如"☰"）
+    pub shang_gua_symbol: BoundedVec<u8, ConstU32<8>>,
+    /// 下卦符号（如"☰"）
+    pub xia_gua_symbol: BoundedVec<u8, ConstU32<8>>,
+    /// 上卦五行（如"金"）
+    pub shang_gua_wuxing: BoundedVec<u8, ConstU32<8>>,
+    /// 下卦五行（如"金"）
+    pub xia_gua_wuxing: BoundedVec<u8, ConstU32<8>>,
+    /// 卦辞
+    pub guaci: BoundedVec<u8, ConstU32<256>>,
+    /// 动爻名称（如"初爻"）
+    pub dong_yao_name: BoundedVec<u8, ConstU32<16>>,
+    /// 动爻爻名（如"初九"、"六二"，根据阴阳爻确定）
+    pub dong_yao_ming: BoundedVec<u8, ConstU32<16>>,
+    /// 动爻爻辞
+    pub dong_yao_ci: BoundedVec<u8, ConstU32<256>>,
+    /// 体用关系名称（如"用生体"）
+    pub tiyong_name: BoundedVec<u8, ConstU32<16>>,
+    /// 吉凶名称（如"大吉"）
+    pub fortune_name: BoundedVec<u8, ConstU32<16>>,
+}
+
+impl HexagramDetail {
+    /// 从卦象创建详细信息
+    ///
+    /// # 参数
+    /// - `shang_gua`: 上卦
+    /// - `xia_gua`: 下卦
+    /// - `dong_yao`: 动爻位置（1-6）
+    /// - `relation`: 体用关系
+    /// - `fortune`: 吉凶
+    pub fn from_hexagram(
+        shang_gua: &SingleGua,
+        xia_gua: &SingleGua,
+        dong_yao: u8,
+        relation: &TiYongRelation,
+        fortune: &Fortune,
+    ) -> Self {
+        use crate::constants::*;
+
+        let shang_num = shang_gua.number();
+        let xia_num = xia_gua.number();
+
+        // 获取索引（0-7）
+        let shang_idx = if shang_num == 8 { 0 } else { shang_num };
+        let xia_idx = if xia_num == 8 { 0 } else { xia_num };
+
+        // 获取各项文本
+        let name = get_hexagram_name(shang_idx, xia_idx);
+        let shang_name = get_bagua_name(shang_num);
+        let xia_name = get_bagua_name(xia_num);
+        let shang_symbol = get_bagua_symbol(shang_num);
+        let xia_symbol = get_bagua_symbol(xia_num);
+        let guaci = get_hexagram_guaci(shang_idx, xia_idx);
+        let yao_name = get_yao_name(dong_yao);
+
+        // 获取爻名和爻辞
+        let yao_ming = get_yao_ming(shang_gua.binary(), xia_gua.binary(), dong_yao);
+        let yao_ci = get_yaoci(shang_idx, xia_idx, dong_yao);
+
+        // 五行名称
+        let shang_wuxing = WUXING_NAMES[shang_gua.wuxing() as usize];
+        let xia_wuxing = WUXING_NAMES[xia_gua.wuxing() as usize];
+
+        // 体用关系名称
+        let tiyong = TIYONG_NAMES[*relation as usize];
+
+        // 吉凶名称
+        let fortune_str = FORTUNE_NAMES[*fortune as usize];
+
+        // 转换为 BoundedVec
+        Self {
+            name: BoundedVec::try_from(name.as_bytes().to_vec()).unwrap_or_default(),
+            shang_gua_name: BoundedVec::try_from(shang_name.as_bytes().to_vec()).unwrap_or_default(),
+            xia_gua_name: BoundedVec::try_from(xia_name.as_bytes().to_vec()).unwrap_or_default(),
+            shang_gua_symbol: BoundedVec::try_from(shang_symbol.as_bytes().to_vec()).unwrap_or_default(),
+            xia_gua_symbol: BoundedVec::try_from(xia_symbol.as_bytes().to_vec()).unwrap_or_default(),
+            shang_gua_wuxing: BoundedVec::try_from(shang_wuxing.as_bytes().to_vec()).unwrap_or_default(),
+            xia_gua_wuxing: BoundedVec::try_from(xia_wuxing.as_bytes().to_vec()).unwrap_or_default(),
+            guaci: BoundedVec::try_from(guaci.as_bytes().to_vec()).unwrap_or_default(),
+            dong_yao_name: BoundedVec::try_from(yao_name.as_bytes().to_vec()).unwrap_or_default(),
+            dong_yao_ming: BoundedVec::try_from(yao_ming.as_bytes().to_vec()).unwrap_or_default(),
+            dong_yao_ci: BoundedVec::try_from(yao_ci.as_bytes().to_vec()).unwrap_or_default(),
+            tiyong_name: BoundedVec::try_from(tiyong.as_bytes().to_vec()).unwrap_or_default(),
+            fortune_name: BoundedVec::try_from(fortune_str.as_bytes().to_vec()).unwrap_or_default(),
+        }
+    }
+}
+
+/// 完整排盘详细信息结构
+///
+/// 包含本卦、变卦、互卦、错卦、综卦、伏卦的详细信息
+#[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+pub struct FullDivinationDetail {
+    /// 本卦详细信息
+    pub ben_gua: HexagramDetail,
+    /// 变卦详细信息
+    pub bian_gua: HexagramDetail,
+    /// 互卦详细信息
+    pub hu_gua: HexagramDetail,
+    /// 错卦详细信息
+    pub cuo_gua: HexagramDetail,
+    /// 综卦详细信息
+    pub zong_gua: HexagramDetail,
+    /// 伏卦详细信息（新增）
+    pub fu_gua: HexagramDetail,
+    /// 体用关系详细解读（新增）
+    pub tiyong_interpretation: BoundedVec<u8, ConstU32<256>>,
 }
 
 #[cfg(test)]

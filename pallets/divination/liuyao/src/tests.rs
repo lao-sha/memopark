@@ -1,7 +1,7 @@
 //! # 六爻 Pallet 测试用例
 
 use crate::{mock::*, types::*, algorithm::*, Error, Event};
-use frame_support::{assert_noop, assert_ok, BoundedVec};
+use frame_support::{assert_noop, assert_ok};
 
 // ============================================================================
 // 基础功能测试
@@ -156,74 +156,6 @@ fn test_daily_limit_works() {
             Liuyao::divine_random(RuntimeOrigin::signed(ALICE)),
             Error::<Test>::DailyLimitExceeded
         );
-    });
-}
-
-// ============================================================================
-// AI 解读测试
-// ============================================================================
-
-#[test]
-fn test_request_ai_interpretation_works() {
-    new_test_ext().execute_with(|| {
-        // 先创建卦象
-        assert_ok!(Liuyao::divine_random(RuntimeOrigin::signed(ALICE)));
-
-        // 请求 AI 解读
-        assert_ok!(Liuyao::request_ai_interpretation(
-            RuntimeOrigin::signed(ALICE),
-            0,
-        ));
-
-        // 检查请求状态
-        assert!(Liuyao::ai_interpretation_requests(0));
-
-        // 检查用户统计
-        let stats = Liuyao::user_stats(ALICE);
-        assert_eq!(stats.ai_interpretations, 1);
-    });
-}
-
-#[test]
-fn test_request_ai_interpretation_not_owner_fails() {
-    new_test_ext().execute_with(|| {
-        // Alice 创建卦象
-        assert_ok!(Liuyao::divine_random(RuntimeOrigin::signed(ALICE)));
-
-        // Bob 不能请求 Alice 的卦象解读
-        assert_noop!(
-            Liuyao::request_ai_interpretation(RuntimeOrigin::signed(BOB), 0),
-            Error::<Test>::NotGuaOwner
-        );
-    });
-}
-
-#[test]
-fn test_submit_ai_interpretation_works() {
-    new_test_ext().execute_with(|| {
-        // 创建卦象
-        assert_ok!(Liuyao::divine_random(RuntimeOrigin::signed(ALICE)));
-
-        // 请求解读
-        assert_ok!(Liuyao::request_ai_interpretation(
-            RuntimeOrigin::signed(ALICE),
-            0,
-        ));
-
-        // 提交解读结果
-        let cid: BoundedVec<u8, _> = b"QmTest123".to_vec().try_into().unwrap();
-        assert_ok!(Liuyao::submit_ai_interpretation(
-            RuntimeOrigin::root(),
-            0,
-            cid.clone(),
-        ));
-
-        // 检查卦象更新
-        let gua = Liuyao::guas(0).unwrap();
-        assert_eq!(gua.ai_interpretation_cid, Some(cid));
-
-        // 检查请求状态已清除
-        assert!(!Liuyao::ai_interpretation_requests(0));
     });
 }
 
@@ -475,4 +407,679 @@ fn test_events_emitted() {
             original_name_idx: gua.original_name_idx,
         }));
     });
+}
+
+// ============================================================================
+// 六十四卦索引测试
+// ============================================================================
+
+#[test]
+fn test_gua_index_calculation() {
+    use crate::types::gua64;
+
+    // 乾为天: 内乾(7) 外乾(7) => (7<<3)|7 = 63
+    assert_eq!(calculate_gua_index(Trigram::Qian, Trigram::Qian), 63);
+    assert_eq!(gua64::GUA_NAMES[63], "乾为天");
+
+    // 坤为地: 内坤(0) 外坤(0) => 0
+    assert_eq!(calculate_gua_index(Trigram::Kun, Trigram::Kun), 0);
+    assert_eq!(gua64::GUA_NAMES[0], "坤为地");
+
+    // 地天泰: 内乾(7) 外坤(0) => (0<<3)|7 = 7
+    assert_eq!(calculate_gua_index(Trigram::Qian, Trigram::Kun), 7);
+    assert_eq!(gua64::GUA_NAMES[7], "地天泰");
+
+    // 天地否: 内坤(0) 外乾(7) => (7<<3)|0 = 56
+    assert_eq!(calculate_gua_index(Trigram::Kun, Trigram::Qian), 56);
+    assert_eq!(gua64::GUA_NAMES[56], "天地否");
+
+    // 震为雷: 内震(4) 外震(4) => (4<<3)|4 = 36
+    assert_eq!(calculate_gua_index(Trigram::Zhen, Trigram::Zhen), 36);
+    assert_eq!(gua64::GUA_NAMES[36], "震为雷");
+
+    // 坎为水: 内坎(2) 外坎(2) => (2<<3)|2 = 18
+    assert_eq!(calculate_gua_index(Trigram::Kan, Trigram::Kan), 18);
+    assert_eq!(gua64::GUA_NAMES[18], "坎为水");
+}
+
+#[test]
+fn test_gua_name_function() {
+    use crate::types::gua64;
+
+    assert_eq!(gua64::get_gua_name(0), "坤为地");
+    assert_eq!(gua64::get_gua_name(63), "乾为天");
+    assert_eq!(gua64::get_gua_name(7), "地天泰");
+    assert_eq!(gua64::get_gua_name(56), "天地否");
+}
+
+// ============================================================================
+// 六冲六合测试
+// ============================================================================
+
+#[test]
+fn test_liu_chong_indices() {
+    // 八纯卦都是六冲
+    assert!(is_liu_chong_by_index(0));   // 坤为地
+    assert!(is_liu_chong_by_index(9));   // 艮为山
+    assert!(is_liu_chong_by_index(18));  // 坎为水
+    assert!(is_liu_chong_by_index(27));  // 巽为风
+    assert!(is_liu_chong_by_index(36));  // 震为雷
+    assert!(is_liu_chong_by_index(45));  // 离为火
+    assert!(is_liu_chong_by_index(54));  // 兑为泽
+    assert!(is_liu_chong_by_index(63));  // 乾为天
+
+    // 天雷无妄和雷天大壮也是六冲
+    assert!(is_liu_chong_by_index(60));  // 天雷无妄
+    assert!(is_liu_chong_by_index(39));  // 雷天大壮
+
+    // 非六冲卦
+    assert!(!is_liu_chong_by_index(7));   // 地天泰
+    assert!(!is_liu_chong_by_index(56));  // 天地否
+}
+
+#[test]
+fn test_liu_chong_by_trigrams() {
+    // 纯卦为六冲
+    assert!(is_liu_chong(Trigram::Qian, Trigram::Qian));
+    assert!(is_liu_chong(Trigram::Kun, Trigram::Kun));
+
+    // 天雷无妄: 外乾(7)内震(4)
+    assert!(is_liu_chong(Trigram::Zhen, Trigram::Qian));
+    // 雷天大壮: 外震(4)内乾(7)
+    assert!(is_liu_chong(Trigram::Qian, Trigram::Zhen));
+
+    // 非六冲
+    assert!(!is_liu_chong(Trigram::Qian, Trigram::Kun));
+}
+
+#[test]
+fn test_liu_he_indices() {
+    // 六合卦
+    assert!(is_liu_he(56));  // 天地否
+    assert!(is_liu_he(7));   // 地天泰
+    assert!(is_liu_he(50));  // 泽水困
+    assert!(is_liu_he(22));  // 水泽节
+    assert!(is_liu_he(13));  // 山火贲
+    assert!(is_liu_he(4));   // 地雷复
+    assert!(is_liu_he(41));  // 火山旅
+    assert!(is_liu_he(32));  // 雷地豫
+
+    // 非六合卦
+    assert!(!is_liu_he(0));   // 坤为地
+    assert!(!is_liu_he(63));  // 乾为天
+}
+
+// ============================================================================
+// 互卦测试
+// ============================================================================
+
+#[test]
+fn test_hu_gua_calculation() {
+    // 乾为天：全阳爻，互卦也是乾为天
+    let yaos = [Yao::ShaoYang; 6];
+    let (inner, outer) = calculate_hu_gua(&yaos);
+    assert_eq!(inner, Trigram::Qian);
+    assert_eq!(outer, Trigram::Qian);
+
+    // 坤为地：全阴爻，互卦也是坤为地
+    let yaos = [Yao::ShaoYin; 6];
+    let (inner, outer) = calculate_hu_gua(&yaos);
+    assert_eq!(inner, Trigram::Kun);
+    assert_eq!(outer, Trigram::Kun);
+}
+
+#[test]
+fn test_hu_gua_index() {
+    // 乾为天的互卦
+    let yaos = [Yao::ShaoYang; 6];
+    let hu_idx = calculate_hu_gua_index(&yaos);
+    assert_eq!(hu_idx, 63); // 乾为天
+}
+
+// ============================================================================
+// 卦身测试
+// ============================================================================
+
+#[test]
+fn test_gua_shen_calculation() {
+    // 世爻在初爻(1)，阳爻：从子数1位 => 子
+    assert_eq!(calculate_gua_shen(1, true), DiZhi::Zi);
+
+    // 世爻在二爻(2)，阳爻：从子数2位 => 丑
+    assert_eq!(calculate_gua_shen(2, true), DiZhi::Chou);
+
+    // 世爻在六爻(6)，阳爻：从子数6位 => 巳
+    assert_eq!(calculate_gua_shen(6, true), DiZhi::Si);
+
+    // 世爻在初爻(1)，阴爻：从午数1位 => 午
+    assert_eq!(calculate_gua_shen(1, false), DiZhi::Wu);
+
+    // 世爻在二爻(2)，阴爻：从午数2位 => 未
+    assert_eq!(calculate_gua_shen(2, false), DiZhi::Wei);
+
+    // 世爻在六爻(6)，阴爻：从午数6位 => 亥
+    assert_eq!(calculate_gua_shen(6, false), DiZhi::Hai);
+}
+
+// ============================================================================
+// 离为火纳甲验证测试
+// ============================================================================
+
+#[test]
+fn test_najia_li_gua() {
+    // 离为火：内外卦纳甲应为 己卯己丑己亥 己酉己未己巳
+    // 参考 najia 项目测试: get_najia('101101') == ['己卯', '己丑', '己亥', '己酉', '己未', '己巳']
+
+    // 内卦纳甲
+    let (gan, zhi) = get_inner_najia(Trigram::Li, 0);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::Mao);
+
+    let (gan, zhi) = get_inner_najia(Trigram::Li, 1);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::Chou);
+
+    let (gan, zhi) = get_inner_najia(Trigram::Li, 2);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::Hai);
+
+    // 外卦纳甲
+    let (gan, zhi) = get_outer_najia(Trigram::Li, 0);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::You);
+
+    let (gan, zhi) = get_outer_najia(Trigram::Li, 1);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::Wei);
+
+    let (gan, zhi) = get_outer_najia(Trigram::Li, 2);
+    assert_eq!(gan, TianGan::Ji);
+    assert_eq!(zhi, DiZhi::Si);
+}
+
+// ============================================================================
+// 神煞测试
+// ============================================================================
+
+#[test]
+fn test_tian_yi_gui_ren() {
+    use crate::shensha::*;
+
+    // 甲戊庚牛羊 - 甲日贵人在丑未
+    let gui_ren = calculate_tian_yi_gui_ren(TianGan::Jia);
+    assert_eq!(gui_ren[0], DiZhi::Chou);
+    assert_eq!(gui_ren[1], DiZhi::Wei);
+
+    // 乙己鼠猴乡 - 乙日贵人在子申
+    let gui_ren = calculate_tian_yi_gui_ren(TianGan::Yi);
+    assert_eq!(gui_ren[0], DiZhi::Zi);
+    assert_eq!(gui_ren[1], DiZhi::Shen);
+
+    // 丙丁猪鸡位 - 丙日贵人在亥酉
+    let gui_ren = calculate_tian_yi_gui_ren(TianGan::Bing);
+    assert_eq!(gui_ren[0], DiZhi::Hai);
+    assert_eq!(gui_ren[1], DiZhi::You);
+
+    // 壬癸兔蛇藏 - 壬日贵人在卯巳
+    let gui_ren = calculate_tian_yi_gui_ren(TianGan::Ren);
+    assert_eq!(gui_ren[0], DiZhi::Mao);
+    assert_eq!(gui_ren[1], DiZhi::Si);
+
+    // 六辛逢马虎 - 辛日贵人在午寅
+    let gui_ren = calculate_tian_yi_gui_ren(TianGan::Xin);
+    assert_eq!(gui_ren[0], DiZhi::Wu);
+    assert_eq!(gui_ren[1], DiZhi::Yin);
+}
+
+#[test]
+fn test_yi_ma() {
+    use crate::shensha::*;
+
+    // 申子辰马在寅
+    assert_eq!(calculate_yi_ma(DiZhi::Shen), DiZhi::Yin);
+    assert_eq!(calculate_yi_ma(DiZhi::Zi), DiZhi::Yin);
+    assert_eq!(calculate_yi_ma(DiZhi::Chen), DiZhi::Yin);
+
+    // 寅午戌马在申
+    assert_eq!(calculate_yi_ma(DiZhi::Yin), DiZhi::Shen);
+    assert_eq!(calculate_yi_ma(DiZhi::Wu), DiZhi::Shen);
+    assert_eq!(calculate_yi_ma(DiZhi::Xu), DiZhi::Shen);
+
+    // 巳酉丑马在亥
+    assert_eq!(calculate_yi_ma(DiZhi::Si), DiZhi::Hai);
+    assert_eq!(calculate_yi_ma(DiZhi::You), DiZhi::Hai);
+    assert_eq!(calculate_yi_ma(DiZhi::Chou), DiZhi::Hai);
+
+    // 亥卯未马在巳
+    assert_eq!(calculate_yi_ma(DiZhi::Hai), DiZhi::Si);
+    assert_eq!(calculate_yi_ma(DiZhi::Mao), DiZhi::Si);
+    assert_eq!(calculate_yi_ma(DiZhi::Wei), DiZhi::Si);
+}
+
+#[test]
+fn test_tao_hua() {
+    use crate::shensha::*;
+
+    // 申子辰桃花在酉
+    assert_eq!(calculate_tao_hua(DiZhi::Zi), DiZhi::You);
+
+    // 寅午戌桃花在卯
+    assert_eq!(calculate_tao_hua(DiZhi::Wu), DiZhi::Mao);
+
+    // 巳酉丑桃花在午
+    assert_eq!(calculate_tao_hua(DiZhi::You), DiZhi::Wu);
+
+    // 亥卯未桃花在子
+    assert_eq!(calculate_tao_hua(DiZhi::Mao), DiZhi::Zi);
+}
+
+#[test]
+fn test_lu_shen() {
+    use crate::shensha::*;
+
+    // 甲禄在寅
+    assert_eq!(calculate_lu_shen(TianGan::Jia), DiZhi::Yin);
+    // 乙禄在卯
+    assert_eq!(calculate_lu_shen(TianGan::Yi), DiZhi::Mao);
+    // 丙戊禄在巳
+    assert_eq!(calculate_lu_shen(TianGan::Bing), DiZhi::Si);
+    assert_eq!(calculate_lu_shen(TianGan::Wu), DiZhi::Si);
+    // 丁己禄在午
+    assert_eq!(calculate_lu_shen(TianGan::Ding), DiZhi::Wu);
+    assert_eq!(calculate_lu_shen(TianGan::Ji), DiZhi::Wu);
+    // 庚禄在申
+    assert_eq!(calculate_lu_shen(TianGan::Geng), DiZhi::Shen);
+    // 辛禄在酉
+    assert_eq!(calculate_lu_shen(TianGan::Xin), DiZhi::You);
+    // 壬禄在亥
+    assert_eq!(calculate_lu_shen(TianGan::Ren), DiZhi::Hai);
+    // 癸禄在子
+    assert_eq!(calculate_lu_shen(TianGan::Gui), DiZhi::Zi);
+}
+
+#[test]
+fn test_wen_chang() {
+    use crate::shensha::*;
+
+    // 甲乙巳午报君知
+    assert_eq!(calculate_wen_chang(TianGan::Jia), DiZhi::Si);
+    assert_eq!(calculate_wen_chang(TianGan::Yi), DiZhi::Wu);
+    // 丙戊申宫丁己鸡
+    assert_eq!(calculate_wen_chang(TianGan::Bing), DiZhi::Shen);
+    assert_eq!(calculate_wen_chang(TianGan::Wu), DiZhi::Shen);
+    assert_eq!(calculate_wen_chang(TianGan::Ding), DiZhi::You);
+    assert_eq!(calculate_wen_chang(TianGan::Ji), DiZhi::You);
+    // 庚猪辛鼠壬逢虎
+    assert_eq!(calculate_wen_chang(TianGan::Geng), DiZhi::Hai);
+    assert_eq!(calculate_wen_chang(TianGan::Xin), DiZhi::Zi);
+    assert_eq!(calculate_wen_chang(TianGan::Ren), DiZhi::Yin);
+    // 癸人见卯入云梯
+    assert_eq!(calculate_wen_chang(TianGan::Gui), DiZhi::Mao);
+}
+
+#[test]
+fn test_hua_gai() {
+    use crate::shensha::*;
+
+    // 申子辰见辰
+    assert_eq!(calculate_hua_gai(DiZhi::Zi), DiZhi::Chen);
+    // 寅午戌见戌
+    assert_eq!(calculate_hua_gai(DiZhi::Wu), DiZhi::Xu);
+    // 巳酉丑见丑
+    assert_eq!(calculate_hua_gai(DiZhi::You), DiZhi::Chou);
+    // 亥卯未见未
+    assert_eq!(calculate_hua_gai(DiZhi::Mao), DiZhi::Wei);
+}
+
+#[test]
+fn test_jiang_xing() {
+    use crate::shensha::*;
+
+    // 申子辰见子
+    assert_eq!(calculate_jiang_xing(DiZhi::Zi), DiZhi::Zi);
+    // 寅午戌见午
+    assert_eq!(calculate_jiang_xing(DiZhi::Wu), DiZhi::Wu);
+    // 巳酉丑见酉
+    assert_eq!(calculate_jiang_xing(DiZhi::You), DiZhi::You);
+    // 亥卯未见卯
+    assert_eq!(calculate_jiang_xing(DiZhi::Mao), DiZhi::Mao);
+}
+
+#[test]
+fn test_jie_sha() {
+    use crate::shensha::*;
+
+    // 申子辰见巳为劫
+    assert_eq!(calculate_jie_sha(DiZhi::Zi), DiZhi::Si);
+    // 亥卯未见申为劫
+    assert_eq!(calculate_jie_sha(DiZhi::Mao), DiZhi::Shen);
+    // 寅午戌见亥为劫
+    assert_eq!(calculate_jie_sha(DiZhi::Wu), DiZhi::Hai);
+    // 巳酉丑见寅为劫
+    assert_eq!(calculate_jie_sha(DiZhi::You), DiZhi::Yin);
+}
+
+#[test]
+fn test_all_shen_sha() {
+    use crate::shensha::*;
+
+    // 测试甲子日寅月所有神煞
+    let info = calculate_all_shen_sha(TianGan::Jia, DiZhi::Zi, DiZhi::Yin);
+
+    // 天乙贵人在丑未
+    assert_eq!(info.tian_yi_gui_ren, [DiZhi::Chou, DiZhi::Wei]);
+    // 驿马在寅
+    assert_eq!(info.yi_ma, DiZhi::Yin);
+    // 桃花在酉
+    assert_eq!(info.tao_hua, DiZhi::You);
+    // 禄神在寅
+    assert_eq!(info.lu_shen, DiZhi::Yin);
+    // 文昌在巳
+    assert_eq!(info.wen_chang, DiZhi::Si);
+    // 劫煞在巳
+    assert_eq!(info.jie_sha, DiZhi::Si);
+    // 华盖在辰
+    assert_eq!(info.hua_gai, DiZhi::Chen);
+    // 将星在子
+    assert_eq!(info.jiang_xing, DiZhi::Zi);
+    // 天喜（寅月）在戌
+    assert_eq!(info.tian_xi, DiZhi::Xu);
+    // 天医（寅月前一位）在丑
+    assert_eq!(info.tian_yi, DiZhi::Chou);
+    // 阳刃（甲日）在卯
+    assert_eq!(info.yang_ren, DiZhi::Mao);
+    // 灾煞（子日）在午
+    assert_eq!(info.zai_sha, DiZhi::Wu);
+    // 谋星（子日）在戌
+    assert_eq!(info.mou_xing, DiZhi::Xu);
+}
+
+#[test]
+fn test_get_shen_sha_for_zhi() {
+    use crate::shensha::*;
+
+    // 甲子日寅月查询寅的神煞
+    // 寅是驿马、禄神
+    let shen_sha = get_shen_sha_for_zhi(TianGan::Jia, DiZhi::Zi, DiZhi::Yin, DiZhi::Yin);
+
+    // 验证驿马和禄神都存在
+    let has_yi_ma = shen_sha.iter().any(|s| *s == Some(ShenSha::YiMa));
+    let has_lu_shen = shen_sha.iter().any(|s| *s == Some(ShenSha::LuShen));
+
+    assert!(has_yi_ma, "甲子日寅应该是驿马");
+    assert!(has_lu_shen, "甲子日寅应该是禄神");
+}
+
+#[test]
+fn test_shen_sha_properties() {
+    use crate::shensha::*;
+
+    // 测试吉神判断
+    assert!(ShenSha::TianYiGuiRen.is_auspicious());
+    assert!(ShenSha::LuShen.is_auspicious());
+    assert!(ShenSha::WenChang.is_auspicious());
+    assert!(ShenSha::JiangXing.is_auspicious());
+    assert!(ShenSha::TianXi.is_auspicious());
+    assert!(ShenSha::TianYi.is_auspicious());
+
+    // 测试凶煞判断
+    assert!(ShenSha::JieSha.is_inauspicious());
+    assert!(ShenSha::WangShen.is_inauspicious());
+    assert!(ShenSha::YangRen.is_inauspicious());
+    assert!(ShenSha::ZaiSha.is_inauspicious());
+
+    // 中性神煞
+    assert!(!ShenSha::YiMa.is_auspicious());
+    assert!(!ShenSha::YiMa.is_inauspicious());
+    assert!(!ShenSha::TaoHua.is_auspicious());
+    assert!(!ShenSha::HuaGai.is_auspicious());
+    assert!(!ShenSha::MouXing.is_auspicious());
+}
+
+// ============================================================================
+// 新增神煞测试
+// ============================================================================
+
+#[test]
+fn test_tian_xi() {
+    use crate::shensha::*;
+
+    // 春天（寅卯辰月）天喜在戌
+    assert_eq!(calculate_tian_xi(DiZhi::Yin), DiZhi::Xu);
+    assert_eq!(calculate_tian_xi(DiZhi::Mao), DiZhi::Xu);
+    assert_eq!(calculate_tian_xi(DiZhi::Chen), DiZhi::Xu);
+
+    // 夏天（巳午未月）天喜在丑
+    assert_eq!(calculate_tian_xi(DiZhi::Si), DiZhi::Chou);
+    assert_eq!(calculate_tian_xi(DiZhi::Wu), DiZhi::Chou);
+    assert_eq!(calculate_tian_xi(DiZhi::Wei), DiZhi::Chou);
+
+    // 秋天（申酉戌月）天喜在辰
+    assert_eq!(calculate_tian_xi(DiZhi::Shen), DiZhi::Chen);
+    assert_eq!(calculate_tian_xi(DiZhi::You), DiZhi::Chen);
+    assert_eq!(calculate_tian_xi(DiZhi::Xu), DiZhi::Chen);
+
+    // 冬天（亥子丑月）天喜在未
+    assert_eq!(calculate_tian_xi(DiZhi::Hai), DiZhi::Wei);
+    assert_eq!(calculate_tian_xi(DiZhi::Zi), DiZhi::Wei);
+    assert_eq!(calculate_tian_xi(DiZhi::Chou), DiZhi::Wei);
+}
+
+#[test]
+fn test_tian_yi_shensha() {
+    use crate::shensha::*;
+
+    // 天医为月支前一位
+    assert_eq!(calculate_tian_yi(DiZhi::Yin), DiZhi::Chou);  // 寅月天医在丑
+    assert_eq!(calculate_tian_yi(DiZhi::Zi), DiZhi::Hai);    // 子月天医在亥
+    assert_eq!(calculate_tian_yi(DiZhi::Wu), DiZhi::Si);     // 午月天医在巳
+}
+
+#[test]
+fn test_yang_ren() {
+    use crate::shensha::*;
+
+    // 甲刃在卯
+    assert_eq!(calculate_yang_ren(TianGan::Jia), DiZhi::Mao);
+    // 丙戊刃在午
+    assert_eq!(calculate_yang_ren(TianGan::Bing), DiZhi::Wu);
+    assert_eq!(calculate_yang_ren(TianGan::Wu), DiZhi::Wu);
+    // 庚刃在酉
+    assert_eq!(calculate_yang_ren(TianGan::Geng), DiZhi::You);
+    // 壬刃在子
+    assert_eq!(calculate_yang_ren(TianGan::Ren), DiZhi::Zi);
+}
+
+#[test]
+fn test_zai_sha() {
+    use crate::shensha::*;
+
+    // 申子辰日灾煞在午
+    assert_eq!(calculate_zai_sha(DiZhi::Zi), DiZhi::Wu);
+    assert_eq!(calculate_zai_sha(DiZhi::Shen), DiZhi::Wu);
+    assert_eq!(calculate_zai_sha(DiZhi::Chen), DiZhi::Wu);
+
+    // 寅午戌日灾煞在子
+    assert_eq!(calculate_zai_sha(DiZhi::Yin), DiZhi::Zi);
+    assert_eq!(calculate_zai_sha(DiZhi::Wu), DiZhi::Zi);
+    assert_eq!(calculate_zai_sha(DiZhi::Xu), DiZhi::Zi);
+}
+
+#[test]
+fn test_mou_xing() {
+    use crate::shensha::*;
+
+    // 申子辰日谋星在戌
+    assert_eq!(calculate_mou_xing(DiZhi::Zi), DiZhi::Xu);
+    // 寅午戌日谋星在辰
+    assert_eq!(calculate_mou_xing(DiZhi::Wu), DiZhi::Chen);
+    // 巳酉丑日谋星在未
+    assert_eq!(calculate_mou_xing(DiZhi::You), DiZhi::Wei);
+    // 亥卯未日谋星在丑
+    assert_eq!(calculate_mou_xing(DiZhi::Mao), DiZhi::Chou);
+}
+
+// ============================================================================
+// 旺衰测试
+// ============================================================================
+
+#[test]
+fn test_wang_shuai_calculation() {
+    use crate::algorithm::*;
+
+    // 寅月木旺
+    assert_eq!(calculate_wang_shuai(WuXing::Wood, DiZhi::Yin), WangShuai::Wang);  // 木旺
+    assert_eq!(calculate_wang_shuai(WuXing::Fire, DiZhi::Yin), WangShuai::Xiang); // 火相（木生火）
+    assert_eq!(calculate_wang_shuai(WuXing::Water, DiZhi::Yin), WangShuai::Xiu);  // 水休（水生木）
+    assert_eq!(calculate_wang_shuai(WuXing::Metal, DiZhi::Yin), WangShuai::Qiu);  // 金囚（金克木）
+    assert_eq!(calculate_wang_shuai(WuXing::Earth, DiZhi::Yin), WangShuai::Si);   // 土死（木克土）
+
+    // 午月火旺
+    assert_eq!(calculate_wang_shuai(WuXing::Fire, DiZhi::Wu), WangShuai::Wang);   // 火旺
+    assert_eq!(calculate_wang_shuai(WuXing::Earth, DiZhi::Wu), WangShuai::Xiang); // 土相
+
+    // 子月水旺
+    assert_eq!(calculate_wang_shuai(WuXing::Water, DiZhi::Zi), WangShuai::Wang);  // 水旺
+    assert_eq!(calculate_wang_shuai(WuXing::Wood, DiZhi::Zi), WangShuai::Xiang);  // 木相
+}
+
+#[test]
+fn test_wang_shuai_properties() {
+    use crate::algorithm::*;
+
+    assert!(WangShuai::Wang.is_strong());
+    assert!(WangShuai::Xiang.is_strong());
+    assert!(WangShuai::Xiu.is_weak());
+    assert!(WangShuai::Qiu.is_weak());
+    assert!(WangShuai::Si.is_weak());
+}
+
+// ============================================================================
+// 地支冲合测试
+// ============================================================================
+
+#[test]
+fn test_di_zhi_chong() {
+    use crate::algorithm::*;
+
+    // 子午冲
+    assert!(is_di_zhi_chong(DiZhi::Zi, DiZhi::Wu));
+    assert!(is_di_zhi_chong(DiZhi::Wu, DiZhi::Zi));
+    // 卯酉冲
+    assert!(is_di_zhi_chong(DiZhi::Mao, DiZhi::You));
+    // 寅申冲
+    assert!(is_di_zhi_chong(DiZhi::Yin, DiZhi::Shen));
+    // 非冲
+    assert!(!is_di_zhi_chong(DiZhi::Zi, DiZhi::Yin));
+}
+
+#[test]
+fn test_di_zhi_he() {
+    use crate::algorithm::*;
+
+    // 子丑合土
+    assert_eq!(is_di_zhi_he(DiZhi::Zi, DiZhi::Chou), Some(WuXing::Earth));
+    // 寅亥合木
+    assert_eq!(is_di_zhi_he(DiZhi::Yin, DiZhi::Hai), Some(WuXing::Wood));
+    // 卯戌合火
+    assert_eq!(is_di_zhi_he(DiZhi::Mao, DiZhi::Xu), Some(WuXing::Fire));
+    // 非合
+    assert_eq!(is_di_zhi_he(DiZhi::Zi, DiZhi::Yin), None);
+}
+
+#[test]
+fn test_get_chong_zhi() {
+    use crate::algorithm::*;
+
+    assert_eq!(get_chong_zhi(DiZhi::Zi), DiZhi::Wu);
+    assert_eq!(get_chong_zhi(DiZhi::Chou), DiZhi::Wei);
+    assert_eq!(get_chong_zhi(DiZhi::Yin), DiZhi::Shen);
+}
+
+#[test]
+fn test_ri_chen_guanxi() {
+    use crate::algorithm::*;
+
+    // 子日冲午
+    assert_eq!(analyze_ri_chen(DiZhi::Zi, DiZhi::Wu, WuXing::Fire), RiChenGuanXi::RiChong);
+    // 子日合丑
+    assert_eq!(analyze_ri_chen(DiZhi::Zi, DiZhi::Chou, WuXing::Earth), RiChenGuanXi::RiHe);
+    // 子日生寅（水生木）
+    assert_eq!(analyze_ri_chen(DiZhi::Zi, DiZhi::Yin, WuXing::Wood), RiChenGuanXi::RiSheng);
+}
+
+// ============================================================================
+// 动爻作用测试
+// ============================================================================
+
+#[test]
+fn test_dong_jing_zuoyong() {
+    use crate::algorithm::*;
+
+    // 木动生火静
+    assert_eq!(calculate_dong_jing_zuoyong(WuXing::Wood, WuXing::Fire), DongYaoZuoYong::DongShengJing);
+    // 金动克木静
+    assert_eq!(calculate_dong_jing_zuoyong(WuXing::Metal, WuXing::Wood), DongYaoZuoYong::DongKeJing);
+    // 同五行比和
+    assert_eq!(calculate_dong_jing_zuoyong(WuXing::Water, WuXing::Water), DongYaoZuoYong::BiHe);
+}
+
+#[test]
+fn test_hui_tou_zuoyong() {
+    use crate::algorithm::*;
+
+    // 变爻生本爻（水变生木本）
+    assert_eq!(calculate_hui_tou(WuXing::Wood, WuXing::Water), HuiTouZuoYong::HuiTouSheng);
+    // 变爻克本爻（金变克木本）
+    assert_eq!(calculate_hui_tou(WuXing::Wood, WuXing::Metal), HuiTouZuoYong::HuiTouKe);
+    // 本爻生变爻（木本生火变）
+    assert_eq!(calculate_hui_tou(WuXing::Wood, WuXing::Fire), HuiTouZuoYong::HuiTouXie);
+}
+
+// ============================================================================
+// 反吟伏吟测试
+// ============================================================================
+
+#[test]
+fn test_fan_yin() {
+    use crate::algorithm::*;
+
+    // 乾变坤是反吟（内外卦都相冲）
+    assert!(is_fan_yin(Trigram::Qian, Trigram::Qian, Trigram::Kun, Trigram::Kun));
+    // 非反吟
+    assert!(!is_fan_yin(Trigram::Qian, Trigram::Qian, Trigram::Qian, Trigram::Kun));
+}
+
+#[test]
+fn test_fu_yin() {
+    use crate::algorithm::*;
+
+    // 本变相同是伏吟
+    assert!(is_fu_yin(Trigram::Qian, Trigram::Qian, Trigram::Qian, Trigram::Qian));
+    // 非伏吟
+    assert!(!is_fu_yin(Trigram::Qian, Trigram::Qian, Trigram::Kun, Trigram::Kun));
+}
+
+// ============================================================================
+// 床帐香闺测试
+// ============================================================================
+
+#[test]
+fn test_chuang_zhang() {
+    use crate::algorithm::*;
+
+    // 卦身在子（水），床帐在木（寅卯）
+    let cz = calculate_chuang_zhang(DiZhi::Zi);
+    assert_eq!(cz[0], DiZhi::Yin);
+    assert_eq!(cz[1], DiZhi::Mao);
+}
+
+#[test]
+fn test_xiang_gui() {
+    use crate::algorithm::*;
+
+    // 卦身在子（水），香闺在火（巳午）
+    let xg = calculate_xiang_gui(DiZhi::Zi);
+    assert_eq!(xg[0], DiZhi::Si);
+    assert_eq!(xg[1], DiZhi::Wu);
 }
