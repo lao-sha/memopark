@@ -33,6 +33,7 @@ import {
   ShareAltOutlined,
   StarOutlined,
   ArrowLeftOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import {
@@ -54,9 +55,13 @@ import { calculateBazi, calculateLiuNian, formatBazi } from '../../services/bazi
 import {
   getBaziChart,
   downloadBaziResultFromIpfs,
+  interpretBaziOnChain,
+  getOnChainInterpretation,
   type OnChainBaziChart,
+  type OnChainInterpretation,
 } from '../../services/baziChainService';
 import { CreateBountyModal } from '../bounty/components/CreateBountyModal';
+import { BasicInterpretationCard } from './components/BasicInterpretationCard';
 import { DivinationType } from '../../types/divination';
 import { useWalletStore } from '../../stores/walletStore';
 import './BaziPage.css';
@@ -68,7 +73,8 @@ const { Title, Text, Paragraph } = Typography;
  */
 const BaziDetailPage: React.FC = () => {
   // 从URL hash中提取八字ID
-  const baziId = parseInt(window.location.hash.match(/#\/bazi\/(\d+)/)?.[1] || '0');
+  const hashMatch = window.location.hash.match(/#\/bazi\/(\d+)/);
+  const baziId = hashMatch ? parseInt(hashMatch[1]) : null;
 
   // 状态
   const [result, setResult] = useState<BaziResult | null>(null);
@@ -76,11 +82,15 @@ const BaziDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [bountyModalVisible, setBountyModalVisible] = useState(false);
 
+  // 链上解盘状态
+  const [interpretation, setInterpretation] = useState<OnChainInterpretation | null>(null);
+  const [interpreting, setInterpreting] = useState(false);
+
   // 从钱包store获取用户账户
   const { selectedAccount } = useWalletStore();
 
-  // 检查baziId是否有效
-  if (!baziId || baziId <= 0) {
+  // 检查baziId是否有效（注意：链上ID从0开始，所以0是有效的）
+  if (baziId === null || isNaN(baziId) || baziId < 0) {
     return (
       <div className="bazi-page">
         <Card>
@@ -135,6 +145,13 @@ const BaziDetailPage: React.FC = () => {
 
       const calculatedResult = calculateBazi(baziInput);
       setResult(calculatedResult);
+
+      // 加载链上解盘结果（如果存在）
+      const onChainInterpretation = await getOnChainInterpretation(baziId);
+      if (onChainInterpretation) {
+        setInterpretation(onChainInterpretation);
+      }
+
       setLoading(false);
     } catch (error) {
       console.error('加载八字数据失败:', error);
@@ -167,6 +184,36 @@ const BaziDetailPage: React.FC = () => {
   const handleMintNft = useCallback(() => {
     window.location.hash = `#/divination/nft/mint?type=${DivinationType.Bazi}&resultId=${baziId}`;
   }, [baziId]);
+
+  /**
+   * 执行链上解盘
+   */
+  const handleInterpretOnChain = useCallback(async () => {
+    if (!selectedAccount) {
+      message.warning('请先连接钱包');
+      return;
+    }
+
+    if (interpretation) {
+      message.info('该八字已经解盘过了，可以直接查看结果');
+      return;
+    }
+
+    setInterpreting(true);
+    try {
+      await interpretBaziOnChain(baziId!);
+      message.success('链上解盘成功！');
+
+      // 重新加载解盘结果
+      const newInterpretation = await getOnChainInterpretation(baziId!);
+      setInterpretation(newInterpretation);
+    } catch (error) {
+      console.error('链上解盘失败:', error);
+      message.error(`解盘失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setInterpreting(false);
+    }
+  }, [baziId, selectedAccount, interpretation]);
 
   /**
    * 渲染单柱
@@ -359,6 +406,93 @@ const BaziDetailPage: React.FC = () => {
     );
   };
 
+  /**
+   * 渲染链上解盘结果
+   */
+  const renderOnChainInterpretation = () => {
+    if (!interpretation) return null;
+
+    return (
+      <Card
+        title={
+          <Space>
+            <ThunderboltOutlined style={{ color: '#faad14' }} />
+            <span>链上解盘结果</span>
+            <Tag color="gold">免费</Tag>
+          </Space>
+        }
+        className="interpretation-card"
+        size="small"
+        style={{ marginTop: 16 }}
+      >
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <Card type="inner" size="small">
+              <Statistic
+                title="格局"
+                value={interpretation.geJu}
+                valueStyle={{ fontSize: 18, color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card type="inner" size="small">
+              <Statistic
+                title="命局强弱"
+                value={interpretation.qiangRuo}
+                valueStyle={{ fontSize: 18, color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card type="inner" size="small">
+              <Statistic
+                title="用神"
+                value={interpretation.yongShen}
+                valueStyle={{ fontSize: 18, color: '#f5222d' }}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {interpretation.yongShenType}
+              </Text>
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card type="inner" size="small">
+              <Statistic
+                title="综合评分"
+                value={interpretation.score}
+                suffix="/100"
+                valueStyle={{ fontSize: 18, color: '#722ed1' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {interpretation.jiShen.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <Text strong>忌神：</Text>
+            <Space size={4} style={{ marginLeft: 8 }}>
+              {interpretation.jiShen.map((ji, idx) => (
+                <Tag key={idx} color="volcano">{ji}</Tag>
+              ))}
+            </Space>
+          </div>
+        )}
+
+        {interpretation.texts.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <Divider orientation="left">解盘详情</Divider>
+            {interpretation.texts.map((text, idx) => (
+              <Paragraph key={idx} style={{ marginBottom: 8 }}>
+                {idx + 1}. {text}
+              </Paragraph>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   if (loading) {
     return (
       <div className="bazi-page">
@@ -468,9 +602,47 @@ const BaziDetailPage: React.FC = () => {
           {/* 流年 */}
           {renderLiuNian()}
 
+          {/* V2 精简版解盘（优先显示） */}
+          {baziId !== null && (
+            <div style={{ marginTop: 16 }}>
+              <BasicInterpretationCard
+                chartId={baziId}
+                onRequestAi={handleRequestAi}
+              />
+            </div>
+          )}
+
+          {/* 链上解盘结果（旧版，保留兼容） */}
+          {renderOnChainInterpretation()}
+
           {/* 解读服务 */}
           <Card title="获取解读" className="service-card">
             <Space direction="vertical" style={{ width: '100%' }}>
+              <Button
+                type="default"
+                icon={<ThunderboltOutlined />}
+                size="large"
+                block
+                onClick={handleInterpretOnChain}
+                loading={interpreting}
+                disabled={!!interpretation}
+                style={{
+                  borderColor: '#faad14',
+                  color: interpretation ? '#8c8c8c' : '#faad14',
+                  background: interpretation ? '#f5f5f5' : '#fff',
+                }}
+              >
+                {interpretation ? '已完成链上解盘' : '链上自动解盘（免费）'}
+              </Button>
+              <Text type="secondary" className="service-hint">
+                {interpretation
+                  ? '基于传统命理算法的自动化分析，可查看上方结果'
+                  : '基于传统命理算法快速生成基础解盘，完全免费'
+                }
+              </Text>
+
+              <Divider />
+
               <Button
                 type="primary"
                 icon={<RobotOutlined />}

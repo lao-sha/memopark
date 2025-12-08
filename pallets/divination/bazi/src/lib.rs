@@ -49,6 +49,7 @@ pub mod types;
 pub mod constants;
 pub mod calculations;
 pub mod interpretation;
+pub mod interpretation_v2;
 pub mod shensha;
 pub mod xingchong;
 
@@ -56,7 +57,7 @@ pub mod xingchong;
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
-	use sp_runtime::{traits::Hash, SaturatedConversion};
+	use sp_runtime::SaturatedConversion;
 
 	pub use crate::types::*;
 
@@ -98,16 +99,10 @@ pub mod pallet {
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
 
-	/// 存储映射: 账户 -> 八字列表
+	/// 下一个八字ID计数器
 	#[pallet::storage]
-	#[pallet::getter(fn bazi_charts)]
-	pub type BaziCharts<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		T::AccountId,
-		BoundedVec<BaziChart<T>, T::MaxChartsPerAccount>,
-		ValueQuery,
-	>;
+	#[pallet::getter(fn next_chart_id)]
+	pub type NextChartId<T: Config> = StorageValue<_, u64, ValueQuery>;
 
 	/// 存储映射: 八字ID -> 八字详情
 	#[pallet::storage]
@@ -115,23 +110,45 @@ pub mod pallet {
 	pub type ChartById<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
-		T::Hash,
+		u64,
 		BaziChart<T>,
 	>;
 
-	/// 八字总数计数器
+	/// 存储映射: 用户 -> 八字ID列表
 	#[pallet::storage]
-	#[pallet::getter(fn chart_count)]
-	pub type ChartCount<T: Config> = StorageValue<_, u64, ValueQuery>;
+	#[pallet::getter(fn user_charts)]
+	pub type UserCharts<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		BoundedVec<u64, T::MaxChartsPerAccount>,
+		ValueQuery,
+	>;
 
-	/// 存储映射: 八字ID -> 解盘结果
+	/// 存储映射: 八字ID -> 解盘结果（旧版，70+ bytes）
 	#[pallet::storage]
 	#[pallet::getter(fn interpretation_by_id)]
 	pub type InterpretationById<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
-		T::Hash,
+		u64,
 		crate::interpretation::JiePanResult,
+	>;
+
+	/// 存储映射: 八字ID -> 精简解盘结果（V2，13 bytes）
+	///
+	/// 可选缓存：用户可以选择将解盘结果缓存到链上
+	/// - 优点：后续查询更快，无需重新计算
+	/// - 缺点：需要支付少量 gas 费用
+	///
+	/// 如果未缓存，前端可以通过 `get_basic_interpretation()` 实时计算（免费）
+	#[pallet::storage]
+	#[pallet::getter(fn interpretation_cache)]
+	pub type InterpretationCache<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		u64,
+		crate::interpretation_v2::SimplifiedInterpretation,
 	>;
 
 	/// Pallet 事件
@@ -142,22 +159,27 @@ pub mod pallet {
 		/// 八字创建成功 [所有者, 八字ID, 出生时间]
 		BaziChartCreated {
 			owner: T::AccountId,
-			chart_id: T::Hash,
+			chart_id: u64,
 			birth_time: BirthTime,
 		},
 		/// 八字查询 [八字ID, 所有者]
 		BaziChartQueried {
-			chart_id: T::Hash,
+			chart_id: u64,
 			owner: T::AccountId,
 		},
 		/// 八字删除 [所有者, 八字ID]
 		BaziChartDeleted {
 			owner: T::AccountId,
-			chart_id: T::Hash,
+			chart_id: u64,
 		},
 		/// 八字解盘完成 [八字ID, 所有者]
 		BaziInterpretationCompleted {
-			chart_id: T::Hash,
+			chart_id: u64,
+			owner: T::AccountId,
+		},
+		/// 八字解盘结果已缓存（V2 精简版）[八字ID, 所有者]
+		BaziInterpretationCached {
+			chart_id: u64,
 			owner: T::AccountId,
 		},
 	}
@@ -191,6 +213,8 @@ pub mod pallet {
 		TooManyCangGan,
 		/// 大运步数过多
 		TooManyDaYunSteps,
+		/// 八字ID已达到最大值
+		ChartIdOverflow,
 	}
 
 	/// Pallet 可调用函数
@@ -244,7 +268,7 @@ pub mod pallet {
 			ensure!(minute < 60, Error::<T>::InvalidMinute);
 
 			// 检查账户八字数量限制
-			let existing_charts = BaziCharts::<T>::get(&who);
+			let existing_charts = UserCharts::<T>::get(&who);
 			ensure!(
 				existing_charts.len() < T::MaxChartsPerAccount::get() as usize,
 				Error::<T>::TooManyCharts
@@ -370,20 +394,25 @@ pub mod pallet {
 			};
 
 			// 7. 存储八字
-			// 生成八字ID
-			let chart_id = T::Hashing::hash_of(&bazi_chart);
+			// 获取新的 chart_id
+			let chart_id = NextChartId::<T>::get();
+
+			// 验证ID不会溢出
+			ensure!(
+				chart_id < u64::MAX,
+				Error::<T>::ChartIdOverflow
+			);
 
 			// 存储到 ChartById
-			ChartById::<T>::insert(&chart_id, bazi_chart.clone());
+			ChartById::<T>::insert(chart_id, bazi_chart);
 
 			// 添加到用户的八字列表
-			BaziCharts::<T>::try_mutate(&who, |charts| {
-				charts.try_push(bazi_chart).map_err(|_| Error::<T>::TooManyCharts)
+			UserCharts::<T>::try_mutate(&who, |charts| {
+				charts.try_push(chart_id).map_err(|_| Error::<T>::TooManyCharts)
 			})?;
 
-			// 更新计数器
-			let count = ChartCount::<T>::get();
-			ChartCount::<T>::put(count + 1);
+			// 递增计数器
+			NextChartId::<T>::put(chart_id + 1);
 
 			// 8. 触发事件
 			Self::deposit_event(Event::BaziChartCreated {
@@ -409,36 +438,27 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::delete_bazi_chart())]
 		pub fn delete_bazi_chart(
 			origin: OriginFor<T>,
-			chart_id: T::Hash,
+			chart_id: u64,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 
 			// 获取八字信息
-			let chart = ChartById::<T>::get(&chart_id)
+			let chart = ChartById::<T>::get(chart_id)
 				.ok_or(Error::<T>::ChartNotFound)?;
 
 			// 验证所有权
 			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
 
 			// 从 ChartById 中删除
-			ChartById::<T>::remove(&chart_id);
+			ChartById::<T>::remove(chart_id);
 
 			// 从用户的八字列表中删除
-			BaziCharts::<T>::try_mutate(&who, |charts| -> DispatchResult {
-				if let Some(pos) = charts.iter().position(|c| {
-					let c_id = T::Hashing::hash_of(c);
-					c_id == chart_id
-				}) {
+			UserCharts::<T>::try_mutate(&who, |charts| -> DispatchResult {
+				if let Some(pos) = charts.iter().position(|&id| id == chart_id) {
 					charts.remove(pos);
 				}
 				Ok(())
 			})?;
-
-			// 更新计数器
-			let count = ChartCount::<T>::get();
-			if count > 0 {
-				ChartCount::<T>::put(count - 1);
-			}
 
 			// 触发事件
 			Self::deposit_event(Event::BaziChartDeleted {
@@ -472,12 +492,12 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
 		pub fn interpret_bazi_chart(
 			origin: OriginFor<T>,
-			chart_id: T::Hash,
+			chart_id: u64,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 
 			// 获取八字信息
-			let chart = ChartById::<T>::get(&chart_id)
+			let chart = ChartById::<T>::get(chart_id)
 				.ok_or(Error::<T>::ChartNotFound)?;
 
 			// 验证所有权
@@ -490,10 +510,67 @@ pub mod pallet {
 			);
 
 			// 存储解盘结果
-			InterpretationById::<T>::insert(&chart_id, interpretation_result);
+			InterpretationById::<T>::insert(chart_id, interpretation_result);
 
 			// 触发事件
 			Self::deposit_event(Event::BaziInterpretationCompleted {
+				chart_id,
+				owner: who,
+			});
+
+			Ok(())
+		}
+
+		/// 缓存八字解盘结果（V2 精简版）
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者
+		/// - `chart_id`: 八字ID
+		///
+		/// # 功能
+		///
+		/// 1. 验证八字存在和所有权
+		/// 2. 调用 `get_basic_interpretation()` 实时计算解盘结果
+		/// 3. 将结果缓存到链上 `InterpretationCache`
+		///
+		/// # 优点
+		///
+		/// - 后续查询无需重新计算，速度更快
+		/// - 可以在前端优先使用缓存结果
+		///
+		/// # 缺点
+		///
+		/// - 需要支付少量 gas 费用（约 13 bytes 存储成本）
+		///
+		/// # 注意
+		///
+		/// - 如果不缓存，前端可以直接调用 `get_basic_interpretation()` 免费实时计算
+		/// - 缓存后算法升级不会自动更新缓存，需要重新缓存
+		#[pallet::call_index(3)]
+		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
+		pub fn cache_interpretation(
+			origin: OriginFor<T>,
+			chart_id: u64,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 获取八字信息
+			let chart = ChartById::<T>::get(chart_id)
+				.ok_or(Error::<T>::ChartNotFound)?;
+
+			// 验证所有权
+			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
+
+			// 实时计算解盘结果
+			let interpretation = Self::get_basic_interpretation(chart_id)
+				.ok_or(Error::<T>::ChartNotFound)?;
+
+			// 缓存到链上
+			InterpretationCache::<T>::insert(chart_id, interpretation);
+
+			// 触发事件
+			Self::deposit_event(Event::BaziInterpretationCached {
 				chart_id,
 				owner: who,
 			});
@@ -565,6 +642,79 @@ pub mod pallet {
 				canggan,
 				nayin,
 			})
+		}
+
+		/// RPC 接口：实时计算基础解盘（不存储）
+		///
+		/// 此函数由 RPC 调用，不消耗 gas，不上链
+		///
+		/// # 参数
+		/// - chart_id: 八字命盘ID
+		///
+		/// # 返回
+		/// - Some(SimplifiedInterpretation): 解盘结果（10 bytes）
+		/// - None: 命盘不存在
+		///
+		/// # 特点
+		/// - 完全免费（无 gas 费用）
+		/// - 响应快速（< 100ms）
+		/// - 算法自动更新（使用最新版本）
+		/// - 不永久存储（避免存储成本）
+		pub fn get_basic_interpretation(chart_id: u64) -> Option<crate::interpretation_v2::SimplifiedInterpretation> {
+			let chart = ChartById::<T>::get(chart_id)?;
+			let current_block = <frame_system::Pallet<T>>::block_number().saturated_into();
+
+			Some(crate::interpretation_v2::calculate_interpretation_v2(&chart, current_block))
+		}
+	}
+
+	// ==================== DivinationProvider 实现 ====================
+
+	/// 实现 DivinationProvider trait，使 BaziChart 能够与 DivinationAi 集成
+	impl<T: Config> pallet_divination_common::traits::DivinationProvider<T::AccountId> for Pallet<T> {
+		/// 检查八字是否存在
+		fn result_exists(divination_type: pallet_divination_common::types::DivinationType, result_id: u64) -> bool {
+			// 只处理八字类型
+			if divination_type != pallet_divination_common::types::DivinationType::Bazi {
+				return false;
+			}
+
+			ChartById::<T>::contains_key(result_id)
+		}
+
+		/// 获取八字创建者
+		fn result_creator(divination_type: pallet_divination_common::types::DivinationType, result_id: u64) -> Option<T::AccountId> {
+			if divination_type != pallet_divination_common::types::DivinationType::Bazi {
+				return None;
+			}
+
+			ChartById::<T>::get(result_id).map(|chart| chart.owner)
+		}
+
+		/// 获取稀有度计算数据（暂不实现）
+		fn rarity_data(
+			_divination_type: pallet_divination_common::types::DivinationType,
+			_result_id: u64
+		) -> Option<pallet_divination_common::types::RarityInput> {
+			None
+		}
+
+		/// 获取占卜结果摘要（暂不实现）
+		fn result_summary(
+			_divination_type: pallet_divination_common::types::DivinationType,
+			_result_id: u64
+		) -> Option<sp_std::vec::Vec<u8>> {
+			None
+		}
+
+		/// 检查是否可以铸造为 NFT（简化实现：存在即可铸造）
+		fn is_nftable(divination_type: pallet_divination_common::types::DivinationType, result_id: u64) -> bool {
+			Self::result_exists(divination_type, result_id)
+		}
+
+		/// 标记已铸造为 NFT（暂不实现）
+		fn mark_as_nfted(_divination_type: pallet_divination_common::types::DivinationType, _result_id: u64) {
+			// 当前版本不需要标记
 		}
 	}
 }
