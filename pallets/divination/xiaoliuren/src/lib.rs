@@ -45,6 +45,7 @@ pub use pallet::*;
 
 pub mod algorithm;
 pub mod types;
+pub mod interpretation;
 
 #[cfg(test)]
 mod mock;
@@ -191,6 +192,18 @@ pub mod pallet {
     #[pallet::getter(fn user_stats)]
     pub type UserStatsStorage<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, UserStats, ValueQuery>;
+
+    /// 课盘解卦数据
+    ///
+    /// 采用懒加载：首次查询时计算并缓存
+    #[pallet::storage]
+    #[pallet::getter(fn interpretations)]
+    pub type Interpretations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // pan_id
+        crate::interpretation::XiaoLiuRenInterpretation,
+    >;
 
     // ============================================================================
     // 事件
