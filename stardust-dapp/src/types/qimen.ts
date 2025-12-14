@@ -1099,3 +1099,397 @@ export function analyzePalace(
 
   return analysis;
 }
+
+// ==================== 解卦相关类型 ====================
+
+/**
+ * 格局类型
+ *
+ * 奇门遁甲的格局分类，包括正格、伏吟、反吟、三遁、特殊遁和特殊吉凶格局
+ */
+export enum GeJuType {
+  /** 正格 - 常规格局 */
+  ZhengGe = 'ZhengGe',
+  /** 伏吟格 - 天盘地盘相同，主迟滞反复 */
+  FuYinGe = 'FuYinGe',
+  /** 反吟格 - 天盘地盘对冲，主变动不稳 */
+  FanYinGe = 'FanYinGe',
+  /** 天遁格 - 丙奇+天心星+开门，大吉之格 */
+  TianDunGe = 'TianDunGe',
+  /** 地遁格 - 乙奇+六合+开门，利于求财合作 */
+  DiDunGe = 'DiDunGe',
+  /** 人遁格 - 丁奇+太阴+开门，利于隐秘谋略 */
+  RenDunGe = 'RenDunGe',
+  /** 鬼遁格 - 丁奇+天心星+开门，利于玄学医疗 */
+  GuiDunGe = 'GuiDunGe',
+  /** 神遁格 - 九天+值符+开门，利于高远创新 */
+  ShenDunGe = 'ShenDunGe',
+  /** 龙遁格 - 九地+值符+开门，利于稳固长久 */
+  LongDunGe = 'LongDunGe',
+  /** 青龙返首 - 特殊吉格，主贵人相助 */
+  QingLongFanShou = 'QingLongFanShou',
+  /** 飞鸟跌穴 - 特殊凶格，主失败挫折 */
+  FeiNiaoDieXue = 'FeiNiaoDieXue',
+}
+
+/**
+ * 格局类型名称
+ */
+export const GE_JU_TYPE_NAMES: Record<GeJuType, string> = {
+  [GeJuType.ZhengGe]: '正格',
+  [GeJuType.FuYinGe]: '伏吟格',
+  [GeJuType.FanYinGe]: '反吟格',
+  [GeJuType.TianDunGe]: '天遁格',
+  [GeJuType.DiDunGe]: '地遁格',
+  [GeJuType.RenDunGe]: '人遁格',
+  [GeJuType.GuiDunGe]: '鬼遁格',
+  [GeJuType.ShenDunGe]: '神遁格',
+  [GeJuType.LongDunGe]: '龙遁格',
+  [GeJuType.QingLongFanShou]: '青龙返首',
+  [GeJuType.FeiNiaoDieXue]: '飞鸟跌穴',
+};
+
+/**
+ * 吉凶等级
+ */
+export enum Fortune {
+  /** 大吉 */
+  DaJi = 'DaJi',
+  /** 中吉 */
+  ZhongJi = 'ZhongJi',
+  /** 小吉 */
+  XiaoJi = 'XiaoJi',
+  /** 平 */
+  Ping = 'Ping',
+  /** 小凶 */
+  XiaoXiong = 'XiaoXiong',
+  /** 中凶 */
+  ZhongXiong = 'ZhongXiong',
+  /** 大凶 */
+  DaXiong = 'DaXiong',
+}
+
+/**
+ * 吉凶等级名称
+ */
+export const FORTUNE_NAMES: Record<Fortune, string> = {
+  [Fortune.DaJi]: '大吉',
+  [Fortune.ZhongJi]: '中吉',
+  [Fortune.XiaoJi]: '小吉',
+  [Fortune.Ping]: '平',
+  [Fortune.XiaoXiong]: '小凶',
+  [Fortune.ZhongXiong]: '中凶',
+  [Fortune.DaXiong]: '大凶',
+};
+
+/**
+ * 吉凶等级颜色
+ */
+export const FORTUNE_COLORS: Record<Fortune, string> = {
+  [Fortune.DaJi]: '#52c41a',       // 绿色
+  [Fortune.ZhongJi]: '#73d13d',    // 浅绿
+  [Fortune.XiaoJi]: '#95de64',     // 更浅绿
+  [Fortune.Ping]: '#d9d9d9',       // 灰色
+  [Fortune.XiaoXiong]: '#ff7875',  // 浅红
+  [Fortune.ZhongXiong]: '#ff4d4f', // 红色
+  [Fortune.DaXiong]: '#f5222d',    // 深红
+};
+
+/**
+ * 旺衰状态（解卦用）
+ *
+ * 注意：这里重新定义是为了与后端 Rust 枚举保持一致
+ */
+export enum WangShuaiStatus {
+  /** 旺相 - 当令或生我 */
+  WangXiang = 'WangXiang',
+  /** 相 - 我生者 */
+  Xiang = 'Xiang',
+  /** 休 - 生我者 */
+  Xiu = 'Xiu',
+  /** 囚 - 克我者 */
+  Qiu = 'Qiu',
+  /** 死 - 我克者 */
+  Si = 'Si',
+}
+
+/**
+ * 旺衰状态名称（解卦用）
+ */
+export const WANG_SHUAI_STATUS_NAMES: Record<WangShuaiStatus, string> = {
+  [WangShuaiStatus.WangXiang]: '旺相',
+  [WangShuaiStatus.Xiang]: '相',
+  [WangShuaiStatus.Xiu]: '休',
+  [WangShuaiStatus.Qiu]: '囚',
+  [WangShuaiStatus.Si]: '死',
+};
+
+/**
+ * 星门关系
+ */
+export enum XingMenRelation {
+  /** 星生门 */
+  XingShengMen = 'XingShengMen',
+  /** 门生星 */
+  MenShengXing = 'MenShengXing',
+  /** 星克门 */
+  XingKeMen = 'XingKeMen',
+  /** 门克星 */
+  MenKeXing = 'MenKeXing',
+  /** 比和 */
+  BiHe = 'BiHe',
+}
+
+/**
+ * 星门关系名称
+ */
+export const XING_MEN_RELATION_NAMES: Record<XingMenRelation, string> = {
+  [XingMenRelation.XingShengMen]: '星生门',
+  [XingMenRelation.MenShengXing]: '门生星',
+  [XingMenRelation.XingKeMen]: '星克门',
+  [XingMenRelation.MenKeXing]: '门克星',
+  [XingMenRelation.BiHe]: '比和',
+};
+
+/**
+ * 用神类型
+ */
+export enum YongShenType {
+  /** 日干 */
+  RiGan = 'RiGan',
+  /** 时干 */
+  ShiGan = 'ShiGan',
+  /** 值符 */
+  ZhiFu = 'ZhiFu',
+  /** 值使 */
+  ZhiShi = 'ZhiShi',
+  /** 年命 */
+  NianMing = 'NianMing',
+  /** 特定星 */
+  SpecificXing = 'SpecificXing',
+  /** 特定门 */
+  SpecificMen = 'SpecificMen',
+  /** 特定宫 */
+  SpecificGong = 'SpecificGong',
+}
+
+/**
+ * 用神类型名称
+ */
+export const YONG_SHEN_TYPE_NAMES: Record<YongShenType, string> = {
+  [YongShenType.RiGan]: '日干',
+  [YongShenType.ShiGan]: '时干',
+  [YongShenType.ZhiFu]: '值符',
+  [YongShenType.ZhiShi]: '值使',
+  [YongShenType.NianMing]: '年命',
+  [YongShenType.SpecificXing]: '特定星',
+  [YongShenType.SpecificMen]: '特定门',
+  [YongShenType.SpecificGong]: '特定宫',
+};
+
+/**
+ * 得力状态
+ */
+export enum DeLiStatus {
+  /** 大得力 */
+  DaDeLi = 'DaDeLi',
+  /** 得力 */
+  DeLi = 'DeLi',
+  /** 平 */
+  Ping = 'Ping',
+  /** 失力 */
+  ShiLi = 'ShiLi',
+  /** 大失力 */
+  DaShiLi = 'DaShiLi',
+}
+
+/**
+ * 得力状态名称
+ */
+export const DE_LI_STATUS_NAMES: Record<DeLiStatus, string> = {
+  [DeLiStatus.DaDeLi]: '大得力',
+  [DeLiStatus.DeLi]: '得力',
+  [DeLiStatus.Ping]: '平',
+  [DeLiStatus.ShiLi]: '失力',
+  [DeLiStatus.DaShiLi]: '大失力',
+};
+
+/**
+ * 应期单位
+ */
+export enum YingQiUnit {
+  /** 时辰 */
+  Hour = 'Hour',
+  /** 日 */
+  Day = 'Day',
+  /** 旬 */
+  Xun = 'Xun',
+  /** 月 */
+  Month = 'Month',
+  /** 季 */
+  Season = 'Season',
+  /** 年 */
+  Year = 'Year',
+}
+
+/**
+ * 应期单位名称
+ */
+export const YING_QI_UNIT_NAMES: Record<YingQiUnit, string> = {
+  [YingQiUnit.Hour]: '时辰',
+  [YingQiUnit.Day]: '日',
+  [YingQiUnit.Xun]: '旬',
+  [YingQiUnit.Month]: '月',
+  [YingQiUnit.Season]: '季',
+  [YingQiUnit.Year]: '年',
+};
+
+/**
+ * 奇门遁甲核心解卦结果
+ *
+ * 存储最关键的解卦指标，约 16 bytes
+ */
+export interface QimenCoreInterpretation {
+  /** 格局类型 */
+  geJu: GeJuType;
+  /** 用神宫位 (1-9) */
+  yongShenGong: number;
+  /** 值符星 */
+  zhiFuXing: JiuXing;
+  /** 值使门 */
+  zhiShiMen: BaMen;
+  /** 日干落宫 (1-9) */
+  riGanGong: number;
+  /** 时干落宫 (1-9) */
+  shiGanGong: number;
+  /** 综合吉凶 */
+  fortune: Fortune;
+  /** 吉凶评分 (0-100) */
+  fortuneScore: number;
+  /** 旺衰状态 */
+  wangShuai: WangShuaiStatus;
+  /** 特殊格局标记（位标志） */
+  specialPatterns: number;
+  /** 可信度 (0-100) */
+  confidence: number;
+  /** 解盘时间戳（区块号） */
+  timestamp: number;
+  /** 算法版本 */
+  algorithmVersion: number;
+}
+
+/**
+ * 单宫详细解读
+ */
+export interface PalaceInterpretation {
+  /** 宫位 */
+  gong: JiuGong;
+  /** 天盘干 */
+  tianPanGan: QiYi;
+  /** 地盘干 */
+  diPanGan: QiYi;
+  /** 九星 */
+  xing: JiuXing;
+  /** 八门 */
+  men: BaMen | null;
+  /** 八神 */
+  shen: BaShen | null;
+  /** 宫位五行 */
+  gongWuxing: WuXing;
+  /** 天盘五行 */
+  tianWuxing: WuXing;
+  /** 地盘五行 */
+  diWuxing: WuXing;
+  /** 星门关系 */
+  xingMenRelation: XingMenRelation;
+  /** 宫位旺衰 */
+  wangShuai: WangShuaiStatus;
+  /** 是否伏吟 */
+  isFuYin: boolean;
+  /** 是否反吟 */
+  isFanYin: boolean;
+  /** 是否旬空 */
+  isXunKong: boolean;
+  /** 是否马星 */
+  isMaXing: boolean;
+  /** 宫位吉凶 */
+  fortune: Fortune;
+  /** 吉凶评分 (0-100) */
+  fortuneScore: number;
+}
+
+/**
+ * 用神分析结果
+ */
+export interface YongShenAnalysis {
+  /** 问事类型 */
+  questionType: QuestionType;
+  /** 主用神宫位 */
+  primaryGong: JiuGong;
+  /** 主用神类型 */
+  primaryType: YongShenType;
+  /** 次用神宫位 */
+  secondaryGong: JiuGong | null;
+  /** 次用神类型 */
+  secondaryType: YongShenType | null;
+  /** 用神旺衰 */
+  wangShuai: WangShuaiStatus;
+  /** 用神得力情况 */
+  deLi: DeLiStatus;
+  /** 用神吉凶 */
+  fortune: Fortune;
+  /** 用神评分 (0-100) */
+  score: number;
+}
+
+/**
+ * 应期推算结果
+ */
+export interface YingQiAnalysis {
+  /** 主应期数（基于用神宫位） */
+  primaryNum: number;
+  /** 次应期数（基于值符值使） */
+  secondaryNums: [number, number];
+  /** 应期单位 */
+  unit: YingQiUnit;
+  /** 应期范围描述 */
+  rangeDesc: string;
+  /** 吉利时间 */
+  auspiciousTimes: Uint8Array;
+  /** 不利时间 */
+  inauspiciousTimes: Uint8Array;
+}
+
+/**
+ * 格局详解
+ */
+export interface GeJuDetail {
+  /** 格局类型 */
+  geJu: GeJuType;
+  /** 格局名称 */
+  name: string;
+  /** 格局描述 */
+  description: string;
+  /** 格局吉凶 */
+  fortune: Fortune;
+  /** 适用场景 */
+  applicableScenarios: QuestionType[];
+  /** 注意事项 */
+  notes: string;
+}
+
+/**
+ * 奇门遁甲完整解读结果
+ */
+export interface QimenFullInterpretation {
+  /** 核心指标（必有） */
+  core: QimenCoreInterpretation;
+  /** 九宫详细解读（可选） */
+  palaces?: PalaceInterpretation[];
+  /** 用神分析（可选） */
+  yongShen?: YongShenAnalysis;
+  /** 应期推算（可选） */
+  yingQi?: YingQiAnalysis;
+  /** 格局详解（可选） */
+  geJuDetail?: GeJuDetail;
+}

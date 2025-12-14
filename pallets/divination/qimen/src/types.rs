@@ -1176,3 +1176,347 @@ impl UserStats {
         }
     }
 }
+
+// ==================== 解卦相关类型 ====================
+
+/// 格局类型
+///
+/// 奇门遁甲中的各种格局，影响吉凶判断
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum GeJuType {
+    /// 正格 - 常规格局
+    ZhengGe = 0,
+    /// 伏吟格 - 天盘地盘相同
+    FuYinGe = 1,
+    /// 反吟格 - 天盘地盘对冲
+    FanYinGe = 2,
+    /// 天遁格 - 丙奇+天心星+开门
+    TianDunGe = 3,
+    /// 地遁格 - 乙奇+六合+开门
+    DiDunGe = 4,
+    /// 人遁格 - 丁奇+太阴+开门
+    RenDunGe = 5,
+    /// 鬼遁格 - 丁奇+天心星+开门
+    GuiDunGe = 6,
+    /// 神遁格 - 九天+值符+开门
+    ShenDunGe = 7,
+    /// 龙遁格 - 九地+值符+开门
+    LongDunGe = 8,
+    /// 青龙返首 - 特殊吉格
+    QingLongFanShou = 9,
+    /// 飞鸟跌穴 - 特殊凶格
+    FeiNiaoDieXue = 10,
+}
+
+impl GeJuType {
+    /// 获取格局名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::ZhengGe => "正格",
+            Self::FuYinGe => "伏吟格",
+            Self::FanYinGe => "反吟格",
+            Self::TianDunGe => "天遁格",
+            Self::DiDunGe => "地遁格",
+            Self::RenDunGe => "人遁格",
+            Self::GuiDunGe => "鬼遁格",
+            Self::ShenDunGe => "神遁格",
+            Self::LongDunGe => "龙遁格",
+            Self::QingLongFanShou => "青龙返首",
+            Self::FeiNiaoDieXue => "飞鸟跌穴",
+        }
+    }
+
+    /// 判断是否为吉格
+    pub fn is_auspicious(&self) -> bool {
+        matches!(
+            self,
+            Self::TianDunGe
+                | Self::DiDunGe
+                | Self::RenDunGe
+                | Self::ShenDunGe
+                | Self::LongDunGe
+                | Self::QingLongFanShou
+        )
+    }
+
+    /// 判断是否为凶格
+    pub fn is_inauspicious(&self) -> bool {
+        matches!(self, Self::FuYinGe | Self::FanYinGe | Self::FeiNiaoDieXue)
+    }
+}
+
+impl Default for GeJuType {
+    fn default() -> Self {
+        Self::ZhengGe
+    }
+}
+
+/// 旺衰状态
+///
+/// 根据节气和五行关系判断用神的旺衰程度
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum WangShuai {
+    /// 旺相 - 得令得时，最强
+    WangXiang = 0,
+    /// 相 - 次旺
+    Xiang = 1,
+    /// 休 - 休息
+    Xiu = 2,
+    /// 囚 - 受制
+    Qiu = 3,
+    /// 死 - 最弱
+    Si = 4,
+}
+
+impl WangShuai {
+    /// 获取旺衰名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::WangXiang => "旺相",
+            Self::Xiang => "相",
+            Self::Xiu => "休",
+            Self::Qiu => "囚",
+            Self::Si => "死",
+        }
+    }
+
+    /// 判断是否强旺
+    pub fn is_strong(&self) -> bool {
+        matches!(self, Self::WangXiang | Self::Xiang)
+    }
+
+    /// 判断是否衰弱
+    pub fn is_weak(&self) -> bool {
+        matches!(self, Self::Qiu | Self::Si)
+    }
+}
+
+impl Default for WangShuai {
+    fn default() -> Self {
+        Self::Xiu
+    }
+}
+
+/// 吉凶等级
+///
+/// 综合评估后的吉凶判断
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum Fortune {
+    /// 大吉
+    DaJi = 0,
+    /// 中吉
+    ZhongJi = 1,
+    /// 小吉
+    XiaoJi = 2,
+    /// 平
+    Ping = 3,
+    /// 小凶
+    XiaoXiong = 4,
+    /// 中凶
+    ZhongXiong = 5,
+    /// 大凶
+    DaXiong = 6,
+}
+
+impl Fortune {
+    /// 获取吉凶名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::DaJi => "大吉",
+            Self::ZhongJi => "中吉",
+            Self::XiaoJi => "小吉",
+            Self::Ping => "平",
+            Self::XiaoXiong => "小凶",
+            Self::ZhongXiong => "中凶",
+            Self::DaXiong => "大凶",
+        }
+    }
+
+    /// 判断是否吉利
+    pub fn is_auspicious(&self) -> bool {
+        matches!(self, Self::DaJi | Self::ZhongJi | Self::XiaoJi)
+    }
+
+    /// 判断是否凶险
+    pub fn is_inauspicious(&self) -> bool {
+        matches!(self, Self::XiaoXiong | Self::ZhongXiong | Self::DaXiong)
+    }
+}
+
+impl Default for Fortune {
+    fn default() -> Self {
+        Self::Ping
+    }
+}
+
+/// 星门关系
+///
+/// 九星与八门之间的五行生克关系
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum XingMenRelation {
+    /// 星生门 - 吉
+    XingShengMen = 0,
+    /// 门生星 - 平
+    MenShengXing = 1,
+    /// 星克门 - 凶
+    XingKeMen = 2,
+    /// 门克星 - 平
+    MenKeXing = 3,
+    /// 比和 - 吉
+    BiHe = 4,
+}
+
+impl XingMenRelation {
+    /// 获取关系名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::XingShengMen => "星生门",
+            Self::MenShengXing => "门生星",
+            Self::XingKeMen => "星克门",
+            Self::MenKeXing => "门克星",
+            Self::BiHe => "比和",
+        }
+    }
+
+    /// 判断是否吉利
+    pub fn is_auspicious(&self) -> bool {
+        matches!(self, Self::XingShengMen | Self::BiHe)
+    }
+}
+
+impl Default for XingMenRelation {
+    fn default() -> Self {
+        Self::BiHe
+    }
+}
+
+/// 用神类型
+///
+/// 根据问事类型确定的用神
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum YongShenType {
+    /// 日干 - 代表自己
+    RiGan,
+    /// 时干 - 代表事情
+    ShiGan,
+    /// 值符 - 代表贵人
+    ZhiFu,
+    /// 值使 - 代表行动
+    ZhiShi,
+    /// 年命 - 代表本命
+    NianMing,
+    /// 特定星 - 根据问事类型
+    SpecificXing(JiuXing),
+    /// 特定门 - 根据问事类型
+    SpecificMen(BaMen),
+    /// 特定宫 - 根据问事类型
+    SpecificGong(JiuGong),
+}
+
+impl YongShenType {
+    /// 获取用神名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::RiGan => "日干",
+            Self::ShiGan => "时干",
+            Self::ZhiFu => "值符",
+            Self::ZhiShi => "值使",
+            Self::NianMing => "年命",
+            Self::SpecificXing(_) => "特定星",
+            Self::SpecificMen(_) => "特定门",
+            Self::SpecificGong(_) => "特定宫",
+        }
+    }
+}
+
+impl Default for YongShenType {
+    fn default() -> Self {
+        Self::RiGan
+    }
+}
+
+/// 得力状态
+///
+/// 用神在盘中的得力程度
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum DeLiStatus {
+    /// 大得力 - 旺相+吉星吉门
+    DaDeLi = 0,
+    /// 得力 - 旺相或吉星吉门
+    DeLi = 1,
+    /// 平 - 休囚但无克
+    Ping = 2,
+    /// 失力 - 休囚+凶星凶门
+    ShiLi = 3,
+    /// 大失力 - 死绝+凶星凶门
+    DaShiLi = 4,
+}
+
+impl DeLiStatus {
+    /// 获取得力名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::DaDeLi => "大得力",
+            Self::DeLi => "得力",
+            Self::Ping => "平",
+            Self::ShiLi => "失力",
+            Self::DaShiLi => "大失力",
+        }
+    }
+
+    /// 判断是否得力
+    pub fn is_favorable(&self) -> bool {
+        matches!(self, Self::DaDeLi | Self::DeLi)
+    }
+}
+
+impl Default for DeLiStatus {
+    fn default() -> Self {
+        Self::Ping
+    }
+}
+
+/// 应期单位
+///
+/// 事情应验的时间单位
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum YingQiUnit {
+    /// 时辰
+    Hour = 0,
+    /// 日
+    Day = 1,
+    /// 旬（10天）
+    Xun = 2,
+    /// 月
+    Month = 3,
+    /// 季
+    Season = 4,
+    /// 年
+    Year = 5,
+}
+
+impl YingQiUnit {
+    /// 获取单位名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Hour => "时辰",
+            Self::Day => "日",
+            Self::Xun => "旬",
+            Self::Month => "月",
+            Self::Season => "季",
+            Self::Year => "年",
+        }
+    }
+}
+
+impl Default for YingQiUnit {
+    fn default() -> Self {
+        Self::Day
+    }
+}

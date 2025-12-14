@@ -729,3 +729,455 @@ export function getBianYaoType(yaoType: YaoType): YaoType {
   if (yaoType === YaoType.OldYin) return YaoType.Yang;
   return yaoType;
 }
+
+// ==================== 六爻解卦类型（Runtime API 返回结构） ====================
+
+/**
+ * 吉凶等级枚举
+ *
+ * 用于表示六爻占卜的总体吉凶判断
+ */
+export enum JiXiongLevel {
+  /** 大吉 - 诸事顺遂，心想事成 */
+  DaJi = 0,
+  /** 吉 - 事可成，宜进取 */
+  Ji = 1,
+  /** 小吉 - 小有所得，不宜大动 */
+  XiaoJi = 2,
+  /** 平 - 平稳无波，守成为上 */
+  Ping = 3,
+  /** 小凶 - 小有阻碍，谨慎行事 */
+  XiaoXiong = 4,
+  /** 凶 - 事难成，宜退守 */
+  Xiong = 5,
+  /** 大凶 - 诸事不利，静待时机 */
+  DaXiong = 6,
+}
+
+/**
+ * 吉凶等级名称
+ */
+export const JI_XIONG_NAMES: Record<JiXiongLevel, string> = {
+  [JiXiongLevel.DaJi]: '大吉',
+  [JiXiongLevel.Ji]: '吉',
+  [JiXiongLevel.XiaoJi]: '小吉',
+  [JiXiongLevel.Ping]: '平',
+  [JiXiongLevel.XiaoXiong]: '小凶',
+  [JiXiongLevel.Xiong]: '凶',
+  [JiXiongLevel.DaXiong]: '大凶',
+};
+
+/**
+ * 吉凶等级描述
+ */
+export const JI_XIONG_DESC: Record<JiXiongLevel, string> = {
+  [JiXiongLevel.DaJi]: '诸事顺遂，心想事成',
+  [JiXiongLevel.Ji]: '事可成，宜进取',
+  [JiXiongLevel.XiaoJi]: '小有所得，不宜大动',
+  [JiXiongLevel.Ping]: '平稳无波，守成为上',
+  [JiXiongLevel.XiaoXiong]: '小有阻碍，谨慎行事',
+  [JiXiongLevel.Xiong]: '事难成，宜退守',
+  [JiXiongLevel.DaXiong]: '诸事不利，静待时机',
+};
+
+/**
+ * 用神状态枚举
+ *
+ * 表示用神（关键爻）的旺衰状态和特殊情况
+ */
+export enum YongShenState {
+  /** 旺相 - 得时得地，事情有利 */
+  WangXiang = 0,
+  /** 休囚 - 失时失地，事情不利 */
+  XiuQiu = 1,
+  /** 动而化进 - 动爻化进神，事情向好发展 */
+  DongHuaJin = 2,
+  /** 动而化退 - 动爻化退神，事情有退步之象 */
+  DongHuaTui = 3,
+  /** 动而化空 - 动爻化空亡，事情虚而不实 */
+  DongHuaKong = 4,
+  /** 伏藏 - 伏神状态，所求之事隐而未显 */
+  FuCang = 5,
+  /** 空亡 - 日空或月空，所求之事虚而不实 */
+  KongWang = 6,
+  /** 入墓 - 入墓库，事情受阻，需待时机 */
+  RuMu = 7,
+  /** 受克 - 被克制，所求之事受阻 */
+  ShouKe = 8,
+  /** 得生 - 被生扶，所求之事有贵人相助 */
+  DeSheng = 9,
+}
+
+/**
+ * 用神状态名称
+ */
+export const YONG_SHEN_STATE_NAMES: Record<YongShenState, string> = {
+  [YongShenState.WangXiang]: '旺相',
+  [YongShenState.XiuQiu]: '休囚',
+  [YongShenState.DongHuaJin]: '动化进',
+  [YongShenState.DongHuaTui]: '动化退',
+  [YongShenState.DongHuaKong]: '动化空',
+  [YongShenState.FuCang]: '伏藏',
+  [YongShenState.KongWang]: '空亡',
+  [YongShenState.RuMu]: '入墓',
+  [YongShenState.ShouKe]: '受克',
+  [YongShenState.DeSheng]: '得生',
+};
+
+/**
+ * 用神状态描述
+ */
+export const YONG_SHEN_STATE_DESC: Record<YongShenState, string> = {
+  [YongShenState.WangXiang]: '得时得地，事情有利',
+  [YongShenState.XiuQiu]: '失时失地，事情不利',
+  [YongShenState.DongHuaJin]: '动爻化进神，事情向好发展',
+  [YongShenState.DongHuaTui]: '动爻化退神，事情有退步之象',
+  [YongShenState.DongHuaKong]: '动爻化空亡，事情虚而不实',
+  [YongShenState.FuCang]: '伏神状态，所求之事隐而未显',
+  [YongShenState.KongWang]: '日空或月空，所求之事虚而不实',
+  [YongShenState.RuMu]: '入墓库，事情受阻，需待时机',
+  [YongShenState.ShouKe]: '被克制，所求之事受阻',
+  [YongShenState.DeSheng]: '被生扶，所求之事有贵人相助',
+};
+
+/**
+ * 占问事项类型枚举
+ *
+ * 用于确定用神和解卦方向
+ */
+export enum ShiXiangType {
+  /** 财运 - 用神为妻财 */
+  CaiYun = 0,
+  /** 事业 - 用神为官鬼 */
+  ShiYe = 1,
+  /** 婚姻感情 - 男占用妻财，女占用官鬼 */
+  HunYin = 2,
+  /** 健康 - 用神为世爻 */
+  JianKang = 3,
+  /** 考试学业 - 用神为父母 */
+  KaoShi = 4,
+  /** 官司诉讼 - 用神为官鬼 */
+  GuanSi = 5,
+  /** 出行 - 用神为世爻 */
+  ChuXing = 6,
+  /** 寻人寻物 - 用神为用事之爻 */
+  XunRen = 7,
+  /** 天气 - 用神为相关爻 */
+  TianQi = 8,
+  /** 其他 - 需要自定义用神 */
+  QiTa = 9,
+}
+
+/**
+ * 事项类型名称
+ */
+export const SHI_XIANG_NAMES: Record<ShiXiangType, string> = {
+  [ShiXiangType.CaiYun]: '财运',
+  [ShiXiangType.ShiYe]: '事业',
+  [ShiXiangType.HunYin]: '婚姻感情',
+  [ShiXiangType.JianKang]: '健康',
+  [ShiXiangType.KaoShi]: '考试学业',
+  [ShiXiangType.GuanSi]: '官司诉讼',
+  [ShiXiangType.ChuXing]: '出行',
+  [ShiXiangType.XunRen]: '寻人寻物',
+  [ShiXiangType.TianQi]: '天气',
+  [ShiXiangType.QiTa]: '其他',
+};
+
+/**
+ * 应期类型枚举
+ *
+ * 表示事情应验的时间范围
+ */
+export enum YingQiType {
+  /** 近期（日内）- 应期在日 */
+  JinQi = 0,
+  /** 短期（月内）- 应期在月 */
+  DuanQi = 1,
+  /** 中期（季度内）- 应期在季 */
+  ZhongQi = 2,
+  /** 长期（年内）- 应期在年 */
+  ChangQi = 3,
+  /** 远期（年后）- 应期在年后 */
+  YuanQi = 4,
+  /** 不确定 - 需要进一步分析 */
+  BuQueDing = 5,
+}
+
+/**
+ * 应期类型名称
+ */
+export const YING_QI_NAMES: Record<YingQiType, string> = {
+  [YingQiType.JinQi]: '近期（日内）',
+  [YingQiType.DuanQi]: '短期（月内）',
+  [YingQiType.ZhongQi]: '中期（季度内）',
+  [YingQiType.ChangQi]: '长期（年内）',
+  [YingQiType.YuanQi]: '远期（年后）',
+  [YingQiType.BuQueDing]: '不确定',
+};
+
+/**
+ * 六爻核心解卦结果接口
+ *
+ * 对应链上 LiuYaoCoreInterpretation 结构，约 20 bytes
+ */
+export interface LiuYaoCoreInterpretation {
+  /** 总体吉凶 */
+  jiXiong: JiXiongLevel;
+  /** 用神六亲 - 根据占问事项确定 */
+  yongShenQin: LiuQin;
+  /** 用神状态 */
+  yongShenState: YongShenState;
+  /** 用神所在爻位 (0-5, 255=伏神) */
+  yongShenPos: number;
+  /** 世爻状态 */
+  shiYaoState: YongShenState;
+  /** 应爻状态 */
+  yingYaoState: YongShenState;
+  /** 动爻数量 (0-6) */
+  dongYaoCount: number;
+  /** 动爻位置位图 */
+  dongYaoBitmap: number;
+  /** 旬空爻位图 */
+  xunKongBitmap: number;
+  /** 月破爻位图 */
+  yuePoBitmap: number;
+  /** 日冲爻位图 */
+  riChongBitmap: number;
+  /** 化空/化退位图 */
+  huaKongBitmap: number;
+  /** 应期类型 */
+  yingQi: YingQiType;
+  /** 应期地支 (0-11) */
+  yingQiZhi: number;
+  /** 综合评分 (0-100) */
+  score: number;
+  /** 可信度 (0-100) */
+  confidence: number;
+  /** 解卦时间戳 - 区块号 */
+  timestamp: number;
+}
+
+/**
+ * 单爻分析结果接口
+ */
+export interface YaoAnalysis {
+  /** 爻位 (0-5) */
+  position: number;
+  /** 旺衰状态 */
+  wangShuai: YongShenState;
+  /** 是否逢空 */
+  isKong: boolean;
+  /** 是否月破 */
+  isYuePo: boolean;
+  /** 是否日冲 */
+  isRiChong: boolean;
+  /** 是否动爻 */
+  isDong: boolean;
+  /** 动爻变化类型 (255=非动爻) */
+  huaType: number;
+  /** 神煞数量 */
+  shenShaCount: number;
+  /** 神煞列表 */
+  shenShaList: number[];
+}
+
+/**
+ * 六亲状态接口
+ */
+export interface QinState {
+  /** 出现次数 (0-6) */
+  count: number;
+  /** 爻位列表（位图） */
+  positions: number;
+  /** 是否有伏神 */
+  hasFuShen: boolean;
+  /** 伏神位置 (255=无) */
+  fuShenPos: number;
+  /** 整体旺衰 */
+  wangShuai: YongShenState;
+}
+
+/**
+ * 六亲分析接口
+ */
+export interface LiuQinAnalysis {
+  /** 父母爻状态 */
+  fuMu: QinState;
+  /** 兄弟爻状态 */
+  xiongDi: QinState;
+  /** 子孙爻状态 */
+  ziSun: QinState;
+  /** 妻财爻状态 */
+  qiCai: QinState;
+  /** 官鬼爻状态 */
+  guanGui: QinState;
+}
+
+/**
+ * 卦象分析接口
+ */
+export interface GuaXiangAnalysis {
+  /** 本卦卦名索引 (0-63) */
+  benGuaIdx: number;
+  /** 变卦卦名索引 (0-63, 255=无变卦) */
+  bianGuaIdx: number;
+  /** 互卦卦名索引 (0-63) */
+  huGuaIdx: number;
+  /** 卦宫 (0-7) */
+  gong: number;
+  /** 卦序 (0-7) */
+  guaXu: number;
+  /** 世爻位置 (0-5) */
+  shiPos: number;
+  /** 应爻位置 (0-5) */
+  yingPos: number;
+  /** 卦身地支 (0-11) */
+  guaShen: number;
+  /** 是否六冲卦 */
+  isLiuChong: boolean;
+  /** 是否六合卦 */
+  isLiuHe: boolean;
+  /** 是否反吟卦 */
+  isFanYin: boolean;
+  /** 是否伏吟卦 */
+  isFuYin: boolean;
+}
+
+/**
+ * 神煞汇总接口
+ */
+export interface ShenShaSummary {
+  /** 吉神数量 */
+  jiShenCount: number;
+  /** 凶煞数量 */
+  xiongShaCount: number;
+  /** 吉神列表（索引） */
+  jiShen: number[];
+  /** 吉神对应爻位 */
+  jiShenPos: number[];
+  /** 凶煞列表（索引） */
+  xiongSha: number[];
+  /** 凶煞对应爻位 */
+  xiongShaPos: number[];
+}
+
+/**
+ * 六爻完整解卦结果接口
+ *
+ * 对应链上 LiuYaoFullInterpretation 结构，约 165 bytes
+ */
+export interface LiuYaoFullInterpretation {
+  /** 核心指标 */
+  core: LiuYaoCoreInterpretation;
+  /** 卦象分析 */
+  guaXiang: GuaXiangAnalysis;
+  /** 六亲分析 */
+  liuQin: LiuQinAnalysis;
+  /** 神煞汇总 */
+  shenSha: ShenShaSummary;
+  /** 各爻分析 (6个) */
+  yaos: YaoAnalysis[];
+}
+
+/**
+ * 解卦文本类型枚举
+ *
+ * 用于链上存储解卦文本索引，前端根据索引显示对应文本
+ */
+export enum JieGuaTextType {
+  // 吉凶总断 (0-6)
+  DaJiZongDuan = 0,
+  JiZongDuan = 1,
+  XiaoJiZongDuan = 2,
+  PingZongDuan = 3,
+  XiaoXiongZongDuan = 4,
+  XiongZongDuan = 5,
+  DaXiongZongDuan = 6,
+  // 用神状态 (7-16)
+  YongShenWangXiang = 7,
+  YongShenXiuQiu = 8,
+  YongShenHuaJin = 9,
+  YongShenHuaTui = 10,
+  YongShenKong = 11,
+  YongShenRuMu = 12,
+  YongShenFuCang = 13,
+  YongShenShouKe = 14,
+  YongShenDeSheng = 15,
+  YongShenFaDong = 16,
+  // 世应关系 (17-22)
+  ShiYingXiangSheng = 17,
+  ShiYingXiangKe = 18,
+  ShiYingBiHe = 19,
+  ShiWangYingShuai = 20,
+  ShiShuaiYingWang = 21,
+  ShiYingJuKong = 22,
+  // 动爻断语 (23-28)
+  WuDongYao = 23,
+  YiYaoDuFa = 24,
+  DuoYaoQiDong = 25,
+  LiuYaoJieDong = 26,
+  DongYaoHuaJin = 27,
+  DongYaoHuaTui = 28,
+  // 特殊状态 (29-34)
+  YongShenRiChong = 29,
+  YongShenYuePo = 30,
+  GuaFengLiuChong = 31,
+  GuaFengLiuHe = 32,
+  FanYinGua = 33,
+  FuYinGua = 34,
+  // 应期断语 (35-40)
+  YingQiZaiRi = 35,
+  YingQiZaiYue = 36,
+  YingQiZaiJi = 37,
+  YingQiZaiNian = 38,
+  YingQiDaiChong = 39,
+  YingQiDaiHe = 40,
+}
+
+/**
+ * 解卦文本
+ */
+export const JIE_GUA_TEXTS: Record<JieGuaTextType, string> = {
+  [JieGuaTextType.DaJiZongDuan]: '大吉：诸事顺遂，心想事成',
+  [JieGuaTextType.JiZongDuan]: '吉：事可成，宜进取',
+  [JieGuaTextType.XiaoJiZongDuan]: '小吉：小有所得，不宜大动',
+  [JieGuaTextType.PingZongDuan]: '平：平稳无波，守成为上',
+  [JieGuaTextType.XiaoXiongZongDuan]: '小凶：小有阻碍，谨慎行事',
+  [JieGuaTextType.XiongZongDuan]: '凶：事难成，宜退守',
+  [JieGuaTextType.DaXiongZongDuan]: '大凶：诸事不利，静待时机',
+  [JieGuaTextType.YongShenWangXiang]: '用神旺相：所求之事有望',
+  [JieGuaTextType.YongShenXiuQiu]: '用神休囚：所求之事难成',
+  [JieGuaTextType.YongShenHuaJin]: '用神动而化进：事情向好发展',
+  [JieGuaTextType.YongShenHuaTui]: '用神动而化退：事情有退步之象',
+  [JieGuaTextType.YongShenKong]: '用神逢空：所求之事虚而不实',
+  [JieGuaTextType.YongShenRuMu]: '用神入墓：事情受阻，需待时机',
+  [JieGuaTextType.YongShenFuCang]: '用神伏藏：所求之事隐而未显',
+  [JieGuaTextType.YongShenShouKe]: '用神受克：所求之事受阻',
+  [JieGuaTextType.YongShenDeSheng]: '用神得生：所求之事有贵人相助',
+  [JieGuaTextType.YongShenFaDong]: '用神发动：事情有变化',
+  [JieGuaTextType.ShiYingXiangSheng]: '世应相生：双方和谐，事易成',
+  [JieGuaTextType.ShiYingXiangKe]: '世应相克：双方有冲突',
+  [JieGuaTextType.ShiYingBiHe]: '世应比和：双方势均力敌',
+  [JieGuaTextType.ShiWangYingShuai]: '世爻旺应爻衰：我强彼弱',
+  [JieGuaTextType.ShiShuaiYingWang]: '世爻衰应爻旺：我弱彼强',
+  [JieGuaTextType.ShiYingJuKong]: '世应俱空：双方皆虚',
+  [JieGuaTextType.WuDongYao]: '无动爻：事情平稳，无大变化',
+  [JieGuaTextType.YiYaoDuFa]: '一爻独发：事情明确，吉凶易断',
+  [JieGuaTextType.DuoYaoQiDong]: '多爻齐动：事情复杂，变数较多',
+  [JieGuaTextType.LiuYaoJieDong]: '六爻皆动：大变之象，需谨慎',
+  [JieGuaTextType.DongYaoHuaJin]: '动爻化进：事情向好发展',
+  [JieGuaTextType.DongYaoHuaTui]: '动爻化退：事情有退步之象',
+  [JieGuaTextType.YongShenRiChong]: '用神逢日冲：近期有变',
+  [JieGuaTextType.YongShenYuePo]: '用神逢月破：本月不利',
+  [JieGuaTextType.GuaFengLiuChong]: '卦逢六冲：事情难成或有变',
+  [JieGuaTextType.GuaFengLiuHe]: '卦逢六合：事情顺利',
+  [JieGuaTextType.FanYinGua]: '反吟卦：事情反复',
+  [JieGuaTextType.FuYinGua]: '伏吟卦：事情停滞',
+  [JieGuaTextType.YingQiZaiRi]: '应期在日：近日可见分晓',
+  [JieGuaTextType.YingQiZaiYue]: '应期在月：本月可见分晓',
+  [JieGuaTextType.YingQiZaiJi]: '应期在季：本季可见分晓',
+  [JieGuaTextType.YingQiZaiNian]: '应期在年：年内可见分晓',
+  [JieGuaTextType.YingQiDaiChong]: '应期待冲：待冲空之日',
+  [JieGuaTextType.YingQiDaiHe]: '应期待合：待合之日',
+};

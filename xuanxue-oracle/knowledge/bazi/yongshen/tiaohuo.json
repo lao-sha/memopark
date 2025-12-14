@@ -1,0 +1,396 @@
+{
+  "调候理论": {
+    "definition": "调候是根据出生季节的寒暖燥湿，选取适当五行调节命局气候，使之达到平衡舒适的状态。",
+    "origin": "源自《穷通宝鉴》，是用神理论的重要组成部分。",
+    "importance": "调候用神决定命局的舒适度和发展潜力，尤其对寒暖季节出生者影响巨大。",
+    "principle": "春季木旺需火泄，夏季火旺需水润，秋季金旺需火暖，冬季水旺需火调。"
+  },
+  "甲木调候": {
+    "spring": {
+      "season_nature": "春季木旺，生机勃勃",
+      "primary_yongshen": "庚金",
+      "secondary_yongshen": "丁火",
+      "reason": "甲木春生旺盛，需庚金修剪成材，丁火暖局泄秀",
+      "best_combination": "庚丁并透，富贵双全",
+      "avoid": "水多木漂，土重木折",
+      "classical_quote": "甲木春生，庚金修剪，丁火吐秀，方为栋梁"
+    },
+    "summer": {
+      "season_nature": "夏季火旺，木焚火炎",
+      "primary_yongshen": "癸水",
+      "secondary_yongshen": "庚金",
+      "reason": "夏季炎热，甲木易焚，需癸水滋润，庚金劈甲",
+      "best_combination": "癸庚并透，科甲连登",
+      "avoid": "火土燥烈，木焚成灰",
+      "classical_quote": "甲木夏生，癸水为尊，庚金次之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺，木受克伐",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "癸水",
+      "reason": "秋季金旺克木，需丁火制金，癸水生木",
+      "best_combination": "丁癸并用，文武双全",
+      "avoid": "金多木折，土厚木埋",
+      "classical_quote": "甲木秋生，丁癸为用，金多则折"
+    },
+    "winter": {
+      "season_nature": "冬季水旺，木漂湿冷",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "庚金",
+      "reason": "冬季寒冷湿重，必用丁火调候暖局",
+      "best_combination": "丁火通根，庚金劈甲，水木相生",
+      "avoid": "水多木漂，金寒水冷",
+      "classical_quote": "甲木冬生，必用丁火，无丁必贫"
+    }
+  },
+  "乙木调候": {
+    "spring": {
+      "season_nature": "春季木旺，花草茂盛",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "癸水",
+      "reason": "乙木春生旺盛，需丙火暖局，癸水滋润",
+      "best_combination": "丙癸并透，富贵有准",
+      "avoid": "庚金克伐，土重埋根",
+      "classical_quote": "乙木春生，丙火阳和，癸水滋润"
+    },
+    "summer": {
+      "season_nature": "夏季火旺，木焚易枯",
+      "primary_yongshen": "癸水",
+      "secondary_yongshen": "丙火",
+      "reason": "夏季炎热，乙木易枯，必用癸水滋润",
+      "best_combination": "癸水滋润，丙火暖局，木火通明",
+      "avoid": "火燥土焦，木枯成灰",
+      "classical_quote": "乙木夏生，癸水为先，丙火次之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺，木受克伐",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "癸水",
+      "reason": "秋季金旺，乙木柔弱，需丙火制金暖局",
+      "best_combination": "丙火暖局，癸水润局",
+      "avoid": "金重木折，土厚埋根",
+      "classical_quote": "乙木秋生，丙火为要，癸水为辅"
+    },
+    "winter": {
+      "season_nature": "冬季水旺，木湿寒冷",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "戊土",
+      "reason": "冬季寒湿，乙木冻僵，必用丙火调候",
+      "best_combination": "丙火暖局，戊土培根",
+      "avoid": "水多木漂，金寒水冷",
+      "classical_quote": "乙木冬生，丙火为尊，无丙则寒"
+    }
+  },
+  "丙火调候": {
+    "spring": {
+      "season_nature": "春季木旺生火，火势渐强",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "戊土",
+      "reason": "春季丙火渐旺，需壬水调节，戊土蓄水",
+      "best_combination": "壬戊并透，富贵有准",
+      "avoid": "木多火炎，土厚晦光",
+      "classical_quote": "丙火春生，壬水为用，戊土配之"
+    },
+    "summer": {
+      "season_nature": "夏季火旺炎热，烈日炎炎",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "庚金",
+      "reason": "夏季火旺极热，必用壬水制火，庚金生水",
+      "best_combination": "壬庚并透，科甲名扬",
+      "avoid": "火旺无制，燥烈伤身",
+      "classical_quote": "丙火夏生，专用壬水，庚金佐之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺泄火，火势减弱",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "甲木",
+      "reason": "秋季金旺泄火，需壬水映照，甲木生火",
+      "best_combination": "壬甲并透，文章盖世",
+      "avoid": "金多火灭，土厚晦光",
+      "classical_quote": "丙火秋生，壬水为先，甲木次之"
+    },
+    "winter": {
+      "season_nature": "冬季水旺克火，火势微弱",
+      "primary_yongshen": "甲木",
+      "secondary_yongshen": "戊土",
+      "reason": "冬季水旺火弱，需甲木生火，戊土制水",
+      "best_combination": "甲戊并透，科甲有准",
+      "avoid": "水多火灭，寒湿无光",
+      "classical_quote": "丙火冬生，甲木为要，戊土制水"
+    }
+  },
+  "丁火调候": {
+    "spring": {
+      "season_nature": "春季木旺生火，火势渐旺",
+      "primary_yongshen": "甲木",
+      "secondary_yongshen": "庚金",
+      "reason": "春季丁火得木生，需甲木引丁，庚金劈甲",
+      "best_combination": "甲庚并透，科甲连登",
+      "avoid": "水湿木漂，火灭无光",
+      "classical_quote": "丁火春生，甲木为先，庚金劈甲"
+    },
+    "summer": {
+      "season_nature": "夏季火旺，丁火虽阴犹旺",
+      "primary_yongshen": "甲木",
+      "secondary_yongshen": "癸水",
+      "reason": "夏季火旺，丁火需甲木引生，癸水调候",
+      "best_combination": "甲癸并透，富贵有准",
+      "avoid": "火土燥烈，金水皆伤",
+      "classical_quote": "丁火夏生，甲木引丁，癸水润局"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺，丁火渐弱",
+      "primary_yongshen": "甲木",
+      "secondary_yongshen": "庚金",
+      "reason": "秋季金旺火弱，必用甲木生火，庚金劈甲",
+      "best_combination": "甲庚并透，科甲名扬",
+      "avoid": "金多火灭，土厚晦光",
+      "classical_quote": "丁火秋生，甲木为尊，庚金劈甲"
+    },
+    "winter": {
+      "season_nature": "冬季水旺，丁火微弱",
+      "primary_yongshen": "甲木",
+      "secondary_yongshen": "庚金",
+      "reason": "冬季寒湿，丁火微弱，必用甲木生火",
+      "best_combination": "甲庚并透，木火通明",
+      "avoid": "水多火灭，金寒水冷",
+      "classical_quote": "丁火冬生，非甲不成，非庚不发"
+    }
+  },
+  "戊土调候": {
+    "spring": {
+      "season_nature": "春季木旺克土，土气受伤",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "甲木",
+      "reason": "春季木旺克土，需丙火暖土生身，甲木疏土",
+      "best_combination": "丙甲并透，富贵双全",
+      "avoid": "木多土崩，水湿土寒",
+      "classical_quote": "戊土春生，丙火为先，甲木疏土"
+    },
+    "summer": {
+      "season_nature": "夏季火旺生土，土燥火炎",
+      "primary_yongshen": "癸水",
+      "secondary_yongshen": "甲木",
+      "reason": "夏季火旺土燥，必用癸水润土，甲木疏土",
+      "best_combination": "癸甲并透，科甲连登",
+      "avoid": "火燥土裂，木焚成灰",
+      "classical_quote": "戊土夏生，专用癸水，甲木次之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺泄土，土气减弱",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "癸水",
+      "reason": "秋季金旺泄土，需丙火暖土，癸水润土",
+      "best_combination": "丙癸并透，富贵有准",
+      "avoid": "金多土虚，水多土流",
+      "classical_quote": "戊土秋生，丙火为要，癸水为辅"
+    },
+    "winter": {
+      "season_nature": "冬季水旺克土，土寒湿冷",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "甲木",
+      "reason": "冬季寒湿，戊土冻结，必用丙火调候",
+      "best_combination": "丙甲并透，富贵有准",
+      "avoid": "水多土流，金寒水冷",
+      "classical_quote": "戊土冬生，非丙不暖，非甲不发"
+    }
+  },
+  "己土调候": {
+    "spring": {
+      "season_nature": "春季木旺克土，土气受伤",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "癸水",
+      "reason": "春季木旺克己土，需丙火暖土，癸水润土",
+      "best_combination": "丙癸并透，富贵有准",
+      "avoid": "木多土崩，水湿土流",
+      "classical_quote": "己土春生，丙火为要，癸水为辅"
+    },
+    "summer": {
+      "season_nature": "夏季火旺生土，土燥火炎",
+      "primary_yongshen": "癸水",
+      "secondary_yongshen": "丙火",
+      "reason": "夏季火旺土燥，必用癸水润土",
+      "best_combination": "癸水润土，丙火暖局",
+      "avoid": "火燥土裂，金埋无用",
+      "classical_quote": "己土夏生，专用癸水，丙火佐之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺泄土，土气减弱",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "癸水",
+      "reason": "秋季金旺泄土，需丙火暖土，癸水润土",
+      "best_combination": "丙癸并透，富贵双全",
+      "avoid": "金多土虚，水多土流",
+      "classical_quote": "己土秋生，丙火为先，癸水次之"
+    },
+    "winter": {
+      "season_nature": "冬季水旺克土，土寒湿冷",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "甲木",
+      "reason": "冬季寒湿，己土冻结，必用丙火调候",
+      "best_combination": "丙火暖局，甲木疏土",
+      "avoid": "水多土流，金寒水冷",
+      "classical_quote": "己土冬生，丙火为尊，甲木疏土"
+    }
+  },
+  "庚金调候": {
+    "spring": {
+      "season_nature": "春季木旺金囚，金气受制",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "甲木",
+      "reason": "春季木旺金弱，需丁火锻炼，甲木配丁",
+      "best_combination": "丁甲并透，科甲连登",
+      "avoid": "木多金缺，火弱金寒",
+      "classical_quote": "庚金春生，丁火锻炼，甲木引丁"
+    },
+    "summer": {
+      "season_nature": "夏季火旺克金，金气受伤",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "甲木",
+      "reason": "夏季火旺，庚金受克，必用壬水淬炼，甲木引丁",
+      "best_combination": "壬甲并透，富贵双全",
+      "avoid": "火旺金熔，土厚金埋",
+      "classical_quote": "庚金夏生，专用壬水，甲木配丁"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺，庚金当令",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "甲木",
+      "reason": "秋季金旺，需丁火锻炼成器，甲木引丁",
+      "best_combination": "丁甲并透，科甲名扬",
+      "avoid": "金多无火，顽金无用",
+      "classical_quote": "庚金秋生，丁火锻炼，甲木配丁"
+    },
+    "winter": {
+      "season_nature": "冬季水旺泄金，金寒水冷",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "丁火",
+      "reason": "冬季寒冷，庚金冻结，必用丙火调候暖局",
+      "best_combination": "丙丁并透，富贵有准",
+      "avoid": "水多金沉，土厚金埋",
+      "classical_quote": "庚金冬生，丙火为尊，丁火次之"
+    }
+  },
+  "辛金调候": {
+    "spring": {
+      "season_nature": "春季木旺金囚，金气受制",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "甲木",
+      "reason": "春季木旺，辛金柔弱，需壬水洗清，甲木配合",
+      "best_combination": "壬水洗清，辛金莹澈",
+      "avoid": "木多金缺，土厚金埋",
+      "classical_quote": "辛金春生，壬水淘洗，清澈莹润"
+    },
+    "summer": {
+      "season_nature": "夏季火旺克金，金易熔化",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "己土",
+      "reason": "夏季火旺，辛金受克，必用壬水洗炼，己土生金",
+      "best_combination": "壬水洗炼，己土生身",
+      "avoid": "火旺金熔，土厚金埋",
+      "classical_quote": "辛金夏生，壬水为先，己土次之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺，辛金得令",
+      "primary_yongshen": "壬水",
+      "secondary_yongshen": "丁火",
+      "reason": "秋季金旺，需壬水淘洗，丁火暖局",
+      "best_combination": "壬水淘洗，丁火暖局",
+      "avoid": "金多埋火，土厚金埋",
+      "classical_quote": "辛金秋生，壬水淘洗，丁火暖局"
+    },
+    "winter": {
+      "season_nature": "冬季水旺泄金，金寒水冷",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "壬水",
+      "reason": "冬季寒冷，辛金冻结，必用丁火调候暖局",
+      "best_combination": "丁火暖局，壬水配合",
+      "avoid": "水多金沉，金寒水冷",
+      "classical_quote": "辛金冬生，丁火为尊，壬水配之"
+    }
+  },
+  "壬水调候": {
+    "spring": {
+      "season_nature": "春季木旺泄水，水势减弱",
+      "primary_yongshen": "戊土",
+      "secondary_yongshen": "庚金",
+      "reason": "春季木旺泄水，需戊土堤坝制水，庚金生水",
+      "best_combination": "戊土制水，庚金生水",
+      "avoid": "木多水缩，火旺水干",
+      "classical_quote": "壬水春生，戊土为堤，庚金为源"
+    },
+    "summer": {
+      "season_nature": "夏季火旺克水，水势减弱",
+      "primary_yongshen": "庚金",
+      "secondary_yongshen": "辛金",
+      "reason": "夏季火旺，壬水受克，需庚辛金生水",
+      "best_combination": "庚辛并透，金水相生",
+      "avoid": "火旺水干，土厚水浊",
+      "classical_quote": "壬水夏生，专用庚金，辛金次之"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺生水，水势渐强",
+      "primary_yongshen": "丁火",
+      "secondary_yongshen": "甲木",
+      "reason": "秋季金水旺，需丁火暖局，甲木配丁",
+      "best_combination": "丁甲并透，水木相生",
+      "avoid": "金多水浊，水旺木漂",
+      "classical_quote": "壬水秋生，丁火为要，甲木配之"
+    },
+    "winter": {
+      "season_nature": "冬季水旺，壬水当令",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "戊土",
+      "reason": "冬季水旺寒冷，必用丙火调候，戊土制水",
+      "best_combination": "丙戊并透，水火既济",
+      "avoid": "水旺泛滥，金寒水冷",
+      "classical_quote": "壬水冬生，非丙不暖，非戊不制"
+    }
+  },
+  "癸水调候": {
+    "spring": {
+      "season_nature": "春季木旺泄水，水势减弱",
+      "primary_yongshen": "庚金",
+      "secondary_yongshen": "辛金",
+      "reason": "春季木旺泄水，需庚辛金生水",
+      "best_combination": "庚辛并透，金水相生",
+      "avoid": "木多水缩，土厚水浊",
+      "classical_quote": "癸水春生，庚金为先，辛金次之"
+    },
+    "summer": {
+      "season_nature": "夏季火旺克水，水易干涸",
+      "primary_yongshen": "庚金",
+      "secondary_yongshen": "辛金",
+      "reason": "夏季火旺，癸水受克，必用庚辛金生水",
+      "best_combination": "庚辛并透，金水源源",
+      "avoid": "火旺水干，土厚水浊",
+      "classical_quote": "癸水夏生，专用庚辛，金水相生"
+    },
+    "autumn": {
+      "season_nature": "秋季金旺生水，水势渐强",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "辛金",
+      "reason": "秋季金水旺，需丙火暖局，辛金生水",
+      "best_combination": "丙火暖局，辛金生水",
+      "avoid": "金多水浊，水旺木漂",
+      "classical_quote": "癸水秋生，丙火为要，辛金为辅"
+    },
+    "winter": {
+      "season_nature": "冬季水旺，癸水当令",
+      "primary_yongshen": "丙火",
+      "secondary_yongshen": "戊土",
+      "reason": "冬季水旺寒冷，必用丙火调候",
+      "best_combination": "丙火暖局，戊土制水",
+      "avoid": "水旺泛滥，金寒水冷",
+      "classical_quote": "癸水冬生，丙火为尊，戊土制水"
+    }
+  },
+  "调候原则总结": {
+    "寒需暖": "冬季及水旺金寒的命局，必用火调候",
+    "暖需润": "夏季及火旺土燥的命局，必用水润局",
+    "燥需润": "土燥火炎的命局，必用水润土",
+    "湿需燥": "水多湿重的命局，必用火土燥湿",
+    "通关原则": "调候用神与格局用神并用，相辅相成",
+    "优先级": "调候用神优先于其他用神，无调候则命局不舒"
+  }
+}

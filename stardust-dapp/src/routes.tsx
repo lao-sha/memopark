@@ -107,19 +107,24 @@ export const routes: RouteItem[] = [
   { match: h => h === '#/divination/market' || h.startsWith('#/divination/market?'), component: lazy(() => import('./features/divination/DivinationMarketPage')) },  // 通用服务市场
   { match: h => h === '#/divination/nft' || h.startsWith('#/divination/nft?'), component: lazy(() => import('./features/divination/DivinationNftMarketPage')) },  // 通用 NFT 市场
   { match: h => h === '#/divination/my-nft', component: lazy(() => import('./features/divination/MyDivinationNftPage')) },  // 我的占卜 NFT
+  { match: h => h.startsWith('#/divination/interpretation/'), component: lazy(() => import('./features/divination/InterpretationResultPage')) },  // AI解读结果页面
 
   // 🆕 八字命理模块
   { match: h => h === '#/bazi', component: lazy(() => import('./features/bazi/BaziPage')) },  // 八字排盘页面
+  { match: h => h === '#/bazi/list', component: lazy(() => import('./features/bazi/BaziListPage')) },  // 我的八字列表
   { match: h => h.startsWith('#/bazi/'), component: lazy(() => import('./features/bazi/BaziDetailPage')) },  // 八字详情页面
 
   // 🆕 六爻占卜模块
   { match: h => h === '#/liuyao', component: lazy(() => import('./features/liuyao/LiuyaoPage')) },  // 六爻摇卦页面
+  { match: h => h.startsWith('#/liuyao/'), component: lazy(() => import('./features/liuyao/LiuyaoDetailPage')) },  // 六爻详情页面
 
   // 🆕 紫微斗数模块
   { match: h => h === '#/ziwei', component: lazy(() => import('./features/ziwei/ZiweiPage')) },  // 紫微斗数排盘页面
+  { match: h => h.startsWith('#/ziwei/interpretation/'), component: lazy(() => import('./features/ziwei/ZiweiInterpretationPage')) },  // 紫微斗数解卦页面
 
   // 🆕 奇门遁甲模块
   { match: h => h === '#/qimen', component: lazy(() => import('./features/qimen/QimenPage')) },  // 奇门遁甲排盘页面
+  { match: h => h.startsWith('#/qimen/detail'), component: lazy(() => import('./features/qimen/QimenDetailPage')) },  // 奇门遁甲详细解卦页面
 
   // 🆕 小六壬模块
   { match: h => h === '#/xiaoliuren', component: lazy(() => import('./features/xiaoliuren/XiaoLiuRenPage')) },  // 小六壬排盘页面

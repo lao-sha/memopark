@@ -1,11 +1,10 @@
 /**
- * 六爻占卜页面
+ * 六爻占卜页面（链端模式）
  *
  * 功能：
- * - 铜钱摇卦（三枚铜钱六次）
- * - 手动输入卦象
- * - 显示六爻排盘
- * - 六亲、六神、世应分析
+ * - 随机起卦（链上随机数）
+ * - 时间起卦（根据年月日时）
+ * - 直接跳转到详情页查看解盘结果
  */
 
 import React, { useState, useCallback } from 'react';
@@ -17,9 +16,8 @@ import {
   Divider,
   Tag,
   message,
-  Result,
-  Steps,
-  Switch,
+  Alert,
+  Spin,
 } from 'antd';
 import {
   ThunderboltOutlined,
@@ -27,169 +25,46 @@ import {
   ReloadOutlined,
   ArrowRightOutlined,
   CloudOutlined,
-  DesktopOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 
-import {
-  YaoType,
-  YAO_SYMBOLS,
-  YAO_TYPE_NAMES,
-  LIU_QIN_SHORT,
-  LIU_SHEN_SHORT,
-  DI_ZHI_NAMES,
-  WU_XING_NAMES,
-  WU_XING_COLORS,
-  GUA_NAMES,
-  calculateYaoFromCoins,
-  isDongYao,
-  type CoinResult,
-} from '../../types/liuyao';
+import { DI_ZHI_NAMES } from '../../types/liuyao';
 import * as liuyaoService from '../../services/liuyaoService';
 import { getGanZhiFromDate } from '../../services/liuyaoService';
 
 const { Title, Text, Paragraph } = Typography;
 
 /**
- * 铜钱组件
- */
-const CoinDisplay: React.FC<{ isYang: boolean; onClick?: () => void }> = ({ isYang, onClick }) => (
-  <div
-    className="coin"
-    onClick={onClick}
-    style={{
-      width: 48,
-      height: 48,
-      borderRadius: '50%',
-      backgroundColor: isYang ? '#faad14' : '#d9d9d9',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: onClick ? 'pointer' : 'default',
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: isYang ? '#fff' : '#666',
-      border: '2px solid',
-      borderColor: isYang ? '#d48806' : '#bfbfbf',
-      transition: 'all 0.3s',
-    }}
-  >
-    {isYang ? '字' : '背'}
-  </div>
-);
-
-/**
- * 爻符号显示
- */
-const YaoDisplay: React.FC<{
-  yaoType: YaoType;
-  position: number;
-  diZhi?: string;
-  wuXing?: string;
-  liuQin?: string;
-  liuShen?: string;
-  isShi?: boolean;
-  isYing?: boolean;
-}> = ({ yaoType, position, diZhi, wuXing, liuQin, liuShen, isShi, isYing }) => (
-  <div
-    className="yao-row"
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 8,
-      padding: '8px 0',
-      borderBottom: '1px solid #f0f0f0',
-    }}
-  >
-    <Text type="secondary" style={{ width: 24 }}>{position}爻</Text>
-    <div style={{ flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: 18 }}>
-      {YAO_SYMBOLS[yaoType]}
-    </div>
-    {diZhi && <Tag>{diZhi}</Tag>}
-    {wuXing && <Tag color={WU_XING_COLORS[parseInt(wuXing) || 0]}>{wuXing}</Tag>}
-    {liuQin && <Tag color="blue">{liuQin}</Tag>}
-    {liuShen && <Tag color="purple">{liuShen}</Tag>}
-    {isShi && <Tag color="red">世</Tag>}
-    {isYing && <Tag color="green">应</Tag>}
-    {isDongYao(yaoType) && <Tag color="orange">动</Tag>}
-  </div>
-);
-
-/**
  * 六爻占卜页面
  */
 const LiuyaoPage: React.FC = () => {
   // 状态
-  const [step, setStep] = useState(0); // 当前步骤 (0-5 对应六爻)
-  const [coinResults, setCoinResults] = useState<CoinResult[]>([]);
-  const [currentCoins, setCurrentCoins] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [shaking, setShaking] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [useChain, setUseChain] = useState(false); // 是否使用链端
   const [chainGuaId, setChainGuaId] = useState<number | null>(null); // 链端卦象ID
 
   // 时间起卦相关状态
-  const [divinationMethod, setDivinationMethod] = useState<'coin' | 'time' | 'random' | 'number'>('coin'); // 起卦方法
+  const [divinationMethod, setDivinationMethod] = useState<'time' | 'random'>('random'); // 起卦方法
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // 选择的日期
   const [selectedHour, setSelectedHour] = useState<number>(0); // 选择的时辰
 
   /**
-   * 摇铜钱（本地模式）
-   */
-  const handleShake = useCallback(async () => {
-    if (shaking) return;
-
-    setShaking(true);
-
-    // 模拟摇动动画
-    for (let i = 0; i < 5; i++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setCurrentCoins([
-        Math.random() > 0.5,
-        Math.random() > 0.5,
-        Math.random() > 0.5,
-      ]);
-    }
-
-    // 最终结果
-    const finalCoins: [boolean, boolean, boolean] = [
-      Math.random() > 0.5,
-      Math.random() > 0.5,
-      Math.random() > 0.5,
-    ];
-    setCurrentCoins(finalCoins);
-
-    const yaoType = calculateYaoFromCoins(finalCoins);
-    const newResult: CoinResult = {
-      yaoIndex: step + 1,
-      coins: finalCoins,
-      yaoType,
-    };
-
-    setCoinResults(prev => [...prev, newResult]);
-    setShaking(false);
-
-    // 检查是否完成
-    if (step >= 5) {
-      setCompleted(true);
-      message.success('卦象已成，可查看排盘结果');
-    } else {
-      setStep(step + 1);
-    }
-  }, [step, shaking]);
-
-  /**
    * 链端随机起卦
    */
-  const handleChainDivine = useCallback(async () => {
+  const handleRandomDivine = useCallback(async () => {
     setShaking(true);
     try {
       const guaId = await liuyaoService.divineRandom();
       setChainGuaId(guaId);
       setCompleted(true);
-      message.success(`链端起卦成功，卦象ID: ${guaId}`);
+      message.success(`起卦成功！卦象ID: ${guaId}`);
+
+      // 等待2秒，让区块链数据确认
+      console.log('[LiuyaoPage] 等待区块链数据确认...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } catch (error: any) {
-      console.error('链端起卦失败:', error);
-      message.error(`链端起卦失败: ${error.message || '请检查钱包连接'}`);
+      console.error('[LiuyaoPage] 随机起卦失败:', error);
+      message.error(`起卦失败: ${error.message || '请检查钱包连接'}`);
     } finally {
       setShaking(false);
     }
@@ -229,9 +104,13 @@ const LiuyaoPage: React.FC = () => {
 
       setChainGuaId(guaId);
       setCompleted(true);
-      message.success(`时间起卦成功，卦象ID: ${guaId}`);
+      message.success(`时间起卦成功！卦象ID: ${guaId}`);
+
+      // 等待2秒，让区块链数据确认
+      console.log('[LiuyaoPage] 等待区块链数据确认...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } catch (error: any) {
-      console.error('时间起卦失败:', error);
+      console.error('[LiuyaoPage] 时间起卦失败:', error);
       message.error(`时间起卦失败: ${error.message || '请检查钱包连接'}`);
     } finally {
       setShaking(false);
@@ -242,270 +121,193 @@ const LiuyaoPage: React.FC = () => {
    * 重新开始
    */
   const handleReset = useCallback(() => {
-    setStep(0);
-    setCoinResults([]);
-    setCurrentCoins([true, true, true]);
     setCompleted(false);
     setChainGuaId(null);
-    setDivinationMethod('coin');
+    setDivinationMethod('random');
     setSelectedDate(new Date());
     setSelectedHour(0);
   }, []);
 
   /**
-   * 渲染摇卦界面
+   * 查看详情
    */
-  const renderShakeInterface = () => (
-    <Card className="shake-card">
-      <Title level={4} className="page-title">
-        <ThunderboltOutlined /> 六爻占卜 · 摇卦
-      </Title>
-      <Paragraph type="secondary" className="page-subtitle">
-        心中默念所问之事，点击摇卦按钮
-      </Paragraph>
+  const handleViewDetail = useCallback(() => {
+    if (chainGuaId) {
+      window.location.hash = `#/liuyao/${chainGuaId}`;
+    }
+  }, [chainGuaId]);
 
-      {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Switch
-          checked={useChain}
-          onChange={setUseChain}
-          checkedChildren={<CloudOutlined />}
-          unCheckedChildren={<DesktopOutlined />}
-        />
-        <Text type="secondary">
-          {useChain ? '链端起卦（结果上链存储）' : '本地起卦（快速预览）'}
-        </Text>
-      </div>
+  return (
+    <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+      {/* 页面标题 */}
+      <Card>
+        <Title level={4} style={{ margin: 0 }}>
+          <ThunderboltOutlined /> 六爻占卜
+        </Title>
+        <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
+          心中默念所问之事，选择起卦方式
+        </Paragraph>
+      </Card>
 
-      {/* 起卦方法选择（仅链端模式） */}
-      {useChain && (
-        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fafafa', borderRadius: 4 }}>
-          <Text strong style={{ display: 'block', marginBottom: 8 }}>起卦方法：</Text>
-          <Space wrap>
+      {/* 起卦方式选择 */}
+      {!completed && (
+        <Card style={{ marginTop: 16 }}>
+          <Title level={5}>选择起卦方式</Title>
+          <Space direction="vertical" style={{ width: '100%' }}>
             <Button
               type={divinationMethod === 'random' ? 'primary' : 'default'}
+              size="large"
+              block
+              icon={<CloudOutlined />}
               onClick={() => setDivinationMethod('random')}
-              size="small"
             >
               随机起卦
             </Button>
             <Button
               type={divinationMethod === 'time' ? 'primary' : 'default'}
+              size="large"
+              block
+              icon={<ClockCircleOutlined />}
               onClick={() => setDivinationMethod('time')}
-              size="small"
             >
               时间起卦
             </Button>
           </Space>
-        </div>
-      )}
 
-      {/* 时间起卦 - 时间选择器 */}
-      {useChain && divinationMethod === 'time' && (
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div>
-              <Text strong>选择日期和时辰：</Text>
+          {/* 时间起卦 - 时间选择器 */}
+          {divinationMethod === 'time' && (
+            <>
+              <Divider />
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <div>
+                  <Text strong>选择日期：</Text>
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="date"
+                      value={selectedDate.toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const newDate = new Date(e.target.value);
+                        setSelectedDate(newDate);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: 8,
+                        border: '1px solid #d9d9d9',
+                        borderRadius: 4,
+                        fontSize: 14,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>选择时辰：</Text>
+                  <div style={{ marginTop: 8 }}>
+                    <select
+                      value={selectedHour}
+                      onChange={(e) => setSelectedHour(parseInt(e.target.value))}
+                      style={{
+                        width: '100%',
+                        padding: 8,
+                        border: '1px solid #d9d9d9',
+                        borderRadius: 4,
+                        fontSize: 14,
+                      }}
+                    >
+                      {DI_ZHI_NAMES.map((name, idx) => (
+                        <option key={idx} value={idx}>
+                          {name}时 ({[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22][idx]}-
+                          {[2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24][idx]}点)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </Space>
+            </>
+          )}
+
+          <Divider />
+
+          {/* 起卦按钮 */}
+          {shaking ? (
+            <div style={{ textAlign: 'center', padding: 24 }}>
+              <Spin size="large" tip="正在起卦中..." />
             </div>
-            <div>
-              <Text type="secondary">日期：</Text>
-              <div style={{ marginTop: 8 }}>
-                <input
-                  type="date"
-                  value={selectedDate.toISOString().split('T')[0]}
-                  onChange={(e) => {
-                    const newDate = new Date(e.target.value);
-                    setSelectedDate(newDate);
-                  }}
-                  style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 4 }}
-                />
-              </div>
-            </div>
-            <div>
-              <Text type="secondary">时辰：</Text>
-              <div style={{ marginTop: 8 }}>
-                <select
-                  value={selectedHour}
-                  onChange={(e) => setSelectedHour(parseInt(e.target.value))}
-                  style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 4 }}
-                >
-                  {DI_ZHI_NAMES.map((name, idx) => (
-                    <option key={idx} value={idx}>
-                      {name}时 ({[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22][idx]}-{[2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24][idx]}点)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </Space>
-        </Card>
-      )}
-
-      <Divider />
-
-      {/* 进度步骤 */}
-      <Steps
-        current={step}
-        size="small"
-        items={[
-          { title: '初爻' },
-          { title: '二爻' },
-          { title: '三爻' },
-          { title: '四爻' },
-          { title: '五爻' },
-          { title: '上爻' },
-        ]}
-        style={{ marginBottom: 24 }}
-      />
-
-      {/* 铜钱显示 */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 24 }}>
-        <CoinDisplay isYang={currentCoins[0]} />
-        <CoinDisplay isYang={currentCoins[1]} />
-        <CoinDisplay isYang={currentCoins[2]} />
-      </div>
-
-      {/* 当前爻信息 */}
-      {!completed && (
-        <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <Text>第 {step + 1} 爻（{['初爻', '二爻', '三爻', '四爻', '五爻', '上爻'][step]}）</Text>
-        </div>
-      )}
-
-      {/* 已摇结果 */}
-      {/* 本地模式：已摇卦爻显示 */}
-      {!useChain && coinResults.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Text strong>已摇卦爻：</Text>
-          <div style={{ marginTop: 8 }}>
-            {coinResults.map((result, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <Text type="secondary">{idx + 1}爻:</Text>
-                <span style={{ fontFamily: 'monospace' }}>{YAO_SYMBOLS[result.yaoType]}</span>
-                <Tag>{YAO_TYPE_NAMES[result.yaoType]}</Tag>
-                {isDongYao(result.yaoType) && <Tag color="orange">动爻</Tag>}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* 链端模式：卦象ID显示 */}
-      {useChain && chainGuaId !== null && (
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Text strong>链端卦象ID：</Text>
-          <Tag color="blue" style={{ marginLeft: 8, fontSize: 14 }}>{chainGuaId}</Tag>
-        </Card>
-      )}
-
-      {/* 操作按钮 */}
-      <Space direction="vertical" style={{ width: '100%' }}>
-        {!completed ? (
-          useChain ? (
-            divinationMethod === 'time' ? (
-              <Button
-                type="primary"
-                size="large"
-                block
-                onClick={handleTimeMethodDivine}
-                loading={shaking}
-                icon={<CloudOutlined />}
-              >
-                {shaking ? '时间起卦中...' : '时间起卦'}
-              </Button>
-            ) : (
-              <Button
-                type="primary"
-                size="large"
-                block
-                onClick={handleChainDivine}
-                loading={shaking}
-                icon={<CloudOutlined />}
-              >
-                {shaking ? '链端起卦中...' : '链端随机起卦'}
-              </Button>
-            )
           ) : (
             <Button
               type="primary"
               size="large"
               block
-              onClick={handleShake}
-              loading={shaking}
-              icon={<ThunderboltOutlined />}
+              icon={divinationMethod === 'random' ? <CloudOutlined /> : <ClockCircleOutlined />}
+              onClick={divinationMethod === 'random' ? handleRandomDivine : handleTimeMethodDivine}
             >
-              {shaking ? '摇卦中...' : '摇卦'}
+              {divinationMethod === 'random' ? '开始起卦' : '时间起卦'}
             </Button>
-          )
-        ) : (
-          <Button
-            type="primary"
-            size="large"
-            block
-            onClick={() => {
-              if (useChain && chainGuaId) {
-                message.info(`查看链端卦象 ${chainGuaId} 的排盘结果...`);
-              } else {
-                message.info('排盘功能开发中...');
-              }
-            }}
-            icon={<ArrowRightOutlined />}
-          >
-            查看排盘结果
-          </Button>
-        )}
-        <Button block onClick={handleReset} icon={<ReloadOutlined />}>
-          重新摇卦
-        </Button>
-      </Space>
-    </Card>
-  );
+          )}
 
-  /**
-   * 渲染卦象显示
-   */
-  const renderGuaDisplay = () => {
-    if (coinResults.length < 6) return null;
+          <Alert
+            message="温馨提示"
+            description="起卦结果将上链保存，可永久查询。起卦需要支付少量 Gas 费用。"
+            type="info"
+            showIcon
+            style={{ marginTop: 16 }}
+          />
+        </Card>
+      )}
 
-    return (
-      <Card className="gua-display-card" style={{ marginTop: 16 }}>
-        <Title level={5}>卦象</Title>
-        <div style={{ display: 'flex', flexDirection: 'column-reverse' }}>
-          {coinResults.map((result, idx) => (
-            <YaoDisplay
-              key={idx}
-              yaoType={result.yaoType}
-              position={idx + 1}
-            />
-          ))}
-        </div>
-      </Card>
-    );
-  };
+      {/* 起卦完成 */}
+      {completed && chainGuaId !== null && (
+        <Card style={{ marginTop: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <CloudOutlined style={{ fontSize: 64, color: '#52c41a', marginBottom: 16 }} />
+            <Title level={4}>起卦成功！</Title>
+            <Paragraph type="secondary">
+              您的卦象已生成，卦象 ID: <Tag color="blue">{chainGuaId}</Tag>
+            </Paragraph>
 
-  return (
-    <div className="liuyao-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
-      {renderShakeInterface()}
-      {completed && renderGuaDisplay()}
+            <Space direction="vertical" style={{ width: '100%', marginTop: 24 }}>
+              <Button
+                type="primary"
+                size="large"
+                block
+                icon={<ArrowRightOutlined />}
+                onClick={handleViewDetail}
+              >
+                查看解盘结果
+              </Button>
+              <Button block icon={<ReloadOutlined />} onClick={handleReset}>
+                重新起卦
+              </Button>
+            </Space>
+          </div>
+        </Card>
+      )}
 
-      {/* 说明卡片 */}
+      {/* 六爻占卜说明 */}
       <Card style={{ marginTop: 16 }}>
         <Title level={5}>六爻占卜说明</Title>
         <Space direction="vertical" size={8}>
           <div>
-            <Text strong>摇卦方法：</Text>
-            <Text type="secondary">心中默念所问之事，点击摇卦六次得到完整卦象</Text>
+            <Text strong>随机起卦：</Text>
+            <Text type="secondary">使用链上随机数生成卦象，简单快速</Text>
           </div>
           <div>
-            <Text strong>铜钱规则：</Text>
+            <Text strong>时间起卦：</Text>
             <Text type="secondary">
-              字(阳)=3分，背(阴)=2分。
-              6分=老阴(动)，7分=少阳，8分=少阴，9分=老阳(动)
+              根据指定的年月日时信息起卦，适合特定时间占问
             </Text>
           </div>
           <div>
-            <Text strong>动爻变化：</Text>
-            <Text type="secondary">老阳变阴，老阴变阳，形成变卦</Text>
+            <Text strong>解盘功能：</Text>
+            <Text type="secondary">
+              起卦后可查看完整的六爻排盘、用神分析、吉凶判断、应期预测等
+            </Text>
+          </div>
+          <div>
+            <Text strong>链上存储：</Text>
+            <Text type="secondary">
+              所有卦象数据上链保存，随时可查询历史记录
+            </Text>
           </div>
         </Space>
       </Card>

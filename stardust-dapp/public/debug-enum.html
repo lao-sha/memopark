@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>八字枚举映射诊断工具</title>
+  <style>
+    body {
+      font-family: 'Microsoft YaHei', sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #1890ff;
+      border-bottom: 2px solid #1890ff;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: white;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .test-case {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .pass {
+      background: #f6ffed;
+      border-color: #b7eb8f;
+    }
+    .fail {
+      background: #fff2e8;
+      border-color: #ffbb96;
+    }
+    .result {
+      font-weight: bold;
+      margin-top: 5px;
+    }
+    code {
+      background: #f5f5f5;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+    }
+    .info {
+      background: #e6f7ff;
+      border: 1px solid #91d5ff;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .warning {
+      background: #fffbe6;
+      border: 1px solid #ffe58f;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .success {
+      background: #f6ffed;
+      border: 1px solid #b7eb8f;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    button {
+      background: #1890ff;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #40a9ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 八字枚举映射诊断工具</h1>
+
+  <div class="info">
+    <strong>📋 使用说明：</strong><br>
+    1. 点击下方按钮运行测试<br>
+    2. 检查所有测试是否通过（绿色背景）<br>
+    3. 如果有失败（橙色背景），请截图反馈<br>
+    4. 最后一个测试会检查你的实际页面数据
+  </div>
+
+  <div class="test-section">
+    <h2>1️⃣ 枚举映射逻辑测试</h2>
+    <button onclick="runMappingTests()">运行映射测试</button>
+    <div id="mapping-results"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2️⃣ 数据格式测试</h2>
+    <button onclick="runFormatTests()">运行格式测试</button>
+    <div id="format-results"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3️⃣ 浏览器缓存检测</h2>
+    <button onclick="checkCache()">检测缓存</button>
+    <div id="cache-results"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>4️⃣ 实际数据测试</h2>
+    <div class="warning">
+      <strong>⚠️ 注意：</strong>请确保已经打开了 <a href="http://localhost:5173/#/bazi/1" target="_blank">八字详情页面</a>
+    </div>
+    <button onclick="fetchRealData()">获取实际数据</button>
+    <div id="real-results"></div>
+  </div>
+
+  <script>
+    // 枚举映射表（与代码中一致）
+    const nameMap = {
+      // 格局（8种）
+      'ZhengGe': '正格',
+      'CongQiangGe': '从强格',
+      'CongRuoGe': '从弱格',
+      'CongCaiGe': '从财格',
+      'CongGuanGe': '从官格',
+      'CongErGe': '从儿格',
+      'HuaQiGe': '化气格',
+      'TeShuge': '特殊格局',
+      // 强弱（5种）
+      'ShenWang': '身旺',
+      'ShenRuo': '身弱',
+      'ZhongHe': '中和',
+      'TaiWang': '太旺',
+      'TaiRuo': '太弱',
+      // 用神类型（4种）
+      'FuYi': '扶抑用神',
+      'DiaoHou': '调候用神',
+      'TongGuan': '通关用神',
+      'ZhuanWang': '专旺用神',
+      // 五行（5种）
+      'Jin': '金',
+      'Mu': '木',
+      'Shui': '水',
+      'Huo': '火',
+      'Tu': '土',
+    };
+
+    // 索引映射表
+    const geJuByIndex = ['正格', '从强格', '从弱格', '从财格', '从官格', '从儿格', '化气格', '特殊格局'];
+    const qiangRuoByIndex = ['身旺', '身弱', '中和', '太旺', '太弱'];
+    const wuXingByIndex = ['金', '木', '水', '火', '土'];
+    const yongShenTypeByIndex = ['扶抑用神', '调候用神', '通关用神', '专旺用神'];
+
+    // parseEnum 函数（与代码中一致）
+    function parseEnum(value, byIndex) {
+      if (value === null || value === undefined) {
+        return '未知';
+      }
+
+      // 情况1：数字索引
+      if (typeof value === 'number') {
+        return byIndex[value] || `未知(${value})`;
+      }
+
+      // 情况2：对象格式 { EnumName: null }
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const key = Object.keys(value)[0];
+        return nameMap[key] || key || '未知';
+      }
+
+      // 情况3：字符串格式
+      if (typeof value === 'string') {
+        return nameMap[value] || value;
+      }
+
+      return String(value);
+    }
+
+    // 测试用例
+    function runMappingTests() {
+      const tests = [
+        { input: 'ZhengGe', expected: '正格', desc: '字符串: ZhengGe', byIndex: geJuByIndex },
+        { input: 'TaiRuo', expected: '太弱', desc: '字符串: TaiRuo', byIndex: qiangRuoByIndex },
+        { input: 'Huo', expected: '火', desc: '字符串: Huo', byIndex: wuXingByIndex },
+        { input: 'Mu', expected: '木', desc: '字符串: Mu', byIndex: wuXingByIndex },
+        { input: 'FuYi', expected: '扶抑用神', desc: '字符串: FuYi', byIndex: yongShenTypeByIndex },
+        { input: { ZhengGe: null }, expected: '正格', desc: '对象: { ZhengGe: null }', byIndex: geJuByIndex },
+        { input: { TaiRuo: null }, expected: '太弱', desc: '对象: { TaiRuo: null }', byIndex: qiangRuoByIndex },
+        { input: 0, expected: '正格', desc: '数字: 0', byIndex: geJuByIndex },
+        { input: 3, expected: '太旺', desc: '数字: 3', byIndex: qiangRuoByIndex },
+      ];
+
+      const container = document.getElementById('mapping-results');
+      container.innerHTML = '';
+
+      let passCount = 0;
+      let failCount = 0;
+
+      tests.forEach((test, idx) => {
+        const result = parseEnum(test.input, test.byIndex);
+        const pass = result === test.expected;
+
+        if (pass) passCount++;
+        else failCount++;
+
+        container.innerHTML += `
+          <div class="test-case ${pass ? 'pass' : 'fail'}">
+            <strong>测试 ${idx + 1}: ${test.desc}</strong><br>
+            输入: <code>${JSON.stringify(test.input)}</code><br>
+            期望: <code>${test.expected}</code><br>
+            实际: <code>${result}</code><br>
+            <div class="result">${pass ? '✅ 通过' : '❌ 失败'}</div>
+          </div>
+        `;
+      });
+
+      const summary = passCount === tests.length
+        ? `<div class="success"><strong>✅ 全部通过！</strong> (${passCount}/${tests.length})</div>`
+        : `<div class="warning"><strong>⚠️ 部分失败！</strong> 通过: ${passCount}/${tests.length}, 失败: ${failCount}</div>`;
+
+      container.innerHTML = summary + container.innerHTML;
+    }
+
+    // 数据格式测试
+    function runFormatTests() {
+      const container = document.getElementById('format-results');
+      container.innerHTML = '<div class="info">正在检测数据格式...</div>';
+
+      const formats = [
+        { type: '字符串', example: '"ZhengGe"', value: 'ZhengGe' },
+        { type: '对象', example: '{ ZhengGe: null }', value: { ZhengGe: null } },
+        { type: '数字', example: '0', value: 0 },
+      ];
+
+      let html = '<h3>支持的数据格式：</h3>';
+      formats.forEach((fmt, idx) => {
+        const result = parseEnum(fmt.value, geJuByIndex);
+        html += `
+          <div class="test-case pass">
+            <strong>${idx + 1}. ${fmt.type}格式</strong><br>
+            示例: <code>${fmt.example}</code><br>
+            解析结果: <code>${result}</code><br>
+            ✅ 支持
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // 浏览器缓存检测
+    function checkCache() {
+      const container = document.getElementById('cache-results');
+      const timestamp = Date.now();
+      const buildTime = '2025-12-14T09:32:00'; // 当前构建时间
+
+      let html = '<h3>缓存状态检测：</h3>';
+
+      // 检查 localStorage
+      const hasCache = localStorage.getItem('bazi-cache-check');
+      if (hasCache) {
+        html += `
+          <div class="warning">
+            <strong>⚠️ 检测到缓存数据</strong><br>
+            上次访问时间: ${new Date(parseInt(hasCache)).toLocaleString()}<br>
+            建议：按 <code>Ctrl+Shift+R</code> (Windows/Linux) 或 <code>Cmd+Shift+R</code> (Mac) 强制刷新
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="success">
+            <strong>✅ 首次访问或已清除缓存</strong><br>
+            时间戳: ${new Date(timestamp).toLocaleString()}
+          </div>
+        `;
+      }
+
+      localStorage.setItem('bazi-cache-check', timestamp.toString());
+
+      // 检查 Service Worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          if (registrations.length > 0) {
+            html += `
+              <div class="warning">
+                <strong>⚠️ 检测到 Service Worker</strong><br>
+                可能缓存了旧版本代码<br>
+                <button onclick="clearServiceWorker()">清除 Service Worker</button>
+              </div>
+            `;
+          } else {
+            html += '<div class="success">✅ 未检测到 Service Worker</div>';
+          }
+          container.innerHTML = html;
+        });
+      } else {
+        container.innerHTML = html;
+      }
+    }
+
+    // 清除 Service Worker
+    async function clearServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.unregister();
+        }
+        alert('✅ Service Worker 已清除，请刷新页面');
+        window.location.reload();
+      }
+    }
+
+    // 获取实际数据
+    async function fetchRealData() {
+      const container = document.getElementById('real-results');
+      container.innerHTML = '<div class="info">正在连接到区块链节点...</div>';
+
+      try {
+        // 这里需要实际连接到 Polkadot.js API
+        // 简化版本：显示模拟数据
+        container.innerHTML = `
+          <div class="warning">
+            <strong>⚠️ 手动检查步骤：</strong><br>
+            1. 打开 <a href="http://localhost:5173/#/bazi/1" target="_blank">八字详情页面</a><br>
+            2. 按 F12 打开开发者工具<br>
+            3. 切换到 Console 标签<br>
+            4. 按 Ctrl+Shift+R 强制刷新<br>
+            5. 搜索 <code>[parseEnum]</code> 查看日志<br>
+            6. 检查 "输入值" 和 "结果" 是否正确<br><br>
+            <strong>如果看到：</strong><br>
+            - 输入值: "ZhengGe" → 结果应该是 "正格" ✅<br>
+            - 输入值: { ZhengGe: null } → 结果应该是 "正格" ✅<br>
+            - 如果结果仍是 "ZhengGe" ❌ 请截图控制台
+          </div>
+        `;
+      } catch (error) {
+        container.innerHTML = `
+          <div class="fail">
+            <strong>❌ 连接失败</strong><br>
+            ${error.message}
+          </div>
+        `;
+      }
+    }
+
+    // 页面加载时自动运行映射测试
+    window.addEventListener('load', () => {
+      runMappingTests();
+    });
+  </script>
+</body>
+</html>

@@ -49,9 +49,14 @@ pub mod types;
 pub mod constants;
 pub mod calculations;
 pub mod interpretation;
-pub mod interpretation_v2;
 pub mod shensha;
 pub mod xingchong;
+pub mod runtime_api;
+
+// 重新导出 Runtime API 相关类型，方便外部使用
+pub use interpretation::{CoreInterpretation, FullInterpretation, CompactXingGe, ExtendedJiShen};
+// 重新导出加密存储类型
+pub use types::{SiZhuIndex, EncryptedBaziChart};
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -125,30 +130,46 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
-	/// 存储映射: 八字ID -> 解盘结果（旧版，70+ bytes）
-	#[pallet::storage]
-	#[pallet::getter(fn interpretation_by_id)]
-	pub type InterpretationById<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		u64,
-		crate::interpretation::JiePanResult,
-	>;
-
-	/// 存储映射: 八字ID -> 精简解盘结果（V2，13 bytes）
+	/// 存储映射: 八字ID -> 核心解盘结果（13 bytes）
 	///
 	/// 可选缓存：用户可以选择将解盘结果缓存到链上
 	/// - 优点：后续查询更快，无需重新计算
 	/// - 缺点：需要支付少量 gas 费用
 	///
-	/// 如果未缓存，前端可以通过 `get_basic_interpretation()` 实时计算（免费）
+	/// 如果未缓存，前端可以通过 Runtime API `get_interpretation()` 实时计算（免费）
 	#[pallet::storage]
 	#[pallet::getter(fn interpretation_cache)]
 	pub type InterpretationCache<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
 		u64,
-		crate::interpretation_v2::SimplifiedInterpretation,
+		crate::interpretation::CoreInterpretation,
+	>;
+
+	/// 存储映射: 八字ID -> 加密的八字命盘
+	///
+	/// 隐私保护版本的八字存储：
+	/// - 敏感数据（出生时间等）在前端加密后存储
+	/// - 四柱索引明文存储，支持 Runtime API 免费计算
+	/// - 用户通过钱包签名派生密钥进行加解密
+	#[pallet::storage]
+	#[pallet::getter(fn encrypted_chart_by_id)]
+	pub type EncryptedChartById<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		u64,
+		crate::types::EncryptedBaziChart<T>,
+	>;
+
+	/// 存储映射: 用户 -> 加密八字ID列表
+	#[pallet::storage]
+	#[pallet::getter(fn user_encrypted_charts)]
+	pub type UserEncryptedCharts<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		BoundedVec<u64, T::MaxChartsPerAccount>,
+		ValueQuery,
 	>;
 
 	/// Pallet 事件
@@ -172,15 +193,20 @@ pub mod pallet {
 			owner: T::AccountId,
 			chart_id: u64,
 		},
-		/// 八字解盘完成 [八字ID, 所有者]
-		BaziInterpretationCompleted {
-			chart_id: u64,
-			owner: T::AccountId,
-		},
-		/// 八字解盘结果已缓存（V2 精简版）[八字ID, 所有者]
+		/// 八字解盘结果已缓存（13 bytes 核心指标）[八字ID, 所有者]
 		BaziInterpretationCached {
 			chart_id: u64,
 			owner: T::AccountId,
+		},
+		/// 加密八字命盘创建成功 [所有者, 八字ID]
+		EncryptedBaziChartCreated {
+			owner: T::AccountId,
+			chart_id: u64,
+		},
+		/// 加密八字命盘删除成功 [所有者, 八字ID]
+		EncryptedBaziChartDeleted {
+			owner: T::AccountId,
+			chart_id: u64,
 		},
 	}
 
@@ -215,6 +241,12 @@ pub mod pallet {
 		TooManyDaYunSteps,
 		/// 八字ID已达到最大值
 		ChartIdOverflow,
+		/// 四柱索引无效
+		InvalidSiZhuIndex,
+		/// 加密数据过长
+		EncryptedDataTooLong,
+		/// 加密八字未找到
+		EncryptedChartNotFound,
 	}
 
 	/// Pallet 可调用函数
@@ -469,7 +501,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		/// 八字解盘
+		/// 缓存八字解盘结果（核心指标，13 bytes）
 		///
 		/// # 参数
 		///
@@ -479,59 +511,7 @@ pub mod pallet {
 		/// # 功能
 		///
 		/// 1. 验证八字存在和所有权
-		/// 2. 执行格局分析
-		/// 3. 执行用神分析
-		/// 4. 执行性格分析
-		/// 5. 生成解盘结果
-		/// 6. 存储解盘信息
-		///
-		/// # 权限
-		///
-		/// 只有八字所有者可以解盘自己的八字
-		#[pallet::call_index(2)]
-		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
-		pub fn interpret_bazi_chart(
-			origin: OriginFor<T>,
-			chart_id: u64,
-		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-
-			// 获取八字信息
-			let chart = ChartById::<T>::get(chart_id)
-				.ok_or(Error::<T>::ChartNotFound)?;
-
-			// 验证所有权
-			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
-
-			// 执行解盘分析
-			let interpretation_result = crate::interpretation::full_interpretation(
-				&chart.sizhu,
-				&chart.wuxing_strength,
-			);
-
-			// 存储解盘结果
-			InterpretationById::<T>::insert(chart_id, interpretation_result);
-
-			// 触发事件
-			Self::deposit_event(Event::BaziInterpretationCompleted {
-				chart_id,
-				owner: who,
-			});
-
-			Ok(())
-		}
-
-		/// 缓存八字解盘结果（V2 精简版）
-		///
-		/// # 参数
-		///
-		/// - `origin`: 交易发起者
-		/// - `chart_id`: 八字ID
-		///
-		/// # 功能
-		///
-		/// 1. 验证八字存在和所有权
-		/// 2. 调用 `get_basic_interpretation()` 实时计算解盘结果
+		/// 2. 实时计算核心解盘结果
 		/// 3. 将结果缓存到链上 `InterpretationCache`
 		///
 		/// # 优点
@@ -545,9 +525,9 @@ pub mod pallet {
 		///
 		/// # 注意
 		///
-		/// - 如果不缓存，前端可以直接调用 `get_basic_interpretation()` 免费实时计算
+		/// - 如果不缓存，前端可以直接调用 Runtime API `get_interpretation()` 免费实时计算
 		/// - 缓存后算法升级不会自动更新缓存，需要重新缓存
-		#[pallet::call_index(3)]
+		#[pallet::call_index(2)]
 		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
 		pub fn cache_interpretation(
 			origin: OriginFor<T>,
@@ -562,9 +542,9 @@ pub mod pallet {
 			// 验证所有权
 			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
 
-			// 实时计算解盘结果
-			let interpretation = Self::get_basic_interpretation(chart_id)
-				.ok_or(Error::<T>::ChartNotFound)?;
+			// 实时计算核心解盘结果
+			let current_block = <frame_system::Pallet<T>>::block_number().saturated_into();
+			let interpretation = crate::interpretation::calculate_core_interpretation(&chart, current_block);
 
 			// 缓存到链上
 			InterpretationCache::<T>::insert(chart_id, interpretation);
@@ -573,6 +553,139 @@ pub mod pallet {
 			Self::deposit_event(Event::BaziInterpretationCached {
 				chart_id,
 				owner: who,
+			});
+
+			Ok(())
+		}
+
+		/// 创建加密的八字命盘
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者
+		/// - `sizhu_index`: 四柱干支索引（明文，用于计算）
+		/// - `gender`: 性别（明文，用于大运计算）
+		/// - `encrypted_data`: AES-256-GCM 加密的敏感数据
+		/// - `data_hash`: 原始数据的 Blake2-256 哈希（用于验证解密正确性）
+		///
+		/// # 功能
+		///
+		/// 1. 验证四柱索引有效性
+		/// 2. 存储加密的八字信息
+		/// 3. 触发创建事件
+		///
+		/// # 安全特性
+		///
+		/// - 出生时间等敏感数据在前端加密后存储
+		/// - 四柱索引明文存储，支持 Runtime API 免费计算解盘
+		/// - 用户通过钱包签名派生密钥进行加解密，无需输入密码
+		///
+		/// # 存储结构（约 50 bytes + 加密数据长度）
+		///
+		/// - `sizhu_index`: 8 bytes（四柱索引）
+		/// - `gender`: 1 byte
+		/// - `encrypted_data`: 可变（最大 256 bytes）
+		/// - `data_hash`: 32 bytes
+		/// - `created_at`: 4 bytes
+		/// - `owner`: 32 bytes（AccountId）
+		#[pallet::call_index(3)]
+		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
+		pub fn create_encrypted_chart(
+			origin: OriginFor<T>,
+			sizhu_index: crate::types::SiZhuIndex,
+			gender: Gender,
+			encrypted_data: BoundedVec<u8, ConstU32<256>>,
+			data_hash: [u8; 32],
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 1. 验证四柱索引有效性
+			ensure!(sizhu_index.is_valid(), Error::<T>::InvalidSiZhuIndex);
+
+			// 2. 检查账户八字数量限制
+			let existing_charts = UserEncryptedCharts::<T>::get(&who);
+			ensure!(
+				existing_charts.len() < T::MaxChartsPerAccount::get() as usize,
+				Error::<T>::TooManyCharts
+			);
+
+			// 3. 获取新的 chart_id
+			let chart_id = NextChartId::<T>::get();
+			ensure!(chart_id < u64::MAX, Error::<T>::ChartIdOverflow);
+
+			// 4. 获取当前区块号
+			let current_block = <frame_system::Pallet<T>>::block_number().saturated_into();
+
+			// 5. 构建加密八字结构
+			let encrypted_chart = crate::types::EncryptedBaziChart {
+				owner: who.clone(),
+				sizhu_index,
+				gender,
+				encrypted_data,
+				data_hash,
+				created_at: current_block,
+			};
+
+			// 6. 存储到 EncryptedChartById
+			EncryptedChartById::<T>::insert(chart_id, encrypted_chart);
+
+			// 7. 添加到用户的加密八字列表
+			UserEncryptedCharts::<T>::try_mutate(&who, |charts| {
+				charts.try_push(chart_id).map_err(|_| Error::<T>::TooManyCharts)
+			})?;
+
+			// 8. 递增计数器
+			NextChartId::<T>::put(chart_id + 1);
+
+			// 9. 触发事件
+			Self::deposit_event(Event::EncryptedBaziChartCreated {
+				owner: who,
+				chart_id,
+			});
+
+			Ok(())
+		}
+
+		/// 删除加密的八字命盘
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者
+		/// - `chart_id`: 八字ID
+		///
+		/// # 权限
+		///
+		/// 只有八字所有者可以删除自己的加密八字
+		#[pallet::call_index(4)]
+		#[pallet::weight(T::WeightInfo::delete_bazi_chart())]
+		pub fn delete_encrypted_chart(
+			origin: OriginFor<T>,
+			chart_id: u64,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 获取加密八字信息
+			let chart = EncryptedChartById::<T>::get(chart_id)
+				.ok_or(Error::<T>::EncryptedChartNotFound)?;
+
+			// 验证所有权
+			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
+
+			// 从 EncryptedChartById 中删除
+			EncryptedChartById::<T>::remove(chart_id);
+
+			// 从用户的加密八字列表中删除
+			UserEncryptedCharts::<T>::try_mutate(&who, |charts| -> DispatchResult {
+				if let Some(pos) = charts.iter().position(|&id| id == chart_id) {
+					charts.remove(pos);
+				}
+				Ok(())
+			})?;
+
+			// 触发事件
+			Self::deposit_event(Event::EncryptedBaziChartDeleted {
+				owner: who,
+				chart_id,
 			});
 
 			Ok(())
@@ -644,15 +757,18 @@ pub mod pallet {
 			})
 		}
 
-		/// RPC 接口：实时计算基础解盘（不存储）
+		/// RPC 接口：实时计算完整解盘（唯一对外接口）
 		///
-		/// 此函数由 RPC 调用，不消耗 gas，不上链
+		/// 此函数由 Runtime API 调用，不消耗 gas，不上链
 		///
 		/// # 参数
 		/// - chart_id: 八字命盘ID
 		///
 		/// # 返回
-		/// - Some(SimplifiedInterpretation): 解盘结果（10 bytes）
+		/// - Some(FullInterpretation): 完整解盘结果
+		///   - core: 核心指标（格局、强弱、用神、喜神、忌神、评分、可信度）
+		///   - xing_ge: 性格分析（主要特点、优点、缺点、适合职业）
+		///   - extended_ji_shen: 扩展忌神（次忌神列表）
 		/// - None: 命盘不存在
 		///
 		/// # 特点
@@ -660,11 +776,50 @@ pub mod pallet {
 		/// - 响应快速（< 100ms）
 		/// - 算法自动更新（使用最新版本）
 		/// - 不永久存储（避免存储成本）
-		pub fn get_basic_interpretation(chart_id: u64) -> Option<crate::interpretation_v2::SimplifiedInterpretation> {
+		///
+		/// # 使用方式
+		/// 前端只需核心数据时，访问 `result.core` 即可（等价于旧版 V2/V3 Core）
+		pub fn get_full_interpretation(chart_id: u64) -> Option<crate::interpretation::FullInterpretation> {
 			let chart = ChartById::<T>::get(chart_id)?;
 			let current_block = <frame_system::Pallet<T>>::block_number().saturated_into();
 
-			Some(crate::interpretation_v2::calculate_interpretation_v2(&chart, current_block))
+			Some(crate::interpretation::calculate_full_interpretation(&chart, current_block))
+		}
+
+		/// RPC 接口：基于加密命盘的四柱索引计算解盘
+		///
+		/// 此函数由 Runtime API 调用，不消耗 gas，不上链
+		///
+		/// # 参数
+		/// - chart_id: 加密八字命盘ID
+		///
+		/// # 返回
+		/// - Some(FullInterpretation): 完整解盘结果
+		/// - None: 命盘不存在
+		///
+		/// # 特点
+		/// - 基于四柱索引计算，无需解密敏感数据
+		/// - 完全免费（无 gas 费用）
+		/// - 保护用户隐私
+		pub fn get_encrypted_chart_interpretation(chart_id: u64) -> Option<crate::interpretation::FullInterpretation> {
+			let encrypted_chart = EncryptedChartById::<T>::get(chart_id)?;
+			let current_block = <frame_system::Pallet<T>>::block_number().saturated_into();
+
+			Some(crate::interpretation::calculate_interpretation_from_index(
+				&encrypted_chart.sizhu_index,
+				encrypted_chart.gender,
+				current_block,
+			))
+		}
+
+		/// 检查加密命盘是否存在
+		pub fn encrypted_chart_exists(chart_id: u64) -> bool {
+			EncryptedChartById::<T>::contains_key(chart_id)
+		}
+
+		/// 获取加密命盘所有者
+		pub fn get_encrypted_chart_owner(chart_id: u64) -> Option<T::AccountId> {
+			EncryptedChartById::<T>::get(chart_id).map(|chart| chart.owner)
 		}
 	}
 

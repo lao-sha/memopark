@@ -24,6 +24,7 @@ import {
   Spin,
   Empty,
   Result,
+  Collapse,
 } from 'antd';
 import {
   CalendarOutlined,
@@ -67,6 +68,7 @@ import { useWalletStore } from '../../stores/walletStore';
 import './BaziPage.css';
 
 const { Title, Text, Paragraph } = Typography;
+const { Panel } = Collapse;
 
 /**
  * 八字详情页面组件
@@ -109,6 +111,7 @@ const BaziDetailPage: React.FC = () => {
 
   /**
    * 加载八字数据
+   * 优化后的加载逻辑：优先使用链上数据计算，减少对IPFS的依赖
    */
   const loadBaziData = useCallback(async () => {
     setLoading(true);
@@ -124,17 +127,7 @@ const BaziDetailPage: React.FC = () => {
 
       setChartData(chart);
 
-      // 尝试从IPFS加载完整八字数据
-      if (chart.dataCid) {
-        const ipfsResult = await downloadBaziResultFromIpfs(chart.dataCid);
-        if (ipfsResult) {
-          setResult(ipfsResult);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 如果IPFS没有数据，根据链上基本信息重新计算
+      // 根据链上基本信息计算八字（主要数据来源）
       const baziInput = {
         year: chart.birthYear,
         month: chart.birthMonth,
@@ -146,7 +139,21 @@ const BaziDetailPage: React.FC = () => {
       const calculatedResult = calculateBazi(baziInput);
       setResult(calculatedResult);
 
-      // 加载链上解盘结果（如果存在）
+      // 可选：尝试从IPFS加载补充数据（不阻塞主流程）
+      if (chart.dataCid) {
+        downloadBaziResultFromIpfs(chart.dataCid)
+          .then((ipfsResult) => {
+            if (ipfsResult) {
+              console.log('[BaziDetailPage] IPFS数据加载成功，作为补充');
+              // 可以合并一些IPFS的额外数据
+            }
+          })
+          .catch((err) => {
+            console.warn('[BaziDetailPage] IPFS数据加载失败，使用计算结果:', err);
+          });
+      }
+
+      // 加载链上解盘结果（旧版，保留兼容）
       const onChainInterpretation = await getOnChainInterpretation(baziId);
       if (onChainInterpretation) {
         setInterpretation(onChainInterpretation);
@@ -155,7 +162,7 @@ const BaziDetailPage: React.FC = () => {
       setLoading(false);
     } catch (error) {
       console.error('加载八字数据失败:', error);
-      message.error('加载失败，请稍后重试');
+      message.error(`加载失败: ${error instanceof Error ? error.message : '未知错误'}`);
       setLoading(false);
     }
   }, [baziId]);
@@ -184,6 +191,65 @@ const BaziDetailPage: React.FC = () => {
   const handleMintNft = useCallback(() => {
     window.location.hash = `#/divination/nft/mint?type=${DivinationType.Bazi}&resultId=${baziId}`;
   }, [baziId]);
+
+  /**
+   * 分享八字命盘
+   */
+  const handleShare = useCallback(async () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}#/bazi/${baziId}`;
+    const shareText = result
+      ? `我的八字命盘：${formatBazi(result.siZhu)}`
+      : `查看我的八字命盘`;
+
+    // 尝试使用 Web Share API
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: '八字命盘',
+          text: shareText,
+          url: shareUrl,
+        });
+        message.success('分享成功');
+      } catch (error) {
+        // 用户取消分享，不显示错误
+        if ((error as Error).name !== 'AbortError') {
+          console.error('分享失败:', error);
+          copyToClipboard(shareUrl);
+        }
+      }
+    } else {
+      // 降级到复制链接
+      copyToClipboard(shareUrl);
+    }
+  }, [baziId, result]);
+
+  /**
+   * 复制到剪贴板
+   */
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        message.success('链接已复制到剪贴板');
+      }).catch(() => {
+        message.error('复制失败，请手动复制');
+      });
+    } else {
+      // 降级方案
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        message.success('链接已复制到剪贴板');
+      } catch (err) {
+        message.error('复制失败，请手动复制');
+      }
+      document.body.removeChild(textarea);
+    }
+  };
 
   /**
    * 执行链上解盘
@@ -273,7 +339,7 @@ const BaziDetailPage: React.FC = () => {
           {cangGan.map((g, idx) => (
             <div key={idx} className="cang-gan-item">
               <span className="cang-gan-name">{TIAN_GAN_NAMES[g]}</span>
-              <Tag size="small" color={SHI_SHEN_COLORS[cangGanShiShen[idx]]}>
+              <Tag color={SHI_SHEN_COLORS[cangGanShiShen[idx]]} style={{ fontSize: 11 }}>
                 {SHI_SHEN_SHORT[cangGanShiShen[idx]]}
               </Tag>
             </div>
@@ -335,43 +401,47 @@ const BaziDetailPage: React.FC = () => {
   };
 
   /**
-   * 渲染大运
+   * 渲染大运（折叠面板）
    */
   const renderDaYun = () => {
     if (!result) return null;
     const { daYunList, qiYunAge, daYunShun } = result;
 
     return (
-      <Card className="da-yun-card" size="small">
-        <div className="da-yun-header">
-          <Title level={5}>大运</Title>
-          <Space>
-            <Tag color={daYunShun ? 'blue' : 'orange'}>
-              {daYunShun ? '顺行' : '逆行'}
-            </Tag>
-            <Text type="secondary">{qiYunAge}岁起运</Text>
-          </Space>
-        </div>
-        <div className="da-yun-list">
-          {daYunList.slice(0, 8).map((dy: DaYun) => (
-            <div key={dy.index} className="da-yun-item">
-              <div className="da-yun-age">{dy.startAge}-{dy.endAge}</div>
-              <div className="da-yun-gan-zhi">
-                <span className="gan">{TIAN_GAN_NAMES[dy.ganZhi.tianGan]}</span>
-                <span className="zhi">{DI_ZHI_NAMES[dy.ganZhi.diZhi]}</span>
-              </div>
-              <Tag size="small" color={SHI_SHEN_COLORS[dy.tianGanShiShen]}>
-                {SHI_SHEN_SHORT[dy.tianGanShiShen]}
+      <Collapse defaultActiveKey={['dayun']} style={{ marginTop: 16 }}>
+        <Panel
+          header={
+            <Space>
+              <span style={{ fontWeight: 500 }}>大运</span>
+              <Tag color={daYunShun ? 'blue' : 'orange'}>
+                {daYunShun ? '顺行' : '逆行'}
               </Tag>
-            </div>
-          ))}
-        </div>
-      </Card>
+              <Text type="secondary" style={{ fontSize: 12 }}>{qiYunAge}岁起运</Text>
+            </Space>
+          }
+          key="dayun"
+        >
+          <div className="da-yun-list">
+            {daYunList.slice(0, 10).map((dy: DaYun) => (
+              <div key={dy.index} className="da-yun-item">
+                <div className="da-yun-age">{dy.startAge}-{dy.endAge}</div>
+                <div className="da-yun-gan-zhi">
+                  <span className="gan">{TIAN_GAN_NAMES[dy.ganZhi.tianGan]}</span>
+                  <span className="zhi">{DI_ZHI_NAMES[dy.ganZhi.diZhi]}</span>
+                </div>
+                <Tag color={SHI_SHEN_COLORS[dy.tianGanShiShen]} style={{ fontSize: 11 }}>
+                  {SHI_SHEN_SHORT[dy.tianGanShiShen]}
+                </Tag>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </Collapse>
     );
   };
 
   /**
-   * 渲染流年
+   * 渲染流年（折叠面板）
    */
   const renderLiuNian = () => {
     if (!result) return null;
@@ -381,33 +451,47 @@ const BaziDetailPage: React.FC = () => {
       result.siZhu,
       result.birthInfo.year,
       currentYear,
-      10
+      15 // 显示前后共15年
     );
 
     return (
-      <Card className="liu-nian-card" size="small">
-        <Title level={5}>流年</Title>
-        <div className="liu-nian-list">
-          {liuNianList.map((ln) => (
-            <div
-              key={ln.year}
-              className={`liu-nian-item ${ln.year === currentYear ? 'current' : ''}`}
-            >
-              <div className="liu-nian-year">{ln.year}</div>
-              <div className="liu-nian-gan-zhi">{getGanZhiName(ln.ganZhi)}</div>
-              <Tag size="small" color={SHI_SHEN_COLORS[ln.tianGanShiShen]}>
-                {SHI_SHEN_SHORT[ln.tianGanShiShen]}
-              </Tag>
-              <div className="liu-nian-age">{ln.age}岁</div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <Collapse style={{ marginTop: 16 }}>
+        <Panel
+          header={
+            <Space>
+              <span style={{ fontWeight: 500 }}>流年</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>近15年运势</Text>
+            </Space>
+          }
+          key="liunian"
+        >
+          <div className="liu-nian-list">
+            {liuNianList.map((ln) => (
+              <div
+                key={ln.year}
+                className={`liu-nian-item ${ln.year === currentYear ? 'current' : ''}`}
+              >
+                <div className="liu-nian-year">
+                  {ln.year}
+                  {ln.year === currentYear && (
+                    <Tag color="red" style={{ marginLeft: 4, fontSize: 10 }}>本年</Tag>
+                  )}
+                </div>
+                <div className="liu-nian-gan-zhi">{getGanZhiName(ln.ganZhi)}</div>
+                <Tag color={SHI_SHEN_COLORS[ln.tianGanShiShen]} style={{ fontSize: 11 }}>
+                  {SHI_SHEN_SHORT[ln.tianGanShiShen]}
+                </Tag>
+                <div className="liu-nian-age">{ln.age}岁</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </Collapse>
     );
   };
 
   /**
-   * 渲染链上解盘结果
+   * 渲染链上解盘结果（V1 完整版）
    */
   const renderOnChainInterpretation = () => {
     if (!interpretation) return null;
@@ -418,13 +502,14 @@ const BaziDetailPage: React.FC = () => {
           <Space>
             <ThunderboltOutlined style={{ color: '#faad14' }} />
             <span>链上解盘结果</span>
-            <Tag color="gold">免费</Tag>
+            <Tag color="gold">V1 完整版</Tag>
           </Space>
         }
         className="interpretation-card"
         size="small"
         style={{ marginTop: 16 }}
       >
+        {/* 核心指标 */}
         <Row gutter={[16, 16]}>
           <Col span={12}>
             <Card type="inner" size="small">
@@ -468,6 +553,7 @@ const BaziDetailPage: React.FC = () => {
           </Col>
         </Row>
 
+        {/* 忌神 */}
         {interpretation.jiShen.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <Text strong>忌神：</Text>
@@ -479,6 +565,62 @@ const BaziDetailPage: React.FC = () => {
           </div>
         )}
 
+        {/* 性格分析 */}
+        {interpretation.xingGe && (
+          <div style={{ marginTop: 16 }}>
+            <Divider orientation="left">性格分析</Divider>
+
+            {/* 主要性格特点 */}
+            {interpretation.xingGe.zhuYaoTeDian.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text strong>主要特点：</Text>
+                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
+                  {interpretation.xingGe.zhuYaoTeDian.map((trait, idx) => (
+                    <Tag key={idx} color="blue">{trait}</Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* 优点 */}
+            {interpretation.xingGe.youDian.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text strong>优点：</Text>
+                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
+                  {interpretation.xingGe.youDian.map((trait, idx) => (
+                    <Tag key={idx} color="green">{trait}</Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* 缺点 */}
+            {interpretation.xingGe.queDian.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text strong>缺点：</Text>
+                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
+                  {interpretation.xingGe.queDian.map((trait, idx) => (
+                    <Tag key={idx} color="orange">{trait}</Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* 适合职业 */}
+            {interpretation.xingGe.shiHeZhiYe.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text strong>适合职业：</Text>
+                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
+                  {interpretation.xingGe.shiHeZhiYe.map((career, idx) => (
+                    <Tag key={idx} color="purple">{career}</Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 解盘详情 */}
         {interpretation.texts.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <Divider orientation="left">解盘详情</Divider>
@@ -507,14 +649,23 @@ const BaziDetailPage: React.FC = () => {
   return (
     <div className="bazi-page">
       {/* 返回按钮 */}
-      <Button
-        type="text"
-        icon={<ArrowLeftOutlined />}
-        onClick={() => window.location.hash = '#/bazi'}
-        style={{ marginBottom: 16 }}
-      >
-        返回排盘
-      </Button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => window.location.hash = '#/bazi'}
+        >
+          返回排盘
+        </Button>
+        {result && (
+          <Button
+            icon={<ShareAltOutlined />}
+            onClick={handleShare}
+          >
+            分享
+          </Button>
+        )}
+      </div>
 
       {/* 无数据时显示提示 */}
       {!result && (
@@ -559,11 +710,19 @@ const BaziDetailPage: React.FC = () => {
         <>
           {/* 基本信息 */}
           <Card className="info-card" size="small">
-            <Row gutter={16}>
+            <Row gutter={[16, 16]}>
               <Col span={12}>
                 <Statistic
-                  title="公历"
-                  value={`${result.birthInfo.year}年${result.birthInfo.month}月${result.birthInfo.day}日`}
+                  title="出生日期"
+                  value={`${result.birthInfo.year}/${result.birthInfo.month}/${result.birthInfo.day}`}
+                  valueStyle={{ fontSize: 14 }}
+                  prefix={<CalendarOutlined />}
+                />
+              </Col>
+              <Col span={12}>
+                <Statistic
+                  title="性别"
+                  value={GENDER_NAMES[result.birthInfo.gender]}
                   valueStyle={{ fontSize: 14 }}
                 />
               </Col>
@@ -574,12 +733,32 @@ const BaziDetailPage: React.FC = () => {
                   valueStyle={{ fontSize: 14 }}
                 />
               </Col>
+              <Col span={12}>
+                <Statistic
+                  title="当前年龄"
+                  value={`${new Date().getFullYear() - result.birthInfo.year}岁`}
+                  valueStyle={{ fontSize: 14 }}
+                />
+              </Col>
             </Row>
             <Divider style={{ margin: '12px 0' }} />
             <div className="bazi-summary">
               <Text strong>八字：</Text>
-              <Text code style={{ fontSize: 16 }}>{formatBazi(result.siZhu)}</Text>
+              <Text code style={{ fontSize: 16, fontWeight: 500 }}>{formatBazi(result.siZhu)}</Text>
             </div>
+            {chartData && (
+              <>
+                <Divider style={{ margin: '12px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    命盘ID: {chartData.id}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    创建于区块 #{chartData.createdAt}
+                  </Text>
+                </div>
+              </>
+            )}
           </Card>
 
           {/* 四柱详情 */}
@@ -616,61 +795,41 @@ const BaziDetailPage: React.FC = () => {
           {renderOnChainInterpretation()}
 
           {/* 解读服务 */}
-          <Card title="获取解读" className="service-card">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button
-                type="default"
-                icon={<ThunderboltOutlined />}
-                size="large"
-                block
-                onClick={handleInterpretOnChain}
-                loading={interpreting}
-                disabled={!!interpretation}
-                style={{
-                  borderColor: '#faad14',
-                  color: interpretation ? '#8c8c8c' : '#faad14',
-                  background: interpretation ? '#f5f5f5' : '#fff',
-                }}
-              >
-                {interpretation ? '已完成链上解盘' : '链上自动解盘（免费）'}
-              </Button>
-              <Text type="secondary" className="service-hint">
-                {interpretation
-                  ? '基于传统命理算法的自动化分析，可查看上方结果'
-                  : '基于传统命理算法快速生成基础解盘，完全免费'
-                }
-              </Text>
-
-              <Divider />
-
+          <Card title="获取专业解读" className="service-card">
+            {/* 免费链上解盘（V2精简版已经在上面展示了，这里只需要显示其他服务） */}
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Button
                 type="primary"
                 icon={<RobotOutlined />}
                 size="large"
                 block
                 onClick={handleRequestAi}
+                style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  borderColor: 'transparent',
+                }}
               >
                 AI 智能解读
               </Button>
-              <Text type="secondary" className="service-hint">
-                基于传统八字命理理论，由 AI 快速生成专业分析
+              <Text type="secondary" className="service-hint" style={{ marginTop: -8 }}>
+                基于大语言模型，提供个性化、深度的命理分析
               </Text>
-
-              <Divider />
 
               <Button
                 icon={<UserOutlined />}
                 size="large"
                 block
                 onClick={handleFindMaster}
+                style={{
+                  borderColor: '#1890ff',
+                  color: '#1890ff',
+                }}
               >
                 找大师人工解读
               </Button>
-              <Text type="secondary" className="service-hint">
-                由认证大师提供个性化命理分析
+              <Text type="secondary" className="service-hint" style={{ marginTop: -8 }}>
+                由认证命理师提供一对一专业咨询
               </Text>
-
-              <Divider />
 
               <Button
                 icon={<GiftOutlined />}
@@ -681,8 +840,23 @@ const BaziDetailPage: React.FC = () => {
               >
                 发起悬赏问答
               </Button>
-              <Text type="secondary" className="service-hint">
+              <Text type="secondary" className="service-hint" style={{ marginTop: -8 }}>
                 设置悬赏金额，邀请多位大师解读，投票选出最佳答案
+              </Text>
+
+              <Divider style={{ margin: '8px 0' }} />
+
+              <Button
+                icon={<StarOutlined />}
+                size="middle"
+                block
+                onClick={handleMintNft}
+                type="dashed"
+              >
+                铸造 NFT 收藏
+              </Button>
+              <Text type="secondary" className="service-hint" style={{ marginTop: -8, fontSize: 11 }}>
+                将您的八字命盘铸造为链上 NFT，永久保存
               </Text>
             </Space>
           </Card>

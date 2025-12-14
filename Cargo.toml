@@ -100,6 +100,9 @@ members = [
     "pallets/divination/xiaoliuren",   # 小六壬掐指速算链上排盘
 
     "runtime",
+
+    # 🆕 2025-12-07: Oracle 预言机服务 - AI驱动的玄学解读
+    "xuanxue-oracle",                  # Oracle节点服务，用于AI驱动的玄学解读
 ]
 exclude = []
 resolver = "2"

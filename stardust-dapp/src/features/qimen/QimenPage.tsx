@@ -28,6 +28,7 @@ import {
   CalendarOutlined,
   CloudOutlined,
   DesktopOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -265,6 +266,17 @@ const QimenPage: React.FC = () => {
   const [chainChartId, setChainChartId] = useState<number | null>(null);
 
   /**
+   * 查看详细解卦
+   */
+  const handleViewDetail = useCallback(() => {
+    if (chainChartId) {
+      window.location.hash = `#/qimen/detail/${chainChartId}?questionType=Fortune`;
+    } else {
+      message.warning('请先使用链端起局，才能查看链上解卦结果');
+    }
+  }, [chainChartId]);
+
+  /**
    * 本地排盘
    */
   const handleLocalCalculate = useCallback(async () => {
@@ -291,6 +303,20 @@ const QimenPage: React.FC = () => {
       const chartId = await qimenService.divineRandom(undefined, false);
       setChainChartId(chartId);
       message.success(`链端排盘成功，排盘ID: ${chartId}`);
+
+      // 可选：加载链端排盘数据到本地显示
+      // 注意：完整解卦需要跳转到详情页查看（已修复数据解析问题）
+      try {
+        const chartData = await qimenService.getChart(chartId);
+        if (chartData) {
+          // 转换链端数据为本地显示格式（简化版本，仅用于预览）
+          // 注意：完整的解卦数据需要跳转到详情页查看
+          console.log('链端排盘数据:', chartData);
+        }
+      } catch (error) {
+        console.warn('加载链端排盘数据失败:', error);
+        // 不影响主流程，用户仍可通过详情页查看
+      }
     } catch (error: any) {
       console.error('链端排盘失败:', error);
       message.error(`链端排盘失败: ${error.message || '请检查钱包连接'}`);
@@ -408,6 +434,48 @@ const QimenPage: React.FC = () => {
       </Space>
     </Card>
   );
+
+  /**
+   * 渲染链端排盘结果卡片
+   */
+  const renderChainResult = () => {
+    if (!chainChartId) return null;
+
+    return (
+      <Card style={{ marginTop: 16 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <div style={{ textAlign: 'center' }}>
+            <Title level={4} style={{ marginBottom: 8, color: '#52c41a' }}>
+              ✓ 链端排盘成功
+            </Title>
+            <Text type="secondary">排盘已上链存储，可以查看详细解卦</Text>
+          </div>
+
+          <Divider />
+
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
+            <Tag color="blue" style={{ fontSize: 16, padding: '8px 16px' }}>
+              排盘 ID: {chainChartId}
+            </Tag>
+          </div>
+
+          <Button
+            type="primary"
+            size="large"
+            block
+            onClick={handleViewDetail}
+            icon={<BookOutlined />}
+          >
+            查看详细解卦（链端AI解读）
+          </Button>
+
+          <Text type="secondary" style={{ fontSize: 12, textAlign: 'center', display: 'block' }}>
+            提示：排盘数据已永久存储在区块链上，可随时查看解卦结果
+          </Text>
+        </Space>
+      </Card>
+    );
+  };
 
   /**
    * 渲染奇门盘
@@ -542,6 +610,20 @@ const QimenPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* 链端解卦按钮（本地排盘时显示） */}
+        {chainChartId && pan && (
+          <div style={{ marginTop: 12 }}>
+            <Button
+              type="primary"
+              block
+              onClick={handleViewDetail}
+              icon={<BookOutlined />}
+            >
+              查看详细解卦（链端AI解读）
+            </Button>
+          </div>
+        )}
       </Card>
     );
   };
@@ -550,6 +632,7 @@ const QimenPage: React.FC = () => {
     <div className="qimen-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
       <Spin spinning={loading}>
         {renderInputForm()}
+        {renderChainResult()}
         {renderPan()}
       </Spin>
 

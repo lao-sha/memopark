@@ -705,3 +705,201 @@ export function parseBoundedVecToString(data: unknown): string {
 
   return '';
 }
+
+// ==================== 解卦数据类型定义 ====================
+
+/**
+ * 五行旺衰状态
+ */
+export enum WangShuai {
+  Wang = 0,  // 旺 - 当令,最强
+  Xiang = 1, // 相 - 被当令所生,次强
+  Xiu = 2,   // 休 - 生当令五行,休息
+  Qiu = 3,   // 囚 - 克当令五行,受制
+  Si = 4,    // 死 - 被当令所克,最弱
+}
+
+/** 旺衰状态名称 */
+export const WANGSHUAI_NAMES: Record<WangShuai, string> = {
+  [WangShuai.Wang]: '旺',
+  [WangShuai.Xiang]: '相',
+  [WangShuai.Xiu]: '休',
+  [WangShuai.Qiu]: '囚',
+  [WangShuai.Si]: '死',
+};
+
+/**
+ * 农历日期信息
+ */
+export interface LunarDateInfo {
+  /** 农历年份 */
+  year: number;
+  /** 农历月份（1-12） */
+  month: number;
+  /** 农历日（1-30） */
+  day: number;
+  /** 时辰地支数（1-12） */
+  hourZhiNum: number;
+  /** 是否闰月 */
+  isLeapMonth: boolean;
+}
+
+/**
+ * 解卦基础信息
+ */
+export interface InterpretationBasicInfo {
+  /** 占卜时间戳（Unix秒） */
+  timestamp: number;
+  /** 农历年月日时 */
+  lunarDate: LunarDateInfo;
+  /** 起卦方式 */
+  method: DivinationMethod;
+  /** 占卜者性别（0: 未指定, 1: 男, 2: 女） */
+  gender: number;
+  /** 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他） */
+  category: number;
+}
+
+/**
+ * 卦象核心数据
+ */
+export interface HexagramCoreData {
+  /** 上卦（外卦） */
+  shangGua: Trigram;
+  /** 下卦（内卦） */
+  xiaGua: Trigram;
+  /** 动爻位置（1-6） */
+  dongYao: number;
+  /** 体卦位置：true=上卦为体，false=下卦为体 */
+  tiIsShang: boolean;
+}
+
+/**
+ * 体用分析结果
+ */
+export interface TiYongAnalysis {
+  /** 体卦五行 */
+  tiWuxing: WuXing;
+  /** 用卦五行 */
+  yongWuxing: WuXing;
+  /** 本卦体用关系 */
+  benGuaRelation: TiYongRelation;
+  /** 变卦体用关系 */
+  bianGuaRelation: TiYongRelation;
+  /** 互卦体用关系 */
+  huGuaRelation: TiYongRelation;
+  /** 体卦旺衰状态 */
+  tiWangshuai: WangShuai;
+  /** 综合吉凶判断 */
+  fortune: Fortune;
+  /** 吉凶等级（0-4，4最吉） */
+  fortuneLevel: number;
+}
+
+/**
+ * 应期推算结果
+ */
+export interface YingQiAnalysis {
+  /** 体卦卦数 */
+  tiGuaNum: number;
+  /** 用卦卦数 */
+  yongGuaNum: number;
+  /** 主要应期数（基于体用卦数） */
+  primaryNum: number;
+  /** 次要应期数（基于五行卦数） */
+  secondaryNums: [number, number];
+  /** 生体五行（喜神） */
+  shengTiWuxing: WuXing;
+  /** 克体五行（忌神） */
+  keTiWuxing: WuXing;
+  /** 应期分析文本（简短） */
+  analysis: string;
+}
+
+/**
+ * 辅助卦象数据
+ */
+export interface AuxiliaryHexagrams {
+  /** 变卦（上卦，下卦） */
+  bianGua: [Trigram, Trigram];
+  /** 互卦（上卦，下卦） */
+  huGua: [Trigram, Trigram];
+  /** 错卦（上卦，下卦） */
+  cuoGua: [Trigram, Trigram];
+  /** 综卦（上卦，下卦） */
+  zongGua: [Trigram, Trigram];
+  /** 伏卦（上卦，下卦） */
+  fuGua: [Trigram, Trigram];
+}
+
+/**
+ * 完整解卦数据
+ */
+export interface InterpretationData {
+  /** 基础信息 */
+  basicInfo: InterpretationBasicInfo;
+  /** 卦象核心数据 */
+  hexagramCore: HexagramCoreData;
+  /** 体用分析 */
+  tiyongAnalysis: TiYongAnalysis;
+  /** 应期推算 */
+  yingqiAnalysis: YingQiAnalysis;
+  /** 辅助卦象 */
+  auxiliaryHexagrams: AuxiliaryHexagrams;
+}
+
+/**
+ * AI 解读结果（新版）
+ */
+export interface AiInterpretationResultData {
+  /** 卦象 ID */
+  hexagramId: number;
+  /** 解读内容的 IPFS CID */
+  interpretationCid: string;
+  /** 解读摘要（链上存储） */
+  summary: string;
+  /** 吉凶评分（0-100） */
+  fortuneScore: number;
+  /** 可信度评分（0-100） */
+  confidenceScore: number;
+  /** 提交时间戳 */
+  submitTimestamp: number;
+  /** AI 模型版本 */
+  modelVersion: string;
+}
+
+/** 性别枚举 */
+export enum Gender {
+  Unspecified = 0,  // 未指定
+  Male = 1,         // 男
+  Female = 2,       // 女
+}
+
+/** 性别名称 */
+export const GENDER_NAMES: Record<Gender, string> = {
+  [Gender.Unspecified]: '未指定',
+  [Gender.Male]: '男',
+  [Gender.Female]: '女',
+};
+
+/** 占卜类别枚举 */
+export enum DivinationCategory {
+  Unspecified = 0,  // 未指定
+  Career = 1,       // 事业
+  Wealth = 2,       // 财运
+  Love = 3,         // 感情
+  Health = 4,       // 健康
+  Education = 5,    // 学业
+  Other = 6,        // 其他
+}
+
+/** 占卜类别名称 */
+export const DIVINATION_CATEGORY_NAMES: Record<DivinationCategory, string> = {
+  [DivinationCategory.Unspecified]: '未指定',
+  [DivinationCategory.Career]: '事业',
+  [DivinationCategory.Wealth]: '财运',
+  [DivinationCategory.Love]: '感情',
+  [DivinationCategory.Health]: '健康',
+  [DivinationCategory.Education]: '学业',
+  [DivinationCategory.Other]: '其他',
+};

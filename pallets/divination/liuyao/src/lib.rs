@@ -44,6 +44,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod algorithm;
+pub mod interpretation;
+pub mod runtime_api;
 pub mod shensha;
 pub mod types;
 
@@ -735,6 +737,248 @@ pub mod pallet {
             });
 
             Ok(gua_id)
+        }
+
+        // ====================================================================
+        // Runtime API 辅助方法
+        // ====================================================================
+
+        /// 获取核心解卦结果（供 Runtime API 调用）
+        ///
+        /// # 参数
+        /// - `gua_id`: 卦象 ID
+        /// - `shi_xiang`: 占问事项类型（0-9）
+        ///
+        /// # 返回
+        /// - `Some(LiuYaoCoreInterpretation)`: 核心解卦
+        /// - `None`: 卦象不存在
+        pub fn get_core_interpretation(
+            gua_id: u64,
+            shi_xiang: u8,
+        ) -> Option<crate::interpretation::LiuYaoCoreInterpretation> {
+            let gua = Guas::<T>::get(gua_id)?;
+
+            // 转换事项类型
+            let shi_xiang_type = match shi_xiang {
+                0 => crate::interpretation::ShiXiangType::CaiYun,
+                1 => crate::interpretation::ShiXiangType::ShiYe,
+                2 => crate::interpretation::ShiXiangType::HunYin,
+                3 => crate::interpretation::ShiXiangType::JianKang,
+                4 => crate::interpretation::ShiXiangType::KaoShi,
+                5 => crate::interpretation::ShiXiangType::GuanSi,
+                6 => crate::interpretation::ShiXiangType::ChuXing,
+                7 => crate::interpretation::ShiXiangType::XunRen,
+                8 => crate::interpretation::ShiXiangType::TianQi,
+                _ => crate::interpretation::ShiXiangType::QiTa,
+            };
+
+            // 获取当前区块号作为时间戳
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            let timestamp: u32 = block_number.try_into().unwrap_or(0);
+
+            // 计算并返回核心解卦
+            Some(crate::interpretation::calculate_core_interpretation(
+                &gua,
+                shi_xiang_type,
+                timestamp,
+            ))
+        }
+
+        /// 获取完整解卦结果（供 Runtime API 调用）
+        ///
+        /// # 参数
+        /// - `gua_id`: 卦象 ID
+        /// - `shi_xiang`: 占问事项类型（0-9）
+        ///
+        /// # 返回
+        /// - `Some(LiuYaoFullInterpretation)`: 完整解卦
+        /// - `None`: 卦象不存在
+        pub fn get_full_interpretation(
+            gua_id: u64,
+            shi_xiang: u8,
+        ) -> Option<crate::interpretation::LiuYaoFullInterpretation> {
+            let gua = Guas::<T>::get(gua_id)?;
+
+            // 转换事项类型
+            let shi_xiang_type = match shi_xiang {
+                0 => crate::interpretation::ShiXiangType::CaiYun,
+                1 => crate::interpretation::ShiXiangType::ShiYe,
+                2 => crate::interpretation::ShiXiangType::HunYin,
+                3 => crate::interpretation::ShiXiangType::JianKang,
+                4 => crate::interpretation::ShiXiangType::KaoShi,
+                5 => crate::interpretation::ShiXiangType::GuanSi,
+                6 => crate::interpretation::ShiXiangType::ChuXing,
+                7 => crate::interpretation::ShiXiangType::XunRen,
+                8 => crate::interpretation::ShiXiangType::TianQi,
+                _ => crate::interpretation::ShiXiangType::QiTa,
+            };
+
+            // 获取当前区块号作为时间戳
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            let timestamp: u32 = block_number.try_into().unwrap_or(0);
+
+            // 计算核心解卦
+            let core = crate::interpretation::calculate_core_interpretation(
+                &gua,
+                shi_xiang_type,
+                timestamp,
+            );
+
+            // 构建完整解卦
+            let mut full = crate::interpretation::LiuYaoFullInterpretation::new(timestamp);
+            full.core = core;
+
+            // 填充卦象分析
+            full.gua_xiang.ben_gua_idx = gua.original_name_idx;
+            full.gua_xiang.bian_gua_idx = if gua.has_bian_gua {
+                gua.changed_name_idx
+            } else {
+                255
+            };
+            full.gua_xiang.hu_gua_idx = gua.hu_name_idx;
+            full.gua_xiang.gong = gua.gong.index();
+            full.gua_xiang.gua_xu = gua.gua_xu as u8;
+            full.gua_xiang.shi_pos = gua.gua_xu.shi_yao_pos() - 1;
+            full.gua_xiang.ying_pos = gua.gua_xu.ying_yao_pos() - 1;
+            full.gua_xiang.gua_shen = gua.gua_shen.index();
+
+            // 判断六冲六合
+            full.gua_xiang.is_liu_chong =
+                crate::algorithm::is_liu_chong_by_index(gua.original_name_idx);
+            full.gua_xiang.is_liu_he =
+                crate::algorithm::is_liu_he(gua.original_name_idx);
+
+            // 填充六亲分析
+            for i in 0..6 {
+                let qin = gua.original_yaos[i].liu_qin;
+                let state = full.liu_qin.get_qin_state_mut(qin);
+                state.add_position(i as u8);
+            }
+
+            // 检查伏神
+            for i in 0..6 {
+                if let Some(fu) = &gua.fu_shen[i] {
+                    let state = full.liu_qin.get_qin_state_mut(fu.liu_qin);
+                    state.has_fu_shen = true;
+                    state.fu_shen_pos = fu.position;
+                }
+            }
+
+            // 填充各爻分析
+            let (kong1, kong2) = crate::algorithm::calculate_xun_kong(gua.day_gz.0, gua.day_gz.1);
+
+            for i in 0..6 {
+                let yao = if let Some(y) = full.get_yao_mut(i as u8) {
+                    y
+                } else {
+                    continue;
+                };
+
+                let yao_info = &gua.original_yaos[i];
+                yao.position = i as u8;
+                yao.is_kong = crate::interpretation::is_zhi_kong(yao_info.di_zhi, kong1, kong2);
+                yao.is_yue_po =
+                    crate::interpretation::is_zhi_yue_po(yao_info.di_zhi, gua.month_gz.1);
+                yao.is_ri_chong =
+                    crate::interpretation::is_zhi_ri_chong(yao_info.di_zhi, gua.day_gz.1);
+                yao.is_dong = yao_info.yao.is_moving();
+
+                if yao.is_dong && gua.has_bian_gua {
+                    let changed_zhi = gua.changed_yaos[i].di_zhi;
+                    let hua = crate::interpretation::calculate_hua_type(
+                        yao_info.di_zhi,
+                        changed_zhi,
+                        kong1,
+                        kong2,
+                    );
+                    yao.set_hua_type(hua);
+                }
+
+                yao.wang_shuai = crate::interpretation::calculate_wang_shuai(
+                    yao_info.di_zhi,
+                    gua.month_gz.1,
+                    gua.day_gz.1,
+                );
+            }
+
+            Some(full)
+        }
+
+        /// 获取解卦文本索引列表（供 Runtime API 调用）
+        ///
+        /// # 参数
+        /// - `gua_id`: 卦象 ID
+        /// - `shi_xiang`: 占问事项类型（0-9）
+        ///
+        /// # 返回
+        /// - `Some(Vec<JieGuaTextType>)`: 解卦文本索引列表
+        /// - `None`: 卦象不存在
+        pub fn get_interpretation_texts(
+            gua_id: u64,
+            shi_xiang: u8,
+        ) -> Option<sp_std::vec::Vec<crate::interpretation::JieGuaTextType>> {
+            use crate::interpretation::JieGuaTextType;
+
+            let core = Self::get_core_interpretation(gua_id, shi_xiang)?;
+            let gua = Guas::<T>::get(gua_id)?;
+
+            let mut texts = sp_std::vec::Vec::new();
+
+            // 1. 吉凶总断
+            let ji_xiong_text = match core.ji_xiong {
+                crate::interpretation::JiXiongLevel::DaJi => JieGuaTextType::DaJiZongDuan,
+                crate::interpretation::JiXiongLevel::Ji => JieGuaTextType::JiZongDuan,
+                crate::interpretation::JiXiongLevel::XiaoJi => JieGuaTextType::XiaoJiZongDuan,
+                crate::interpretation::JiXiongLevel::Ping => JieGuaTextType::PingZongDuan,
+                crate::interpretation::JiXiongLevel::XiaoXiong => JieGuaTextType::XiaoXiongZongDuan,
+                crate::interpretation::JiXiongLevel::Xiong => JieGuaTextType::XiongZongDuan,
+                crate::interpretation::JiXiongLevel::DaXiong => JieGuaTextType::DaXiongZongDuan,
+            };
+            texts.push(ji_xiong_text);
+
+            // 2. 用神状态
+            let yong_shen_text = match core.yong_shen_state {
+                crate::interpretation::YongShenState::WangXiang => JieGuaTextType::YongShenWangXiang,
+                crate::interpretation::YongShenState::XiuQiu => JieGuaTextType::YongShenXiuQiu,
+                crate::interpretation::YongShenState::DongHuaJin => JieGuaTextType::YongShenHuaJin,
+                crate::interpretation::YongShenState::DongHuaTui => JieGuaTextType::YongShenHuaTui,
+                crate::interpretation::YongShenState::DongHuaKong => JieGuaTextType::YongShenKong,
+                crate::interpretation::YongShenState::FuCang => JieGuaTextType::YongShenFuCang,
+                crate::interpretation::YongShenState::KongWang => JieGuaTextType::YongShenKong,
+                crate::interpretation::YongShenState::RuMu => JieGuaTextType::YongShenRuMu,
+                crate::interpretation::YongShenState::ShouKe => JieGuaTextType::YongShenShouKe,
+                crate::interpretation::YongShenState::DeSheng => JieGuaTextType::YongShenDeSheng,
+            };
+            texts.push(yong_shen_text);
+
+            // 3. 动爻断语
+            match core.dong_yao_count {
+                0 => texts.push(JieGuaTextType::WuDongYao),
+                1 => texts.push(JieGuaTextType::YiYaoDuFa),
+                6 => texts.push(JieGuaTextType::LiuYaoJieDong),
+                _ => texts.push(JieGuaTextType::DuoYaoQiDong),
+            }
+
+            // 4. 特殊状态
+            if crate::algorithm::is_liu_chong_by_index(gua.original_name_idx) {
+                texts.push(JieGuaTextType::GuaFengLiuChong);
+            }
+            if crate::algorithm::is_liu_he(gua.original_name_idx) {
+                texts.push(JieGuaTextType::GuaFengLiuHe);
+            }
+
+            // 5. 应期断语
+            let ying_qi_text = match core.ying_qi {
+                crate::interpretation::YingQiType::JinQi => JieGuaTextType::YingQiZaiRi,
+                crate::interpretation::YingQiType::DuanQi => JieGuaTextType::YingQiZaiYue,
+                crate::interpretation::YingQiType::ZhongQi => JieGuaTextType::YingQiZaiJi,
+                crate::interpretation::YingQiType::ChangQi => JieGuaTextType::YingQiZaiNian,
+                crate::interpretation::YingQiType::YuanQi => JieGuaTextType::YingQiZaiNian,
+                crate::interpretation::YingQiType::BuQueDing => JieGuaTextType::YingQiDaiChong,
+            };
+            texts.push(ying_qi_text);
+
+            Some(texts)
         }
     }
 }

@@ -42,6 +42,8 @@ pub use pallet::*;
 
 mod algorithm;
 mod types;
+mod interpretation;
+mod interpretation_algorithm;
 
 #[cfg(test)]
 mod mock;
@@ -51,6 +53,8 @@ mod tests;
 
 pub use algorithm::*;
 pub use types::*;
+pub use interpretation::*;
+pub use interpretation_algorithm::*;
 
 /// 权重 trait
 pub trait DaLiuRenWeightInfo {
@@ -751,6 +755,172 @@ pub mod pallet {
         /// 检查式盘是否有待处理的 AI 解读请求
         pub fn has_pending_ai_request(pan_id: u64) -> bool {
             AiInterpretationRequests::<T>::contains_key(pan_id)
+        }
+    }
+
+    // ========================================================================
+    // Runtime API - 解盘查询函数
+    // ========================================================================
+
+    impl<T: Config> Pallet<T> {
+        /// 获取核心解盘结果
+        ///
+        /// 根据式盘ID计算核心解盘指标（约20字节）
+        /// 此方法为免费查询，不消耗gas
+        ///
+        /// # 参数
+        /// - `pan_id`: 式盘ID
+        ///
+        /// # 返回
+        /// - `Option<CoreInterpretation>`: 核心解盘结果
+        pub fn get_core_interpretation(pan_id: u64) -> Option<CoreInterpretation> {
+            let pan = Pans::<T>::get(pan_id)?;
+            let current_block = Self::block_to_u32(<frame_system::Pallet<T>>::block_number());
+
+            Some(calculate_core_interpretation(&pan, current_block))
+        }
+
+        /// 获取完整解盘结果
+        ///
+        /// 根据式盘ID计算完整解盘数据，包括：
+        /// - 核心解盘指标
+        /// - 三传分析
+        /// - 四课分析
+        /// - 天将分析
+        /// - 神煞分析
+        /// - 应期分析
+        ///
+        /// # 参数
+        /// - `pan_id`: 式盘ID
+        /// - `shi_xiang_type`: 占问类型（可选）
+        ///
+        /// # 返回
+        /// - `Option<FullInterpretation>`: 完整解盘结果
+        pub fn get_full_interpretation(
+            pan_id: u64,
+            shi_xiang_type: Option<ShiXiangType>,
+        ) -> Option<FullInterpretation> {
+            let pan = Pans::<T>::get(pan_id)?;
+            let current_block = Self::block_to_u32(<frame_system::Pallet<T>>::block_number());
+
+            Some(calculate_full_interpretation(&pan, current_block, shi_xiang_type))
+        }
+
+        /// 获取三传分析
+        ///
+        /// 分析三传的旺衰、空亡、递生递克关系
+        ///
+        /// # 参数
+        /// - `pan_id`: 式盘ID
+        ///
+        /// # 返回
+        /// - `Option<SanChuanAnalysis>`: 三传分析结果
+        pub fn get_san_chuan_analysis(pan_id: u64) -> Option<SanChuanAnalysis> {
+            let pan = Pans::<T>::get(pan_id)?;
+            let month_wuxing = pan.month_gz.1.wu_xing();
+
+            Some(analyze_san_chuan(
+                &pan.san_chuan,
+                &pan.tian_jiang_pan,
+                pan.day_gz.0,
+                month_wuxing,
+                pan.xun_kong,
+            ))
+        }
+
+        /// 获取应期分析
+        ///
+        /// 计算多种应期：三传相加法、空亡填实、六冲应期等
+        ///
+        /// # 参数
+        /// - `pan_id`: 式盘ID
+        /// - `shi_xiang_type`: 占问类型（可选）
+        ///
+        /// # 返回
+        /// - `Option<YingQiAnalysis>`: 应期分析结果
+        pub fn get_ying_qi_analysis(
+            pan_id: u64,
+            shi_xiang_type: Option<ShiXiangType>,
+        ) -> Option<YingQiAnalysis> {
+            let pan = Pans::<T>::get(pan_id)?;
+
+            Some(calculate_ying_qi_analysis(
+                &pan.san_chuan,
+                pan.xun_kong,
+                shi_xiang_type,
+            ))
+        }
+
+        /// 批量获取用户式盘的解盘摘要
+        ///
+        /// 获取用户最近的式盘解盘摘要（核心指标）
+        ///
+        /// # 参数
+        /// - `who`: 用户账户
+        /// - `limit`: 返回数量限制
+        ///
+        /// # 返回
+        /// - `Vec<(u64, CoreInterpretation)>`: (式盘ID, 核心解盘)列表
+        #[cfg(feature = "std")]
+        pub fn get_user_interpretations_summary(
+            who: &T::AccountId,
+            limit: u32,
+        ) -> Vec<(u64, CoreInterpretation)> {
+            let mut results = Vec::new();
+            let current_block = Self::block_to_u32(<frame_system::Pallet<T>>::block_number());
+            let mut count = 0u32;
+
+            // 遍历用户式盘
+            for (pan_id, exists) in UserPans::<T>::iter_prefix(who) {
+                if !exists || count >= limit {
+                    break;
+                }
+
+                if let Some(pan) = Pans::<T>::get(pan_id) {
+                    let interpretation = calculate_core_interpretation(&pan, current_block);
+                    results.push((pan_id, interpretation));
+                    count += 1;
+                }
+            }
+
+            results
+        }
+
+        /// 根据吉凶等级筛选式盘
+        ///
+        /// 获取指定吉凶等级的式盘列表
+        ///
+        /// # 参数
+        /// - `fortune_level`: 吉凶等级
+        /// - `limit`: 返回数量限制
+        ///
+        /// # 返回
+        /// - `Vec<u64>`: 符合条件的式盘ID列表
+        #[cfg(feature = "std")]
+        pub fn get_pans_by_fortune(
+            fortune_level: FortuneLevel,
+            limit: u32,
+        ) -> Vec<u64> {
+            let mut results = Vec::new();
+            let current_block = Self::block_to_u32(<frame_system::Pallet<T>>::block_number());
+            let mut count = 0u32;
+
+            // 遍历公开式盘
+            for (pan_id, _) in PublicPans::<T>::iter() {
+                if count >= limit {
+                    break;
+                }
+
+                if let Some(pan) = Pans::<T>::get(pan_id) {
+                    let interpretation = calculate_core_interpretation(&pan, current_block);
+                    if interpretation.fortune == fortune_level {
+                        results.push(pan_id);
+                        count += 1;
+                    }
+                }
+            }
+
+            results
         }
     }
 }

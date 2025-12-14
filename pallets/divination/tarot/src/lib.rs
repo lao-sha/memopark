@@ -24,6 +24,8 @@ pub use pallet::*;
 
 pub mod algorithm;
 pub mod constants;
+pub mod interpretation;
+pub mod runtime_api;
 pub mod types;
 
 #[cfg(test)]
@@ -803,6 +805,494 @@ pub mod pallet {
                     }
                 }
             });
+        }
+
+        // ==================== Runtime API 实现函数 ====================
+
+        /// 获取核心解卦结果
+        ///
+        /// 基于占卜记录生成核心解卦数据
+        ///
+        /// # 参数
+        /// - `reading_id`: 塔罗牌占卜记录 ID
+        ///
+        /// # 返回
+        /// - `Some(TarotCoreInterpretation)`: 核心解卦结果
+        /// - `None`: 占卜记录不存在
+        pub fn api_get_core_interpretation(
+            reading_id: u64,
+        ) -> Option<crate::interpretation::TarotCoreInterpretation> {
+            let reading = Readings::<T>::get(reading_id)?;
+
+            // 转换牌数据
+            let cards: Vec<(u8, bool)> = reading
+                .cards
+                .iter()
+                .map(|c| (c.card.id, c.position.is_reversed()))
+                .collect();
+
+            let block_number = reading
+                .block_number
+                .try_into()
+                .unwrap_or(0u32);
+
+            Some(algorithm::generate_core_interpretation(
+                &cards,
+                reading.spread_type,
+                block_number,
+            ))
+        }
+
+        /// 获取完整解卦结果
+        ///
+        /// # 参数
+        /// - `reading_id`: 塔罗牌占卜记录 ID
+        ///
+        /// # 返回
+        /// - `Some(TarotFullInterpretation)`: 完整解卦结果
+        /// - `None`: 占卜记录不存在
+        pub fn api_get_full_interpretation(
+            reading_id: u64,
+        ) -> Option<crate::interpretation::TarotFullInterpretation<T::MaxCardsPerReading>> {
+            let reading = Readings::<T>::get(reading_id)?;
+
+            // 转换牌数据
+            let cards: Vec<(u8, bool)> = reading
+                .cards
+                .iter()
+                .map(|c| (c.card.id, c.position.is_reversed()))
+                .collect();
+
+            let block_number = reading
+                .block_number
+                .try_into()
+                .unwrap_or(0u32);
+
+            // 生成核心解卦
+            let core = algorithm::generate_core_interpretation(
+                &cards,
+                reading.spread_type,
+                block_number,
+            );
+
+            // 生成能量分析
+            let spread_energy = algorithm::generate_spread_energy_analysis(&cards);
+
+            // 构建完整解卦（其他字段暂不填充）
+            Some(crate::interpretation::TarotFullInterpretation {
+                core,
+                spread_energy,
+                card_analyses: None,
+                card_relationships: None,
+                timeline_analysis: None,
+            })
+        }
+
+        /// 获取解读文本索引列表
+        ///
+        /// # 参数
+        /// - `reading_id`: 塔罗牌占卜记录 ID
+        ///
+        /// # 返回
+        /// - `Some(Vec<InterpretationTextType>)`: 解读文本索引列表
+        /// - `None`: 占卜记录不存在
+        pub fn api_get_interpretation_texts(
+            reading_id: u64,
+        ) -> Option<Vec<crate::interpretation::InterpretationTextType>> {
+            use crate::interpretation::*;
+
+            let core = Self::api_get_core_interpretation(reading_id)?;
+            let mut texts = Vec::new();
+
+            // 1. 能量描述
+            let energy_text = if core.overall_energy >= 75 {
+                InterpretationTextType::EnergyHigh
+            } else if core.overall_energy >= 50 {
+                InterpretationTextType::EnergyMedium
+            } else if core.overall_energy >= 25 {
+                InterpretationTextType::EnergyLow
+            } else {
+                InterpretationTextType::EnergyVolatile
+            };
+            texts.push(energy_text);
+
+            // 2. 元素主导描述
+            let element_text = match core.dominant_element {
+                DominantElement::Fire => InterpretationTextType::FireDominant,
+                DominantElement::Water => InterpretationTextType::WaterDominant,
+                DominantElement::Air => InterpretationTextType::AirDominant,
+                DominantElement::Earth => InterpretationTextType::EarthDominant,
+                DominantElement::Spirit => InterpretationTextType::SpiritDominant,
+                DominantElement::None => InterpretationTextType::ElementBalanced,
+            };
+            texts.push(element_text);
+
+            // 3. 吉凶判断
+            let fortune_text = match core.fortune_tendency {
+                FortuneTendency::Excellent => InterpretationTextType::FortuneExcellent,
+                FortuneTendency::Good => InterpretationTextType::FortuneGood,
+                FortuneTendency::Neutral => InterpretationTextType::FortuneNeutral,
+                FortuneTendency::MinorBad => InterpretationTextType::FortuneMinorBad,
+                FortuneTendency::Bad => InterpretationTextType::FortuneBad,
+            };
+            texts.push(fortune_text);
+
+            // 4. 特殊组合
+            if core.has_fool_world_combo() {
+                texts.push(InterpretationTextType::FoolWorldCombo);
+            }
+            if core.has_many_major_arcana() {
+                texts.push(InterpretationTextType::ManyMajorArcana);
+            }
+            if core.has_same_suit_sequence() {
+                texts.push(InterpretationTextType::SameSuitSequence);
+            }
+            if core.is_all_reversed() {
+                texts.push(InterpretationTextType::AllReversed);
+            }
+            if core.is_all_upright() {
+                texts.push(InterpretationTextType::AllUpright);
+            }
+
+            // 5. 行动建议
+            let advice_text = if core.action_index >= 75 && core.fortune_tendency as u8 <= 1 {
+                InterpretationTextType::ActionTakeAction
+            } else if core.stability_index >= 60 {
+                InterpretationTextType::ActionPersist
+            } else if core.change_index >= 60 {
+                InterpretationTextType::ActionWaitAndSee
+            } else if core.reversed_ratio >= 50 {
+                InterpretationTextType::ActionReflect
+            } else {
+                InterpretationTextType::ActionLearn
+            };
+            texts.push(advice_text);
+
+            // 6. 能量指数高亮
+            if core.action_index >= 70 {
+                texts.push(InterpretationTextType::ActionIndexHigh);
+            }
+            if core.emotion_index >= 70 {
+                texts.push(InterpretationTextType::EmotionIndexHigh);
+            }
+            if core.intellect_index >= 70 {
+                texts.push(InterpretationTextType::IntellectIndexHigh);
+            }
+            if core.material_index >= 70 {
+                texts.push(InterpretationTextType::MaterialIndexHigh);
+            }
+            if core.spiritual_index >= 70 {
+                texts.push(InterpretationTextType::SpiritualIndexHigh);
+            }
+            if core.stability_index >= 70 {
+                texts.push(InterpretationTextType::StabilityIndexHigh);
+            }
+            if core.change_index >= 70 {
+                texts.push(InterpretationTextType::ChangeIndexHigh);
+            }
+
+            Some(texts)
+        }
+
+        /// 生成AI解读提示词上下文
+        ///
+        /// # 参数
+        /// - `reading_id`: 塔罗牌占卜记录 ID
+        ///
+        /// # 返回
+        /// - `Some(Vec<u8>)`: AI提示词上下文（UTF-8编码）
+        /// - `None`: 占卜记录不存在
+        pub fn api_generate_ai_prompt_context(
+            reading_id: u64,
+        ) -> Option<Vec<u8>> {
+            use crate::interpretation::*;
+
+            let reading = Readings::<T>::get(reading_id)?;
+            let core = Self::api_get_core_interpretation(reading_id)?;
+
+            let mut context = Vec::new();
+
+            // 牌阵类型
+            let spread_name = reading.spread_type.name();
+            context.extend_from_slice(b"spread:");
+            context.extend_from_slice(spread_name.as_bytes());
+            context.extend_from_slice(b";\n");
+
+            // 主导元素
+            let element_name = match core.dominant_element {
+                DominantElement::None => "none",
+                DominantElement::Fire => "fire-wands",
+                DominantElement::Water => "water-cups",
+                DominantElement::Air => "air-swords",
+                DominantElement::Earth => "earth-pentacles",
+                DominantElement::Spirit => "spirit-major",
+            };
+            context.extend_from_slice(b"dominant:");
+            context.extend_from_slice(element_name.as_bytes());
+            context.extend_from_slice(b";\n");
+
+            // 能量状态
+            let energy_desc = if core.overall_energy >= 75 {
+                "high"
+            } else if core.overall_energy >= 50 {
+                "medium"
+            } else {
+                "low"
+            };
+            context.extend_from_slice(b"energy:");
+            context.extend_from_slice(energy_desc.as_bytes());
+            context.extend_from_slice(b";\n");
+
+            // 吉凶倾向
+            let fortune_desc = match core.fortune_tendency {
+                FortuneTendency::Excellent => "excellent",
+                FortuneTendency::Good => "good",
+                FortuneTendency::Neutral => "neutral",
+                FortuneTendency::MinorBad => "minor-bad",
+                FortuneTendency::Bad => "bad",
+            };
+            context.extend_from_slice(b"fortune:");
+            context.extend_from_slice(fortune_desc.as_bytes());
+            context.extend_from_slice(b";\n");
+
+            // 各牌信息
+            let position_names = reading.spread_type.position_names();
+            for (i, drawn_card) in reading.cards.iter().enumerate() {
+                let position_name = position_names.get(i).copied().unwrap_or("unknown");
+                let card_id = drawn_card.card.id;
+                let is_reversed = drawn_card.position.is_reversed();
+
+                context.extend_from_slice(b"card:");
+                // 使用牌ID代替中文名称
+                let mut id_buf = [0u8; 3];
+                let id_len = if card_id >= 100 { 3 } else if card_id >= 10 { 2 } else { 1 };
+                let mut n = card_id;
+                for i in (0..id_len).rev() {
+                    id_buf[i] = b'0' + (n % 10);
+                    n /= 10;
+                }
+                context.extend_from_slice(&id_buf[..id_len]);
+                context.extend_from_slice(b"[");
+                if is_reversed {
+                    context.extend_from_slice(b"R");
+                } else {
+                    context.extend_from_slice(b"U");
+                }
+                context.extend_from_slice(b"]@");
+                context.extend_from_slice(position_name.as_bytes());
+                context.extend_from_slice(b";\n");
+            }
+
+            // 特殊组合
+            if core.has_fool_world_combo() {
+                context.extend_from_slice(b"special:fool-world;\n");
+            }
+            if core.has_many_major_arcana() {
+                context.extend_from_slice(b"special:many-major;\n");
+            }
+
+            // 综合评分
+            context.extend_from_slice(b"score:");
+            let score = core.overall_score;
+            let mut score_buf = [0u8; 3];
+            let score_len = if score >= 100 { 3 } else if score >= 10 { 2 } else { 1 };
+            let mut s = score;
+            for i in (0..score_len).rev() {
+                score_buf[i] = b'0' + (s % 10);
+                s /= 10;
+            }
+            context.extend_from_slice(&score_buf[..score_len]);
+            context.extend_from_slice(b";\n");
+
+            Some(context)
+        }
+
+        /// 检查占卜记录是否存在
+        pub fn api_reading_exists(reading_id: u64) -> bool {
+            Readings::<T>::contains_key(reading_id)
+        }
+
+        /// 获取占卜记录创建者
+        pub fn api_get_reading_owner(reading_id: u64) -> Option<T::AccountId> {
+            Readings::<T>::get(reading_id).map(|r| r.diviner)
+        }
+
+        /// 批量获取核心解卦结果
+        pub fn api_batch_get_core_interpretations(
+            reading_ids: Vec<u64>,
+        ) -> Vec<(u64, Option<crate::interpretation::TarotCoreInterpretation>)> {
+            reading_ids
+                .into_iter()
+                .map(|id| (id, Self::api_get_core_interpretation(id)))
+                .collect()
+        }
+
+        /// 分析单张牌在特定牌阵位置的含义
+        pub fn api_analyze_card_in_spread(
+            card_id: u8,
+            is_reversed: bool,
+            spread_type: u8,
+            position: u8,
+        ) -> Option<crate::interpretation::CardInterpretation> {
+            use crate::interpretation::*;
+
+            if card_id >= 78 {
+                return None;
+            }
+
+            let spread = crate::types::SpreadType::from_count(spread_type);
+            // 位置权重基于牌阵类型和位置
+            let position_weight = match spread {
+                crate::types::SpreadType::CelticCross => {
+                    // 凯尔特十字的中心牌（0，1）权重最高
+                    if position <= 1 { 10 } else if position <= 5 { 7 } else { 5 }
+                }
+                crate::types::SpreadType::ThreeCardTime => {
+                    // 现在牌（位置1）权重最高
+                    if position == 1 { 10 } else { 7 }
+                }
+                _ => 7,
+            };
+
+            // 计算能量强度
+            let card = crate::types::TarotCard::from_id(card_id);
+            let base_energy: u8 = if card.is_major() { 80 } else { 60 };
+            let energy_strength = if is_reversed {
+                base_energy.saturating_sub(20)
+            } else {
+                base_energy
+            };
+
+            Some(CardInterpretation {
+                card_id,
+                is_reversed,
+                spread_position: position,
+                position_weight,
+                energy_strength,
+                relation_to_prev: RelationshipType::None,
+                relation_to_next: RelationshipType::None,
+            })
+        }
+
+        /// 分析两张牌之间的关系
+        pub fn api_analyze_card_relationship(
+            card1_id: u8,
+            card2_id: u8,
+        ) -> Option<crate::interpretation::CardRelationship> {
+            use crate::interpretation::*;
+
+            if card1_id >= 78 || card2_id >= 78 {
+                return None;
+            }
+
+            let card1 = crate::types::TarotCard::from_id(card1_id);
+            let card2 = crate::types::TarotCard::from_id(card2_id);
+
+            // 判断关系类型
+            let relationship_type = if card1.suit == card2.suit && card1.suit != crate::types::Suit::None {
+                RelationshipType::SameElementReinforce
+            } else if card1_id == 0 && card2_id == 21 {
+                // 愚者与世界
+                RelationshipType::Complementary
+            } else if card1.is_major() && card2.is_major() {
+                RelationshipType::Generating
+            } else {
+                // 元素相生相克判断
+                match (card1.suit, card2.suit) {
+                    (crate::types::Suit::None, _) | (_, crate::types::Suit::None) => RelationshipType::None,
+                    (s1, s2) => {
+                        // 火生土，土生金(星币)，金生水，水生木(权杖)，木生火
+                        let s1_idx = s1 as u8;
+                        let s2_idx = s2 as u8;
+                        if (s1_idx % 4) + 1 == (s2_idx % 4) {
+                            RelationshipType::Generating
+                        } else if (s1_idx + 2) % 4 == s2_idx % 4 {
+                            RelationshipType::Controlling
+                        } else {
+                            RelationshipType::None
+                        }
+                    }
+                }
+            };
+
+            // 计算关系强度
+            let strength = match relationship_type {
+                RelationshipType::SameElementReinforce => 90,
+                RelationshipType::Complementary => 95,
+                RelationshipType::Generating => 70,
+                RelationshipType::Controlling => 60,
+                _ => 30,
+            };
+
+            Some(CardRelationship {
+                card1_index: card1_id,
+                card2_index: card2_id,
+                relationship_type,
+                strength,
+            })
+        }
+
+        /// 获取牌阵能量分析
+        pub fn api_get_spread_energy(
+            reading_id: u64,
+        ) -> Option<crate::interpretation::SpreadEnergyAnalysis> {
+            let reading = Readings::<T>::get(reading_id)?;
+
+            let cards: Vec<(u8, bool)> = reading
+                .cards
+                .iter()
+                .map(|c| (c.card.id, c.position.is_reversed()))
+                .collect();
+
+            Some(algorithm::generate_spread_energy_analysis(&cards))
+        }
+
+        /// 获取时间线分析
+        pub fn api_get_timeline_analysis(
+            reading_id: u64,
+        ) -> Option<crate::interpretation::TimelineAnalysis> {
+            use crate::interpretation::*;
+
+            let full = Self::api_get_full_interpretation(reading_id)?;
+
+            // 基于牌阵能量推断时间线
+            let past_trend = if full.spread_energy.past_energy >= 60 {
+                TimelineTrend::Rising
+            } else if full.spread_energy.past_energy >= 40 {
+                TimelineTrend::Stable
+            } else {
+                TimelineTrend::Declining
+            };
+
+            let present_state = if full.spread_energy.present_energy >= 70 {
+                TimelineState::HighPoint
+            } else if full.spread_energy.present_energy >= 40 {
+                TimelineState::Stable
+            } else {
+                TimelineState::LowPoint
+            };
+
+            let future_trend = if full.spread_energy.future_energy >= 60 {
+                TimelineTrend::Rising
+            } else if full.spread_energy.future_energy >= 40 {
+                TimelineTrend::Stable
+            } else {
+                TimelineTrend::Declining
+            };
+
+            let overall_direction = match (past_trend, future_trend) {
+                (TimelineTrend::Rising, TimelineTrend::Rising) => OverallDirection::Positive,
+                (TimelineTrend::Declining, TimelineTrend::Declining) => OverallDirection::Negative,
+                _ => OverallDirection::Neutral,
+            };
+
+            Some(TimelineAnalysis {
+                past_trend,
+                present_state,
+                future_trend,
+                turning_point: 255, // 无转折点
+                overall_direction,
+            })
         }
     }
 }

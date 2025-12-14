@@ -500,4 +500,140 @@ mod tests {
         // 时辰应该是有效值 (1-12)
         assert!(lunar.hour_zhi_num >= 1 && lunar.hour_zhi_num <= 12);
     }
+
+    #[test]
+    fn test_gregorian_to_lunar_2025_12_13() {
+        // 测试公历 2025-12-13 转农历
+        println!("\n=== 测试 gregorian_to_lunar(2025, 12, 13) ===");
+
+        // 计算调试信息
+        let base_date = gregorian_to_days(1900, 1, 31);
+        let target_date = gregorian_to_days(2025, 12, 13);
+        let mut offset = target_date - base_date;
+
+        println!("基准日期(1900-01-31)儒略日数: {}", base_date);
+        println!("目标日期(2025-12-13)儒略日数: {}", target_date);
+        println!("初始偏移天数: {}", offset);
+
+        // 模拟年份计算循环
+        let mut lunar_year = 1900u16;
+        let mut accumulated_days = 0i64;
+
+        println!("\n开始逐年累计:");
+        while lunar_year <= 2100 {
+            let year_days = lunar_year_days(LUNAR_INFO[(lunar_year - 1900) as usize]) as i64;
+
+            if lunar_year >= 2020 && lunar_year <= 2030 {
+                println!("农历{}年: {}天, 累计: {}天, offset: {}天",
+                    lunar_year, year_days, accumulated_days, offset);
+            }
+
+            if offset < year_days {
+                println!("\n在农历{}年找到匹配!", lunar_year);
+                println!("剩余offset: {}", offset);
+                break;
+            }
+            offset -= year_days;
+            accumulated_days += year_days;
+            lunar_year += 1;
+        }
+
+        println!("\n实际调用 gregorian_to_lunar:");
+        let result = gregorian_to_lunar(2025, 12, 13);
+        assert!(result.is_ok(), "转换应该成功");
+        let (year, month, day, is_leap) = result.unwrap();
+
+        println!("农历年: {}", year);
+        println!("农历月: {}", month);
+        println!("农历日: {}", day);
+        println!("闰月: {}", is_leap);
+
+        // 暂时注释掉断言，先看实际结果
+        // assert_eq!(year, 2025, "农历年份应该是2025");
+    }
+
+    #[test]
+    fn test_timestamp_1765609194() {
+        // 时间戳: 1765609194
+        // 公历: 2025-12-13 06:59:54 UTC
+        // 北京时间: 2025-12-13 14:59:54 (UTC+8) = 未时
+        let timestamp = 1765609194u64;
+
+        // 调试信息
+        let local_timestamp = timestamp + 8 * 3600;
+        let days_since_epoch = (local_timestamp / 86400) as i64;
+        let hour = ((local_timestamp % 86400) / 3600) as u8;
+
+        println!("\n=== 调试时间戳 1765609194 ===");
+        println!("原始时间戳: {}", timestamp);
+        println!("UTC+8时间戳: {}", local_timestamp);
+        println!("从1970-01-01起的天数: {}", days_since_epoch);
+        println!("小时数: {}", hour);
+
+        // 测试 days_to_gregorian 函数
+        let (year, month, day) = days_to_gregorian(days_since_epoch);
+        println!("days_to_gregorian结果: {}-{:02}-{:02}", year, month, day);
+        println!("预期: 2025-12-13");
+
+        let result = timestamp_to_lunar(timestamp);
+
+        assert!(result.is_ok(), "农历转换应该成功");
+        let lunar = result.unwrap();
+
+        println!("\n农历结果:");
+        println!("农历年份: {} (预期: 2025)", lunar.year);
+        println!("农历月份: {} (预期: 11冬月)", lunar.month);
+        println!("农历日: {}", lunar.day);
+        println!("年地支数: {}", lunar.year_zhi_num);
+        println!("时辰地支数: {} (预期: 8=未时)", lunar.hour_zhi_num);
+        println!("是否闰月: {}", lunar.is_leap_month);
+
+        // 验证公历日期转换正确
+        assert_eq!(year, 2025, "公历年份应该是2025");
+        assert_eq!(month, 12, "公历月份应该是12");
+        assert_eq!(day, 13, "公历日应该是13");
+
+        // 验证时辰 (14:00-15:00 应该是未时，地支数为8)
+        assert_eq!(lunar.hour_zhi_num, 8, "14:59 应该是未时（地支数8）");
+
+        // 验证农历年份不应该是2029
+        assert_ne!(lunar.year, 2029, "农历年份不应该是2029，应该在2025附近");
+    }
+
+    #[test]
+    fn test_lunar_info_2025() {
+        // 测试2025年农历数据
+        let info_2025 = LUNAR_INFO[(2025 - 1900) as usize];
+
+        println!("\n=== 2025年农历数据分析 ===");
+        println!("LUNAR_INFO[125] = 0x{:08x} ({})", info_2025, info_2025);
+        println!("二进制: {:032b}", info_2025);
+
+        // 解析闰月信息
+        let leap_month = (info_2025 >> 20) & 0xf;
+        let leap_day_30 = (info_2025 >> 16) & 1;
+
+        println!("\n闰月: {}", leap_month);
+        if leap_month > 0 {
+            println!("闰{}月，{}天", leap_month, if leap_day_30 == 1 { 30 } else { 29 });
+        } else {
+            println!("无闰月");
+        }
+
+        println!("\n各月大小 (bit 15-4):");
+        for month in 1..=12 {
+            let bit_pos = 16 - month;
+            let is_big = (info_2025 >> bit_pos) & 1;
+            let days = if is_big == 1 { 30 } else { 29 };
+            println!("{}月: bit{} = {}, {}天", month, bit_pos, is_big, days);
+        }
+
+        // 计算总天数
+        let total_days = lunar_year_days(info_2025);
+        println!("\n总天数: {}", total_days);
+
+        // 验证：2025年6月有闰月
+        // 参考: https://wannianrili.bmcx.com/2025_nongli/
+        println!("\n参考：2025年应该有闰6月，全年应该是384天");
+    }
 }

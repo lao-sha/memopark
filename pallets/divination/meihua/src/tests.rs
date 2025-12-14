@@ -25,7 +25,9 @@ fn divine_by_time_works() {
         assert_ok!(Meihua::divine_by_time(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            1, // 男
+            1  // 事业
         ));
 
         // 验证卦象创建
@@ -41,6 +43,11 @@ fn divine_by_time_works() {
         let user_hexagrams = Meihua::user_hexagrams(1);
         assert_eq!(user_hexagrams.len(), 1);
         assert_eq!(user_hexagrams[0], 0);
+
+        // 验证解卦数据已创建
+        let interpretation = Meihua::get_interpretation_data(0).expect("Interpretation should exist");
+        assert_eq!(interpretation.basic_info.gender, 1);
+        assert_eq!(interpretation.basic_info.category, 1);
     });
 }
 
@@ -55,7 +62,9 @@ fn divine_by_numbers_works() {
             88,
             66,
             question_hash,
-            true
+            true,
+            2, // 女
+            2  // 财运
         ));
 
         // 验证公开卦象
@@ -65,6 +74,11 @@ fn divine_by_numbers_works() {
         // 验证公开列表
         let public_list = Meihua::public_hexagrams();
         assert_eq!(public_list.len(), 1);
+
+        // 验证解卦数据
+        let interpretation = Meihua::get_interpretation_data(0).expect("Interpretation should exist");
+        assert_eq!(interpretation.basic_info.gender, 2);
+        assert_eq!(interpretation.basic_info.category, 2);
     });
 }
 
@@ -77,7 +91,9 @@ fn divine_random_works() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(3),
             question_hash,
-            false
+            false,
+            0, // 未指定
+            0  // 未指定
         ));
 
         let hexagram = Meihua::hexagrams(0).unwrap();
@@ -88,6 +104,11 @@ fn divine_random_works() {
         assert!(hexagram.ben_gua.xia_gua.number() >= 1 && hexagram.ben_gua.xia_gua.number() <= 8);
         // 验证动爻有效（1-6）
         assert!(hexagram.ben_gua.dong_yao >= 1 && hexagram.ben_gua.dong_yao <= 6);
+
+        // 验证解卦数据
+        let interpretation = Meihua::get_interpretation_data(0).expect("Interpretation should exist");
+        assert_eq!(interpretation.basic_info.gender, 0);
+        assert_eq!(interpretation.basic_info.category, 0);
     });
 }
 
@@ -104,7 +125,9 @@ fn divine_manual_works() {
             8, // 坤
             3, // 第三爻
             question_hash,
-            false
+            false,
+            1, // 男
+            3  // 感情
         ));
 
         let hexagram = Meihua::hexagrams(0).unwrap();
@@ -116,6 +139,10 @@ fn divine_manual_works() {
 
         // 动爻 3 在下卦，下卦为用，上卦为体
         assert!(hexagram.ben_gua.ti_is_shang);
+
+        // 验证解卦数据
+        let interpretation = Meihua::get_interpretation_data(0).expect("Interpretation should exist");
+        assert_eq!(interpretation.basic_info.category, 3);
     });
 }
 
@@ -133,7 +160,9 @@ fn divine_manual_invalid_params() {
                 1,
                 1,
                 question_hash,
-                false
+                false,
+                1,
+                1
             ),
             Error::<Test>::InvalidGuaNum
         );
@@ -146,7 +175,9 @@ fn divine_manual_invalid_params() {
                 1,
                 7, // 无效，应为 1-6
                 question_hash,
-                false
+                false,
+                1,
+                1
             ),
             Error::<Test>::InvalidDongYao
         );
@@ -164,13 +195,15 @@ fn daily_limit_works() {
             assert_ok!(Meihua::divine_random(
                 RuntimeOrigin::signed(1),
                 question_hash,
-                false
+                false,
+                0,
+                0
             ));
         }
 
         // 第 51 次应该失败
         assert_noop!(
-            Meihua::divine_random(RuntimeOrigin::signed(1), question_hash, false),
+            Meihua::divine_random(RuntimeOrigin::signed(1), question_hash, false, 0, 0),
             Error::<Test>::DailyLimitExceeded
         );
 
@@ -178,7 +211,9 @@ fn daily_limit_works() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(2),
             question_hash,
-            false
+            false,
+            0,
+            0
         ));
     });
 }
@@ -193,7 +228,9 @@ fn set_visibility_works() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            0,
+            0
         ));
 
         // 设置为公开
@@ -231,7 +268,9 @@ fn not_owner_cannot_modify() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            0,
+            0
         ));
 
         // 用户 2 尝试修改
@@ -252,7 +291,9 @@ fn ai_interpretation_request_works() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
 
         // 请求 AI 解卦
@@ -282,7 +323,9 @@ fn ai_interpretation_submit_works() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
         assert_ok!(Meihua::request_ai_interpretation(
             RuntimeOrigin::signed(1),
@@ -322,7 +365,9 @@ fn full_divination_calculation() {
             4, // 震
             6, // 第六爻
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
 
         let hexagram = Meihua::hexagrams(0).unwrap();
@@ -357,7 +402,9 @@ fn events_are_emitted() {
         assert_ok!(Meihua::divine_random(
             RuntimeOrigin::signed(1),
             question_hash,
-            false
+            false,
+            0,
+            0
         ));
 
         // 检查事件
@@ -386,7 +433,9 @@ fn divine_by_single_number_works() {
             RuntimeOrigin::signed(1),
             38271,
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
 
         // 验证卦象创建
@@ -416,7 +465,9 @@ fn divine_by_single_number_two_digits() {
             RuntimeOrigin::signed(1),
             36,
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
 
         let hexagram = Meihua::hexagrams(0).unwrap();
@@ -436,7 +487,9 @@ fn divine_by_single_number_emits_event() {
             RuntimeOrigin::signed(1),
             12345,
             question_hash,
-            true
+            true,
+            1,
+            1
         ));
 
         // 检查事件
@@ -464,7 +517,9 @@ fn get_hexagram_detail_works() {
             1, // 乾
             1, // 初爻
             question_hash,
-            false
+            false,
+            1,
+            1
         ));
 
         // 获取详细信息

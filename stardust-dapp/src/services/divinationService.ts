@@ -74,28 +74,60 @@ function getPalletName(divinationType: DivinationType): string {
  * @param divinationType 占卜类型
  * @param resultId 占卜结果 ID
  * @param interpretationType 解读类型
+ * @param contextHash 可选的上下文哈希（用于关联额外信息）
  */
 export async function requestDivinationInterpretation(
   divinationType: DivinationType,
   resultId: number,
-  interpretationType: InterpretationType
+  interpretationType: InterpretationType,
+  contextHash?: string
 ): Promise<number> {
   const api = await getSignedApi();
+
+  // 构建 context_hash 参数 (Option<[u8; 32]>)
+  // 如果没有提供 contextHash，传 null (对应 Rust 的 None)
+  const contextHashParam = contextHash
+    ? { Some: contextHash }
+    : null;
+
   const tx = api.tx.divinationAi.requestInterpretation(
     divinationType,
     resultId,
-    interpretationType
+    interpretationType,
+    contextHashParam
   );
 
   return new Promise((resolve, reject) => {
-    tx.signAndSend(api.signer, ({ status, events }) => {
-      if (status.isInBlock) {
+    tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
+      // 检查调度错误
+      if (dispatchError) {
+        if (dispatchError.isModule) {
+          try {
+            const decoded = api.registry.findMetaError(dispatchError.asModule);
+            const { docs, name, section } = decoded;
+            reject(new Error(`${section}.${name}: ${docs.join(' ')}`));
+          } catch (e) {
+            reject(new Error(dispatchError.toString()));
+          }
+        } else {
+          reject(new Error(dispatchError.toString()));
+        }
+        return;
+      }
+
+      if (status.isInBlock || status.isFinalized) {
+        console.log('[DivinationService] 交易已打包，事件数量:', events.length);
         const event = events.find((e) =>
           e.event.section === 'divinationAi' && e.event.method === 'InterpretationRequested'
         );
         if (event) {
           const requestId = event.event.data[0].toNumber();
+          console.log('[DivinationService] AI 解读请求成功，requestId:', requestId);
           resolve(requestId);
+        } else if (status.isFinalized) {
+          // 交易成功但没有找到事件
+          console.error('[DivinationService] 所有事件:', events.map(e => `${e.event.section}.${e.event.method}`).join(', '));
+          reject(new Error('交易成功但未找到 InterpretationRequested 事件'));
         }
       }
     }).catch(reject);

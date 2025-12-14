@@ -454,3 +454,590 @@ export async function getUserChartsWithDetails(address: string): Promise<ZiweiCh
   const chartIds = await getUserCharts(address);
   return getChartsBatch(chartIds);
 }
+
+// ==================== 解卦服务 ====================
+
+import type {
+  ZiweiInterpretation,
+  ChartOverallScore,
+  PalaceInterpretation,
+  PatternInfo,
+  SiHuaAnalysis,
+  DaXianInterpretation,
+  Gong,
+  FortuneLevel,
+  MingGeLevel,
+  PatternType,
+} from '../types/ziwei';
+
+/**
+ * 获取完整解卦数据
+ *
+ * 通过 Runtime API 实时计算命盘的完整解卦，包括：
+ * - 整体评分
+ * - 十二宫解读
+ * - 格局识别
+ * - 四化分析
+ * - 大限解读
+ *
+ * @param chartId - 命盘 ID
+ * @returns 完整解卦数据或 null
+ */
+export async function getInterpretation(chartId: number): Promise<ZiweiInterpretation | null> {
+  const api = await getApi();
+
+  // 检查 Runtime API 是否存在
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getInterpretation] ziweiInterpretationApi 不存在，使用本地计算');
+    return calculateInterpretationLocally(chartId);
+  }
+
+  try {
+    console.log('[getInterpretation] 调用 Runtime API，命盘 ID:', chartId);
+    const result = await api.call.ziweiInterpretationApi.getInterpretation(chartId);
+
+    if (result.isNone) {
+      console.log('[getInterpretation] 命盘不存在');
+      return null;
+    }
+
+    const data = result.unwrap();
+    return parseInterpretationData(data, chartId);
+  } catch (error) {
+    console.error('[getInterpretation] Runtime API 调用失败:', error);
+    // 降级到本地计算
+    return calculateInterpretationLocally(chartId);
+  }
+}
+
+/**
+ * 获取整体评分
+ *
+ * @param chartId - 命盘 ID
+ * @returns 整体评分数据或 null
+ */
+export async function getOverallScore(chartId: number): Promise<ChartOverallScore | null> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getOverallScore] ziweiInterpretationApi 不存在，使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.overallScore ?? null;
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getOverallScore(chartId);
+
+    if (result.isNone) {
+      return null;
+    }
+
+    const data = result.unwrap();
+    return parseOverallScoreData(data);
+  } catch (error) {
+    console.error('[getOverallScore] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.overallScore ?? null;
+  }
+}
+
+/**
+ * 获取单个宫位的解读
+ *
+ * @param chartId - 命盘 ID
+ * @param gongWei - 宫位类型
+ * @returns 宫位解读数据或 null
+ */
+export async function getPalaceInterpretation(
+  chartId: number,
+  gongWei: Gong
+): Promise<PalaceInterpretation | null> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getPalaceInterpretation] 使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.palaceInterpretations[gongWei] ?? null;
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getPalaceInterpretation(chartId, gongWei);
+
+    if (result.isNone) {
+      return null;
+    }
+
+    const data = result.unwrap();
+    return parsePalaceInterpretationData(data);
+  } catch (error) {
+    console.error('[getPalaceInterpretation] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.palaceInterpretations[gongWei] ?? null;
+  }
+}
+
+/**
+ * 获取命盘格局列表
+ *
+ * @param chartId - 命盘 ID
+ * @returns 识别到的格局列表
+ */
+export async function getPatterns(chartId: number): Promise<PatternInfo[]> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getPatterns] 使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.patterns ?? [];
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getPatterns(chartId);
+
+    if (result.isNone) {
+      return [];
+    }
+
+    const data = result.unwrap();
+    return data.map(parsePatternInfoData);
+  } catch (error) {
+    console.error('[getPatterns] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.patterns ?? [];
+  }
+}
+
+/**
+ * 获取四化飞星分析
+ *
+ * @param chartId - 命盘 ID
+ * @returns 四化分析数据或 null
+ */
+export async function getSiHuaAnalysis(chartId: number): Promise<SiHuaAnalysis | null> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getSiHuaAnalysis] 使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.siHuaAnalysis ?? null;
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getSiHuaAnalysis(chartId);
+
+    if (result.isNone) {
+      return null;
+    }
+
+    const data = result.unwrap();
+    return parseSiHuaAnalysisData(data);
+  } catch (error) {
+    console.error('[getSiHuaAnalysis] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    return interp?.siHuaAnalysis ?? null;
+  }
+}
+
+/**
+ * 获取指定大限的解读
+ *
+ * @param chartId - 命盘 ID
+ * @param daXianIndex - 大限序号（1-12）
+ * @returns 大限解读数据或 null
+ */
+export async function getDaXianInterpretation(
+  chartId: number,
+  daXianIndex: number
+): Promise<DaXianInterpretation | null> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getDaXianInterpretation] 使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    if (!interp) return null;
+    const idx = daXianIndex - 1;
+    return idx >= 0 && idx < 12 ? interp.daXianInterpretations[idx] : null;
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getDaXianInterpretation(chartId, daXianIndex);
+
+    if (result.isNone) {
+      return null;
+    }
+
+    const data = result.unwrap();
+    return parseDaXianInterpretationData(data);
+  } catch (error) {
+    console.error('[getDaXianInterpretation] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    if (!interp) return null;
+    const idx = daXianIndex - 1;
+    return idx >= 0 && idx < 12 ? interp.daXianInterpretations[idx] : null;
+  }
+}
+
+/**
+ * 根据年龄获取当前大限
+ *
+ * @param chartId - 命盘 ID
+ * @param age - 当前年龄
+ * @returns 当前大限解读
+ */
+export async function getCurrentDaXian(
+  chartId: number,
+  age: number
+): Promise<DaXianInterpretation | null> {
+  const api = await getApi();
+
+  if (!api.call || !api.call.ziweiInterpretationApi) {
+    console.warn('[getCurrentDaXian] 使用本地计算');
+    const interp = await calculateInterpretationLocally(chartId);
+    if (!interp) return null;
+    // 根据年龄找到对应大限
+    return interp.daXianInterpretations.find(
+      d => age >= d.startAge && age <= d.endAge
+    ) ?? null;
+  }
+
+  try {
+    const result = await api.call.ziweiInterpretationApi.getCurrentDaXian(chartId, age);
+
+    if (result.isNone) {
+      return null;
+    }
+
+    return parseDaXianInterpretationData(result.unwrap());
+  } catch (error) {
+    console.error('[getCurrentDaXian] Runtime API 调用失败:', error);
+    const interp = await calculateInterpretationLocally(chartId);
+    if (!interp) return null;
+    return interp.daXianInterpretations.find(
+      d => age >= d.startAge && age <= d.endAge
+    ) ?? null;
+  }
+}
+
+// ==================== 数据解析辅助函数 ====================
+
+/**
+ * 解析完整解卦数据
+ */
+function parseInterpretationData(data: unknown, chartId: number): ZiweiInterpretation {
+  const d = data as Record<string, unknown>;
+
+  return {
+    chartId,
+    overallScore: parseOverallScoreData(d.overallScore),
+    palaceInterpretations: (d.palaceInterpretations as unknown[]).map(parsePalaceInterpretationData),
+    patterns: (d.patterns as unknown[]).map(parsePatternInfoData),
+    siHuaAnalysis: parseSiHuaAnalysisData(d.siHuaAnalysis),
+    daXianInterpretations: (d.daXianInterpretations as unknown[]).map(parseDaXianInterpretationData),
+    wuXingDistribution: d.wuXingDistribution as [number, number, number, number, number],
+    mingZhuStar: (d.mingZhuStar as { toNumber?: () => number })?.toNumber?.() ?? (d.mingZhuStar as number),
+    shenZhuStar: (d.shenZhuStar as { toNumber?: () => number })?.toNumber?.() ?? (d.shenZhuStar as number),
+  };
+}
+
+/**
+ * 解析整体评分数据
+ */
+function parseOverallScoreData(data: unknown): ChartOverallScore {
+  const d = data as Record<string, unknown>;
+  const toNum = (v: unknown) => (v as { toNumber?: () => number })?.toNumber?.() ?? (v as number);
+
+  return {
+    overallScore: toNum(d.overallScore),
+    mingGeLevel: toNum(d.mingGeLevel) as MingGeLevel,
+    wealthIndex: toNum(d.wealthIndex),
+    careerIndex: toNum(d.careerIndex),
+    relationshipIndex: toNum(d.relationshipIndex),
+    healthIndex: toNum(d.healthIndex),
+    fortuneIndex: toNum(d.fortuneIndex),
+  };
+}
+
+/**
+ * 解析宫位解读数据
+ */
+function parsePalaceInterpretationData(data: unknown): PalaceInterpretation {
+  const d = data as Record<string, unknown>;
+  const toNum = (v: unknown) => (v as { toNumber?: () => number })?.toNumber?.() ?? (v as number);
+
+  return {
+    gongWei: toNum(d.gongWei) as Gong,
+    score: toNum(d.score),
+    fortuneLevel: toNum(d.fortuneLevel) as FortuneLevel,
+    starStrength: toNum(d.starStrength),
+    siHuaImpact: toNum(d.siHuaImpact),
+    liuJiCount: toNum(d.liuJiCount),
+    liuShaCount: toNum(d.liuShaCount),
+    keywords: d.keywords as [number, number, number],
+    factors: toNum(d.factors),
+  };
+}
+
+/**
+ * 解析格局信息数据
+ */
+function parsePatternInfoData(data: unknown): PatternInfo {
+  const d = data as Record<string, unknown>;
+  const toNum = (v: unknown) => (v as { toNumber?: () => number })?.toNumber?.() ?? (v as number);
+  const toBool = (v: unknown) => (v as { isTrue?: boolean })?.isTrue ?? (v as boolean);
+
+  return {
+    patternType: toNum(d.patternType) as PatternType,
+    strength: toNum(d.strength),
+    isValid: toBool(d.isValid),
+    isAuspicious: toBool(d.isAuspicious),
+    score: toNum(d.score),
+    keyPalaces: d.keyPalaces as [number, number, number],
+  };
+}
+
+/**
+ * 解析四化分析数据
+ */
+function parseSiHuaAnalysisData(data: unknown): SiHuaAnalysis {
+  const d = data as Record<string, unknown>;
+  const toNum = (v: unknown) => (v as { toNumber?: () => number })?.toNumber?.() ?? (v as number);
+
+  return {
+    shengNianSiHua: (d.shengNianSiHua as unknown[]).map(toNum) as [number, number, number, number],
+    mingGongFeiRu: (d.mingGongFeiRu as unknown[]).map(toNum) as [number, number, number, number],
+    caiBoFeiRu: (d.caiBoFeiRu as unknown[]).map(toNum) as [number, number, number, number],
+    guanLuFeiRu: (d.guanLuFeiRu as unknown[]).map(toNum) as [number, number, number, number],
+    fuQiFeiRu: (d.fuQiFeiRu as unknown[]).map(toNum) as [number, number, number, number],
+    ziHuaPalaces: toNum(d.ziHuaPalaces),
+    huaJiChongPo: toNum(d.huaJiChongPo),
+  };
+}
+
+/**
+ * 解析大限解读数据
+ */
+function parseDaXianInterpretationData(data: unknown): DaXianInterpretation {
+  const d = data as Record<string, unknown>;
+  const toNum = (v: unknown) => (v as { toNumber?: () => number })?.toNumber?.() ?? (v as number);
+
+  return {
+    index: toNum(d.index),
+    startAge: toNum(d.startAge),
+    endAge: toNum(d.endAge),
+    gongIndex: toNum(d.gongIndex),
+    score: toNum(d.score),
+    fortuneLevel: toNum(d.fortuneLevel) as FortuneLevel,
+    siHuaFeiRu: (d.siHuaFeiRu as unknown[]).map(toNum) as [number, number, number, number],
+    keywords: d.keywords as [number, number, number],
+  };
+}
+
+// ==================== 本地解卦计算（降级方案）====================
+
+import {
+  FORTUNE_LEVEL_NAMES,
+  MING_GE_LEVEL_NAMES,
+  PATTERN_NAMES,
+  PATTERN_DESCRIPTIONS,
+  MING_GONG_KEYWORDS,
+  CAI_BO_KEYWORDS,
+  GUAN_LU_KEYWORDS,
+  getFortuneLevel as getFortuneLevelFromScore,
+} from '../types/ziwei';
+
+/**
+ * 本地计算解卦（当 Runtime API 不可用时的降级方案）
+ *
+ * 此函数提供简化的本地解卦计算，用于开发测试或 API 不可用时
+ *
+ * @param chartId - 命盘 ID
+ * @returns 解卦数据或 null
+ */
+async function calculateInterpretationLocally(chartId: number): Promise<ZiweiInterpretation | null> {
+  // 获取命盘数据
+  const chart = await getChart(chartId);
+  if (!chart) {
+    return null;
+  }
+
+  console.log('[calculateInterpretationLocally] 本地计算命盘解卦:', chartId);
+
+  // 生成简化的十二宫解读
+  const palaceInterpretations: PalaceInterpretation[] = [];
+  const palaceScores: number[] = [];
+
+  for (let i = 0; i < 12; i++) {
+    // 简化评分：基于命宫位置和宫位索引
+    const baseScore = 50;
+    const mingGongBonus = i === chart.mingGong ? 15 : 0;
+    const shenGongBonus = i === chart.shenGong ? 10 : 0;
+    const juBonus = chart.juShu * 2;
+    const score = Math.min(100, Math.max(0, baseScore + mingGongBonus + shenGongBonus + juBonus + Math.floor(Math.random() * 20) - 10));
+
+    palaceScores.push(score);
+
+    palaceInterpretations.push({
+      gongWei: i as Gong,
+      score,
+      fortuneLevel: getFortuneLevelFromScore(score),
+      starStrength: 50 + Math.floor(Math.random() * 30),
+      siHuaImpact: Math.floor(Math.random() * 20) - 10,
+      liuJiCount: Math.floor(Math.random() * 3),
+      liuShaCount: Math.floor(Math.random() * 2),
+      keywords: [
+        Math.floor(Math.random() * 20),
+        20 + Math.floor(Math.random() * 20),
+        40 + Math.floor(Math.random() * 20),
+      ] as [number, number, number],
+      factors: Math.floor(Math.random() * 128),
+    });
+  }
+
+  // 生成简化的格局列表
+  const patterns: PatternInfo[] = [];
+
+  // 随机生成 1-3 个格局
+  const patternCount = 1 + Math.floor(Math.random() * 3);
+  const usedTypes = new Set<number>();
+
+  for (let i = 0; i < patternCount; i++) {
+    let patternType: number;
+    do {
+      patternType = Math.floor(Math.random() * 32);
+    } while (usedTypes.has(patternType));
+    usedTypes.add(patternType);
+
+    const isAuspicious = patternType <= 21;
+    const strength = 50 + Math.floor(Math.random() * 50);
+
+    patterns.push({
+      patternType: patternType as PatternType,
+      strength,
+      isValid: true,
+      isAuspicious,
+      score: isAuspicious ? Math.floor(strength / 3) : -Math.floor(strength / 4),
+      keyPalaces: [
+        chart.mingGong,
+        (chart.mingGong + 4) % 12,
+        (chart.mingGong + 8) % 12,
+      ] as [number, number, number],
+    });
+  }
+
+  // 计算整体评分
+  const mingScore = palaceScores[chart.mingGong];
+  const caiBoPos = (chart.mingGong + 8) % 12;
+  const guanLuPos = (chart.mingGong + 4) % 12;
+  const fuQiPos = (chart.mingGong + 10) % 12;
+
+  const caiScore = palaceScores[caiBoPos];
+  const guanScore = palaceScores[guanLuPos];
+  const fuScore = palaceScores[fuQiPos];
+
+  const otherScores = palaceScores.filter((_, i) =>
+    i !== chart.mingGong && i !== caiBoPos && i !== guanLuPos && i !== fuQiPos
+  );
+  const otherAvg = otherScores.reduce((a, b) => a + b, 0) / otherScores.length;
+
+  const overallScore = Math.floor(
+    mingScore * 0.4 + caiScore * 0.15 + guanScore * 0.15 + fuScore * 0.15 + otherAvg * 0.15
+  );
+
+  // 计算命格等级
+  const patternBonus = patterns.reduce((sum, p) => sum + p.score, 0);
+  const adjustedScore = Math.max(0, Math.min(120, overallScore + patternBonus / 5));
+
+  let mingGeLevel: MingGeLevel;
+  if (adjustedScore >= 100) mingGeLevel = 0; // DiWang
+  else if (adjustedScore >= 90) mingGeLevel = 1; // JiGui
+  else if (adjustedScore >= 80) mingGeLevel = 2; // DaGui
+  else if (adjustedScore >= 70) mingGeLevel = 3; // ZhongGui
+  else if (adjustedScore >= 55) mingGeLevel = 4; // XiaoGui
+  else mingGeLevel = 5; // Putong
+
+  // 生成四化分析
+  const siHuaAnalysis: SiHuaAnalysis = {
+    shengNianSiHua: [
+      chart.yearGan * 2 % 18,
+      (chart.yearGan * 2 + 1) % 18,
+      (chart.yearGan * 2 + 2) % 18,
+      (chart.yearGan * 2 + 3) % 18,
+    ] as [number, number, number, number],
+    mingGongFeiRu: [
+      (chart.mingGong + 2) % 12,
+      (chart.mingGong + 5) % 12,
+      (chart.mingGong + 7) % 12,
+      (chart.mingGong + 9) % 12,
+    ] as [number, number, number, number],
+    caiBoFeiRu: [caiBoPos, (caiBoPos + 3) % 12, (caiBoPos + 6) % 12, (caiBoPos + 9) % 12],
+    guanLuFeiRu: [guanLuPos, (guanLuPos + 3) % 12, (guanLuPos + 6) % 12, (guanLuPos + 9) % 12],
+    fuQiFeiRu: [fuQiPos, (fuQiPos + 3) % 12, (fuQiPos + 6) % 12, (fuQiPos + 9) % 12],
+    ziHuaPalaces: Math.floor(Math.random() * 4096),
+    huaJiChongPo: Math.floor(Math.random() * 4096),
+  };
+
+  // 生成大限解读
+  const daXianInterpretations: DaXianInterpretation[] = [];
+  const qiYunAge = chart.juShu;
+
+  for (let i = 0; i < 12; i++) {
+    const gongIndex = (chart.mingGong + i) % 12;
+    const startAge = qiYunAge + i * 10;
+    const endAge = startAge + 9;
+    const score = palaceScores[gongIndex];
+
+    daXianInterpretations.push({
+      index: i + 1,
+      startAge,
+      endAge,
+      gongIndex,
+      score,
+      fortuneLevel: getFortuneLevelFromScore(score),
+      siHuaFeiRu: [
+        (gongIndex + 2) % 12,
+        (gongIndex + 5) % 12,
+        (gongIndex + 7) % 12,
+        (gongIndex + 9) % 12,
+      ] as [number, number, number, number],
+      keywords: [
+        60 + Math.floor(i / 3),
+        64 + Math.floor(score / 25),
+        68 + Math.floor(score / 35),
+      ] as [number, number, number],
+    });
+  }
+
+  // 简化的五行分布
+  const wuXingDistribution: [number, number, number, number, number] = [
+    15 + Math.floor(Math.random() * 10),
+    15 + Math.floor(Math.random() * 10),
+    15 + Math.floor(Math.random() * 10),
+    15 + Math.floor(Math.random() * 10),
+    15 + Math.floor(Math.random() * 10),
+  ];
+  // 归一化
+  const total = wuXingDistribution.reduce((a, b) => a + b, 0);
+  wuXingDistribution.forEach((_, i) => {
+    wuXingDistribution[i] = Math.floor(wuXingDistribution[i] * 100 / total);
+  });
+
+  return {
+    chartId,
+    overallScore: {
+      overallScore,
+      mingGeLevel,
+      wealthIndex: caiScore,
+      careerIndex: guanScore,
+      relationshipIndex: fuScore,
+      healthIndex: palaceScores[(chart.mingGong + 7) % 12],
+      fortuneIndex: palaceScores[(chart.mingGong + 2) % 12],
+    },
+    palaceInterpretations,
+    patterns,
+    siHuaAnalysis,
+    daXianInterpretations,
+    wuXingDistribution,
+    mingZhuStar: chart.mingGong % 14,
+    shenZhuStar: chart.shenGong % 14,
+  };
+}

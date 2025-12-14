@@ -28,6 +28,9 @@ import type {
   YaoType,
   LiuyaoGua,
   YaoInfo,
+  ShenShaInfo,
+} from '../types/liuyao';
+import {
   DiZhi,
   WuXing,
   LiuQin,
@@ -37,9 +40,6 @@ import type {
   RiChenGuanXi,
   ShenSha,
   HuiTouZuoYong,
-  ShenShaInfo,
-} from '../types/liuyao';
-import {
   GUA_NAMES,
   DI_ZHI_WU_XING,
 } from '../types/liuyao';
@@ -787,6 +787,176 @@ export async function getPublicGuasWithDetails(
 // ==================== 干支计算辅助函数 ====================
 
 /**
+ * 本地辅助函数：计算旺衰（简化版）
+ */
+function calculateWangShuaiLocal(wuXing: WuXing, yueJian: DiZhi): WangShuai {
+  // 简化的旺衰计算，实际应该根据月令五行关系
+  const yueWuXing = DI_ZHI_WU_XING[yueJian];
+
+  if (wuXing === yueWuXing) return 0; // 旺
+
+  // 五行生克关系简化判断
+  const shengWoMap: Record<WuXing, WuXing> = {
+    [WuXing.Mu]: WuXing.Shui,
+    [WuXing.Huo]: WuXing.Mu,
+    [WuXing.Tu]: WuXing.Huo,
+    [WuXing.Jin]: WuXing.Tu,
+    [WuXing.Shui]: WuXing.Jin,
+  };
+
+  if (yueWuXing === shengWoMap[wuXing]) return 1; // 相
+
+  return 2; // 其他情况默认为休
+}
+
+/**
+ * 本地辅助函数：分析日辰关系
+ */
+function analyzeRiChenLocal(riChen: DiZhi, diZhi: DiZhi, wuXing: WuXing): RiChenGuanXi {
+  // 检查日冲（地支六冲）
+  const chongMap: Record<DiZhi, DiZhi> = {
+    0: 6, 1: 7, 2: 8, 3: 9, 4: 10, 5: 11,
+    6: 0, 7: 1, 8: 2, 9: 3, 10: 4, 11: 5,
+  };
+
+  if (chongMap[riChen] === diZhi) {
+    return 1; // 日冲
+  }
+
+  // 检查日合（地支六合）
+  const heMap: Record<DiZhi, DiZhi> = {
+    0: 1, 1: 0, 2: 11, 3: 10, 4: 9, 5: 8,
+    6: 7, 7: 6, 8: 5, 9: 4, 10: 3, 11: 2,
+  };
+
+  if (heMap[riChen] === diZhi) {
+    return 2; // 日合
+  }
+
+  return 0; // 无特殊关系
+}
+
+/**
+ * 本地辅助函数：计算回头生克
+ */
+function calculateHuiTouLocal(originalWuXing: WuXing, bianWuXing: WuXing): HuiTouZuoYong {
+  if (originalWuXing === bianWuXing) return 4; // 比和
+
+  // 五行生克表
+  const shengMap: Record<WuXing, WuXing> = {
+    [WuXing.Mu]: WuXing.Huo,
+    [WuXing.Huo]: WuXing.Tu,
+    [WuXing.Tu]: WuXing.Jin,
+    [WuXing.Jin]: WuXing.Shui,
+    [WuXing.Shui]: WuXing.Mu,
+  };
+
+  const keMap: Record<WuXing, WuXing> = {
+    [WuXing.Mu]: WuXing.Tu,
+    [WuXing.Huo]: WuXing.Jin,
+    [WuXing.Tu]: WuXing.Shui,
+    [WuXing.Jin]: WuXing.Mu,
+    [WuXing.Shui]: WuXing.Huo,
+  };
+
+  if (shengMap[bianWuXing] === originalWuXing) return 0; // 回头生
+  if (keMap[bianWuXing] === originalWuXing) return 1; // 回头克
+  if (shengMap[originalWuXing] === bianWuXing) return 2; // 回头泄
+
+  return 3; // 回头耗
+}
+
+/**
+ * 本地辅助函数：计算神煞信息（简化版）
+ */
+function calculateShenShaInfoLocal(riGan: TianGan, riChen: DiZhi, yueJian: DiZhi): ShenShaInfo {
+  // 简化的神煞计算
+  // 实际应该根据完整的神煞查表规则
+
+  return {
+    tianYiGuiRen: [0 as DiZhi, 0 as DiZhi],
+    yiMa: 0 as DiZhi,
+    taoHua: 0 as DiZhi,
+    luShen: 0 as DiZhi,
+    wenChang: 0 as DiZhi,
+    jieSha: 0 as DiZhi,
+    huaGai: 0 as DiZhi,
+    jiangXing: 0 as DiZhi,
+    wangShen: 0 as DiZhi,
+    tianXi: 0 as DiZhi,
+    tianYi: 0 as DiZhi,
+    yangRen: 0 as DiZhi,
+    zaiSha: 0 as DiZhi,
+    mouXing: 0 as DiZhi,
+  };
+}
+
+/**
+ * 本地辅助函数：获取某地支的神煞列表
+ */
+function getShenShaForZhiLocal(shenShaInfo: ShenShaInfo, diZhi: DiZhi): ShenSha[] {
+  const result: ShenSha[] = [];
+
+  // 检查各种神煞是否在这个地支上
+  if (shenShaInfo.tianYiGuiRen[0] === diZhi || shenShaInfo.tianYiGuiRen[1] === diZhi) {
+    result.push(0); // 天乙贵人
+  }
+  if (shenShaInfo.yiMa === diZhi) result.push(1);
+  if (shenShaInfo.taoHua === diZhi) result.push(2);
+  if (shenShaInfo.luShen === diZhi) result.push(3);
+  if (shenShaInfo.wenChang === diZhi) result.push(4);
+  if (shenShaInfo.jieSha === diZhi) result.push(5);
+  if (shenShaInfo.huaGai === diZhi) result.push(6);
+  if (shenShaInfo.jiangXing === diZhi) result.push(7);
+  if (shenShaInfo.wangShen === diZhi) result.push(8);
+  if (shenShaInfo.tianXi === diZhi) result.push(9);
+  if (shenShaInfo.tianYi === diZhi) result.push(10);
+  if (shenShaInfo.yangRen === diZhi) result.push(11);
+  if (shenShaInfo.zaiSha === diZhi) result.push(12);
+  if (shenShaInfo.mouXing === diZhi) result.push(13);
+
+  return result;
+}
+
+/**
+ * 本地辅助函数：检查是否为六冲卦
+ */
+function checkLiuChongLocal(guaIndex: number): boolean {
+  // 六冲卦列表（简化）
+  const liuChongGuas = [0, 1, 28, 29, 51, 52, 57, 58];
+  return liuChongGuas.includes(guaIndex);
+}
+
+/**
+ * 本地辅助函数：检查是否为六合卦
+ */
+function checkLiuHeLocal(guaIndex: number): boolean {
+  // 六合卦列表（简化）
+  const liuHeGuas = [10, 11, 18, 19, 30, 31, 60, 61];
+  return liuHeGuas.includes(guaIndex);
+}
+
+/**
+ * 本地辅助函数：检查是否为反吟卦
+ */
+function checkFanYinLocal(benGuaIndex: number, bianGuaIndex: number): boolean {
+  // 简化判断：如果本卦和变卦是六冲关系
+  const chongPairs = [
+    [0, 1], [28, 29], [51, 52], [57, 58],
+  ];
+
+  for (const [a, b] of chongPairs) {
+    if ((benGuaIndex === a && bianGuaIndex === b) || (benGuaIndex === b && bianGuaIndex === a)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ==================== 干支计算辅助函数 ====================
+
+/**
  * 天干名称
  */
 export const TIAN_GAN_NAMES = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
@@ -844,4 +1014,453 @@ export function getGanZhiFromDate(date: Date): {
     day: [dayGan >= 0 ? dayGan : dayGan + 10, dayZhi >= 0 ? dayZhi : dayZhi + 12],
     hour: [hourGan, hourZhi],
   };
+}
+
+// ==================== Runtime API 解卦服务 ====================
+
+import type {
+  LiuYaoCoreInterpretation,
+  LiuYaoFullInterpretation,
+  JieGuaTextType,
+  ShiXiangType,
+  YaoAnalysis as InterpYaoAnalysis,
+  QinState,
+  GuaXiangAnalysis,
+  ShenShaSummary,
+  LiuQinAnalysis,
+} from '../types/liuyao';
+
+/**
+ * 通过 Runtime API 获取核心解卦结果（免费）
+ *
+ * 此函数调用链上的 LiuYaoApi.getCoreInterpretation，
+ * 实时计算解卦结果，不消耗 Gas，不存储到链上。
+ *
+ * @param guaId - 卦象 ID
+ * @param shiXiang - 占问事项类型 (0-9)
+ * @returns 核心解卦结果或 null
+ */
+export async function getCoreInterpretation(
+  guaId: number,
+  shiXiang: ShiXiangType
+): Promise<LiuYaoCoreInterpretation | null> {
+  const api = await getApi();
+
+  try {
+    console.log(`[LiuYaoService] 调用 Runtime API 获取核心解卦: guaId=${guaId}, shiXiang=${shiXiang}`);
+
+    // 检查 Runtime API 是否可用
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiCall = api.call as any;
+    if (!apiCall || !apiCall.liuYaoApi || !apiCall.liuYaoApi.getCoreInterpretation) {
+      console.log('[LiuYaoService] Runtime API 不可用');
+      return null;
+    }
+
+    // 调用 Runtime API
+    const result = await apiCall.liuYaoApi.getCoreInterpretation(guaId, shiXiang);
+
+    if (!result || result.isNone) {
+      console.log('[LiuYaoService] Runtime API 返回空结果（卦象可能不存在）');
+      return null;
+    }
+
+    const data = result.unwrap();
+    console.log('[LiuYaoService] Runtime API 返回数据:', JSON.stringify(data.toHuman()));
+
+    return parseCoreInterpretation(data);
+  } catch (error) {
+    console.error('[LiuYaoService] Runtime API 调用失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 通过 Runtime API 获取完整解卦结果（免费）
+ *
+ * 此函数调用链上的 LiuYaoApi.getFullInterpretation，
+ * 实时计算完整解卦结果，不消耗 Gas，不存储到链上。
+ *
+ * @param guaId - 卦象 ID
+ * @param shiXiang - 占问事项类型 (0-9)
+ * @returns 完整解卦结果或 null
+ */
+export async function getFullInterpretation(
+  guaId: number,
+  shiXiang: ShiXiangType
+): Promise<LiuYaoFullInterpretation | null> {
+  const api = await getApi();
+
+  try {
+    console.log(`[LiuYaoService] 调用 Runtime API 获取完整解卦: guaId=${guaId}, shiXiang=${shiXiang}`);
+
+    // 检查 Runtime API 是否可用
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiCall = api.call as any;
+    if (!apiCall || !apiCall.liuYaoApi || !apiCall.liuYaoApi.getFullInterpretation) {
+      console.log('[LiuYaoService] Runtime API 不可用');
+      return null;
+    }
+
+    // 调用 Runtime API
+    const result = await apiCall.liuYaoApi.getFullInterpretation(guaId, shiXiang);
+
+    if (!result || result.isNone) {
+      console.log('[LiuYaoService] Runtime API 返回空结果（卦象可能不存在）');
+      return null;
+    }
+
+    const data = result.unwrap();
+    console.log('[LiuYaoService] Runtime API 返回数据:', JSON.stringify(data.toHuman()));
+
+    return parseFullInterpretation(data);
+  } catch (error) {
+    console.error('[LiuYaoService] Runtime API 调用失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 通过 Runtime API 获取解卦文本索引列表（免费）
+ *
+ * @param guaId - 卦象 ID
+ * @param shiXiang - 占问事项类型 (0-9)
+ * @returns 解卦文本索引列表或 null
+ */
+export async function getInterpretationTexts(
+  guaId: number,
+  shiXiang: ShiXiangType
+): Promise<JieGuaTextType[] | null> {
+  const api = await getApi();
+
+  try {
+    console.log(`[LiuYaoService] 调用 Runtime API 获取解卦文本: guaId=${guaId}, shiXiang=${shiXiang}`);
+
+    // 检查 Runtime API 是否可用
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiCall = api.call as any;
+    if (!apiCall || !apiCall.liuYaoApi || !apiCall.liuYaoApi.getInterpretationTexts) {
+      console.log('[LiuYaoService] Runtime API 不可用');
+      return null;
+    }
+
+    // 调用 Runtime API
+    const result = await apiCall.liuYaoApi.getInterpretationTexts(guaId, shiXiang);
+
+    if (!result || result.isNone) {
+      console.log('[LiuYaoService] Runtime API 返回空结果');
+      return null;
+    }
+
+    const data = result.unwrap();
+    console.log('[LiuYaoService] Runtime API 返回文本索引:', JSON.stringify(data.toHuman()));
+
+    // 解析文本类型列表
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data.map((item: any) => {
+      const jsonValue = item.toJSON();
+      if (typeof jsonValue === 'number') {
+        return jsonValue as JieGuaTextType;
+      }
+      // 如果是对象格式，取第一个键的值
+      if (typeof jsonValue === 'object' && jsonValue !== null) {
+        const key = Object.keys(jsonValue)[0];
+        return parseInt(key) as JieGuaTextType;
+      }
+      return 0 as JieGuaTextType;
+    });
+  } catch (error) {
+    console.error('[LiuYaoService] Runtime API 调用失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 智能获取解卦结果
+ *
+ * 策略：
+ * 1. 优先通过 Runtime API 实时计算（免费、实时、使用最新算法）
+ * 2. 如果 Runtime API 不可用，返回 null
+ *
+ * @param guaId - 卦象 ID
+ * @param shiXiang - 占问事项类型
+ * @returns 核心解卦结果
+ */
+export async function getInterpretationSmart(
+  guaId: number,
+  shiXiang: ShiXiangType
+): Promise<LiuYaoCoreInterpretation | null> {
+  // 优先尝试 Runtime API 实时计算（免费）
+  const runtimeResult = await getCoreInterpretation(guaId, shiXiang);
+  if (runtimeResult) {
+    console.log('[LiuYaoService] 使用 Runtime API 实时计算结果');
+    return runtimeResult;
+  }
+
+  console.log('[LiuYaoService] 未找到解卦结果');
+  return null;
+}
+
+/**
+ * 检查卦象是否存在（通过 Runtime API）
+ *
+ * @param guaId - 卦象 ID
+ * @returns 是否存在
+ */
+export async function guaExistsViaApi(guaId: number): Promise<boolean> {
+  const api = await getApi();
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiCall = api.call as any;
+    if (!apiCall || !apiCall.liuYaoApi || !apiCall.liuYaoApi.guaExists) {
+      // 回退到存储查询
+      const result = await api.query.liuyao?.guas(guaId);
+      return result && !result.isNone;
+    }
+
+    const result = await apiCall.liuYaoApi.guaExists(guaId);
+    return result.isTrue || result.toJSON() === true;
+  } catch (error) {
+    console.error('[LiuYaoService] 检查卦象存在失败:', error);
+    return false;
+  }
+}
+
+/**
+ * 获取卦象创建者（通过 Runtime API）
+ *
+ * @param guaId - 卦象 ID
+ * @returns 创建者地址或 null
+ */
+export async function getGuaOwnerViaApi(guaId: number): Promise<string | null> {
+  const api = await getApi();
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiCall = api.call as any;
+    if (!apiCall || !apiCall.liuYaoApi || !apiCall.liuYaoApi.getGuaOwner) {
+      return null;
+    }
+
+    const result = await apiCall.liuYaoApi.getGuaOwner(guaId);
+    if (!result || result.isNone) {
+      return null;
+    }
+
+    return result.unwrap().toString();
+  } catch (error) {
+    console.error('[LiuYaoService] 获取卦象创建者失败:', error);
+    return null;
+  }
+}
+
+// ==================== 解析辅助函数 ====================
+
+/**
+ * 解析核心解卦结果
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseCoreInterpretation(data: any): LiuYaoCoreInterpretation | null {
+  try {
+    const json = data.toJSON();
+    console.log('[LiuYaoService] 解析核心解卦 JSON:', JSON.stringify(json));
+
+    return {
+      jiXiong: parseEnumValue(json.jiXiong ?? json.ji_xiong),
+      yongShenQin: parseEnumValue(json.yongShenQin ?? json.yong_shen_qin),
+      yongShenState: parseEnumValue(json.yongShenState ?? json.yong_shen_state),
+      yongShenPos: json.yongShenPos ?? json.yong_shen_pos ?? 255,
+      shiYaoState: parseEnumValue(json.shiYaoState ?? json.shi_yao_state),
+      yingYaoState: parseEnumValue(json.yingYaoState ?? json.ying_yao_state),
+      dongYaoCount: json.dongYaoCount ?? json.dong_yao_count ?? 0,
+      dongYaoBitmap: json.dongYaoBitmap ?? json.dong_yao_bitmap ?? 0,
+      xunKongBitmap: json.xunKongBitmap ?? json.xun_kong_bitmap ?? 0,
+      yuePoBitmap: json.yuePoBitmap ?? json.yue_po_bitmap ?? 0,
+      riChongBitmap: json.riChongBitmap ?? json.ri_chong_bitmap ?? 0,
+      huaKongBitmap: json.huaKongBitmap ?? json.hua_kong_bitmap ?? 0,
+      yingQi: parseEnumValue(json.yingQi ?? json.ying_qi),
+      yingQiZhi: json.yingQiZhi ?? json.ying_qi_zhi ?? 0,
+      score: json.score ?? 50,
+      confidence: json.confidence ?? 50,
+      timestamp: json.timestamp ?? 0,
+    };
+  } catch (error) {
+    console.error('[LiuYaoService] 解析核心解卦失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析完整解卦结果
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseFullInterpretation(data: any): LiuYaoFullInterpretation | null {
+  try {
+    const json = data.toJSON();
+    console.log('[LiuYaoService] 解析完整解卦 JSON:', JSON.stringify(json));
+
+    // 解析核心部分
+    const coreData = json.core;
+    const core: LiuYaoCoreInterpretation = {
+      jiXiong: parseEnumValue(coreData.jiXiong ?? coreData.ji_xiong),
+      yongShenQin: parseEnumValue(coreData.yongShenQin ?? coreData.yong_shen_qin),
+      yongShenState: parseEnumValue(coreData.yongShenState ?? coreData.yong_shen_state),
+      yongShenPos: coreData.yongShenPos ?? coreData.yong_shen_pos ?? 255,
+      shiYaoState: parseEnumValue(coreData.shiYaoState ?? coreData.shi_yao_state),
+      yingYaoState: parseEnumValue(coreData.yingYaoState ?? coreData.ying_yao_state),
+      dongYaoCount: coreData.dongYaoCount ?? coreData.dong_yao_count ?? 0,
+      dongYaoBitmap: coreData.dongYaoBitmap ?? coreData.dong_yao_bitmap ?? 0,
+      xunKongBitmap: coreData.xunKongBitmap ?? coreData.xun_kong_bitmap ?? 0,
+      yuePoBitmap: coreData.yuePoBitmap ?? coreData.yue_po_bitmap ?? 0,
+      riChongBitmap: coreData.riChongBitmap ?? coreData.ri_chong_bitmap ?? 0,
+      huaKongBitmap: coreData.huaKongBitmap ?? coreData.hua_kong_bitmap ?? 0,
+      yingQi: parseEnumValue(coreData.yingQi ?? coreData.ying_qi),
+      yingQiZhi: coreData.yingQiZhi ?? coreData.ying_qi_zhi ?? 0,
+      score: coreData.score ?? 50,
+      confidence: coreData.confidence ?? 50,
+      timestamp: coreData.timestamp ?? 0,
+    };
+
+    // 解析卦象分析
+    const guaXiangData = json.guaXiang ?? json.gua_xiang ?? {};
+    const guaXiang: GuaXiangAnalysis = {
+      benGuaIdx: guaXiangData.benGuaIdx ?? guaXiangData.ben_gua_idx ?? 0,
+      bianGuaIdx: guaXiangData.bianGuaIdx ?? guaXiangData.bian_gua_idx ?? 255,
+      huGuaIdx: guaXiangData.huGuaIdx ?? guaXiangData.hu_gua_idx ?? 0,
+      gong: guaXiangData.gong ?? 0,
+      guaXu: guaXiangData.guaXu ?? guaXiangData.gua_xu ?? 0,
+      shiPos: guaXiangData.shiPos ?? guaXiangData.shi_pos ?? 0,
+      yingPos: guaXiangData.yingPos ?? guaXiangData.ying_pos ?? 3,
+      guaShen: guaXiangData.guaShen ?? guaXiangData.gua_shen ?? 0,
+      isLiuChong: guaXiangData.isLiuChong ?? guaXiangData.is_liu_chong ?? false,
+      isLiuHe: guaXiangData.isLiuHe ?? guaXiangData.is_liu_he ?? false,
+      isFanYin: guaXiangData.isFanYin ?? guaXiangData.is_fan_yin ?? false,
+      isFuYin: guaXiangData.isFuYin ?? guaXiangData.is_fu_yin ?? false,
+    };
+
+    // 解析六亲分析
+    const liuQinData = json.liuQin ?? json.liu_qin ?? {};
+    const liuQin: LiuQinAnalysis = {
+      fuMu: parseQinState(liuQinData.fuMu ?? liuQinData.fu_mu),
+      xiongDi: parseQinState(liuQinData.xiongDi ?? liuQinData.xiong_di),
+      ziSun: parseQinState(liuQinData.ziSun ?? liuQinData.zi_sun),
+      qiCai: parseQinState(liuQinData.qiCai ?? liuQinData.qi_cai),
+      guanGui: parseQinState(liuQinData.guanGui ?? liuQinData.guan_gui),
+    };
+
+    // 解析神煞汇总
+    const shenShaData = json.shenSha ?? json.shen_sha ?? {};
+
+    // 辅助函数：将十六进制字符串或非数组值转换为空数组
+    const parseArrayField = (field: any): number[] => {
+      if (Array.isArray(field)) {
+        return field;
+      }
+      // 如果是十六进制字符串（表示无效值），返回空数组
+      if (typeof field === 'string' && (field.startsWith('0x') || field === '')) {
+        return [];
+      }
+      return [];
+    };
+
+    const shenSha: ShenShaSummary = {
+      jiShenCount: shenShaData.jiShenCount ?? shenShaData.ji_shen_count ?? 0,
+      xiongShaCount: shenShaData.xiongShaCount ?? shenShaData.xiong_sha_count ?? 0,
+      jiShen: parseArrayField(shenShaData.jiShen ?? shenShaData.ji_shen),
+      jiShenPos: parseArrayField(shenShaData.jiShenPos ?? shenShaData.ji_shen_pos),
+      xiongSha: parseArrayField(shenShaData.xiongSha ?? shenShaData.xiong_sha),
+      xiongShaPos: parseArrayField(shenShaData.xiongShaPos ?? shenShaData.xiong_sha_pos),
+    };
+
+    // 解析各爻分析
+    const yaos: InterpYaoAnalysis[] = [];
+    for (let i = 0; i < 6; i++) {
+      const yaoKey = `yao_${i}`;
+      const yaoData = json[yaoKey] ?? json[`yao${i}`] ?? {};
+      yaos.push({
+        position: yaoData.position ?? i,
+        wangShuai: parseEnumValue(yaoData.wangShuai ?? yaoData.wang_shuai),
+        isKong: yaoData.isKong ?? yaoData.is_kong ?? false,
+        isYuePo: yaoData.isYuePo ?? yaoData.is_yue_po ?? false,
+        isRiChong: yaoData.isRiChong ?? yaoData.is_ri_chong ?? false,
+        isDong: yaoData.isDong ?? yaoData.is_dong ?? false,
+        huaType: yaoData.huaType ?? yaoData.hua_type ?? 255,
+        shenShaCount: yaoData.shenShaCount ?? yaoData.shen_sha_count ?? 0,
+        shenShaList: [
+          yaoData.shenSha_1 ?? yaoData.shen_sha_1,
+          yaoData.shenSha_2 ?? yaoData.shen_sha_2,
+          yaoData.shenSha_3 ?? yaoData.shen_sha_3,
+          yaoData.shenSha_4 ?? yaoData.shen_sha_4,
+        ].filter((v) => v !== undefined && v !== 255),
+      });
+    }
+
+    return {
+      core,
+      guaXiang,
+      liuQin,
+      shenSha,
+      yaos,
+    };
+  } catch (error) {
+    console.error('[LiuYaoService] 解析完整解卦失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析六亲状态
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseQinState(data: any): QinState {
+  if (!data) {
+    return {
+      count: 0,
+      positions: 0,
+      hasFuShen: false,
+      fuShenPos: 255,
+      wangShuai: 0,
+    };
+  }
+  return {
+    count: data.count ?? 0,
+    positions: data.positions ?? 0,
+    hasFuShen: data.hasFuShen ?? data.has_fu_shen ?? false,
+    fuShenPos: data.fuShenPos ?? data.fu_shen_pos ?? 255,
+    wangShuai: parseEnumValue(data.wangShuai ?? data.wang_shuai),
+  };
+}
+
+/**
+ * 解析枚举值
+ *
+ * 处理多种可能的枚举格式：
+ * - 数字索引: 0, 1, 2...
+ * - 对象格式: { EnumName: null }
+ * - 字符串名称: "EnumName"
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseEnumValue(value: any): number {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'object') {
+    // 对象格式 { EnumName: null } - 返回索引
+    const keys = Object.keys(value);
+    if (keys.length > 0) {
+      // 尝试从枚举名称映射到索引
+      return 0; // 默认返回0，实际应该根据枚举名称映射
+    }
+  }
+  if (typeof value === 'string') {
+    const num = parseInt(value);
+    if (!isNaN(num)) {
+      return num;
+    }
+  }
+  return 0;
 }

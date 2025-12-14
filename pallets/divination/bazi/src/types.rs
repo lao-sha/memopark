@@ -691,3 +691,145 @@ impl<T: crate::pallet::Config> PartialEq for BaziChart<T> {
 }
 
 impl<T: crate::pallet::Config> Eq for BaziChart<T> {}
+
+// ================================
+// 加密存储类型定义
+// ================================
+
+/// 四柱干支索引（8 bytes）
+///
+/// 仅保存四柱的干支索引，不包含任何敏感信息（如出生时间）
+/// 这个索引足以进行命理计算，但无法反推出具体出生时间
+///
+/// # 安全特性
+/// - 无法反推出生时间（只有干支索引）
+/// - 支持 Runtime API 实时计算解盘
+/// - 配合加密数据实现隐私保护
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub struct SiZhuIndex {
+	/// 年柱天干索引 (0-9)
+	pub year_gan: u8,
+	/// 年柱地支索引 (0-11)
+	pub year_zhi: u8,
+	/// 月柱天干索引 (0-9)
+	pub month_gan: u8,
+	/// 月柱地支索引 (0-11)
+	pub month_zhi: u8,
+	/// 日柱天干索引 (0-9)
+	pub day_gan: u8,
+	/// 日柱地支索引 (0-11)
+	pub day_zhi: u8,
+	/// 时柱天干索引 (0-9)
+	pub hour_gan: u8,
+	/// 时柱地支索引 (0-11)
+	pub hour_zhi: u8,
+}
+
+impl SiZhuIndex {
+	/// 从四柱创建索引
+	pub fn from_sizhu<T: crate::pallet::Config>(sizhu: &SiZhu<T>) -> Self {
+		Self {
+			year_gan: sizhu.year_zhu.ganzhi.gan.0,
+			year_zhi: sizhu.year_zhu.ganzhi.zhi.0,
+			month_gan: sizhu.month_zhu.ganzhi.gan.0,
+			month_zhi: sizhu.month_zhu.ganzhi.zhi.0,
+			day_gan: sizhu.day_zhu.ganzhi.gan.0,
+			day_zhi: sizhu.day_zhu.ganzhi.zhi.0,
+			hour_gan: sizhu.hour_zhu.ganzhi.gan.0,
+			hour_zhi: sizhu.hour_zhu.ganzhi.zhi.0,
+		}
+	}
+
+	/// 获取年柱干支
+	pub fn year_ganzhi(&self) -> GanZhi {
+		GanZhi {
+			gan: TianGan(self.year_gan),
+			zhi: DiZhi(self.year_zhi),
+		}
+	}
+
+	/// 获取月柱干支
+	pub fn month_ganzhi(&self) -> GanZhi {
+		GanZhi {
+			gan: TianGan(self.month_gan),
+			zhi: DiZhi(self.month_zhi),
+		}
+	}
+
+	/// 获取日柱干支
+	pub fn day_ganzhi(&self) -> GanZhi {
+		GanZhi {
+			gan: TianGan(self.day_gan),
+			zhi: DiZhi(self.day_zhi),
+		}
+	}
+
+	/// 获取时柱干支
+	pub fn hour_ganzhi(&self) -> GanZhi {
+		GanZhi {
+			gan: TianGan(self.hour_gan),
+			zhi: DiZhi(self.hour_zhi),
+		}
+	}
+
+	/// 获取日主天干
+	pub fn rizhu(&self) -> TianGan {
+		TianGan(self.day_gan)
+	}
+
+	/// 验证索引有效性
+	pub fn is_valid(&self) -> bool {
+		self.year_gan < 10 && self.year_zhi < 12 &&
+		self.month_gan < 10 && self.month_zhi < 12 &&
+		self.day_gan < 10 && self.day_zhi < 12 &&
+		self.hour_gan < 10 && self.hour_zhi < 12
+	}
+}
+
+/// 加密的八字命盘
+///
+/// # 存储结构
+/// - `sizhu_index`: 四柱索引（8 bytes）- 明文存储，用于计算
+/// - `gender`: 性别（1 byte）- 明文存储，用于大运计算
+/// - `encrypted_data`: 加密数据（最大 256 bytes）- 包含敏感信息
+/// - `data_hash`: 数据哈希（32 bytes）- 用于验证解密正确性
+///
+/// # 加密数据内容（前端加密）
+/// - 出生时间（年月日时分）
+/// - 子时模式
+/// - 大运信息
+/// - 其他敏感数据
+///
+/// # 安全特性
+/// - 出生时间永不明文存储
+/// - 用户自己管理密钥（钱包签名派生）
+/// - Runtime API 仍可基于 sizhu_index 免费计算解盘
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct EncryptedBaziChart<T: crate::pallet::Config> {
+	/// 所有者账户
+	pub owner: T::AccountId,
+	/// 四柱干支索引（明文，用于计算）
+	pub sizhu_index: SiZhuIndex,
+	/// 性别（明文，用于大运计算）
+	pub gender: Gender,
+	/// 加密的敏感数据（AES-256-GCM 加密）
+	pub encrypted_data: BoundedVec<u8, ConstU32<256>>,
+	/// 原始数据的 Blake2-256 哈希（用于验证解密正确性）
+	pub data_hash: [u8; 32],
+	/// 创建时间戳（区块号）
+	pub created_at: u32,
+}
+
+impl<T: crate::pallet::Config> PartialEq for EncryptedBaziChart<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.owner == other.owner &&
+		self.sizhu_index == other.sizhu_index &&
+		self.gender == other.gender &&
+		self.encrypted_data == other.encrypted_data &&
+		self.data_hash == other.data_hash &&
+		self.created_at == other.created_at
+	}
+}
+
+impl<T: crate::pallet::Config> Eq for EncryptedBaziChart<T> {}

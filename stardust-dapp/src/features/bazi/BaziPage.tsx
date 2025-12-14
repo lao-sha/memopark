@@ -23,12 +23,15 @@ import {
   Statistic,
   message,
   Radio,
+  Modal,
 } from 'antd';
 import {
   CalendarOutlined,
   UserOutlined,
   HistoryOutlined,
   ArrowRightOutlined,
+  ThunderboltOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -56,6 +59,13 @@ import {
   uploadBaziResultToIpfs,
   getUserBaziCharts,
 } from '../../services/baziChainService';
+import {
+  requestDivinationInterpretation,
+  getDivinationInterpretationRequest,
+} from '../../services/divinationService';
+import { DivinationType, InterpretationType } from '../../types/divination';
+import { getFriendlyErrorMessage } from '../../services/nodeStatusService';
+import NodeStatusChecker from '../../components/NodeStatusChecker';
 import { useWalletStore } from '../../stores/walletStore';
 import './BaziPage.css';
 
@@ -76,6 +86,10 @@ const BaziPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedChartId, setSavedChartId] = useState<number | null>(null);
+
+  // AI解读状态
+  const [requestingAI, setRequestingAI] = useState(false);
+  const [aiRequestId, setAiRequestId] = useState<number | null>(null);
 
   // 钱包状态
   const { selectedAccount, isConnected } = useWalletStore();
@@ -148,7 +162,12 @@ const BaziPage: React.FC = () => {
       message.success('八字命盘已保存到链上！');
     } catch (error) {
       console.error('保存失败:', error);
-      message.error(`保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Modal.error({
+        title: '保存失败',
+        content: <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{friendlyMessage}</pre>,
+        width: 500,
+      });
     } finally {
       setSaving(false);
     }
@@ -162,6 +181,67 @@ const BaziPage: React.FC = () => {
       window.location.hash = `#/bazi/${savedChartId}`;
     }
   }, [savedChartId]);
+
+  /**
+   * 请求AI智能解盘
+   */
+  const handleRequestAIInterpretation = useCallback(async () => {
+    if (!savedChartId) {
+      message.warning('请先保存命盘到链上');
+      return;
+    }
+
+    if (!isConnected || !selectedAccount) {
+      message.warning('请先连接钱包');
+      return;
+    }
+
+    setRequestingAI(true);
+    try {
+      // 请求AI解读 - 使用综合解读类型
+      const requestId = await requestDivinationInterpretation(
+        DivinationType.Bazi,
+        savedChartId,
+        InterpretationType.Comprehensive
+      );
+
+      setAiRequestId(requestId);
+      message.success('AI解读请求已提交，正在处理中...');
+
+      // 轮询检查解读状态
+      const checkInterval = setInterval(async () => {
+        try {
+          const request = await getDivinationInterpretationRequest(requestId);
+          if (request && request.status === 2) { // 2 = Completed
+            clearInterval(checkInterval);
+            message.success('AI解读完成！');
+            // 跳转到解读结果页面
+            window.location.hash = `#/divination/interpretation/${requestId}`;
+          } else if (request && request.status === 3) { // 3 = Failed
+            clearInterval(checkInterval);
+            message.error('AI解读失败，请稍后重试');
+            setRequestingAI(false);
+          }
+        } catch (error) {
+          console.error('检查解读状态失败:', error);
+        }
+      }, 3000); // 每3秒检查一次
+
+      // 30秒后停止轮询
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (requestingAI) {
+          setRequestingAI(false);
+          message.info('解读处理时间较长，请稍后在"我的解读"页面查看结果');
+        }
+      }, 30000);
+
+    } catch (error) {
+      console.error('请求AI解读失败:', error);
+      message.error(`请求失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      setRequestingAI(false);
+    }
+  }, [savedChartId, isConnected, selectedAccount, requestingAI]);
 
   /**
    * 渲染单柱
@@ -521,17 +601,51 @@ const BaziPage: React.FC = () => {
               <Button block onClick={handleReset}>
                 重新排盘
               </Button>
+              {/* 未保存时显示禁用的AI按钮，提示用户需要先保存 */}
+              <div style={{ padding: '8px 0' }}>
+                <Button
+                  icon={<RobotOutlined />}
+                  block
+                  disabled
+                  style={{ opacity: 0.6 }}
+                >
+                  AI智能解盘（需先保存）
+                </Button>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 4 }}>
+                  💡 保存命盘后可使用AI智能解读功能
+                </Text>
+              </div>
             </>
           ) : (
             <>
-              <Button type="primary" block onClick={handleViewDetail}>
-                查看命盘详情 <ArrowRightOutlined />
+              <Button
+                type="primary"
+                icon={<RobotOutlined />}
+                block
+                onClick={handleRequestAIInterpretation}
+                loading={requestingAI}
+                disabled={!isConnected || requestingAI}
+                style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  borderColor: '#667eea',
+                }}
+              >
+                {requestingAI ? 'AI解读中...' : 'AI智能解盘'}
+              </Button>
+              <Button
+                type="default"
+                block
+                onClick={handleViewDetail}
+                icon={<ArrowRightOutlined />}
+              >
+                查看命盘详情
               </Button>
               <Button block onClick={handleReset}>
                 重新排盘
               </Button>
             </>
           )}
+          <Divider style={{ margin: '12px 0' }} />
           <Button
             type="link"
             block
@@ -546,13 +660,21 @@ const BaziPage: React.FC = () => {
 
   return (
     <div className="bazi-page">
+      {/* 节点状态检查 */}
+      <NodeStatusChecker autoCheck={true} checkInterval={10000} />
+
       {result ? renderResult() : renderInputForm()}
 
       {/* 底部导航 */}
       <div className="bottom-nav">
-        <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
-          <HistoryOutlined /> 返回占卜入口
-        </Button>
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/bazi/list')}>
+            <HistoryOutlined /> 我的八字
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ ws_endpoint = "ws://127.0.0.1:9944"
 oracle_account_seed = "//Alice"
 
 [deepseek]
-api_key = "${DEEPSEEK_API_KEY}"
+api_key = "sk-1f7382640f394c20b57756ea1b269253"
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 temperature = 0.7

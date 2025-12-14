@@ -899,3 +899,125 @@ fn test_liu_gong_extended_properties() {
     assert_eq!(LiuGong::DaAn.number_range(), [1, 7, 4, 5]);
     assert_eq!(LiuGong::SuXi.number_range(), [3, 9, 6, 9]);
 }
+
+// ============================================================================
+// 解卦集成测试
+// ============================================================================
+
+#[test]
+fn test_interpretation_lazy_loading() {
+    new_test_ext().execute_with(|| {
+        // 1. 创建课盘
+        assert_ok!(XiaoLiuRen::divine_by_time(
+            RuntimeOrigin::signed(1),
+            6,  // 农历六月
+            5,  // 初五
+            7,  // 7点 = 辰时
+            None,
+            false,
+        ));
+
+        // 2. 首次获取解卦（应该计算并缓存）
+        let interpretation = XiaoLiuRen::get_or_create_interpretation(0);
+        assert!(interpretation.is_some());
+
+        let interp = interpretation.unwrap();
+        // 验证解卦结果
+        assert!(interp.overall_score > 0);
+        assert!(interp.overall_score <= 100);
+        assert!(interp.ying_qi.is_some());
+
+        // 3. 再次获取（应该从缓存读取）
+        let cached = XiaoLiuRen::get_or_create_interpretation(0);
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().overall_score, interp.overall_score);
+
+        // 4. 验证缓存存储
+        let stored = crate::Interpretations::<Test>::get(0);
+        assert!(stored.is_some());
+    });
+}
+
+#[test]
+fn test_interpretation_batch() {
+    new_test_ext().execute_with(|| {
+        // 创建多个课盘
+        for i in 0..3 {
+            assert_ok!(XiaoLiuRen::divine_by_number(
+                RuntimeOrigin::signed(1),
+                (i + 1) as u8,
+                (i + 2) as u8,
+                (i + 3) as u8,
+                None,
+                false,
+            ));
+        }
+
+        // 批量获取解卦
+        let results = XiaoLiuRen::get_interpretations_batch(vec![0, 1, 2, 999]);
+
+        assert_eq!(results.len(), 4);
+        assert!(results[0].is_some());
+        assert!(results[1].is_some());
+        assert!(results[2].is_some());
+        assert!(results[3].is_none()); // 不存在的课盘
+    });
+}
+
+#[test]
+fn test_interpretation_all_liu_gong() {
+    use crate::interpretation::interpret;
+
+    // 测试所有六宫组合的解卦
+    let liu_gong_list = [
+        LiuGong::DaAn,
+        LiuGong::LiuLian,
+        LiuGong::SuXi,
+        LiuGong::ChiKou,
+        LiuGong::XiaoJi,
+        LiuGong::KongWang,
+    ];
+
+    for &yue in &liu_gong_list {
+        for &ri in &liu_gong_list {
+            for &shi in &liu_gong_list {
+                let san_gong = SanGong::new(yue, ri, shi);
+                let interp = interpret(&san_gong, None, XiaoLiuRenSchool::DaoJia);
+
+                // 验证基本属性
+                assert!(interp.overall_score <= 100);
+                assert!(interp.ji_xiong_score() >= 1 && interp.ji_xiong_score() <= 7);
+                assert!(interp.ying_qi.is_some());
+            }
+        }
+    }
+}
+
+#[test]
+fn test_interpretation_special_patterns() {
+    use crate::interpretation::interpret;
+
+    // 纯宫全吉
+    let pure_good = SanGong::new(LiuGong::DaAn, LiuGong::DaAn, LiuGong::DaAn);
+    let interp = interpret(&pure_good, None, XiaoLiuRenSchool::DaoJia);
+    assert!(interp.special_pattern.is_pure());
+    assert!(interp.is_ji());
+
+    // 纯宫全凶
+    let pure_bad = SanGong::new(LiuGong::KongWang, LiuGong::KongWang, LiuGong::KongWang);
+    let interp = interpret(&pure_bad, None, XiaoLiuRenSchool::DaoJia);
+    assert!(interp.special_pattern.is_pure());
+    assert!(interp.is_xiong());
+
+    // 全吉
+    let all_good = SanGong::new(LiuGong::DaAn, LiuGong::SuXi, LiuGong::XiaoJi);
+    let interp = interpret(&all_good, None, XiaoLiuRenSchool::DaoJia);
+    assert!(interp.special_pattern.is_all_auspicious());
+    assert!(interp.is_ji());
+
+    // 全凶
+    let all_bad = SanGong::new(LiuGong::LiuLian, LiuGong::ChiKou, LiuGong::KongWang);
+    let interp = interpret(&all_bad, None, XiaoLiuRenSchool::DaoJia);
+    assert!(interp.special_pattern.is_all_inauspicious());
+    assert!(interp.is_xiong());
+}

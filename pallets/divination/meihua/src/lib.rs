@@ -24,6 +24,7 @@ pub use pallet::*;
 
 pub mod algorithm;
 pub mod constants;
+pub mod interpretation;
 pub mod lunar;
 pub mod types;
 
@@ -158,6 +159,32 @@ pub mod pallet {
     pub type AiInterpretationRequests<T: Config> =
         StorageMap<_, Blake2_128Concat, u64, T::AccountId>;
 
+    /// 解卦数据存储
+    ///
+    /// 键：卦象 ID
+    /// 值：完整解卦数据
+    #[pallet::storage]
+    #[pallet::getter(fn interpretations)]
+    pub type Interpretations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        crate::interpretation::InterpretationData,
+    >;
+
+    /// AI解读结果存储
+    ///
+    /// 键：卦象 ID
+    /// 值：AI解读结果
+    #[pallet::storage]
+    #[pallet::getter(fn ai_interpretations)]
+    pub type AiInterpretations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        crate::interpretation::AiInterpretationResult,
+    >;
+
     // ==================== 事件 ====================
 
     #[pallet::event]
@@ -188,6 +215,19 @@ pub mod pallet {
         /// 卦象公开状态已更改
         /// [卦象ID, 是否公开]
         HexagramVisibilityChanged { hexagram_id: u64, is_public: bool },
+
+        /// 解卦数据已创建
+        /// [卦象ID, 吉凶等级]
+        InterpretationCreated {
+            hexagram_id: u64,
+            fortune_level: u8,
+        },
+
+        /// 解卦数据已更新
+        /// [卦象ID]
+        InterpretationUpdated {
+            hexagram_id: u64,
+        },
     }
 
     // ==================== 错误 ====================
@@ -226,6 +266,14 @@ pub mod pallet {
         AiRequestAlreadyExists,
         /// AI 解卦请求不存在
         AiRequestNotFound,
+        /// 解卦数据不存在
+        InterpretationNotFound,
+        /// 解卦数据已存在
+        InterpretationAlreadyExists,
+        /// 无效的占卜类别
+        InvalidCategory,
+        /// 无效的性别
+        InvalidGender,
     }
 
     // ==================== 可调用函数 ====================
@@ -240,6 +288,8 @@ pub mod pallet {
         /// - `origin`: 调用者（签名账户）
         /// - `question_hash`: 占卜问题的哈希值（隐私保护）
         /// - `is_public`: 是否公开此卦象
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他）
         ///
         /// # 费用
         /// - 每日前 N 次免费（由 DailyFreeDivinations 配置）
@@ -250,9 +300,15 @@ pub mod pallet {
             origin: OriginFor<T>,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
 
             // 获取当前时间戳并转换为农历
             let timestamp = Self::get_timestamp_secs();
@@ -270,6 +326,8 @@ pub mod pallet {
                 DivinationMethod::DateTime,
                 question_hash,
                 is_public,
+                gender,
+                category,
             )
         }
 
@@ -283,6 +341,8 @@ pub mod pallet {
         /// - `num2`: 第二个数字（用于下卦）
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他）
         #[pallet::call_index(1)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_by_numbers(
@@ -291,9 +351,15 @@ pub mod pallet {
             num2: u16,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
 
             // 获取当前时辰
             let timestamp = Self::get_timestamp_secs();
@@ -312,6 +378,8 @@ pub mod pallet {
                 DivinationMethod::TwoNumbers,
                 question_hash,
                 is_public,
+                gender,
+                category,
             )
         }
 
@@ -323,15 +391,23 @@ pub mod pallet {
         /// - `origin`: 调用者
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他）
         #[pallet::call_index(2)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_random(
             origin: OriginFor<T>,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
 
             // 使用链上随机源
             let random_seed = T::Randomness::random(&b"meihua"[..]).0;
@@ -351,6 +427,8 @@ pub mod pallet {
                 DivinationMethod::Random,
                 question_hash,
                 is_public,
+                gender,
+                category,
             )
         }
 
@@ -365,6 +443,8 @@ pub mod pallet {
         /// - `dong_yao`: 动爻（1-6）
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他）
         #[pallet::call_index(3)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_manual(
@@ -374,6 +454,8 @@ pub mod pallet {
             dong_yao: u8,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -388,6 +470,8 @@ pub mod pallet {
                 Error::<T>::InvalidGuaNum
             );
             ensure!(dong_yao >= 1 && dong_yao <= 6, Error::<T>::InvalidDongYao);
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
 
             Self::create_hexagram(
                 who,
@@ -397,6 +481,8 @@ pub mod pallet {
                 DivinationMethod::Manual,
                 question_hash,
                 is_public,
+                gender,
+                category,
             )
         }
 
@@ -420,6 +506,8 @@ pub mod pallet {
         /// - `number`: 多位数字（建议至少2位）
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他）
         #[pallet::call_index(7)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_by_single_number(
@@ -427,9 +515,15 @@ pub mod pallet {
             number: u32,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
 
             // 获取当前时辰
             let timestamp = Self::get_timestamp_secs();
@@ -448,6 +542,8 @@ pub mod pallet {
                 DivinationMethod::SingleNumber,
                 question_hash,
                 is_public,
+                gender,
+                category,
             )
         }
 
@@ -654,6 +750,61 @@ pub mod pallet {
             })
         }
 
+        /// 创建解卦数据
+        ///
+        /// 根据完整卦象创建解卦数据并存储
+        ///
+        /// # 参数
+        /// - `hexagram_id`: 卦象 ID
+        /// - `full_divination`: 完整卦象信息
+        /// - `timestamp`: 起卦时间戳
+        /// - `method`: 起卦方式
+        /// - `gender`: 性别
+        /// - `category`: 占卜类别
+        fn create_interpretation_data(
+            hexagram_id: u64,
+            full_divination: &FullDivination<T::AccountId, BlockNumberFor<T>>,
+            timestamp: u64,
+            method: DivinationMethod,
+            gender: u8,
+            category: u8,
+        ) -> DispatchResult {
+            use crate::interpretation::{InterpretationData, LunarDateInfo};
+
+            // 转换时间戳为农历
+            let lunar_date_data = Self::convert_timestamp_to_lunar(timestamp)?;
+
+            // 创建农历信息结构
+            let lunar_date = LunarDateInfo {
+                year: lunar_date_data.year,
+                month: lunar_date_data.month,
+                day: lunar_date_data.day,
+                hour_zhi_num: lunar_date_data.hour_zhi_num,
+                is_leap_month: lunar_date_data.is_leap_month,
+            };
+
+            // 使用 InterpretationData::from_full_divination 创建解卦数据
+            let interpretation_data = InterpretationData::from_full_divination(
+                full_divination,
+                timestamp,
+                lunar_date,
+                method,
+                gender,
+                category,
+            );
+
+            // 存储解卦数据
+            Interpretations::<T>::insert(hexagram_id, interpretation_data.clone());
+
+            // 发送解卦数据创建事件
+            Self::deposit_event(Event::InterpretationCreated {
+                hexagram_id,
+                fortune_level: interpretation_data.tiyong_analysis.fortune_level,
+            });
+
+            Ok(())
+        }
+
         /// 创建完整卦象并存储
         fn create_hexagram(
             diviner: T::AccountId,
@@ -663,6 +814,8 @@ pub mod pallet {
             method: DivinationMethod,
             question_hash: [u8; 32],
             is_public: bool,
+            gender: u8,
+            category: u8,
         ) -> DispatchResult {
             // 获取新的卦象 ID
             let hexagram_id = NextHexagramId::<T>::get();
@@ -699,7 +852,17 @@ pub mod pallet {
             let full_divination = FullDivination::from_hexagram(ben_gua);
 
             // 存储卦象
-            Hexagrams::<T>::insert(hexagram_id, full_divination);
+            Hexagrams::<T>::insert(hexagram_id, full_divination.clone());
+
+            // 创建解卦数据
+            Self::create_interpretation_data(
+                hexagram_id,
+                &full_divination,
+                timestamp,
+                method.clone(),
+                gender,
+                category,
+            )?;
 
             // 更新用户卦象索引
             UserHexagrams::<T>::try_mutate(&diviner, |list| {
@@ -962,6 +1125,32 @@ pub mod pallet {
                 tiyong_interpretation: BoundedVec::try_from(tiyong_interp.as_bytes().to_vec())
                     .unwrap_or_default(),
             }
+        }
+
+        /// 获取解卦数据（公共查询 API）
+        ///
+        /// 根据卦象 ID 获取核心解卦数据
+        ///
+        /// # 参数
+        /// - `hexagram_id`: 卦象 ID
+        ///
+        /// # 返回
+        /// - 解卦核心数据（包含体用分析、应期推算等）
+        pub fn get_interpretation_data(hexagram_id: u64) -> Option<crate::interpretation::InterpretationData> {
+            Interpretations::<T>::get(hexagram_id)
+        }
+
+        /// 获取 AI 解读结果（公共查询 API）
+        ///
+        /// 根据卦象 ID 获取 AI 解读结果
+        ///
+        /// # 参数
+        /// - `hexagram_id`: 卦象 ID
+        ///
+        /// # 返回
+        /// - AI 解读结果（包含摘要、评分等）
+        pub fn get_ai_interpretation(hexagram_id: u64) -> Option<crate::interpretation::AiInterpretationResult> {
+            AiInterpretations::<T>::get(hexagram_id)
         }
     }
 }

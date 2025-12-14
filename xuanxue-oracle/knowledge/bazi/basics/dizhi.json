@@ -1,0 +1,312 @@
+{
+  "子": {
+    "wuxing": "水",
+    "yinyang": "阳",
+    "hidden_stems": [{"stem": "癸", "power": 100}],
+    "season": "冬",
+    "month": "十一月",
+    "time": "23:00-01:00",
+    "image": "深夜、子时、鼠、湖泊",
+    "direction": "正北",
+    "nature": "阴寒湿冷、藏伏、开始",
+    "body_parts": ["耳朵", "膀胱", "生殖系统"],
+    "relations": {
+      "三合": {"element": "水", "members": ["申", "子", "辰"]},
+      "六合": "丑",
+      "六冲": "午",
+      "六害": "未",
+      "三刑": ["卯"],
+      "相破": "酉"
+    },
+    "characteristics": "水之旺地，寒冷肃杀，万物闭藏",
+    "suitable_tiangan": ["壬", "癸", "庚", "辛"],
+    "classical_notes": "子为水之旺地，阴极一阳生之时"
+  },
+  "丑": {
+    "wuxing": "土",
+    "yinyang": "阴",
+    "hidden_stems": [
+      {"stem": "己", "power": 60},
+      {"stem": "癸", "power": 30},
+      {"stem": "辛", "power": 10}
+    ],
+    "season": "冬",
+    "month": "十二月",
+    "time": "01:00-03:00",
+    "image": "寒土、金库、牛、冻土",
+    "direction": "东北偏北",
+    "nature": "湿冷、收藏、金库",
+    "body_parts": ["脾胃", "腹部"],
+    "relations": {
+      "三合": {"element": "金", "members": ["巳", "酉", "丑"]},
+      "六合": "子",
+      "六冲": "未",
+      "六害": "午",
+      "三刑": ["戌", "未"],
+      "相破": "辰"
+    },
+    "characteristics": "湿土，金之墓库，寒湿之地",
+    "suitable_tiangan": ["己", "辛", "癸"],
+    "classical_notes": "丑为金库，湿土晦火，宜暖不宜寒"
+  },
+  "寅": {
+    "wuxing": "木",
+    "yinyang": "阳",
+    "hidden_stems": [
+      {"stem": "甲", "power": 60},
+      {"stem": "丙", "power": 30},
+      {"stem": "戊", "power": 10}
+    ],
+    "season": "春",
+    "month": "正月",
+    "time": "03:00-05:00",
+    "image": "黎明、虎、森林、春天",
+    "direction": "东北偏东",
+    "nature": "阳气上升、生发、火之长生",
+    "body_parts": ["肝胆", "四肢"],
+    "relations": {
+      "三合": {"element": "火", "members": ["寅", "午", "戌"]},
+      "六合": "亥",
+      "六冲": "申",
+      "六害": "巳",
+      "三刑": ["巳", "申"],
+      "相破": "亥"
+    },
+    "characteristics": "木之旺地，阳气初生，万物萌发",
+    "suitable_tiangan": ["甲", "丙", "戊"],
+    "classical_notes": "寅为火之长生，木之建禄，喜火不喜金"
+  },
+  "卯": {
+    "wuxing": "木",
+    "yinyang": "阴",
+    "hidden_stems": [{"stem": "乙", "power": 100}],
+    "season": "春",
+    "month": "二月",
+    "time": "05:00-07:00",
+    "image": "日出、兔、花草、春分",
+    "direction": "正东",
+    "nature": "木气旺盛、繁茂、阴阳平衡",
+    "body_parts": ["肝脏", "手指"],
+    "relations": {
+      "三合": {"element": "木", "members": ["亥", "卯", "未"]},
+      "六合": "戌",
+      "六冲": "酉",
+      "六害": "辰",
+      "三刑": ["子"],
+      "相破": "午"
+    },
+    "characteristics": "木之旺地，春之正气，万物茂盛",
+    "suitable_tiangan": ["乙", "甲"],
+    "classical_notes": "卯为木之建禄，乙木专气，忌金克伐"
+  },
+  "辰": {
+    "wuxing": "土",
+    "yinyang": "阳",
+    "hidden_stems": [
+      {"stem": "戊", "power": 60},
+      {"stem": "乙", "power": 30},
+      {"stem": "癸", "power": 10}
+    ],
+    "season": "春",
+    "month": "三月",
+    "time": "07:00-09:00",
+    "image": "水库、龙、云雨、湿土",
+    "direction": "东南偏东",
+    "nature": "湿土、水库、蓄藏",
+    "body_parts": ["脾胃", "肩背"],
+    "relations": {
+      "三合": {"element": "水", "members": ["申", "子", "辰"]},
+      "六合": "酉",
+      "六冲": "戌",
+      "六害": "卯",
+      "三刑": ["辰"],
+      "相破": "丑"
+    },
+    "characteristics": "水之墓库，湿土泄火，木气余存",
+    "suitable_tiangan": ["戊", "癸", "乙"],
+    "classical_notes": "辰为水库，湿土晦火，龙为雨露之神"
+  },
+  "巳": {
+    "wuxing": "火",
+    "yinyang": "阴",
+    "hidden_stems": [
+      {"stem": "丙", "power": 60},
+      {"stem": "戊", "power": 30},
+      {"stem": "庚", "power": 10}
+    ],
+    "season": "夏",
+    "month": "四月",
+    "time": "09:00-11:00",
+    "image": "蛇、炉火、巳时",
+    "direction": "东南偏南",
+    "nature": "火之长生、金之长生、燥热",
+    "body_parts": ["心脏", "三焦"],
+    "relations": {
+      "三合": {"element": "金", "members": ["巳", "酉", "丑"]},
+      "六合": "申",
+      "六冲": "亥",
+      "六害": "寅",
+      "三刑": ["寅", "申"],
+      "相破": "申"
+    },
+    "characteristics": "火之长生地，金之长生，炉火炼金",
+    "suitable_tiangan": ["丙", "戊", "庚"],
+    "classical_notes": "巳为丙火长生，戊土帝旺，金之长生"
+  },
+  "午": {
+    "wuxing": "火",
+    "yinyang": "阳",
+    "hidden_stems": [
+      {"stem": "丁", "power": 70},
+      {"stem": "己", "power": 30}
+    ],
+    "season": "夏",
+    "month": "五月",
+    "time": "11:00-13:00",
+    "image": "正午、马、烈日、盛夏",
+    "direction": "正南",
+    "nature": "火之旺地、极热、阳气最盛",
+    "body_parts": ["心脏", "小肠"],
+    "relations": {
+      "三合": {"element": "火", "members": ["寅", "午", "戌"]},
+      "六合": "未",
+      "六冲": "子",
+      "六害": "丑",
+      "三刑": [],
+      "相破": "卯"
+    },
+    "characteristics": "火之旺地，阳气极盛，万物繁茂",
+    "suitable_tiangan": ["丁", "己"],
+    "classical_notes": "午为火之建禄，丁火专气，炎上之象"
+  },
+  "未": {
+    "wuxing": "土",
+    "yinyang": "阴",
+    "hidden_stems": [
+      {"stem": "己", "power": 60},
+      {"stem": "丁", "power": 30},
+      {"stem": "乙", "power": 10}
+    ],
+    "season": "夏",
+    "month": "六月",
+    "time": "13:00-15:00",
+    "image": "燥土、木库、羊、炎热",
+    "direction": "西南偏南",
+    "nature": "燥土、木库、火气余存",
+    "body_parts": ["脾胃", "脊柱"],
+    "relations": {
+      "三合": {"element": "木", "members": ["亥", "卯", "未"]},
+      "六合": "午",
+      "六冲": "丑",
+      "六害": "子",
+      "三刑": ["丑", "戌"],
+      "相破": "戌"
+    },
+    "characteristics": "木之墓库，燥土克水，火气未散",
+    "suitable_tiangan": ["己", "丁", "乙"],
+    "classical_notes": "未为木库，燥土当令，喜湿不喜燥"
+  },
+  "申": {
+    "wuxing": "金",
+    "yinyang": "阳",
+    "hidden_stems": [
+      {"stem": "庚", "power": 60},
+      {"stem": "壬", "power": 30},
+      {"stem": "戊", "power": 10}
+    ],
+    "season": "秋",
+    "month": "七月",
+    "time": "15:00-17:00",
+    "image": "猴、刀剑、初秋",
+    "direction": "西南偏西",
+    "nature": "金之旺地、水之长生、肃杀",
+    "body_parts": ["大肠", "经络"],
+    "relations": {
+      "三合": {"element": "水", "members": ["申", "子", "辰"]},
+      "六合": "巳",
+      "六冲": "寅",
+      "六害": "亥",
+      "三刑": ["寅", "巳"],
+      "相破": "巳"
+    },
+    "characteristics": "金之旺地，水之长生，秋气肃杀",
+    "suitable_tiangan": ["庚", "壬", "戊"],
+    "classical_notes": "申为金之建禄，水之长生，喜水不喜火"
+  },
+  "酉": {
+    "wuxing": "金",
+    "yinyang": "阴",
+    "hidden_stems": [{"stem": "辛", "power": 100}],
+    "season": "秋",
+    "month": "八月",
+    "time": "17:00-19:00",
+    "image": "鸡、日落、珠宝、秋分",
+    "direction": "正西",
+    "nature": "金气最旺、肃杀、收敛",
+    "body_parts": ["肺部", "呼吸系统"],
+    "relations": {
+      "三合": {"element": "金", "members": ["巳", "酉", "丑"]},
+      "六合": "辰",
+      "六冲": "卯",
+      "六害": "戌",
+      "三刑": [],
+      "相破": "子"
+    },
+    "characteristics": "金之旺地，辛金专气，秋之正气",
+    "suitable_tiangan": ["辛", "庚"],
+    "classical_notes": "酉为金之建禄，辛金专气，喜水泄秀"
+  },
+  "戌": {
+    "wuxing": "土",
+    "yinyang": "阳",
+    "hidden_stems": [
+      {"stem": "戊", "power": 60},
+      {"stem": "辛", "power": 30},
+      {"stem": "丁", "power": 10}
+    ],
+    "season": "秋",
+    "month": "九月",
+    "time": "19:00-21:00",
+    "image": "狗、燥土、火库、秋末",
+    "direction": "西北偏西",
+    "nature": "燥土、火库、肃杀之气",
+    "body_parts": ["胃部", "腿部"],
+    "relations": {
+      "三合": {"element": "火", "members": ["寅", "午", "戌"]},
+      "六合": "卯",
+      "六冲": "辰",
+      "六害": "酉",
+      "三刑": ["丑", "未"],
+      "相破": "未"
+    },
+    "characteristics": "火之墓库，燥土当令，金气余存",
+    "suitable_tiangan": ["戊", "辛", "丁"],
+    "classical_notes": "戌为火库，燥土克水，喜湿润不喜燥"
+  },
+  "亥": {
+    "wuxing": "水",
+    "yinyang": "阴",
+    "hidden_stems": [
+      {"stem": "壬", "power": 70},
+      {"stem": "甲", "power": 30}
+    ],
+    "season": "冬",
+    "month": "十月",
+    "time": "21:00-23:00",
+    "image": "猪、深水、木之长生",
+    "direction": "西北偏北",
+    "nature": "水之旺地、木之长生、寒冷",
+    "body_parts": ["肾脏", "头部"],
+    "relations": {
+      "三合": {"element": "木", "members": ["亥", "卯", "未"]},
+      "六合": "寅",
+      "六冲": "巳",
+      "六害": "申",
+      "三刑": [],
+      "相破": "寅"
+    },
+    "characteristics": "水之旺地，木之长生，阴气最盛",
+    "suitable_tiangan": ["壬", "甲"],
+    "classical_notes": "亥为水之建禄，木之长生，水木相生"
+  }
+}

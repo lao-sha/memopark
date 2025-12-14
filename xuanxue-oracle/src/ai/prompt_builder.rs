@@ -4,18 +4,27 @@ use std::path::Path;
 
 use crate::blockchain::types::{DivinationType, InterpretationType};
 use crate::error::OracleError;
+use crate::knowledge::BaziKnowledgeBase;
 
 /// Prompt构造器
+///
+/// 负责根据占卜类型和解读类型构造AI Prompt
+/// 集成了八字知识库，能够自动增强Prompt的专业性和准确性
 pub struct PromptBuilder {
     template_cache: std::collections::HashMap<String, String>,
+    /// 八字知识库
+    knowledge_base: BaziKnowledgeBase,
 }
 
 impl PromptBuilder {
     /// 创建新的Prompt构造器
-    pub fn new() -> Self {
-        Self {
+    ///
+    /// 会自动加载八字知识库
+    pub fn new() -> Result<Self> {
+        Ok(Self {
             template_cache: std::collections::HashMap::new(),
-        }
+            knowledge_base: BaziKnowledgeBase::load()?,
+        })
     }
 
     /// 构造Prompt
@@ -34,6 +43,8 @@ impl PromptBuilder {
     }
 
     /// 构造八字Prompt
+    ///
+    /// 集成知识库，自动增强Prompt专业性
     fn build_bazi_prompt(
         &mut self,
         interpretation_type: InterpretationType,
@@ -70,7 +81,7 @@ impl PromptBuilder {
             .unwrap_or_else(|| "未知".to_string());
 
         // 替换占位符
-        let prompt = template
+        let base_prompt = template
             .replace("{year_pillar}", year_pillar)
             .replace("{month_pillar}", month_pillar)
             .replace("{day_pillar}", day_pillar)
@@ -84,7 +95,10 @@ impl PromptBuilder {
             .replace("{yongshen}", yongshen)
             .replace("{jishen}", &jishen);
 
-        Ok(prompt)
+        // 🔥 核心功能：使用知识库增强Prompt
+        let enriched_prompt = self.knowledge_base.enrich_prompt(&base_prompt, data);
+
+        Ok(enriched_prompt)
     }
 
     /// 构造梅花易数Prompt
@@ -117,7 +131,7 @@ impl PromptBuilder {
     fn build_liuyao_prompt(
         &mut self,
         interpretation_type: InterpretationType,
-        data: &serde_json::Value,
+        _data: &serde_json::Value,
     ) -> Result<String> {
         let template_path = format!("prompts/liuyao/{:?}.txt", interpretation_type).to_lowercase();
         let template = self.load_template(&template_path)?;

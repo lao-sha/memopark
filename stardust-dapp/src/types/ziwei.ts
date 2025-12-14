@@ -790,3 +790,438 @@ export function isChangShengXiong(stage: ChangSheng): boolean {
          stage === ChangSheng.Mu ||
          stage === ChangSheng.Jue;
 }
+
+// ==================== 解卦相关类型 ====================
+
+/**
+ * 吉凶等级
+ */
+export enum FortuneLevel {
+  /** 大吉 */
+  DaJi = 0,
+  /** 吉 */
+  Ji = 1,
+  /** 小吉 */
+  XiaoJi = 2,
+  /** 平 */
+  Ping = 3,
+  /** 小凶 */
+  XiaoXiong = 4,
+  /** 凶 */
+  Xiong = 5,
+  /** 大凶 */
+  DaXiong = 6,
+}
+
+/**
+ * 命格等级
+ */
+export enum MingGeLevel {
+  /** 帝王格局 */
+  DiWang = 0,
+  /** 极贵格局 */
+  JiGui = 1,
+  /** 大贵格局 */
+  DaGui = 2,
+  /** 中贵格局 */
+  ZhongGui = 3,
+  /** 小贵格局 */
+  XiaoGui = 4,
+  /** 普通格局 */
+  Putong = 5,
+}
+
+/**
+ * 格局类型
+ */
+export enum PatternType {
+  // 吉格（0-21）
+  ZiFuTongGong = 0,      // 紫府同宫
+  ZiFuChaoYuan = 1,      // 紫府朝垣
+  TianFuChaoYuan = 2,    // 天府朝垣
+  JunChenQingHui = 3,    // 君臣庆会
+  FuXiangChaoYuan = 4,   // 府相朝垣
+  JiYueTongLiang = 5,    // 机月同梁
+  RiYueBingMing = 6,     // 日月并明
+  RiZhaoLeiMen = 7,      // 日照雷门
+  YueLangTianMen = 8,    // 月朗天门
+  MingZhuChuHai = 9,     // 明珠出海
+  YangLiangChangLu = 10, // 阳梁昌禄
+  TanWuTongXing = 11,    // 贪武同行
+  HuoTanGeJu = 12,       // 火贪格
+  LingTanGeJu = 13,      // 铃贪格
+  SanQiJiaHui = 14,      // 三奇嘉会
+  ShuangLuJiaMing = 15,  // 双禄夹命
+  ShuangLuJiaCai = 16,   // 双禄夹财
+  KeQuanLuJia = 17,      // 科权禄夹
+  ZuoYouJiaMing = 18,    // 左右夹命
+  ChangQuJiaMing = 19,   // 昌曲夹命
+  KuiYueJiaMing = 20,    // 魁钺夹命
+  LuMaJiaoChiGeJu = 21,  // 禄马交驰
+
+  // 凶格（22-31）
+  LingChangTuoWu = 22,   // 铃昌陀武
+  JiJiTongGong = 23,     // 巨机同宫（辰戌）
+  JuRiTongGong = 24,     // 巨日同宫（落陷）
+  MingWuZhengYao = 25,   // 命无正曜
+  MaTouDaiJian = 26,     // 马头带箭
+  YangTuoJiaMing = 27,   // 羊陀夹命
+  HuoLingJiaMing = 28,   // 火铃夹命
+  KongJieJiaMing = 29,   // 空劫夹命
+  YangTuoJiaJi = 30,     // 羊陀夹忌
+  SiShaChongMing = 31,   // 四煞冲命
+}
+
+/**
+ * 格局信息
+ */
+export interface PatternInfo {
+  /** 格局类型 */
+  patternType: PatternType;
+  /** 格局强度（0-100） */
+  strength: number;
+  /** 是否有效 */
+  isValid: boolean;
+  /** 是否吉格 */
+  isAuspicious: boolean;
+  /** 格局评分（-50 ~ +50） */
+  score: number;
+  /** 关键宫位索引 */
+  keyPalaces: [number, number, number];
+}
+
+/**
+ * 宫位解读
+ */
+export interface PalaceInterpretation {
+  /** 宫位类型 */
+  gongWei: Gong;
+  /** 宫位评分（0-100） */
+  score: number;
+  /** 吉凶等级 */
+  fortuneLevel: FortuneLevel;
+  /** 主星强度（0-100） */
+  starStrength: number;
+  /** 四化影响（-50 ~ +50） */
+  siHuaImpact: number;
+  /** 六吉星数量 */
+  liuJiCount: number;
+  /** 六煞星数量 */
+  liuShaCount: number;
+  /** 关键词索引 */
+  keywords: [number, number, number];
+  /** 影响因素位标志 */
+  factors: number;
+}
+
+/**
+ * 整体评分
+ */
+export interface ChartOverallScore {
+  /** 整体评分（0-100） */
+  overallScore: number;
+  /** 命格等级 */
+  mingGeLevel: MingGeLevel;
+  /** 财运指数（0-100） */
+  wealthIndex: number;
+  /** 事业指数（0-100） */
+  careerIndex: number;
+  /** 感情指数（0-100） */
+  relationshipIndex: number;
+  /** 健康指数（0-100） */
+  healthIndex: number;
+  /** 福德指数（0-100） */
+  fortuneIndex: number;
+}
+
+/**
+ * 四化分析
+ */
+export interface SiHuaAnalysis {
+  /** 生年四化星 */
+  shengNianSiHua: [SiHuaStar, SiHuaStar, SiHuaStar, SiHuaStar];
+  /** 命宫飞入宫位 */
+  mingGongFeiRu: [number, number, number, number];
+  /** 财帛宫飞入宫位 */
+  caiBoFeiRu: [number, number, number, number];
+  /** 官禄宫飞入宫位 */
+  guanLuFeiRu: [number, number, number, number];
+  /** 夫妻宫飞入宫位 */
+  fuQiFeiRu: [number, number, number, number];
+  /** 自化宫位标志（12 bits） */
+  ziHuaPalaces: number;
+  /** 化忌冲破标志（12 bits） */
+  huaJiChongPo: number;
+}
+
+/**
+ * 大限解读
+ */
+export interface DaXianInterpretation {
+  /** 大限序号（1-12） */
+  index: number;
+  /** 起始年龄 */
+  startAge: number;
+  /** 结束年龄 */
+  endAge: number;
+  /** 大限宫位索引 */
+  gongIndex: number;
+  /** 大限评分（0-100） */
+  score: number;
+  /** 运势等级 */
+  fortuneLevel: FortuneLevel;
+  /** 大限四化飞入 */
+  siHuaFeiRu: [number, number, number, number];
+  /** 关键词索引 */
+  keywords: [number, number, number];
+}
+
+/**
+ * 完整解卦结果
+ */
+export interface ZiweiInterpretation {
+  /** 命盘ID */
+  chartId: number;
+  /** 整体评分 */
+  overallScore: ChartOverallScore;
+  /** 十二宫解读 */
+  palaceInterpretations: PalaceInterpretation[];
+  /** 格局列表 */
+  patterns: PatternInfo[];
+  /** 四化分析 */
+  siHuaAnalysis: SiHuaAnalysis;
+  /** 大限解读 */
+  daXianInterpretations: DaXianInterpretation[];
+  /** 五行分布 [金, 木, 水, 火, 土] */
+  wuXingDistribution: [number, number, number, number, number];
+  /** 命主星 */
+  mingZhuStar: number;
+  /** 身主星 */
+  shenZhuStar: number;
+}
+
+// ==================== 解卦常量 ====================
+
+/**
+ * 吉凶等级名称
+ */
+export const FORTUNE_LEVEL_NAMES: Record<FortuneLevel, string> = {
+  [FortuneLevel.DaJi]: '大吉',
+  [FortuneLevel.Ji]: '吉',
+  [FortuneLevel.XiaoJi]: '小吉',
+  [FortuneLevel.Ping]: '平',
+  [FortuneLevel.XiaoXiong]: '小凶',
+  [FortuneLevel.Xiong]: '凶',
+  [FortuneLevel.DaXiong]: '大凶',
+};
+
+/**
+ * 吉凶等级颜色
+ */
+export const FORTUNE_LEVEL_COLORS: Record<FortuneLevel, string> = {
+  [FortuneLevel.DaJi]: '#f5222d',
+  [FortuneLevel.Ji]: '#fa541c',
+  [FortuneLevel.XiaoJi]: '#fa8c16',
+  [FortuneLevel.Ping]: '#1890ff',
+  [FortuneLevel.XiaoXiong]: '#722ed1',
+  [FortuneLevel.Xiong]: '#531dab',
+  [FortuneLevel.DaXiong]: '#120338',
+};
+
+/**
+ * 命格等级名称
+ */
+export const MING_GE_LEVEL_NAMES: Record<MingGeLevel, string> = {
+  [MingGeLevel.DiWang]: '帝王格局',
+  [MingGeLevel.JiGui]: '极贵格局',
+  [MingGeLevel.DaGui]: '大贵格局',
+  [MingGeLevel.ZhongGui]: '中贵格局',
+  [MingGeLevel.XiaoGui]: '小贵格局',
+  [MingGeLevel.Putong]: '普通格局',
+};
+
+/**
+ * 命格等级颜色
+ */
+export const MING_GE_LEVEL_COLORS: Record<MingGeLevel, string> = {
+  [MingGeLevel.DiWang]: '#f5222d',
+  [MingGeLevel.JiGui]: '#fa541c',
+  [MingGeLevel.DaGui]: '#fa8c16',
+  [MingGeLevel.ZhongGui]: '#faad14',
+  [MingGeLevel.XiaoGui]: '#52c41a',
+  [MingGeLevel.Putong]: '#1890ff',
+};
+
+/**
+ * 格局名称
+ */
+export const PATTERN_NAMES: Record<PatternType, string> = {
+  [PatternType.ZiFuTongGong]: '紫府同宫',
+  [PatternType.ZiFuChaoYuan]: '紫府朝垣',
+  [PatternType.TianFuChaoYuan]: '天府朝垣',
+  [PatternType.JunChenQingHui]: '君臣庆会',
+  [PatternType.FuXiangChaoYuan]: '府相朝垣',
+  [PatternType.JiYueTongLiang]: '机月同梁',
+  [PatternType.RiYueBingMing]: '日月并明',
+  [PatternType.RiZhaoLeiMen]: '日照雷门',
+  [PatternType.YueLangTianMen]: '月朗天门',
+  [PatternType.MingZhuChuHai]: '明珠出海',
+  [PatternType.YangLiangChangLu]: '阳梁昌禄',
+  [PatternType.TanWuTongXing]: '贪武同行',
+  [PatternType.HuoTanGeJu]: '火贪格',
+  [PatternType.LingTanGeJu]: '铃贪格',
+  [PatternType.SanQiJiaHui]: '三奇嘉会',
+  [PatternType.ShuangLuJiaMing]: '双禄夹命',
+  [PatternType.ShuangLuJiaCai]: '双禄夹财',
+  [PatternType.KeQuanLuJia]: '科权禄夹',
+  [PatternType.ZuoYouJiaMing]: '左右夹命',
+  [PatternType.ChangQuJiaMing]: '昌曲夹命',
+  [PatternType.KuiYueJiaMing]: '魁钺夹命',
+  [PatternType.LuMaJiaoChiGeJu]: '禄马交驰',
+  [PatternType.LingChangTuoWu]: '铃昌陀武',
+  [PatternType.JiJiTongGong]: '巨机同宫',
+  [PatternType.JuRiTongGong]: '巨日同宫',
+  [PatternType.MingWuZhengYao]: '命无正曜',
+  [PatternType.MaTouDaiJian]: '马头带箭',
+  [PatternType.YangTuoJiaMing]: '羊陀夹命',
+  [PatternType.HuoLingJiaMing]: '火铃夹命',
+  [PatternType.KongJieJiaMing]: '空劫夹命',
+  [PatternType.YangTuoJiaJi]: '羊陀夹忌',
+  [PatternType.SiShaChongMing]: '四煞冲命',
+};
+
+/**
+ * 格局描述
+ */
+export const PATTERN_DESCRIPTIONS: Record<PatternType, string> = {
+  [PatternType.ZiFuTongGong]: '紫微、天府二星同坐命宫，主富贵双全',
+  [PatternType.ZiFuChaoYuan]: '紫微、天府在三方四正会照命宫，主贵气逼人',
+  [PatternType.TianFuChaoYuan]: '天府守命宫，逢禄存或化禄同宫，主财帛丰盈',
+  [PatternType.JunChenQingHui]: '紫微为君，天相、天府为臣，三方会合，主大贵',
+  [PatternType.FuXiangChaoYuan]: '天府、天相在命宫或三方会照，主富贵绑身',
+  [PatternType.JiYueTongLiang]: '天机、太阴、天同、天梁四星会合，主清贵文秀',
+  [PatternType.RiYueBingMing]: '太阳、太阴在旺地会照命宫，日月并明，主富贵双全',
+  [PatternType.RiZhaoLeiMen]: '太阳在卯宫守命且庙旺，主早年发达',
+  [PatternType.YueLangTianMen]: '太阴在亥宫守命且庙旺，主聪明秀气',
+  [PatternType.MingZhuChuHai]: '太阴在酉宫守命，主才华出众',
+  [PatternType.YangLiangChangLu]: '太阳、天梁在三方会文昌、禄存，主功名显达',
+  [PatternType.TanWuTongXing]: '贪狼、武曲同坐丑未宫，主武贵或偏财运佳',
+  [PatternType.HuoTanGeJu]: '火星、贪狼同宫于命宫，主暴发横财',
+  [PatternType.LingTanGeJu]: '铃星、贪狼同宫于命宫，主横财暴发',
+  [PatternType.SanQiJiaHui]: '化禄、化权、化科三化在命宫三方会合，主大富大贵',
+  [PatternType.ShuangLuJiaMing]: '禄存、化禄夹命宫，主财帛滚滚',
+  [PatternType.ShuangLuJiaCai]: '禄存、化禄夹财帛宫，主财源广进',
+  [PatternType.KeQuanLuJia]: '化科、化权、化禄夹命宫，主贵气加身',
+  [PatternType.ZuoYouJiaMing]: '左辅、右弼夹命宫，主贵人多助',
+  [PatternType.ChangQuJiaMing]: '文昌、文曲夹命宫，主文采斐然',
+  [PatternType.KuiYueJiaMing]: '天魁、天钺夹命宫，主贵人相助',
+  [PatternType.LuMaJiaoChiGeJu]: '禄存、天马同宫或会照命宫，主财运亨通',
+  [PatternType.LingChangTuoWu]: '铃星、文昌、陀罗、武曲同宫，主波折困顿',
+  [PatternType.JiJiTongGong]: '巨门、天机在辰戌宫同宫，主口舌是非',
+  [PatternType.JuRiTongGong]: '巨门、太阳同宫且太阳落陷，主是非缠身',
+  [PatternType.MingWuZhengYao]: '命宫无主星（空宫），需借对宫星曜',
+  [PatternType.MaTouDaiJian]: '午宫擎羊守命，主性格刚烈',
+  [PatternType.YangTuoJiaMing]: '擎羊、陀罗夹命宫，主一生多灾多难',
+  [PatternType.HuoLingJiaMing]: '火星、铃星夹命宫，主脾气暴躁',
+  [PatternType.KongJieJiaMing]: '地空、地劫夹命宫，主钱财难聚',
+  [PatternType.YangTuoJiaJi]: '擎羊、陀罗夹化忌，主凶险异常',
+  [PatternType.SiShaChongMing]: '擎羊、陀罗、火星、铃星冲命宫，主一生坎坷',
+};
+
+/**
+ * 宫位关键词表（命宫）
+ */
+export const MING_GONG_KEYWORDS: string[] = [
+  // 性格关键词 (0-19)
+  '贵气', '聪慧', '稳重', '果断', '温和', '坚韧', '灵活', '谨慎',
+  '大方', '内敛', '乐观', '悲观', '固执', '随和', '保守', '进取',
+  '理性', '感性', '独立', '依赖',
+  // 能力关键词 (20-39)
+  '领导力强', '执行力佳', '创造力丰', '分析力强', '沟通力好', '学习力快',
+  '适应力强', '抗压力好', '决策力强', '协调力佳', '表达力优', '洞察力强',
+  '记忆力好', '专注力强', '行动力快', '规划力强', '整合力强', '判断力准',
+  '社交力强', '组织力佳',
+  // 运势关键词 (40-59)
+  '一生顺遂', '早年辛劳', '中年发达', '晚年享福', '贵人相助', '白手起家',
+  '波折较多', '平稳发展', '大器晚成', '少年得志', '起伏不定', '稳中求进',
+  '机遇多多', '需要努力', '有贵人运', '靠自己力', '命带桃花', '福气深厚',
+  '劳碌命格', '富贵在后',
+];
+
+/**
+ * 财帛宫关键词表
+ */
+export const CAI_BO_KEYWORDS: string[] = [
+  // 财运关键词 (0-19)
+  '财源广进', '财运亨通', '正财旺盛', '偏财运强', '财库丰盈', '理财有道',
+  '投资获利', '积累为主', '财来财去', '破耗较多', '收入稳定', '收入不稳',
+  '贵人送财', '白手起家', '祖业可继', '靠己创业', '合作生财', '独立经营',
+  '大进大出', '细水长流',
+  // 理财方式关键词 (20-39)
+  '适合经商', '适合投资', '适合技术', '适合管理', '适合创业', '工资收入',
+  '副业收入', '被动收入', '主动投资', '谨慎投资', '长线投资', '短线操作',
+  '实业经营', '服务行业', '金融投资', '房产投资', '股票基金', '储蓄为主',
+  '保险配置', '节流为主',
+  // 财运建议关键词 (40-49)
+  '宜投资', '宜储蓄', '宜创业', '宜合作', '宜稳健', '谨慎理财',
+  '勿贪心', '防破财', '广积粮', '细规划',
+];
+
+/**
+ * 官禄宫关键词表
+ */
+export const GUAN_LU_KEYWORDS: string[] = [
+  // 事业关键词 (0-19)
+  '事业有成', '仕途顺利', '步步高升', '创业成功', '专业精进', '事业平稳',
+  '波折较多', '需要努力', '大器晚成', '中年转运', '贵人助力', '靠己打拼',
+  '适合从政', '适合经商', '适合技术', '适合艺术', '适合服务', '适合管理',
+  '独当一面', '团队合作',
+  // 能力关键词 (20-29)
+  '领导能力强', '执行能力佳', '专业能力精', '沟通能力好', '协调能力强',
+  '决策能力优', '独立工作强', '团队协作好', '开拓能力强', '守成能力佳',
+  // 事业状态关键词 (30-39)
+  '升职快', '名望高', '权力大', '收入稳', '发展好', '压力大',
+  '稳定安逸', '竞争激烈', '机会多多', '需要转型',
+];
+
+/**
+ * 获取吉凶等级
+ * @param score 评分（0-100）
+ * @returns 吉凶等级
+ */
+export function getFortuneLevel(score: number): FortuneLevel {
+  if (score >= 90) return FortuneLevel.DaJi;
+  if (score >= 75) return FortuneLevel.Ji;
+  if (score >= 60) return FortuneLevel.XiaoJi;
+  if (score >= 40) return FortuneLevel.Ping;
+  if (score >= 25) return FortuneLevel.XiaoXiong;
+  if (score >= 10) return FortuneLevel.Xiong;
+  return FortuneLevel.DaXiong;
+}
+
+/**
+ * 判断格局是否为吉格
+ * @param patternType 格局类型
+ * @returns 是否吉格
+ */
+export function isPatternAuspicious(patternType: PatternType): boolean {
+  return patternType <= PatternType.LuMaJiaoChiGeJu;
+}
+
+/**
+ * 获取格局名称
+ * @param patternType 格局类型
+ * @returns 格局名称
+ */
+export function getPatternName(patternType: PatternType): string {
+  return PATTERN_NAMES[patternType] || '未知格局';
+}
+
+/**
+ * 获取格局描述
+ * @param patternType 格局类型
+ * @returns 格局描述
+ */
+export function getPatternDescription(patternType: PatternType): string {
+  return PATTERN_DESCRIPTIONS[patternType] || '暂无描述';
+}

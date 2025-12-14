@@ -1,3 +1,5 @@
+use crate::blockchain::types::{DivinationType, InterpretationType};
+
 /// InterpretationRequested事件数据
 #[derive(Debug, Clone)]
 pub struct InterpretationRequestedEvent {

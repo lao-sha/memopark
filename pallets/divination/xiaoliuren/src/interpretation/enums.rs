@@ -1,6 +1,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
+use sp_std::vec::Vec;
 
 // ============================================================================
 // 吉凶等级枚举

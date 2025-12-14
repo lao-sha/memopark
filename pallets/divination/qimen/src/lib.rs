@@ -21,6 +21,8 @@
 pub use pallet::*;
 
 pub mod algorithm;
+pub mod interpretation;
+pub mod runtime_api;
 pub mod types;
 
 #[cfg(test)]
@@ -32,7 +34,8 @@ mod tests;
 #[frame_support::pallet]
 pub mod pallet {
     use crate::algorithm;
-    use crate::types::*;
+    use crate::interpretation;
+    use crate::types::{self, *};
     use frame_support::{
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Randomness},
@@ -850,6 +853,102 @@ pub mod pallet {
             });
 
             Ok(())
+        }
+    }
+
+    // ==================== Runtime API 实现 ====================
+
+    impl<T: Config> Pallet<T> {
+        /// 获取核心解卦（Runtime API）
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        ///
+        /// # 返回
+        ///
+        /// 核心解卦结果
+        pub fn api_get_core_interpretation(chart_id: u64) -> Option<interpretation::QimenCoreInterpretation> {
+            let chart = Charts::<T>::get(chart_id)?;
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let current_block_u32: u32 = current_block.try_into().ok()?;
+            Some(interpretation::calculate_core_interpretation(&chart, current_block_u32))
+        }
+
+        /// 获取完整解卦（Runtime API）
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        /// - `question_type`: 问事类型
+        ///
+        /// # 返回
+        ///
+        /// 完整解卦结果
+        pub fn api_get_full_interpretation(
+            chart_id: u64,
+            question_type: types::QuestionType,
+        ) -> Option<interpretation::QimenFullInterpretation> {
+            let chart = Charts::<T>::get(chart_id)?;
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let current_block_u32: u32 = current_block.try_into().ok()?;
+            Some(interpretation::calculate_full_interpretation(&chart, current_block_u32, question_type))
+        }
+
+        /// 获取单宫详细解读（Runtime API）
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        /// - `palace_num`: 宫位数字（1-9）
+        ///
+        /// # 返回
+        ///
+        /// 单宫详细解读
+        pub fn api_get_palace_interpretation(
+            chart_id: u64,
+            palace_num: u8,
+        ) -> Option<interpretation::PalaceInterpretation> {
+            if palace_num == 0 || palace_num > 9 {
+                return None;
+            }
+
+            let chart = Charts::<T>::get(chart_id)?;
+            let palace = &chart.palaces[(palace_num - 1) as usize];
+            Some(interpretation::analyze_palace_detail(palace, chart.jie_qi))
+        }
+
+        /// 获取用神分析（Runtime API）
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        /// - `question_type`: 问事类型
+        ///
+        /// # 返回
+        ///
+        /// 用神分析结果
+        pub fn api_get_yong_shen_analysis(
+            chart_id: u64,
+            question_type: types::QuestionType,
+        ) -> Option<interpretation::YongShenAnalysis> {
+            let chart = Charts::<T>::get(chart_id)?;
+            Some(interpretation::analyze_yong_shen(&chart, question_type))
+        }
+
+        /// 获取应期推算（Runtime API）
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        ///
+        /// # 返回
+        ///
+        /// 应期推算结果
+        pub fn api_get_ying_qi_analysis(chart_id: u64) -> Option<interpretation::YingQiAnalysis> {
+            let chart = Charts::<T>::get(chart_id)?;
+            let core = Self::api_get_core_interpretation(chart_id)?;
+            Some(interpretation::calculate_ying_qi(&chart, core.yong_shen_gong))
         }
     }
 }

@@ -796,3 +796,186 @@ export async function getPublicPansWithDetails(
   const pans = await getPansBatch(pageIds);
   return { pans, total };
 }
+
+// ==================== Runtime API 解卦服务 ====================
+
+/**
+ * 解卦核心数据接口（13 bytes）
+ */
+export interface XiaoLiuRenInterpretation {
+  /** 吉凶等级（0-6） */
+  jiXiongLevel: number;
+  /** 综合评分（0-100） */
+  overallScore: number;
+  /** 五行关系（0-4） */
+  wuXingRelation: number;
+  /** 体用关系（可选，0-5） */
+  tiYongRelation?: number;
+  /** 八卦索引（可选，0-7） */
+  baGua?: number;
+  /** 特殊格局标记（位标志） */
+  specialPattern: number;
+  /** 建议类型（0-7） */
+  adviceType: number;
+  /** 流派（0-1） */
+  school: number;
+  /** 应期类型（可选，0-5） */
+  yingQi?: number;
+  /** 预留字段 */
+  reserved: number;
+}
+
+/**
+ * 获取课盘的解卦结果（Runtime API）
+ *
+ * 通过 Runtime API 免费查询解卦数据，无需支付 Gas 费用。
+ * 首次查询时会计算并缓存，后续查询直接从缓存读取。
+ *
+ * @param panId - 课盘 ID
+ * @returns 解卦核心数据，如果课盘不存在则返回 null
+ */
+export async function getInterpretation(panId: number): Promise<XiaoLiuRenInterpretation | null> {
+  try {
+    const api = await getApi();
+
+    // 检查 Runtime API 是否存在
+    if (!api.call.xiaoLiuRenInterpretationApi || !api.call.xiaoLiuRenInterpretationApi.getInterpretation) {
+      console.error('[getInterpretation] Runtime API 不存在');
+      return null;
+    }
+
+    console.log('[getInterpretation] 查询课盘解卦:', panId);
+    const result = await api.call.xiaoLiuRenInterpretationApi.getInterpretation(panId);
+
+    if (!result || result.isNone) {
+      console.log('[getInterpretation] 课盘不存在或未解卦');
+      return null;
+    }
+
+    const data = result.unwrap();
+    console.log('[getInterpretation] 原始数据:', data.toJSON());
+
+    // 解析解卦数据
+    const interpretation: XiaoLiuRenInterpretation = {
+      jiXiongLevel: data.jiXiongLevel.toNumber(),
+      overallScore: data.overallScore.toNumber(),
+      wuXingRelation: data.wuXingRelation.toNumber(),
+      tiYongRelation: data.tiYongRelation.isSome ? data.tiYongRelation.unwrap().toNumber() : undefined,
+      baGua: data.baGua.isSome ? data.baGua.unwrap().toNumber() : undefined,
+      specialPattern: data.specialPattern.toNumber(),
+      adviceType: data.adviceType.toNumber(),
+      school: data.school.toNumber(),
+      yingQi: data.yingQi.isSome ? data.yingQi.unwrap().toNumber() : undefined,
+      reserved: data.reserved.toNumber(),
+    };
+
+    console.log('[getInterpretation] 解析成功:', interpretation);
+    return interpretation;
+  } catch (error) {
+    console.error('[getInterpretation] 查询失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 批量获取解卦结果（Runtime API）
+ *
+ * 一次性获取多个课盘的解卦结果，适用于列表展示场景。
+ *
+ * @param panIds - 课盘 ID 列表
+ * @returns 解卦结果列表，每个元素对应一个课盘 ID
+ */
+export async function getInterpretationsBatch(panIds: number[]): Promise<(XiaoLiuRenInterpretation | null)[]> {
+  try {
+    const api = await getApi();
+
+    // 检查 Runtime API 是否存在
+    if (!api.call.xiaoLiuRenInterpretationApi || !api.call.xiaoLiuRenInterpretationApi.getInterpretationsBatch) {
+      console.error('[getInterpretationsBatch] Runtime API 不存在');
+      return panIds.map(() => null);
+    }
+
+    console.log('[getInterpretationsBatch] 批量查询解卦:', panIds);
+    const results = await api.call.xiaoLiuRenInterpretationApi.getInterpretationsBatch(panIds);
+
+    // 解析批量结果
+    return results.map((result: any, index: number) => {
+      if (!result || result.isNone) {
+        console.log(`[getInterpretationsBatch] 课盘 ${panIds[index]} 不存在或未解卦`);
+        return null;
+      }
+
+      const data = result.unwrap();
+      return {
+        jiXiongLevel: data.jiXiongLevel.toNumber(),
+        overallScore: data.overallScore.toNumber(),
+        wuXingRelation: data.wuXingRelation.toNumber(),
+        tiYongRelation: data.tiYongRelation.isSome ? data.tiYongRelation.unwrap().toNumber() : undefined,
+        baGua: data.baGua.isSome ? data.baGua.unwrap().toNumber() : undefined,
+        specialPattern: data.specialPattern.toNumber(),
+        adviceType: data.adviceType.toNumber(),
+        school: data.school.toNumber(),
+        yingQi: data.yingQi.isSome ? data.yingQi.unwrap().toNumber() : undefined,
+        reserved: data.reserved.toNumber(),
+      };
+    });
+  } catch (error) {
+    console.error('[getInterpretationsBatch] 批量查询失败:', error);
+    return panIds.map(() => null);
+  }
+}
+
+/**
+ * 获取课盘完整详情（包含解卦）
+ *
+ * 同时获取课盘基础信息和解卦数据。
+ *
+ * @param panId - 课盘 ID
+ * @returns 完整课盘详情，如果课盘不存在则返回 null
+ */
+export async function getPanWithInterpretation(panId: number): Promise<{
+  pan: XiaoLiuRenPan;
+  interpretation: XiaoLiuRenInterpretation;
+} | null> {
+  const [pan, interpretation] = await Promise.all([
+    getPan(panId),
+    getInterpretation(panId),
+  ]);
+
+  if (!pan || !interpretation) {
+    return null;
+  }
+
+  return { pan, interpretation };
+}
+
+/**
+ * 批量获取课盘完整详情（包含解卦）
+ *
+ * @param panIds - 课盘 ID 列表
+ * @returns 完整课盘详情列表
+ */
+export async function getPansWithInterpretationsBatch(panIds: number[]): Promise<{
+  pan: XiaoLiuRenPan;
+  interpretation: XiaoLiuRenInterpretation;
+}[]> {
+  const [pans, interpretations] = await Promise.all([
+    getPansBatch(panIds),
+    getInterpretationsBatch(panIds),
+  ]);
+
+  const results: {
+    pan: XiaoLiuRenPan;
+    interpretation: XiaoLiuRenInterpretation;
+  }[] = [];
+
+  for (let i = 0; i < pans.length; i++) {
+    const pan = pans[i];
+    const interpretation = interpretations[i];
+    if (pan && interpretation) {
+      results.push({ pan, interpretation });
+    }
+  }
+
+  return results;
+}

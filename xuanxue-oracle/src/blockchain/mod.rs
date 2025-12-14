@@ -17,8 +17,8 @@ use crate::divination::DivinationDataFetcher;
 use crate::error::OracleError;
 
 pub use events::*;
-pub use extrinsics::*;
-pub use queries::*;
+// pub use extrinsics::*;
+// pub use queries::*;
 pub use types::*;
 pub use runtime::manual_types;
 
@@ -44,12 +44,12 @@ impl EventMonitor {
 
         // 创建签名者
         let signer = Pair::from_string(&config.chain.oracle_account_seed, None)
-            .map_err(|e| OracleError::Blockchain(format!("Invalid seed: {}", e)))?;
+            .map_err(|e| OracleError::Blockchain(format!("Invalid seed: {:?}", e)))?;
 
         info!("Oracle account: {:?}", signer.public());
 
         // 初始化AI服务
-        let ai_service = AiService::new(config.deepseek.clone());
+        let ai_service = AiService::new(config.deepseek.clone())?;
 
         // 初始化IPFS客户端
         let ipfs_client = IpfsClient::new(config.ipfs.clone())?;
@@ -73,13 +73,13 @@ impl EventMonitor {
     }
 
     /// 获取Oracle账户
-    pub fn account(&self) -> &sp_core::sr25519::Public {
+    pub fn account(&self) -> sp_core::sr25519::Public {
         self.signer.public()
     }
 
     /// 确保Oracle节点已注册
     pub async fn ensure_registered(&self) -> Result<()> {
-        let account_id = self.signer.public();
+        let _account_id = self.signer.public();
         info!("Checking Oracle registration status...");
 
         // 查询链上Oracle信息
@@ -154,7 +154,7 @@ impl EventMonitor {
     }
 
     /// 监听区块链事件
-    pub async fn watch_events(&self) -> Result<()> {
+    pub async fn watch_events(&mut self) -> Result<()> {
         info!("👂 Starting event watcher...");
         info!("   Watching for InterpretationRequested events");
 
@@ -205,7 +205,7 @@ impl EventMonitor {
     }
 
     /// 处理单个事件
-    async fn handle_event(&self, event: subxt::events::EventDetails<PolkadotConfig>) -> Result<()> {
+    async fn handle_event(&mut self, event: subxt::events::EventDetails<PolkadotConfig>) -> Result<()> {
         let pallet_name = event.pallet_name();
         let event_name = event.variant_name();
 
@@ -217,7 +217,7 @@ impl EventMonitor {
             match self.parse_interpretation_requested_event(&event) {
                 Ok(event_data) => {
                     info!("   Request ID: {}", event_data.request_id);
-                    info!("   Divination Type: {:?}", DivinationType::from_u8(event_data.divination_type));
+                    info!("   Divination Type: {:?}", event_data.divination_type);
                     info!("   Result ID: {}", event_data.result_id);
 
                     if let Err(e) = self.handle_interpretation_request(event_data).await {
@@ -256,7 +256,7 @@ impl EventMonitor {
     }
 
     /// 处理解读请求
-    async fn handle_interpretation_request(&self, event: InterpretationRequestedEvent) -> Result<()> {
+    async fn handle_interpretation_request(&mut self, event: InterpretationRequestedEvent) -> Result<()> {
         info!(
             "📝 Processing request #{}: {:?} for result #{}",
             event.request_id,
@@ -362,7 +362,7 @@ impl EventMonitor {
     ) -> Result<()> {
         debug!("Submitting submit_result transaction...");
 
-        let params = manual_types::SubmitResultParams {
+        let _params = manual_types::SubmitResultParams {
             request_id,
             content_cid: content_cid.as_bytes().to_vec(),
             summary_cid: summary_cid.map(|s| s.as_bytes().to_vec()),

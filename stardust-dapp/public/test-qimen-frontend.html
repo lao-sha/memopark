@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试奇门遁甲前端 API</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .log {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: #52c41a; }
+        .error { color: #f5222d; }
+        .info { color: #1890ff; }
+        pre {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>奇门遁甲前端 API 测试</h1>
+    <div id="logs"></div>
+
+    <script type="module">
+        import { ApiPromise, WsProvider } from 'https://cdn.jsdelivr.net/npm/@polkadot/api@16.4.6/+esm';
+
+        const logsDiv = document.getElementById('logs');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = message;
+            logsDiv.appendChild(div);
+            console.log(message);
+        }
+
+        async function testQimenAPI() {
+            try {
+                log('🔗 连接到本地节点...', 'info');
+                const wsProvider = new WsProvider('ws://localhost:9944');
+                const api = await ApiPromise.create({ provider: wsProvider });
+                log('✅ 已连接到节点', 'success');
+
+                // 检查 Runtime API
+                if (!api.call || !api.call.qimenInterpretationApi) {
+                    log('❌ qimenInterpretationApi 不存在', 'error');
+                    return;
+                }
+                log('✅ qimenInterpretationApi 存在', 'success');
+
+                const chartId = 0;
+                log(`<br>📊 测试查询排盘 ID: ${chartId}`, 'info');
+
+                // 查询排盘
+                const chart = await api.query.qimen.charts(chartId);
+                if (chart.isNone) {
+                    log('❌ 排盘不存在', 'error');
+                    return;
+                }
+                log('✅ 找到排盘', 'success');
+
+                // 测试核心解卦
+                log('<br>🔮 测试核心解卦...', 'info');
+                const coreResult = await api.call.qimenInterpretationApi.getCoreInterpretation(chartId);
+
+                if (coreResult.isNone) {
+                    log('❌ 核心解卦返回 None', 'error');
+                } else {
+                    log('✅ 核心解卦成功', 'success');
+                    const coreData = coreResult.toJSON();
+                    log(`<pre>${JSON.stringify(coreData, null, 2)}</pre>`);
+                }
+
+                // 测试完整解卦
+                log('<br>🎯 测试完整解卦...', 'info');
+                const fullResult = await api.call.qimenInterpretationApi.getFullInterpretation(chartId, 0);
+
+                if (fullResult.isNone) {
+                    log('❌ 完整解卦返回 None', 'error');
+                } else {
+                    log('✅ 完整解卦成功', 'success');
+                    const fullData = fullResult.toJSON();
+
+                    log(`<br><strong>解卦结果结构：</strong>`);
+                    log(`- core: ${fullData.core ? '✓' : '✗'}`);
+                    log(`- palaces: ${fullData.palaces ? `✓ (${fullData.palaces.length}个)` : '✗'}`);
+                    log(`- yongShen: ${fullData.yongShen ? '✓' : '✗'}`);
+                    log(`- yingQi: ${fullData.yingQi ? '✓' : '✗'}`);
+                    log(`- geJuDetail: ${fullData.geJuDetail ? '✓' : '✗'}`);
+
+                    log(`<br><pre>${JSON.stringify(fullData, null, 2)}</pre>`);
+                }
+
+                await api.disconnect();
+                log('<br>🔌 已断开连接', 'info');
+            } catch (error) {
+                log(`❌ 错误: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        testQimenAPI();
+    </script>
+</body>
+</html>

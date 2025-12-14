@@ -4143,12 +4143,12 @@ impl pallet_chat_permission::Config for Runtime {
 ///
 /// ### 支持的占卜类型
 /// - Meihua（梅花易数）: 路由到 pallet-meihua
-/// - Bazi（八字命理）: 暂未实现（pallet-bazi-chart 使用 Hash 作为 ID）
+/// - Bazi（八字命理）: 路由到 pallet-bazi-chart（✅ 已完成 u64 ID 迁移 2025-12-07）
 /// - 其他类型：暂未实现
 ///
 /// ### 设计说明
-/// 目前主要支持梅花易数。八字命理由于存储结构不同（使用 Hash 而非 u64 作为 ID），
-/// 需要后续进行接口适配。其他玄学系统（六爻、奇门、紫微）将在后续版本中逐步支持。
+/// 目前支持梅花易数和八字命理。其他玄学系统（六爻、奇门、紫微、大六壬、小六壬、塔罗、太乙）
+/// 将在后续版本中逐步支持。
 pub struct CombinedDivinationProvider;
 
 impl pallet_divination_common::DivinationProvider<AccountId> for CombinedDivinationProvider {
@@ -4157,6 +4157,9 @@ impl pallet_divination_common::DivinationProvider<AccountId> for CombinedDivinat
         match divination_type {
             pallet_divination_common::DivinationType::Meihua => {
                 pallet_meihua::Hexagrams::<Runtime>::contains_key(result_id)
+            }
+            pallet_divination_common::DivinationType::Bazi => {
+                pallet_bazi_chart::ChartById::<Runtime>::contains_key(result_id)
             }
             // 其他类型暂未实现
             _ => false,
@@ -4172,6 +4175,10 @@ impl pallet_divination_common::DivinationProvider<AccountId> for CombinedDivinat
             pallet_divination_common::DivinationType::Meihua => {
                 pallet_meihua::Hexagrams::<Runtime>::get(result_id)
                     .map(|h| h.ben_gua.diviner)
+            }
+            pallet_divination_common::DivinationType::Bazi => {
+                pallet_bazi_chart::ChartById::<Runtime>::get(result_id)
+                    .map(|chart| chart.owner)
             }
             _ => None,
         }

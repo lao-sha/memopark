@@ -1,0 +1,223 @@
+{
+  "五行理论": {
+    "definition": "五行是中国古代哲学的基础理论，认为宇宙万物由金、木、水、火、土五种基本元素构成，它们之间存在相生相克的关系。",
+    "origin": "《尚书·洪范》最早系统论述五行，后经《黄帝内经》《易经》等发展完善。"
+  },
+  "金": {
+    "nature": "收敛、肃杀、坚硬、清洁",
+    "season": "秋",
+    "direction": "西",
+    "climate": "燥",
+    "color": ["白色", "金色", "银色"],
+    "taste": "辛",
+    "sound": "商",
+    "organs": {
+      "zang": "肺",
+      "fu": "大肠",
+      "sensory": "鼻",
+      "tissue": "皮毛"
+    },
+    "personality": "刚毅果断、重义气、杀伐决断、清高孤傲",
+    "career": ["军警", "金融", "法律", "五金机械", "矿业", "外科医生"],
+    "numbers": [4, 9],
+    "heavenly_stems": ["庚", "辛"],
+    "earthly_branches": ["申", "酉"],
+    "symbolic_objects": ["刀剑", "金属", "矿石", "钱币"],
+    "power_analysis": {
+      "strong_effects": "刚健有力，果断坚毅，执行力强，义气凛然",
+      "weak_effects": "优柔寡断，缺乏魄力，呼吸系统弱",
+      "excess_effects": "过于刚硬，缺乏变通，易伤他人，肺部疾病"
+    }
+  },
+  "木": {
+    "nature": "生长、升发、条达、仁慈",
+    "season": "春",
+    "direction": "东",
+    "climate": "风",
+    "color": ["绿色", "青色"],
+    "taste": "酸",
+    "sound": "角",
+    "organs": {
+      "zang": "肝",
+      "fu": "胆",
+      "sensory": "目",
+      "tissue": "筋"
+    },
+    "personality": "仁慈正直、积极进取、有条理、富有创造力",
+    "career": ["教育", "文化", "园艺", "林业", "木材", "环保", "服装设计"],
+    "numbers": [3, 8],
+    "heavenly_stems": ["甲", "乙"],
+    "earthly_branches": ["寅", "卯"],
+    "symbolic_objects": ["树木", "花草", "书籍", "文具"],
+    "power_analysis": {
+      "strong_effects": "积极进取，富有主见，创造力强，仁慈正直",
+      "weak_effects": "缺乏自信，依赖性强，肝胆功能弱",
+      "excess_effects": "固执己见，不够圆滑，肝火旺盛，易怒"
+    }
+  },
+  "水": {
+    "nature": "寒冷、向下、聪慧、流动",
+    "season": "冬",
+    "direction": "北",
+    "climate": "寒",
+    "color": ["黑色", "蓝色"],
+    "taste": "咸",
+    "sound": "羽",
+    "organs": {
+      "zang": "肾",
+      "fu": "膀胱",
+      "sensory": "耳",
+      "tissue": "骨"
+    },
+    "personality": "聪明机智、灵活变通、富有智慧、善于谋略",
+    "career": ["贸易", "物流", "水产", "旅游", "媒体", "信息技术", "酒水饮料"],
+    "numbers": [1, 6],
+    "heavenly_stems": ["壬", "癸"],
+    "earthly_branches": ["亥", "子"],
+    "symbolic_objects": ["江河湖海", "雨露", "水井", "饮品"],
+    "power_analysis": {
+      "strong_effects": "聪明机智，灵活变通，适应力强，富有智慧",
+      "weak_effects": "缺乏恒心，意志不坚，肾功能弱，骨骼问题",
+      "excess_effects": "过于圆滑，缺乏原则，多疑善变，肾脏疾病"
+    }
+  },
+  "火": {
+    "nature": "炎上、温暖、文明、礼节",
+    "season": "夏",
+    "direction": "南",
+    "climate": "热",
+    "color": ["红色", "紫色", "橙色"],
+    "taste": "苦",
+    "sound": "徵",
+    "organs": {
+      "zang": "心",
+      "fu": "小肠",
+      "sensory": "舌",
+      "tissue": "血脉"
+    },
+    "personality": "热情开朗、积极主动、富有礼节、善于表达",
+    "career": ["演艺", "销售", "餐饮", "能源", "电子电器", "广告传媒", "化工"],
+    "numbers": [2, 7],
+    "heavenly_stems": ["丙", "丁"],
+    "earthly_branches": ["巳", "午"],
+    "symbolic_objects": ["太阳", "火焰", "灯烛", "电器"],
+    "power_analysis": {
+      "strong_effects": "热情开朗，积极主动，表达力强，富有魅力",
+      "weak_effects": "缺乏热情，消极被动，心脏功能弱",
+      "excess_effects": "性急冲动，缺乏耐心，心火亢盛，血压问题"
+    }
+  },
+  "土": {
+    "nature": "承载、化育、稳重、诚信",
+    "season": "四季末月",
+    "direction": "中央",
+    "climate": "湿",
+    "color": ["黄色", "棕色", "褐色"],
+    "taste": "甘",
+    "sound": "宫",
+    "organs": {
+      "zang": "脾",
+      "fu": "胃",
+      "sensory": "口",
+      "tissue": "肌肉"
+    },
+    "personality": "稳重可靠、诚实守信、包容大度、责任心强",
+    "career": ["房地产", "建筑", "农业", "陶瓷", "保险", "仓储", "养殖"],
+    "numbers": [5, 10],
+    "heavenly_stems": ["戊", "己"],
+    "earthly_branches": ["辰", "戌", "丑", "未"],
+    "symbolic_objects": ["山川", "土地", "房屋", "陶器"],
+    "power_analysis": {
+      "strong_effects": "稳重可靠，包容大度，责任心强，诚实守信",
+      "weak_effects": "缺乏变通，行动迟缓，脾胃功能弱",
+      "excess_effects": "固执保守，过于迟钝，脾胃疾病，肥胖"
+    }
+  },
+  "相生关系": {
+    "definition": "五行之间存在相互资生、助长的关系，形成循环",
+    "relationships": {
+      "木生火": {
+        "mechanism": "木材燃烧生火",
+        "meaning": "木的生发之气助长火的炎上之性",
+        "manifestation": "肝木疏泄有利于心火运行，创意思维激发热情行动"
+      },
+      "火生土": {
+        "mechanism": "火燃烧后化为灰烬成土",
+        "meaning": "火的温暖之气化育土的承载之能",
+        "manifestation": "心火温煦脾土，热情带来稳定和信任"
+      },
+      "土生金": {
+        "mechanism": "土中蕴含矿石金属",
+        "meaning": "土的化育之能孕育金的收敛之性",
+        "manifestation": "脾土运化滋养肺金，稳重产生果断和魄力"
+      },
+      "金生水": {
+        "mechanism": "金属熔化成液态",
+        "meaning": "金的清肃之气滋养水的寒凉之性",
+        "manifestation": "肺金清降助肾水，果决促进智慧和谋略"
+      },
+      "水生木": {
+        "mechanism": "水滋润树木生长",
+        "meaning": "水的润下之能滋养木的生长之性",
+        "manifestation": "肾水滋养肝木，智慧催生创造和进取"
+      }
+    }
+  },
+  "相克关系": {
+    "definition": "五行之间存在相互制约、克制的关系，保持平衡",
+    "relationships": {
+      "木克土": {
+        "mechanism": "树木根系破坏土壤",
+        "meaning": "木的疏泄之性制约土的滞重",
+        "manifestation": "肝木克脾土，进取心过强影响稳定性"
+      },
+      "土克水": {
+        "mechanism": "土能吸收水、堵截水流",
+        "meaning": "土的厚重之性制约水的流动",
+        "manifestation": "脾土克肾水，过度稳重限制灵活性"
+      },
+      "水克火": {
+        "mechanism": "水能浇灭火焰",
+        "meaning": "水的寒凉之性制约火的炎热",
+        "manifestation": "肾水克心火，过度冷静压制热情"
+      },
+      "火克金": {
+        "mechanism": "火能熔化金属",
+        "meaning": "火的炎上之性制约金的收敛",
+        "manifestation": "心火克肺金，过度热情削弱果断力"
+      },
+      "金克木": {
+        "mechanism": "金属工具砍伐树木",
+        "meaning": "金的肃杀之性制约木的生发",
+        "manifestation": "肺金克肝木，过度果决压制创造力"
+      }
+    }
+  },
+  "五行平衡原则": {
+    "ideal_state": "五行力量相对均衡，无明显偏颇",
+    "adjustment_methods": {
+      "补益弱行": "通过职业、颜色、方位、饰品等方式增强弱势五行",
+      "抑制旺行": "通过克制或泄耗方式减弱过旺五行",
+      "通关调和": "在相克的两行之间加入通关五行化解矛盾"
+    },
+    "case_examples": [
+      {
+        "scenario": "木旺土弱",
+        "problem": "肝火旺盛，脾胃虚弱",
+        "solution": "用火通关（木生火，火生土），从事文化教育类工作"
+      },
+      {
+        "scenario": "火旺金弱",
+        "problem": "心火亢盛，肺金受损",
+        "solution": "用土通关（火生土，土生金），稳重行事，多穿黄色"
+      }
+    ]
+  },
+  "五行与疾病": {
+    "木病": ["肝胆疾病", "神经系统问题", "眼疾", "筋骨酸痛"],
+    "火病": ["心脏病", "血压问题", "失眠", "炎症", "眼疾"],
+    "土病": ["脾胃疾病", "消化不良", "糖尿病", "肥胖", "肌肉问题"],
+    "金病": ["肺部疾病", "呼吸系统问题", "皮肤病", "大肠疾病"],
+    "水病": ["肾脏疾病", "泌尿系统问题", "生殖系统问题", "骨骼疾病", "耳疾"]
+  }
+}

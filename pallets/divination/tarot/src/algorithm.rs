@@ -944,3 +944,558 @@ pub fn analyze_card_relationship(card1: &TarotCard, card2: &TarotCard) -> &'stat
         _ => "两张牌互相呼应，共同描绘完整的画面",
     }
 }
+
+// ============================================================================
+// 解卦算法
+// ============================================================================
+
+use crate::interpretation::*;
+
+/// 生成核心解卦数据
+///
+/// 基于抽取的牌生成核心解卦指标
+///
+/// # 参数
+/// - `cards`: 抽取的牌列表 (card_id, is_reversed)
+/// - `spread_type`: 牌阵类型
+/// - `block_number`: 当前区块号
+///
+/// # 返回
+/// - 核心解卦数据
+pub fn generate_core_interpretation(
+    cards: &[(u8, bool)],
+    spread_type: SpreadType,
+    block_number: u32,
+) -> TarotCoreInterpretation {
+    if cards.is_empty() {
+        return TarotCoreInterpretation::default();
+    }
+
+    let total_cards = cards.len() as u8;
+    let card_ids: Vec<u8> = cards.iter().map(|(id, _)| *id).collect();
+
+    // 统计基础数据
+    let (major, wands, cups, swords, pentacles) = analyze_element_distribution(&card_ids);
+    let reversed_count = cards.iter().filter(|(_, rev)| *rev).count() as u8;
+    let reversed_ratio = (reversed_count as u16 * 100 / total_cards as u16) as u8;
+
+    // 统计牌类型
+    let mut court_count = 0u8;
+    let mut number_count = 0u8;
+    for &card_id in &card_ids {
+        let card = TarotCard::from_id(card_id);
+        if card.is_court_card() {
+            court_count += 1;
+        } else if !card.is_major() {
+            number_count += 1;
+        }
+    }
+
+    // 计算主导元素
+    let dominant_element = determine_dominant_element(major, wands, cups, swords, pentacles, total_cards);
+
+    // 计算元素分布位图
+    let element_bitmap = encode_element_bitmap(wands, cups, swords, pentacles);
+
+    // 检测特殊组合
+    let special_combination = detect_special_combinations(&card_ids, reversed_count, total_cards);
+
+    // 计算能量指数
+    let upright_count = total_cards - reversed_count;
+    let upright_ratio = (upright_count as u16 * 100 / total_cards as u16) as u8;
+
+    let action_index = calculate_action_index(wands, upright_ratio);
+    let emotion_index = calculate_emotion_index(cups);
+    let intellect_index = calculate_intellect_index(swords);
+    let material_index = calculate_material_index(pentacles);
+    let spiritual_index = calculate_spiritual_index(major, total_cards);
+    let stability_index = calculate_stability_index(upright_ratio, number_count, total_cards);
+    let change_index = calculate_change_index(reversed_ratio, court_count, total_cards);
+
+    // 计算总体能量
+    let overall_energy = calculate_overall_energy(upright_count, major, total_cards);
+
+    // 判断吉凶倾向
+    let fortune_tendency = determine_fortune_tendency(
+        major,
+        reversed_ratio,
+        dominant_element,
+        special_combination,
+        total_cards,
+    );
+
+    // 计算综合评分
+    let overall_score = calculate_overall_score(
+        &fortune_tendency,
+        overall_energy,
+        stability_index,
+        spiritual_index,
+    );
+
+    // 确定关键牌（通常是第一张或中心牌）
+    let key_card_index = determine_key_card_index(cards.len(), &spread_type);
+    let (key_card_id, key_card_reversed) = cards[key_card_index];
+
+    TarotCoreInterpretation {
+        overall_energy,
+        dominant_element,
+        fortune_tendency,
+        reversed_ratio,
+        major_arcana_count: major,
+        court_cards_count: court_count,
+        number_cards_count: number_count,
+        element_bitmap,
+        special_combination,
+        key_card_id,
+        key_card_reversed: if key_card_reversed { 1 } else { 0 },
+        spread_type: spread_type.type_id(),
+        action_index,
+        emotion_index,
+        intellect_index,
+        material_index,
+        spiritual_index,
+        stability_index,
+        change_index,
+        overall_score,
+        block_number,
+        algorithm_version: 1,
+        confidence: calculate_confidence(total_cards, major),
+        reserved: [0; 4],
+    }
+}
+
+/// 确定主导元素
+fn determine_dominant_element(
+    major: u8,
+    wands: u8,
+    cups: u8,
+    swords: u8,
+    pentacles: u8,
+    total: u8,
+) -> DominantElement {
+    // 大阿卡纳占比超过50%，灵性主导
+    if major as u16 * 2 >= total as u16 {
+        return DominantElement::Spirit;
+    }
+
+    // 找出最多的元素
+    let max_element = wands.max(cups).max(swords).max(pentacles);
+
+    // 如果最多的元素数量不足2张，认为无主导
+    if max_element < 2 {
+        return DominantElement::None;
+    }
+
+    // 返回主导元素
+    if wands == max_element {
+        DominantElement::Fire
+    } else if cups == max_element {
+        DominantElement::Water
+    } else if swords == max_element {
+        DominantElement::Air
+    } else if pentacles == max_element {
+        DominantElement::Earth
+    } else {
+        DominantElement::None
+    }
+}
+
+/// 编码元素分布位图
+fn encode_element_bitmap(wands: u8, cups: u8, swords: u8, pentacles: u8) -> u8 {
+    let fire = wands.min(3);
+    let water = cups.min(3);
+    let air = swords.min(3);
+    let earth = pentacles.min(3);
+
+    fire | (water << 2) | (air << 4) | (earth << 6)
+}
+
+/// 检测特殊组合
+fn detect_special_combinations(cards: &[u8], reversed_count: u8, total: u8) -> u8 {
+    let mut flags = 0u8;
+
+    // bit 0: 愚者+世界组合
+    if cards.contains(&0) && cards.contains(&21) {
+        flags |= 0b00000001;
+    }
+
+    // bit 1: 三张以上大阿卡纳
+    let major_count = cards.iter().filter(|&&c| c < 22).count();
+    if major_count >= 3 {
+        flags |= 0b00000010;
+    }
+
+    // bit 2: 同花色三连号
+    if has_special_combination(cards) {
+        flags |= 0b00000100;
+    }
+
+    // bit 3: 全逆位
+    if reversed_count == total {
+        flags |= 0b00001000;
+    }
+
+    // bit 4: 全正位
+    if reversed_count == 0 {
+        flags |= 0b00010000;
+    }
+
+    flags
+}
+
+/// 计算行动力指数
+fn calculate_action_index(wands: u8, upright_ratio: u8) -> u8 {
+    let wands_score = (wands as u16 * 25).min(100);
+    let upright_score = (upright_ratio as u16 / 2).min(50);
+    ((wands_score + upright_score).min(100)) as u8
+}
+
+/// 计算情感指数
+fn calculate_emotion_index(cups: u8) -> u8 {
+    ((cups as u16 * 25).min(100)) as u8
+}
+
+/// 计算思维指数
+fn calculate_intellect_index(swords: u8) -> u8 {
+    ((swords as u16 * 25).min(100)) as u8
+}
+
+/// 计算物质指数
+fn calculate_material_index(pentacles: u8) -> u8 {
+    ((pentacles as u16 * 25).min(100)) as u8
+}
+
+/// 计算灵性指数
+fn calculate_spiritual_index(major: u8, total: u8) -> u8 {
+    ((major as u16 * 100 / total as u16).min(100)) as u8
+}
+
+/// 计算稳定性指数
+fn calculate_stability_index(upright_ratio: u8, number_count: u8, total: u8) -> u8 {
+    let upright_score = (upright_ratio as u16 * 60 / 100).min(60);
+    let number_score = (number_count as u16 * 40 / total as u16).min(40);
+    ((upright_score + number_score).min(100)) as u8
+}
+
+/// 计算变化性指数
+fn calculate_change_index(reversed_ratio: u8, court_count: u8, total: u8) -> u8 {
+    let reversed_score = (reversed_ratio as u16 * 60 / 100).min(60);
+    let court_score = (court_count as u16 * 40 / total as u16).min(40);
+    ((reversed_score + court_score).min(100)) as u8
+}
+
+/// 计算总体能量
+fn calculate_overall_energy(upright_count: u8, major: u8, total: u8) -> u8 {
+    let upright_score = (upright_count as u16 * 10).min(100);
+    let major_score = (major as u16 * 15).min(100);
+    ((upright_score + major_score) / total as u16).min(100) as u8
+}
+
+/// 判断吉凶倾向
+fn determine_fortune_tendency(
+    major: u8,
+    reversed_ratio: u8,
+    dominant_element: DominantElement,
+    special_combination: u8,
+    total: u8,
+) -> FortuneTendency {
+    // 特殊组合优先判断
+    if special_combination & 0b00000001 != 0 {
+        // 愚者+世界：完整旅程
+        return FortuneTendency::Good;
+    }
+
+    // 大阿卡纳为主
+    if major as u16 * 2 >= total as u16 {
+        if reversed_ratio < 40 {
+            return FortuneTendency::Good;
+        } else {
+            return FortuneTendency::Neutral;
+        }
+    }
+
+    // 逆位较多
+    if reversed_ratio >= 70 {
+        return FortuneTendency::Bad;
+    } else if reversed_ratio >= 50 {
+        return FortuneTendency::MinorBad;
+    }
+
+    // 按主导元素判断
+    match dominant_element {
+        DominantElement::Fire => {
+            if reversed_ratio < 30 {
+                FortuneTendency::Excellent
+            } else {
+                FortuneTendency::Good
+            }
+        }
+        DominantElement::Water => {
+            if reversed_ratio < 40 {
+                FortuneTendency::Good
+            } else {
+                FortuneTendency::Neutral
+            }
+        }
+        DominantElement::Air => FortuneTendency::Neutral,
+        DominantElement::Earth => {
+            if reversed_ratio < 30 {
+                FortuneTendency::Good
+            } else {
+                FortuneTendency::Neutral
+            }
+        }
+        DominantElement::Spirit => FortuneTendency::Good,
+        DominantElement::None => FortuneTendency::Neutral,
+    }
+}
+
+/// 计算综合评分
+fn calculate_overall_score(
+    fortune: &FortuneTendency,
+    energy: u8,
+    stability: u8,
+    spiritual: u8,
+) -> u8 {
+    let fortune_score = match fortune {
+        FortuneTendency::Excellent => 90,
+        FortuneTendency::Good => 75,
+        FortuneTendency::Neutral => 50,
+        FortuneTendency::MinorBad => 35,
+        FortuneTendency::Bad => 20,
+    };
+
+    let weighted_score = (fortune_score as u16 * 40
+        + energy as u16 * 30
+        + stability as u16 * 20
+        + spiritual as u16 * 10)
+        / 100;
+
+    weighted_score.min(100) as u8
+}
+
+/// 计算可信度
+fn calculate_confidence(total: u8, major: u8) -> u8 {
+    // 牌数越多，可信度越高
+    let count_score = (total as u16 * 10).min(100);
+
+    // 大阿卡纳比例适中时可信度更高
+    let major_ratio = (major as u16 * 100 / total as u16) as u8;
+    let major_score = if major_ratio >= 20 && major_ratio <= 60 {
+        100
+    } else if major_ratio < 20 {
+        50 + major_ratio * 2
+    } else {
+        160 - major_ratio
+    };
+
+    ((count_score + major_score as u16) / 2).min(100) as u8
+}
+
+/// 确定关键牌索引
+fn determine_key_card_index(_card_count: usize, spread_type: &SpreadType) -> usize {
+    match spread_type {
+        SpreadType::SingleCard => 0,
+        SpreadType::ThreeCardTime | SpreadType::ThreeCardSituation => 1, // 中间牌
+        SpreadType::CelticCross => 0, // 第一张（当前状况）
+        _ => 0, // 默认第一张
+    }
+}
+
+/// 生成牌阵能量分析
+///
+/// # 参数
+/// - `cards`: 抽取的牌列表 (card_id, is_reversed)
+///
+/// # 返回
+/// - 牌阵能量分析
+pub fn generate_spread_energy_analysis(cards: &[(u8, bool)]) -> SpreadEnergyAnalysis {
+    if cards.is_empty() {
+        return SpreadEnergyAnalysis::default();
+    }
+
+    let total = cards.len();
+    let third = total / 3;
+
+    // 计算过去、现在、未来能量
+    let past_energy = calculate_section_energy(&cards[0..third.max(1)]);
+    let present_energy = if total >= 3 {
+        calculate_section_energy(&cards[third..third * 2])
+    } else {
+        calculate_section_energy(cards)
+    };
+    let future_energy = if total >= 3 {
+        calculate_section_energy(&cards[third * 2..])
+    } else {
+        calculate_section_energy(cards)
+    };
+
+    // 计算内在/外在能量
+    let (inner_energy, outer_energy) = calculate_inner_outer_energy(cards);
+
+    // 判断能量流动方向
+    let energy_flow = determine_energy_flow(past_energy, present_energy, future_energy);
+
+    // 计算能量平衡度
+    let energy_balance = calculate_energy_balance(cards);
+
+    SpreadEnergyAnalysis {
+        past_energy,
+        present_energy,
+        future_energy,
+        inner_energy,
+        outer_energy,
+        energy_flow,
+        energy_balance,
+    }
+}
+
+/// 计算某段牌的能量
+fn calculate_section_energy(cards: &[(u8, bool)]) -> u8 {
+    if cards.is_empty() {
+        return 50;
+    }
+
+    let mut energy = 0u16;
+    for (card_id, is_reversed) in cards {
+        let card = TarotCard::from_id(*card_id);
+        let base_energy = if card.is_major() { 80 } else { 60 };
+        let position_modifier = if *is_reversed { -20 } else { 20 };
+        energy += (base_energy + position_modifier) as u16;
+    }
+
+    ((energy / cards.len() as u16).min(100)) as u8
+}
+
+/// 计算内在/外在能量
+fn calculate_inner_outer_energy(cards: &[(u8, bool)]) -> (u8, u8) {
+    let mut inner = 0u16;
+    let mut outer = 0u16;
+    let mut inner_count = 0u16;
+    let mut outer_count = 0u16;
+
+    for (card_id, is_reversed) in cards {
+        let card = TarotCard::from_id(*card_id);
+        let base_energy = if card.is_major() { 70 } else { 50 };
+
+        if *is_reversed {
+            inner += (base_energy + 20) as u16;
+            inner_count += 1;
+        } else {
+            outer += (base_energy + 20) as u16;
+            outer_count += 1;
+        }
+    }
+
+    let inner_avg = if inner_count > 0 {
+        (inner / inner_count).min(100) as u8
+    } else {
+        50
+    };
+
+    let outer_avg = if outer_count > 0 {
+        (outer / outer_count).min(100) as u8
+    } else {
+        50
+    };
+
+    (inner_avg, outer_avg)
+}
+
+/// 判断能量流动方向
+fn determine_energy_flow(past: u8, present: u8, future: u8) -> EnergyFlow {
+    let past_to_present = present as i16 - past as i16;
+    let present_to_future = future as i16 - present as i16;
+
+    if past_to_present > 10 && present_to_future > 10 {
+        EnergyFlow::Rising
+    } else if past_to_present < -10 && present_to_future < -10 {
+        EnergyFlow::Declining
+    } else if past_to_present.abs() < 10 && present_to_future.abs() < 10 {
+        EnergyFlow::Stable
+    } else {
+        EnergyFlow::Volatile
+    }
+}
+
+/// 计算能量平衡度
+fn calculate_energy_balance(cards: &[(u8, bool)]) -> u8 {
+    let (_major, wands, cups, swords, pentacles) = analyze_element_distribution(
+        &cards.iter().map(|(id, _)| *id).collect::<Vec<u8>>(),
+    );
+
+    // 使用整数计算元素分布的方差（避免浮点数）
+    let elements = [wands as u32, cups as u32, swords as u32, pentacles as u32];
+    let sum: u32 = elements.iter().sum();
+    let avg_4x = sum; // 乘以4来避免除法
+
+    // 计算方差的4倍（避免浮点数）
+    // variance * 4 = sum((e * 4 - avg_4x)^2) / 4
+    let variance_16x: u32 = elements
+        .iter()
+        .map(|&e| {
+            let diff = (e * 4).saturating_sub(avg_4x) as i32;
+            let diff_abs = diff.unsigned_abs();
+            diff_abs * diff_abs
+        })
+        .sum();
+
+    // 方差（乘以16）与标准差阈值的关系：
+    // std_dev < 0.5 => variance < 0.25 => variance_16x < 4
+    // std_dev < 1.0 => variance < 1.0 => variance_16x < 16
+    // std_dev < 1.5 => variance < 2.25 => variance_16x < 36
+    // std_dev < 2.0 => variance < 4.0 => variance_16x < 64
+    let balance = if variance_16x < 4 {
+        100
+    } else if variance_16x < 16 {
+        80
+    } else if variance_16x < 36 {
+        60
+    } else if variance_16x < 64 {
+        40
+    } else {
+        20
+    };
+
+    balance
+}
+
+#[cfg(test)]
+mod interpretation_tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_core_interpretation() {
+        // 测试三张牌：愚者(正位)、魔术师(正位)、世界(逆位)
+        let cards = vec![(0, false), (1, false), (21, true)];
+        let core = generate_core_interpretation(&cards, SpreadType::ThreeCardTime, 1000);
+
+        assert_eq!(core.major_arcana_count, 3);
+        assert_eq!(core.reversed_ratio, 33); // 1/3 ≈ 33%
+        assert!(core.has_fool_world_combo());
+        assert!(core.has_many_major_arcana());
+        assert_eq!(core.dominant_element, DominantElement::Spirit);
+    }
+
+    #[test]
+    fn test_element_distribution() {
+        // 测试权杖牌：权杖Ace(22), 权杖2(23), 权杖3(24)
+        let cards = vec![(22, false), (23, false), (24, false)];
+        let core = generate_core_interpretation(&cards, SpreadType::ThreeCardTime, 1000);
+
+        assert_eq!(core.dominant_element, DominantElement::Fire);
+        assert_eq!(core.fire_count(), 3);
+        assert_eq!(core.action_index, 100); // 3张权杖 + 全正位
+    }
+
+    #[test]
+    fn test_spread_energy_analysis() {
+        let cards = vec![(0, false), (1, false), (21, false)];
+        let energy = generate_spread_energy_analysis(&cards);
+
+        assert!(energy.past_energy > 0);
+        assert!(energy.present_energy > 0);
+        assert!(energy.future_energy > 0);
+        assert!(energy.outer_energy > energy.inner_energy); // 全正位，外在能量更强
+    }
+}

@@ -42,6 +42,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod algorithm;
+pub mod interpretation;
+pub mod runtime_api;
 pub mod types;
 
 #[cfg(test)]

@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::DeepSeekConfig;
 use crate::blockchain::types::{DivinationType, InterpretationType};
-use crate::error::OracleError;
 
 pub use deepseek::DeepSeekClient;
 pub use prompt_builder::PromptBuilder;
@@ -62,19 +61,19 @@ pub struct AiService {
 
 impl AiService {
     /// 创建新的AI服务
-    pub fn new(config: DeepSeekConfig) -> Self {
+    pub fn new(config: DeepSeekConfig) -> Result<Self> {
         let deepseek_client = DeepSeekClient::new(config);
-        let prompt_builder = PromptBuilder::new();
+        let prompt_builder = PromptBuilder::new()?;
 
-        Self {
+        Ok(Self {
             deepseek_client,
             prompt_builder,
-        }
+        })
     }
 
     /// 生成解读
     pub async fn generate_interpretation(
-        &self,
+        &mut self,
         divination_type: DivinationType,
         interpretation_type: InterpretationType,
         divination_data: &serde_json::Value,

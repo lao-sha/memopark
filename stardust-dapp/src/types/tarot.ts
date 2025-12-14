@@ -733,3 +733,509 @@ export function getElementDescription(dominantElement?: string): string {
       return '能量分布较为均衡，各方面都需要关注';
   }
 }
+
+// ============================================================================
+// Runtime API 解卦数据结构（链上数据）
+// ============================================================================
+
+/**
+ * 吉凶倾向枚举
+ */
+export enum FortuneTendency {
+  /** 大吉 - 诸事顺遂，心想事成 */
+  Excellent = 0,
+  /** 吉 - 事可成，宜进取 */
+  Good = 1,
+  /** 中平 - 平稳发展，守成为上 */
+  Neutral = 2,
+  /** 小凶 - 小有阻碍，谨慎行事 */
+  MinorBad = 3,
+  /** 凶 - 困难重重，需要调整 */
+  Bad = 4,
+}
+
+/** 吉凶倾向名称 */
+export const FORTUNE_TENDENCY_NAMES: Record<FortuneTendency, string> = {
+  [FortuneTendency.Excellent]: '大吉',
+  [FortuneTendency.Good]: '吉',
+  [FortuneTendency.Neutral]: '中平',
+  [FortuneTendency.MinorBad]: '小凶',
+  [FortuneTendency.Bad]: '凶',
+};
+
+/** 吉凶倾向颜色 */
+export const FORTUNE_TENDENCY_COLORS: Record<FortuneTendency, string> = {
+  [FortuneTendency.Excellent]: '#52c41a',  // 绿色
+  [FortuneTendency.Good]: '#73d13d',       // 浅绿色
+  [FortuneTendency.Neutral]: '#faad14',    // 黄色
+  [FortuneTendency.MinorBad]: '#ff7a45',   // 橙色
+  [FortuneTendency.Bad]: '#f5222d',        // 红色
+};
+
+/**
+ * 主导元素枚举
+ */
+export enum DominantElement {
+  /** 无明显主导元素 */
+  None = 0,
+  /** 火元素主导（权杖）- 行动力、激情、创造力 */
+  Fire = 1,
+  /** 水元素主导（圣杯）- 情感、直觉、人际关系 */
+  Water = 2,
+  /** 风元素主导（宝剑）- 思维、沟通、智力活动 */
+  Air = 3,
+  /** 土元素主导（星币）- 物质、工作、实际事务 */
+  Earth = 4,
+  /** 灵性主导（大阿卡纳）- 重大转折、命运指引 */
+  Spirit = 5,
+}
+
+/** 主导元素名称 */
+export const DOMINANT_ELEMENT_NAMES: Record<DominantElement, string> = {
+  [DominantElement.None]: '无',
+  [DominantElement.Fire]: '火（权杖）',
+  [DominantElement.Water]: '水（圣杯）',
+  [DominantElement.Air]: '风（宝剑）',
+  [DominantElement.Earth]: '土（星币）',
+  [DominantElement.Spirit]: '灵性（大阿卡纳）',
+};
+
+/**
+ * 能量流动方向枚举
+ */
+export enum EnergyFlow {
+  /** 上升 - 能量逐渐增强 */
+  Rising = 0,
+  /** 下降 - 能量逐渐减弱 */
+  Declining = 1,
+  /** 平稳 - 能量保持稳定 */
+  Stable = 2,
+  /** 波动 - 能量起伏不定 */
+  Volatile = 3,
+}
+
+/** 能量流动名称 */
+export const ENERGY_FLOW_NAMES: Record<EnergyFlow, string> = {
+  [EnergyFlow.Rising]: '上升',
+  [EnergyFlow.Declining]: '下降',
+  [EnergyFlow.Stable]: '平稳',
+  [EnergyFlow.Volatile]: '波动',
+};
+
+/**
+ * 牌间关系类型枚举
+ */
+export enum RelationshipType {
+  /** 无明显关系 */
+  None = 0,
+  /** 相生 - 能量互相增强 */
+  Generating = 1,
+  /** 相克 - 能量互相制约 */
+  Controlling = 2,
+  /** 同元素强化 - 同类能量叠加 */
+  SameElementReinforce = 3,
+  /** 对立冲突 - 能量相互对抗 */
+  Opposing = 4,
+  /** 互补 - 能量相互补充 */
+  Complementary = 5,
+}
+
+/** 牌间关系名称 */
+export const RELATIONSHIP_TYPE_NAMES: Record<RelationshipType, string> = {
+  [RelationshipType.None]: '无',
+  [RelationshipType.Generating]: '相生',
+  [RelationshipType.Controlling]: '相克',
+  [RelationshipType.SameElementReinforce]: '同元素强化',
+  [RelationshipType.Opposing]: '对立冲突',
+  [RelationshipType.Complementary]: '互补',
+};
+
+/**
+ * 时间线趋势枚举
+ */
+export enum TimelineTrend {
+  /** 下降趋势 */
+  Declining = 0,
+  /** 平稳趋势 */
+  Stable = 1,
+  /** 上升趋势 */
+  Rising = 2,
+}
+
+/**
+ * 时间线状态枚举
+ */
+export enum TimelineState {
+  /** 低谷期 */
+  LowPoint = 0,
+  /** 平稳期 */
+  Stable = 1,
+  /** 高峰期 */
+  HighPoint = 2,
+}
+
+/**
+ * 整体发展方向枚举
+ */
+export enum OverallDirection {
+  /** 负面发展 */
+  Negative = 0,
+  /** 中性发展 */
+  Neutral = 1,
+  /** 正面发展 */
+  Positive = 2,
+}
+
+// ============================================================================
+// 核心解卦数据结构
+// ============================================================================
+
+/**
+ * 塔罗牌核心解卦结果（链上存储格式）
+ *
+ * 总大小约 30 bytes，用于链上存储
+ */
+export interface TarotCoreInterpretation {
+  /** 总体能量等级 (0-100) */
+  overallEnergy: number;
+  /** 主导元素 */
+  dominantElement: DominantElement;
+  /** 吉凶倾向 */
+  fortuneTendency: FortuneTendency;
+  /** 逆位比例 (0-100) */
+  reversedRatio: number;
+
+  /** 大阿卡纳数量 (0-12) */
+  majorArcanaCount: number;
+  /** 宫廷牌数量 (0-12) */
+  courtCardsCount: number;
+  /** 数字牌数量 (0-12) */
+  numberCardsCount: number;
+  /** 元素分布位图 */
+  elementBitmap: number;
+  /** 特殊组合标志位图 */
+  specialCombination: number;
+
+  /** 关键牌ID (0-77) */
+  keyCardId: number;
+  /** 关键牌正逆位 (0=正位, 1=逆位) */
+  keyCardReversed: number;
+  /** 牌阵类型 */
+  spreadType: number;
+
+  /** 行动力指数 (0-100) */
+  actionIndex: number;
+  /** 情感指数 (0-100) */
+  emotionIndex: number;
+  /** 思维指数 (0-100) */
+  intellectIndex: number;
+  /** 物质指数 (0-100) */
+  materialIndex: number;
+  /** 灵性指数 (0-100) */
+  spiritualIndex: number;
+  /** 稳定性指数 (0-100) */
+  stabilityIndex: number;
+  /** 变化性指数 (0-100) */
+  changeIndex: number;
+  /** 综合评分 (0-100) */
+  overallScore: number;
+
+  /** 解卦时区块号 */
+  blockNumber: number;
+  /** 算法版本 */
+  algorithmVersion: number;
+  /** 可信度 (0-100) */
+  confidence: number;
+}
+
+/**
+ * 牌阵能量分析
+ */
+export interface SpreadEnergyAnalysis {
+  /** 过去能量 (0-100) */
+  pastEnergy: number;
+  /** 现在能量 (0-100) */
+  presentEnergy: number;
+  /** 未来能量 (0-100) */
+  futureEnergy: number;
+  /** 内在能量 (0-100) */
+  innerEnergy: number;
+  /** 外在能量 (0-100) */
+  outerEnergy: number;
+  /** 能量流动方向 */
+  energyFlow: EnergyFlow;
+  /** 能量平衡度 (0-100, 100最平衡) */
+  energyBalance: number;
+}
+
+/**
+ * 单张牌的解读分析
+ */
+export interface CardInterpretation {
+  /** 牌ID (0-77) */
+  cardId: number;
+  /** 是否逆位 */
+  isReversed: boolean;
+  /** 在牌阵中的位置索引 (0-based) */
+  spreadPosition: number;
+  /** 位置权重 (1-10, 10最重要) */
+  positionWeight: number;
+  /** 牌的能量强度 (0-100) */
+  energyStrength: number;
+  /** 与前一张牌的关系类型 */
+  relationToPrev: RelationshipType;
+  /** 与后一张牌的关系类型 */
+  relationToNext: RelationshipType;
+}
+
+/**
+ * 牌间关系
+ */
+export interface CardRelationship {
+  /** 第一张牌索引 */
+  card1Index: number;
+  /** 第二张牌索引 */
+  card2Index: number;
+  /** 关系类型 */
+  relationshipType: RelationshipType;
+  /** 关系强度 (0-100) */
+  strength: number;
+}
+
+/**
+ * 时间线分析
+ */
+export interface TimelineAnalysis {
+  /** 过去趋势 */
+  pastTrend: TimelineTrend;
+  /** 现在状态 */
+  presentState: TimelineState;
+  /** 未来趋势 */
+  futureTrend: TimelineTrend;
+  /** 转折点位置 (牌阵索引, 255=无转折点) */
+  turningPoint: number;
+  /** 整体发展方向 */
+  overallDirection: OverallDirection;
+}
+
+/**
+ * 完整解卦结果（Runtime API 返回）
+ */
+export interface TarotFullInterpretation {
+  /** 核心指标 */
+  core: TarotCoreInterpretation;
+  /** 牌阵能量分析 */
+  spreadEnergy: SpreadEnergyAnalysis;
+  /** 各牌分析（可选） */
+  cardAnalyses?: CardInterpretation[];
+  /** 牌间关系分析（可选） */
+  cardRelationships?: CardRelationship[];
+  /** 时间线分析（可选） */
+  timelineAnalysis?: TimelineAnalysis;
+}
+
+// ============================================================================
+// 解读文本类型枚举
+// ============================================================================
+
+/**
+ * 解读文本类型枚举
+ *
+ * 前端根据此索引显示对应的解读文本
+ */
+export enum InterpretationTextType {
+  // 总体能量描述 (0-9)
+  EnergyHigh = 0,
+  EnergyMedium = 1,
+  EnergyLow = 2,
+  EnergyVolatile = 3,
+
+  // 元素主导描述 (10-19)
+  FireDominant = 10,
+  WaterDominant = 11,
+  AirDominant = 12,
+  EarthDominant = 13,
+  SpiritDominant = 14,
+  ElementBalanced = 15,
+
+  // 吉凶判断 (20-29)
+  FortuneExcellent = 20,
+  FortuneGood = 21,
+  FortuneNeutral = 22,
+  FortuneMinorBad = 23,
+  FortuneBad = 24,
+
+  // 特殊组合 (30-39)
+  FoolWorldCombo = 30,
+  ManyMajorArcana = 31,
+  SameSuitSequence = 32,
+  AllReversed = 33,
+  AllUpright = 34,
+
+  // 行动建议 (40-59)
+  ActionTakeAction = 40,
+  ActionWaitAndSee = 41,
+  ActionReflect = 42,
+  ActionSeekHelp = 43,
+  ActionPersist = 44,
+  ActionLetGo = 45,
+  ActionCommunicate = 46,
+  ActionLearn = 47,
+
+  // 时间线描述 (60-69)
+  PastSolid = 60,
+  PastChallenging = 61,
+  PresentTurning = 62,
+  PresentStable = 63,
+  FutureImproving = 64,
+  FutureWarning = 65,
+  TrendRising = 66,
+  TrendDeclining = 67,
+  TrendStable = 68,
+
+  // 能量指数描述 (70-79)
+  ActionIndexHigh = 70,
+  EmotionIndexHigh = 71,
+  IntellectIndexHigh = 72,
+  MaterialIndexHigh = 73,
+  SpiritualIndexHigh = 74,
+  StabilityIndexHigh = 75,
+  ChangeIndexHigh = 76,
+}
+
+/** 解读文本映射 */
+export const INTERPRETATION_TEXT_MAP: Record<InterpretationTextType, string> = {
+  // 能量描述
+  [InterpretationTextType.EnergyHigh]: '能量充沛，积极向上',
+  [InterpretationTextType.EnergyMedium]: '能量平稳，稳中求进',
+  [InterpretationTextType.EnergyLow]: '能量低迷，需要休息',
+  [InterpretationTextType.EnergyVolatile]: '能量波动，变化较大',
+
+  // 元素主导
+  [InterpretationTextType.FireDominant]: '火元素主导：行动力强，充满激情',
+  [InterpretationTextType.WaterDominant]: '水元素主导：情感丰富，直觉敏锐',
+  [InterpretationTextType.AirDominant]: '风元素主导：思维活跃，沟通顺畅',
+  [InterpretationTextType.EarthDominant]: '土元素主导：务实稳重，注重物质',
+  [InterpretationTextType.SpiritDominant]: '灵性主导：重大转折，命运指引',
+  [InterpretationTextType.ElementBalanced]: '元素平衡：各方面均衡发展',
+
+  // 吉凶判断
+  [InterpretationTextType.FortuneExcellent]: '大吉：诸事顺遂，心想事成',
+  [InterpretationTextType.FortuneGood]: '吉：事可成，宜进取',
+  [InterpretationTextType.FortuneNeutral]: '中平：平稳发展，守成为上',
+  [InterpretationTextType.FortuneMinorBad]: '小凶：小有阻碍，谨慎行事',
+  [InterpretationTextType.FortuneBad]: '凶：困难重重，需要调整',
+
+  // 特殊组合
+  [InterpretationTextType.FoolWorldCombo]: '愚者与世界相遇：完整的旅程，新的循环开始',
+  [InterpretationTextType.ManyMajorArcana]: '多张大阿卡纳出现：重大人生课题，命运转折',
+  [InterpretationTextType.SameSuitSequence]: '同花色连号：该领域有重要发展和突破',
+  [InterpretationTextType.AllReversed]: '全逆位：内省时期，需要调整心态和方向',
+  [InterpretationTextType.AllUpright]: '全正位：外向发展期，积极行动会有收获',
+
+  // 行动建议
+  [InterpretationTextType.ActionTakeAction]: '建议：积极行动，把握当前机会',
+  [InterpretationTextType.ActionWaitAndSee]: '建议：谨慎观察，等待更好时机',
+  [InterpretationTextType.ActionReflect]: '建议：内省调整，修正前进方向',
+  [InterpretationTextType.ActionSeekHelp]: '建议：寻求帮助，借助外力突破',
+  [InterpretationTextType.ActionPersist]: '建议：坚持信念，持续努力终有回报',
+  [InterpretationTextType.ActionLetGo]: '建议：放下执念，顺其自然会更好',
+  [InterpretationTextType.ActionCommunicate]: '建议：加强沟通交流，化解可能的误会',
+  [InterpretationTextType.ActionLearn]: '建议：学习成长，提升自我能力',
+
+  // 时间线
+  [InterpretationTextType.PastSolid]: '过去：打下了稳固的基础',
+  [InterpretationTextType.PastChallenging]: '过去：经历了一些挑战和考验',
+  [InterpretationTextType.PresentTurning]: '现在：处于重要的转折点',
+  [InterpretationTextType.PresentStable]: '现在：处于相对稳定的时期',
+  [InterpretationTextType.FutureImproving]: '未来：形势将向好发展',
+  [InterpretationTextType.FutureWarning]: '未来：需要警惕潜在风险',
+  [InterpretationTextType.TrendRising]: '整体趋势：能量上升，形势向好',
+  [InterpretationTextType.TrendDeclining]: '整体趋势：能量下降，需要调整',
+  [InterpretationTextType.TrendStable]: '整体趋势：平稳发展，稳中求进',
+
+  // 能量指数
+  [InterpretationTextType.ActionIndexHigh]: '行动力充沛，适合积极推进计划',
+  [InterpretationTextType.EmotionIndexHigh]: '情感丰富，人际关系是重点',
+  [InterpretationTextType.IntellectIndexHigh]: '思维清晰，适合做重要决策',
+  [InterpretationTextType.MaterialIndexHigh]: '物质运势好，财务方面有利',
+  [InterpretationTextType.SpiritualIndexHigh]: '灵性成长期，适合内在修炼',
+  [InterpretationTextType.StabilityIndexHigh]: '稳定性强，适合长期规划',
+  [InterpretationTextType.ChangeIndexHigh]: '变化性强，需要灵活应对',
+};
+
+// ============================================================================
+// 解卦辅助函数
+// ============================================================================
+
+/**
+ * 解析元素分布位图
+ * @param bitmap 元素分布位图
+ */
+export function parseElementBitmap(bitmap: number): {
+  fire: number;
+  water: number;
+  air: number;
+  earth: number;
+} {
+  return {
+    fire: bitmap & 0b00000011,
+    water: (bitmap >> 2) & 0b00000011,
+    air: (bitmap >> 4) & 0b00000011,
+    earth: (bitmap >> 6) & 0b00000011,
+  };
+}
+
+/**
+ * 解析特殊组合位图
+ * @param bitmap 特殊组合位图
+ */
+export function parseSpecialCombination(bitmap: number): {
+  hasFoolWorldCombo: boolean;
+  hasManyMajorArcana: boolean;
+  hasSameSuitSequence: boolean;
+  isAllReversed: boolean;
+  isAllUpright: boolean;
+} {
+  return {
+    hasFoolWorldCombo: (bitmap & 0b00000001) !== 0,
+    hasManyMajorArcana: (bitmap & 0b00000010) !== 0,
+    hasSameSuitSequence: (bitmap & 0b00000100) !== 0,
+    isAllReversed: (bitmap & 0b00001000) !== 0,
+    isAllUpright: (bitmap & 0b00010000) !== 0,
+  };
+}
+
+/**
+ * 获取能量等级描述
+ * @param energy 能量值 (0-100)
+ */
+export function getEnergyLevelDescription(energy: number): string {
+  if (energy >= 75) return '能量充沛';
+  if (energy >= 50) return '能量平稳';
+  if (energy >= 25) return '能量较低';
+  return '能量不足';
+}
+
+/**
+ * 获取综合评分描述
+ * @param score 综合评分 (0-100)
+ */
+export function getOverallScoreDescription(score: number): string {
+  if (score >= 80) return '非常好的牌面';
+  if (score >= 60) return '较好的牌面';
+  if (score >= 40) return '一般的牌面';
+  if (score >= 20) return '需要注意';
+  return '需要特别警惕';
+}
+
+/**
+ * 获取可信度描述
+ * @param confidence 可信度 (0-100)
+ */
+export function getConfidenceDescription(confidence: number): string {
+  if (confidence >= 80) return '高可信度';
+  if (confidence >= 60) return '较高可信度';
+  if (confidence >= 40) return '一般可信度';
+  return '较低可信度';
+}

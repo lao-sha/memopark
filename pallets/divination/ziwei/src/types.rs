@@ -443,10 +443,11 @@ impl SiHua {
 /// - 辛：巨门化禄、太阳化权、**文曲**化科、**文昌**化忌
 /// - 壬：天梁化禄、紫微化权、**左辅**化科、武曲化忌
 /// - 癸：破军化禄、巨门化权、太阴化科、贪狼化忌
-#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
 pub enum SiHuaStar {
     // ===== 主星（十四主星） =====
     /// 紫微星
+    #[default]
     ZiWei,
     /// 天机星
     TianJi,

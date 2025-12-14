@@ -37,16 +37,16 @@ import type {
   DivinationType,
   Specialty,
   RewardDistribution,
-  DEFAULT_REWARD_DISTRIBUTION,
-} from '../../types/divination';
+} from '../../../types/divination';
 import {
   DIVINATION_TYPE_NAMES,
   DIVINATION_TYPE_ICONS,
   SPECIALTY_NAMES,
   formatBountyAmount,
   calculateRewards,
-} from '../../types/divination';
-import { createBounty } from '../../services/bountyService';
+  DEFAULT_REWARD_DISTRIBUTION,
+} from '../../../types/divination';
+import { createBounty } from '../../../services/bountyService';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;

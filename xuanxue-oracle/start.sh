@@ -29,8 +29,18 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
-# 加载环境变量
-export $(cat .env | xargs)
+# 加载环境变量（忽略注释和空行）
+while IFS= read -r line; do
+  # 跳过注释行和空行
+  [[ $line =~ ^[[:space:]]*# ]] && continue
+  [[ -z $line ]] && continue
+  # 删除行内注释
+  line=$(echo "$line" | sed 's/\s*#.*$//')
+  # 跳过处理后的空行
+  [[ -z $line ]] && continue
+  # 导出变量
+  export "$line"
+done < .env
 
 # 检查必要的环境变量
 if [ -z "$DEEPSEEK_API_KEY" ] || [ "$DEEPSEEK_API_KEY" == "your_deepseek_api_key_here" ]; then
@@ -41,7 +51,7 @@ fi
 echo -e "${GREEN}✅ Configuration loaded${NC}"
 
 # 检查是否已编译
-if [ ! -f "target/release/xuanxue-oracle" ]; then
+if [ ! -f "../target/release/xuanxue-oracle" ]; then
     echo -e "${YELLOW}📦 Building project (this may take a while)...${NC}"
     cargo build --release
     echo -e "${GREEN}✅ Build complete${NC}"
@@ -58,4 +68,4 @@ echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
 echo ""
 
 # 使用release版本运行
-./target/release/xuanxue-oracle
+../target/release/xuanxue-oracle

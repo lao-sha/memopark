@@ -34,10 +34,14 @@ import { parseBoundedVecToString } from '../types/meihua';
  *
  * @param questionHash - 可选的问题哈希（32字节），用于隐私保护记录占卜问题
  * @param isPublic - 是否公开此卦象，默认为 false
+ * @param gender - 性别（0: 未指定, 1: 男, 2: 女），默认为 0
+ * @param category - 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他），默认为 0
  */
 export async function divineByTime(
   questionHash?: Uint8Array,
-  isPublic: boolean = false
+  isPublic: boolean = false,
+  gender: number = 0,
+  category: number = 0
 ): Promise<number> {
   const api = await getSignedApi();
 
@@ -48,7 +52,7 @@ export async function divineByTime(
 
   // 如果未提供问题哈希，使用全零数组
   const hash = questionHash || new Uint8Array(32).fill(0);
-  const tx = api.tx.meihua.divineByTime(Array.from(hash), isPublic);
+  const tx = api.tx.meihua.divineByTime(Array.from(hash), isPublic, gender, category);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -98,12 +102,16 @@ export async function divineByTime(
  * @param num2 - 第二个数字（用于下卦）
  * @param questionHash - 可选的问题哈希（32字节）
  * @param isPublic - 是否公开此卦象，默认为 false
+ * @param gender - 性别（0: 未指定, 1: 男, 2: 女），默认为 0
+ * @param category - 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他），默认为 0
  */
 export async function divineByNumbers(
   num1: number,
   num2: number,
   questionHash?: Uint8Array,
-  isPublic: boolean = false
+  isPublic: boolean = false,
+  gender: number = 0,
+  category: number = 0
 ): Promise<number> {
   const api = await getSignedApi();
 
@@ -113,7 +121,7 @@ export async function divineByNumbers(
   }
 
   const hash = questionHash || new Uint8Array(32).fill(0);
-  const tx = api.tx.meihua.divineByNumbers(num1, num2, Array.from(hash), isPublic);
+  const tx = api.tx.meihua.divineByNumbers(num1, num2, Array.from(hash), isPublic, gender, category);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -157,8 +165,15 @@ export async function divineByNumbers(
  *
  * @param text - 占卜问题文本
  * @param isPublic - 是否公开此卦象，默认为 false
+ * @param gender - 性别（0: 未指定, 1: 男, 2: 女），默认为 0
+ * @param category - 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他），默认为 0
  */
-export async function divineByText(text: string, isPublic: boolean = false): Promise<number> {
+export async function divineByText(
+  text: string,
+  isPublic: boolean = false,
+  gender: number = 0,
+  category: number = 0
+): Promise<number> {
   const api = await getSignedApi();
 
   // 检查 meihua pallet 是否存在
@@ -171,7 +186,7 @@ export async function divineByText(text: string, isPublic: boolean = false): Pro
   const hashBuffer = await crypto.subtle.digest('SHA-256', textBytes);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   // 调用随机起卦，将问题文本的哈希作为 question_hash
-  const tx = api.tx.meihua.divineRandom(hashArray, isPublic);
+  const tx = api.tx.meihua.divineRandom(hashArray, isPublic, gender, category);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -214,10 +229,14 @@ export async function divineByText(text: string, isPublic: boolean = false): Pro
  *
  * @param questionHash - 可选的问题哈希（32字节）
  * @param isPublic - 是否公开此卦象，默认为 false
+ * @param gender - 性别（0: 未指定, 1: 男, 2: 女），默认为 0
+ * @param category - 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他），默认为 0
  */
 export async function divineRandom(
   questionHash?: Uint8Array,
-  isPublic: boolean = false
+  isPublic: boolean = false,
+  gender: number = 0,
+  category: number = 0
 ): Promise<number> {
   const api = await getSignedApi();
 
@@ -227,7 +246,7 @@ export async function divineRandom(
   }
 
   const hash = questionHash || new Uint8Array(32).fill(0);
-  const tx = api.tx.meihua.divineRandom(Array.from(hash), isPublic);
+  const tx = api.tx.meihua.divineRandom(Array.from(hash), isPublic, gender, category);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -1354,6 +1373,106 @@ export async function calculateHexagramDetail(
     return parseFullDivinationDetail(data);
   } catch (apiError) {
     console.warn('[calculateHexagramDetail] Runtime API 调用失败:', apiError);
+    return null;
+  }
+}
+
+// ==================== 解卦数据查询 API ====================
+
+/**
+ * 获取卦象的解卦数据
+ *
+ * 查询链上存储的解卦核心数据，包括：
+ * - 基础信息（时间、农历、起卦方式、性别、类别）
+ * - 卦象核心数据（上卦、下卦、动爻、体用）
+ * - 体用分析（五行、关系、旺衰、吉凶）
+ * - 应期推算（应期数、喜神、忌神）
+ * - 辅助卦象（变卦、互卦、错卦、综卦、伏卦）
+ *
+ * @param hexagramId - 卦象 ID
+ * @returns 解卦数据，如果不存在则返回 null
+ */
+export async function getInterpretationData(hexagramId: number): Promise<any | null> {
+  const api = await getApi();
+
+  // 检查 meihua pallet 是否存在
+  if (!api.query.meihua || !api.query.meihua.interpretations) {
+    console.error('[getInterpretationData] meihua pallet 不存在或未包含 interpretations 存储');
+    return null;
+  }
+
+  console.log('[getInterpretationData] 查询解卦数据 ID:', hexagramId);
+  const result = await api.query.meihua.interpretations(hexagramId);
+
+  if (result.isNone) {
+    console.log('[getInterpretationData] 解卦数据不存在');
+    return null;
+  }
+
+  try {
+    const interpretationData = result.unwrap();
+    console.log('[getInterpretationData] 原始数据:', JSON.stringify(interpretationData.toHuman()));
+
+    // 转换为 JSON 格式
+    const data = interpretationData.toJSON() as Record<string, unknown>;
+
+    return data;
+  } catch (error) {
+    console.error('[getInterpretationData] 解析失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取 AI 解读结果
+ *
+ * 查询链上存储的 AI 解读摘要，包括：
+ * - 卦象 ID
+ * - 解读内容的 IPFS CID
+ * - 解读摘要（链上存储）
+ * - 吉凶评分
+ * - 可信度评分
+ * - 提交时间戳
+ * - AI 模型版本
+ *
+ * @param hexagramId - 卦象 ID
+ * @returns AI 解读结果，如果不存在则返回 null
+ */
+export async function getAiInterpretationResult(hexagramId: number): Promise<any | null> {
+  const api = await getApi();
+
+  // 检查 meihua pallet 是否存在
+  if (!api.query.meihua || !api.query.meihua.aiInterpretations) {
+    console.error('[getAiInterpretationResult] meihua pallet 不存在或未包含 aiInterpretations 存储');
+    return null;
+  }
+
+  console.log('[getAiInterpretationResult] 查询 AI 解读 ID:', hexagramId);
+  const result = await api.query.meihua.aiInterpretations(hexagramId);
+
+  if (result.isNone) {
+    console.log('[getAiInterpretationResult] AI 解读不存在');
+    return null;
+  }
+
+  try {
+    const aiInterpretation = result.unwrap();
+    console.log('[getAiInterpretationResult] 原始数据:', JSON.stringify(aiInterpretation.toHuman()));
+
+    // 解析数据
+    const data = aiInterpretation.toJSON() as Record<string, unknown>;
+
+    return {
+      hexagramId: data.hexagramId || hexagramId,
+      interpretationCid: parseBoundedVecToString(data.interpretationCid),
+      summary: parseBoundedVecToString(data.summary),
+      fortuneScore: data.fortuneScore || 50,
+      confidenceScore: data.confidenceScore || 50,
+      submitTimestamp: data.submitTimestamp || 0,
+      modelVersion: parseBoundedVecToString(data.modelVersion),
+    };
+  } catch (error) {
+    console.error('[getAiInterpretationResult] 解析失败:', error);
     return null;
   }
 }

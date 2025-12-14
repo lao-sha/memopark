@@ -1,14 +1,15 @@
 // 生成的Runtime类型定义 (模拟版本)
 // 实际使用时需要运行 ./generate-types.sh 生成
 
-use subxt::{OnlineClient, PolkadotConfig};
-
-/// Runtime API
-#[subxt::subxt(runtime_metadata_path = "metadata.scale")]
-pub mod runtime {
-    // 这个模块会被subxt自动生成
-    // 包含所有pallet的类型定义
-}
+// TODO: 生成metadata.scale文件后取消注释
+// use subxt::{OnlineClient, PolkadotConfig};
+//
+// /// Runtime API
+// #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
+// pub mod runtime {
+//     // 这个模块会被subxt自动生成
+//     // 包含所有pallet的类型定义
+// }
 
 // 手动定义的类型(在实际生成前使用)
 pub mod manual_types {

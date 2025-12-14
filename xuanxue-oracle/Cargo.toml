@@ -6,10 +6,10 @@ authors = ["Stardust Team"]
 description = "Oracle node service for AI-powered divination interpretation"
 
 [dependencies]
-# Substrate & Polkadot
-subxt = "0.35"
-sp-core = { version = "31.0.0", default-features = false }
-sp-runtime = { version = "34.0.0", default-features = false }
+# Substrate & Polkadot - 使用与subxt 0.35兼容的版本
+subxt = { version = "0.35", features = ["substrate-compat"] }
+sp-core = { version = "31.0.0" }
+sp-runtime = { version = "34.0.0" }
 
 # 异步运行时
 tokio = { version = "1.35", features = ["full"] }
@@ -19,9 +19,10 @@ futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 codec = { package = "parity-scale-codec", version = "3.6", features = ["derive"] }
+scale-info = { version = "2.11", features = ["derive"] }
 
 # HTTP客户端
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.11", features = ["json", "stream", "multipart"] }
 
 # IPFS
 ipfs-api = "0.17"

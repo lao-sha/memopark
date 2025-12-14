@@ -1,7 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
-use tracing::{info, debug};
+use tracing::debug;
 
 use crate::config::DeepSeekConfig;
 use crate::error::OracleError;
@@ -125,7 +125,7 @@ impl DeepSeekClient {
     }
 
     /// 流式生成(可选实现)
-    pub async fn generate_stream(&self, prompt: &str) -> Result<()> {
+    pub async fn generate_stream(&self, _prompt: &str) -> Result<()> {
         // TODO: 实现SSE流式响应
         unimplemented!("Streaming not yet implemented")
     }

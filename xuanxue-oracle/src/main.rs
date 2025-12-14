@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 mod blockchain;
 mod ai;
 mod storage;
@@ -5,9 +9,10 @@ mod divination;
 mod utils;
 mod config;
 mod error;
+mod knowledge;
 
 use anyhow::Result;
-use tracing::{info, error};
+use tracing::info;
 use tracing_subscriber;
 
 use crate::config::Config;
@@ -27,7 +32,7 @@ async fn main() -> Result<()> {
     info!("✅ Configuration loaded");
 
     // 初始化区块链连接
-    let event_monitor = EventMonitor::new(config).await?;
+    let mut event_monitor = EventMonitor::new(config).await?;
     info!("✅ Connected to blockchain at {}", event_monitor.endpoint());
 
     // 注册Oracle节点(如果尚未注册)

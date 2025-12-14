@@ -46,6 +46,7 @@ pub use pallet::*;
 pub mod algorithm;
 pub mod types;
 pub mod interpretation;
+pub mod runtime_api;
 
 #[cfg(test)]
 mod mock;
@@ -939,6 +940,55 @@ pub mod pallet {
         /// 获取课盘详细分析
         pub fn get_pan_analysis(pan_id: u64) -> Option<algorithm::SanGongAnalysis> {
             Pans::<T>::get(pan_id).map(|pan| algorithm::analyze_san_gong(&pan.san_gong))
+        }
+
+        /// 获取或创建解卦数据（懒加载）
+        ///
+        /// 首次查询时计算解卦结果并缓存，之后直接从缓存读取。
+        ///
+        /// # 参数
+        /// - `pan_id`: 课盘ID
+        ///
+        /// # 返回
+        /// 解卦核心数据，如果课盘不存在则返回 None
+        pub fn get_or_create_interpretation(
+            pan_id: u64,
+        ) -> Option<crate::interpretation::XiaoLiuRenInterpretation> {
+            // 1. 检查缓存
+            if let Some(interpretation) = Interpretations::<T>::get(pan_id) {
+                return Some(interpretation);
+            }
+
+            // 2. 获取课盘
+            let pan = Pans::<T>::get(pan_id)?;
+
+            // 3. 计算解卦（使用道家流派）
+            let interpretation = crate::interpretation::interpret(
+                &pan.san_gong,
+                pan.shi_chen,
+                crate::types::XiaoLiuRenSchool::DaoJia,
+            );
+
+            // 4. 缓存结果
+            Interpretations::<T>::insert(pan_id, interpretation);
+
+            Some(interpretation)
+        }
+
+        /// 批量获取解卦数据
+        ///
+        /// # 参数
+        /// - `pan_ids`: 课盘ID列表
+        ///
+        /// # 返回
+        /// 解卦结果列表
+        pub fn get_interpretations_batch(
+            pan_ids: Vec<u64>,
+        ) -> Vec<Option<crate::interpretation::XiaoLiuRenInterpretation>> {
+            pan_ids
+                .into_iter()
+                .map(Self::get_or_create_interpretation)
+                .collect()
         }
     }
 }

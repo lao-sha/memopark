@@ -5,14 +5,15 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Card, Button, Input, InputNumber, Tabs, message, Spin, Space, Typography, Divider } from 'antd';
-import { ClockCircleOutlined, NumberOutlined, FileTextOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Card, Button, Input, InputNumber, Tabs, message, Spin, Space, Typography, Divider, Select, Row, Col } from 'antd';
+import { ClockCircleOutlined, NumberOutlined, FileTextOutlined, ThunderboltOutlined, UserOutlined, TagsOutlined } from '@ant-design/icons';
 import {
   divineByTime,
   divineByNumbers,
   divineByText,
   divineRandom,
 } from '../../services/meihuaService';
+import { Gender, DivinationCategory, GENDER_NAMES, DIVINATION_CATEGORY_NAMES } from '../../types/meihua';
 import './MeihuaPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -35,6 +36,10 @@ const DivinationPage: React.FC = () => {
   // 文字起卦状态
   const [inputText, setInputText] = useState('');
 
+  // 性别和类别选择状态
+  const [gender, setGender] = useState<number>(Gender.Unspecified);
+  const [category, setCategory] = useState<number>(DivinationCategory.Unspecified);
+
   /**
    * 导航到指定路由（使用 hash 路由）
    */
@@ -56,7 +61,7 @@ const DivinationPage: React.FC = () => {
   const handleTimeDivination = useCallback(async () => {
     setLoading(true);
     try {
-      const hexagramId = await divineByTime();
+      const hexagramId = await divineByTime(undefined, false, gender, category);
       handleDivinationSuccess(hexagramId);
     } catch (error) {
       console.error('时间起卦失败:', error);
@@ -64,7 +69,7 @@ const DivinationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [handleDivinationSuccess]);
+  }, [gender, category, handleDivinationSuccess]);
 
   /**
    * 数字起卦
@@ -78,7 +83,7 @@ const DivinationPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const hexagramId = await divineByNumbers(upperNumber, lowerNumber);
+      const hexagramId = await divineByNumbers(upperNumber, lowerNumber, undefined, false, gender, category);
       handleDivinationSuccess(hexagramId);
     } catch (error) {
       console.error('数字起卦失败:', error);
@@ -86,7 +91,7 @@ const DivinationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [upperNumber, lowerNumber, handleDivinationSuccess]);
+  }, [upperNumber, lowerNumber, gender, category, handleDivinationSuccess]);
 
   /**
    * 文字起卦
@@ -98,7 +103,7 @@ const DivinationPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const hexagramId = await divineByText(inputText);
+      const hexagramId = await divineByText(inputText, false, gender, category);
       handleDivinationSuccess(hexagramId);
     } catch (error) {
       console.error('文字起卦失败:', error);
@@ -106,7 +111,7 @@ const DivinationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [inputText, handleDivinationSuccess]);
+  }, [inputText, gender, category, handleDivinationSuccess]);
 
   /**
    * 随机起卦
@@ -114,7 +119,7 @@ const DivinationPage: React.FC = () => {
   const handleRandomDivination = useCallback(async () => {
     setLoading(true);
     try {
-      const hexagramId = await divineRandom();
+      const hexagramId = await divineRandom(undefined, false, gender, category);
       handleDivinationSuccess(hexagramId);
     } catch (error) {
       console.error('随机起卦失败:', error);
@@ -122,7 +127,55 @@ const DivinationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [handleDivinationSuccess]);
+  }, [gender, category, handleDivinationSuccess]);
+
+  /**
+   * 渲染性别和类别选择器
+   */
+  const renderPersonalInfoSelectors = () => (
+    <div style={{ marginBottom: 16 }}>
+      <Row gutter={[16, 16]}>
+        <Col span={12}>
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
+            <Text type="secondary">
+              <UserOutlined /> 性别（可选）
+            </Text>
+            <Select
+              value={gender}
+              onChange={setGender}
+              style={{ width: '100%' }}
+              options={[
+                { value: Gender.Unspecified, label: GENDER_NAMES[Gender.Unspecified] },
+                { value: Gender.Male, label: GENDER_NAMES[Gender.Male] },
+                { value: Gender.Female, label: GENDER_NAMES[Gender.Female] },
+              ]}
+            />
+          </Space>
+        </Col>
+        <Col span={12}>
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
+            <Text type="secondary">
+              <TagsOutlined /> 占卜类别（可选）
+            </Text>
+            <Select
+              value={category}
+              onChange={setCategory}
+              style={{ width: '100%' }}
+              options={[
+                { value: DivinationCategory.Unspecified, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Unspecified] },
+                { value: DivinationCategory.Career, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Career] },
+                { value: DivinationCategory.Wealth, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Wealth] },
+                { value: DivinationCategory.Love, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Love] },
+                { value: DivinationCategory.Health, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Health] },
+                { value: DivinationCategory.Education, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Education] },
+                { value: DivinationCategory.Other, label: DIVINATION_CATEGORY_NAMES[DivinationCategory.Other] },
+              ]}
+            />
+          </Space>
+        </Col>
+      </Row>
+    </div>
+  );
 
   /**
    * 渲染时间起卦面板
@@ -133,6 +186,7 @@ const DivinationPage: React.FC = () => {
         时间起卦是梅花易数最经典的起卦方式。系统将根据当前农历时间自动计算卦象，
         取年月日之和为上卦，加时辰数为下卦，总数除以六得动爻。
       </Paragraph>
+      {renderPersonalInfoSelectors()}
       <div className="time-info">
         <Text type="secondary">当前时间将自动转换为农历进行起卦</Text>
       </div>
@@ -158,6 +212,7 @@ const DivinationPage: React.FC = () => {
         数字起卦适合在看到某些数字时使用，如门牌号、车牌号等。
         输入两个数字，系统将根据这些数字计算上下卦，动爻由当前时辰自动推算。
       </Paragraph>
+      {renderPersonalInfoSelectors()}
       <div className="number-inputs">
         <div className="number-input-group">
           <Text>上卦数</Text>
@@ -202,6 +257,7 @@ const DivinationPage: React.FC = () => {
         文字起卦将您输入的问题转换为卦象。建议心诚则灵，
         静心冥想您的问题后再输入，问题描述将被哈希存储。
       </Paragraph>
+      {renderPersonalInfoSelectors()}
       <TextArea
         placeholder="请输入您想占卜的问题..."
         rows={4}
@@ -235,6 +291,7 @@ const DivinationPage: React.FC = () => {
         随机起卦使用区块链随机数生成卦象，适合没有特定问题但想获得指引时使用。
         每次占卜都会生成独一无二的卦象。
       </Paragraph>
+      {renderPersonalInfoSelectors()}
       <Button
         type="primary"
         size="large"
