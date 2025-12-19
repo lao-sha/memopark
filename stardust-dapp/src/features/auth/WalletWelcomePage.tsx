@@ -13,19 +13,48 @@ const { Title, Text } = Typography;
  * - 恢复钱包：使用助记词恢复已有钱包
  */
 interface WalletWelcomePageProps {
-  onCreateWallet: () => void;
-  onRestoreWallet: () => void;  // 跳转到恢复钱包页面
+  onCreateWallet?: () => void;
+  onRestoreWallet?: () => void;  // 跳转到恢复钱包页面
 }
 
-const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({ 
-  onCreateWallet, 
-  onRestoreWallet 
+const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({
+  onCreateWallet,
+  onRestoreWallet
 }) => {
+  /**
+   * 函数级详细中文注释：处理创建钱包点击
+   * - 优先使用 props 回调（在 AuthEntryPage 内部使用）
+   * - 如果没有回调，则跳转到独立的创建钱包路由
+   */
+  const handleCreateWallet = () => {
+    console.log('点击创建钱包');
+    if (onCreateWallet) {
+      onCreateWallet();
+    } else {
+      // 独立访问时，跳转到创建钱包路由
+      window.location.hash = '#/wallet/create';
+    }
+  };
+
+  /**
+   * 函数级详细中文注释：处理恢复钱包点击
+   * - 优先使用 props 回调（在 AuthEntryPage 内部使用）
+   * - 如果没有回调，则跳转到独立的恢复钱包路由
+   */
+  const handleRestoreWallet = () => {
+    console.log('点击恢复钱包');
+    if (onRestoreWallet) {
+      onRestoreWallet();
+    } else {
+      // 独立访问时，跳转到恢复钱包路由
+      window.location.hash = '#/wallet/restore';
+    }
+  };
   return (
     <div
       style={{
         padding: '20px',
-        maxWidth: '480px',
+        maxWidth: '414px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
@@ -105,7 +134,7 @@ const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({
             width: '60px',
             height: '60px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -179,13 +208,13 @@ const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({
             size="large"
             block
             icon={<PlusCircleOutlined />}
-            onClick={onCreateWallet}
+            onClick={handleCreateWallet}
             style={{
               height: '56px',
               fontSize: '16px',
               fontWeight: 'bold',
               borderRadius: '12px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
               border: 'none',
               boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
             }}
@@ -198,7 +227,7 @@ const WalletWelcomePage: React.FC<WalletWelcomePageProps> = ({
             size="large"
             block
             icon={<ReloadOutlined />}
-            onClick={onRestoreWallet}
+            onClick={handleRestoreWallet}
             style={{
               height: '56px',
               fontSize: '16px',

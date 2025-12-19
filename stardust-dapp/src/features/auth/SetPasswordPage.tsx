@@ -114,7 +114,7 @@ const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
     <div
       style={{
         padding: '20px',
-        maxWidth: '480px',
+        maxWidth: '414px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
@@ -139,7 +139,7 @@ const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
             width: '80px',
             height: '80px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -308,7 +308,7 @@ const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
           fontWeight: 'bold',
           borderRadius: '12px',
           background: canSubmit
-            ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            ? 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)'
             : undefined,
           border: 'none',
           boxShadow: canSubmit ? '0 4px 12px rgba(102, 126, 234, 0.3)' : undefined,

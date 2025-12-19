@@ -87,14 +87,14 @@ export type DivineManualParams = DivineByTimeParams;
 export async function divineByTime(params: DivineByTimeParams): Promise<number> {
   const api = await getSignedApi();
 
-  if (!api.tx.daLiuRen || !api.tx.daLiuRen.divineByTime) {
+  if (!api.tx.daliuren || !api.tx.daliuren.divineByTime) {
     throw new Error('区块链节点未包含大六壬模块（pallet-daliuren），请检查节点配置');
   }
 
   const { yearGz, monthGz, dayGz, hourGz, yueJiang, zhanShi, isDay, questionCid } = params;
 
   // 构建交易
-  const tx = api.tx.daLiuRen.divineByTime(
+  const tx = api.tx.daliuren.divineByTime(
     yearGz,
     monthGz,
     dayGz,
@@ -129,7 +129,7 @@ export async function divineByTime(params: DivineByTimeParams): Promise<number> 
 
         // 查找 PanCreated 事件
         const event = events.find((e) =>
-          e.event.section === 'daLiuRen' && e.event.method === 'PanCreated'
+          e.event.section === 'daliuren' && e.event.method === 'PanCreated'
         );
 
         if (event) {
@@ -157,13 +157,13 @@ export async function divineByTime(params: DivineByTimeParams): Promise<number> 
 export async function divineRandom(params: DivineRandomParams): Promise<number> {
   const api = await getSignedApi();
 
-  if (!api.tx.daLiuRen || !api.tx.daLiuRen.divineRandom) {
+  if (!api.tx.daliuren || !api.tx.daliuren.divineRandom) {
     throw new Error('区块链节点未包含大六壬模块');
   }
 
   const { dayGz, questionCid } = params;
 
-  const tx = api.tx.daLiuRen.divineRandom(dayGz, questionCid || null);
+  const tx = api.tx.daliuren.divineRandom(dayGz, questionCid || null);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -185,7 +185,7 @@ export async function divineRandom(params: DivineRandomParams): Promise<number> 
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'daLiuRen' && e.event.method === 'PanCreated'
+          e.event.section === 'daliuren' && e.event.method === 'PanCreated'
         );
 
         if (event) {
@@ -209,13 +209,13 @@ export async function divineRandom(params: DivineRandomParams): Promise<number> 
 export async function divineManual(params: DivineManualParams): Promise<number> {
   const api = await getSignedApi();
 
-  if (!api.tx.daLiuRen || !api.tx.daLiuRen.divineManual) {
+  if (!api.tx.daliuren || !api.tx.daliuren.divineManual) {
     throw new Error('区块链节点未包含大六壬模块');
   }
 
   const { yearGz, monthGz, dayGz, hourGz, yueJiang, zhanShi, isDay, questionCid } = params;
 
-  const tx = api.tx.daLiuRen.divineManual(
+  const tx = api.tx.daliuren.divineManual(
     yearGz,
     monthGz,
     dayGz,
@@ -246,7 +246,7 @@ export async function divineManual(params: DivineManualParams): Promise<number> 
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'daLiuRen' && e.event.method === 'PanCreated'
+          e.event.section === 'daliuren' && e.event.method === 'PanCreated'
         );
 
         if (event) {
@@ -270,11 +270,11 @@ export async function divineManual(params: DivineManualParams): Promise<number> 
 export async function setPanVisibility(panId: number, isPublic: boolean): Promise<void> {
   const api = await getSignedApi();
 
-  if (!api.tx.daLiuRen || !api.tx.daLiuRen.setPanVisibility) {
+  if (!api.tx.daliuren || !api.tx.daliuren.setPanVisibility) {
     throw new Error('区块链节点未包含大六壬模块');
   }
 
-  const tx = api.tx.daLiuRen.setPanVisibility(panId, isPublic);
+  const tx = api.tx.daliuren.setPanVisibility(panId, isPublic);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, dispatchError }) => {
@@ -307,13 +307,13 @@ export async function setPanVisibility(panId: number, isPublic: boolean): Promis
 export async function getPan(panId: number): Promise<DaLiuRenPan | null> {
   const api = await getApi();
 
-  if (!api.query.daLiuRen || !api.query.daLiuRen.pans) {
+  if (!api.query.daliuren || !api.query.daliuren.pans) {
     console.error('[DaLiuRenService] daLiuRen pallet 不存在');
     return null;
   }
 
   console.log('[DaLiuRenService] 查询式盘 ID:', panId);
-  const result = await api.query.daLiuRen.pans(panId);
+  const result = await api.query.daliuren.pans(panId);
 
   if (result.isNone) {
     console.log('[DaLiuRenService] 式盘不存在');
@@ -338,12 +338,12 @@ export async function getPan(panId: number): Promise<DaLiuRenPan | null> {
 export async function getUserPanIds(address: string): Promise<number[]> {
   const api = await getApi();
 
-  if (!api.query.daLiuRen || !api.query.daLiuRen.userPans) {
+  if (!api.query.daliuren || !api.query.daliuren.userPans) {
     console.error('[DaLiuRenService] daLiuRen pallet 不存在');
     return [];
   }
 
-  const entries = await api.query.daLiuRen.userPans.entries(address);
+  const entries = await api.query.daliuren.userPans.entries(address);
   const panIds: number[] = [];
 
   for (const [key, value] of entries) {
@@ -385,11 +385,11 @@ export async function getUserPans(address: string): Promise<DaLiuRenPan[]> {
 export async function getUserStats(address: string): Promise<UserStats> {
   const api = await getApi();
 
-  if (!api.query.daLiuRen || !api.query.daLiuRen.userStatsStorage) {
+  if (!api.query.daliuren || !api.query.daliuren.userStatsStorage) {
     return { totalPans: 0, aiInterpretations: 0, firstPanBlock: 0 };
   }
 
-  const result = await api.query.daLiuRen.userStatsStorage(address);
+  const result = await api.query.daliuren.userStatsStorage(address);
   const data = result.toJSON() as { totalPans?: number; aiInterpretations?: number; firstPanBlock?: number } | null;
 
   return {
@@ -408,11 +408,11 @@ export async function getUserStats(address: string): Promise<UserStats> {
 export async function getPublicPans(limit: number = 20): Promise<DaLiuRenPan[]> {
   const api = await getApi();
 
-  if (!api.query.daLiuRen || !api.query.daLiuRen.publicPans) {
+  if (!api.query.daliuren || !api.query.daliuren.publicPans) {
     return [];
   }
 
-  const entries = await api.query.daLiuRen.publicPans.entries();
+  const entries = await api.query.daliuren.publicPans.entries();
   const pans: DaLiuRenPan[] = [];
 
   for (const [key] of entries) {
@@ -923,11 +923,11 @@ function createDefaultYingQiAnalysis(): YingQiAnalysis {
 export async function getPanCount(): Promise<number> {
   const api = await getApi();
 
-  if (!api.query.daLiuRen || !api.query.daLiuRen.nextPanId) {
+  if (!api.query.daliuren || !api.query.daliuren.nextPanId) {
     return 0;
   }
 
-  const nextId = await api.query.daLiuRen.nextPanId();
+  const nextId = await api.query.daliuren.nextPanId();
   return nextId.toNumber();
 }
 

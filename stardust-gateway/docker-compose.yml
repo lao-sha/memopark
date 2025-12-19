@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stardust-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - STARDUST_GATEWAY__SERVER__HOST=0.0.0.0
+      - STARDUST_GATEWAY__SERVER__PORT=8080
+      - STARDUST_GATEWAY__SUBSTRATE__WS_URL=ws://substrate-node:9944
+      - STARDUST_GATEWAY__REDIS__URL=redis://redis:6379
+      - STARDUST_GATEWAY__DIVINATION__BASE_URL=http://divination-service:3001
+      - STARDUST_GATEWAY__AUTH__JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - STARDUST_GATEWAY__LOGGING__LEVEL=info
+      - STARDUST_GATEWAY__LOGGING__JSON=true
+    depends_on:
+      - redis
+      - substrate-node
+    restart: unless-stopped
+    networks:
+      - stardust-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: stardust-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - stardust-network
+
+  # Substrate 节点（需要自行构建镜像）
+  substrate-node:
+    image: stardust-node:latest
+    container_name: stardust-substrate-node
+    ports:
+      - "9944:9944"
+      - "9933:9933"
+      - "30333:30333"
+    command: ["--dev", "--ws-external", "--rpc-external", "--rpc-cors=all"]
+    volumes:
+      - substrate-data:/data
+    restart: unless-stopped
+    networks:
+      - stardust-network
+
+  # 占卜微服务（示例，需要单独实现）
+  divination-service:
+    build:
+      context: ../divination-service
+      dockerfile: Dockerfile
+    container_name: stardust-divination-service
+    ports:
+      - "3001:3001"
+    environment:
+      - SERVICE_PORT=3001
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    networks:
+      - stardust-network
+
+networks:
+  stardust-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  substrate-data:

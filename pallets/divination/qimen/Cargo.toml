@@ -30,6 +30,9 @@ pallet-timestamp = { workspace = true }
 # 占卜公共模块
 pallet-divination-common = { path = "../common", default-features = false }
 
+# 黄历模块 - 统一农历转换
+pallet-almanac = { path = "../almanac", default-features = false }
+
 [dev-dependencies]
 sp-core = { workspace = true, default-features = true }
 pallet-balances = { workspace = true, default-features = true }
@@ -48,6 +51,7 @@ std = [
     "sp-api/std",
     "pallet-timestamp/std",
     "pallet-divination-common/std",
+    "pallet-almanac/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking/runtime-benchmarks",

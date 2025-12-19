@@ -42,7 +42,7 @@ const AdminEffect: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <Typography.Title level={4} style={{ textAlign: 'left' }}>目录效果管理</Typography.Title>
       <Card size="small">
         <Form form={form} layout="vertical" onFinish={onFinish}>

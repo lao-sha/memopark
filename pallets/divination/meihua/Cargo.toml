@@ -25,6 +25,9 @@ log = { workspace = true, default-features = false }
 # 时间戳依赖 - 用于获取区块时间
 pallet-timestamp = { workspace = true, default-features = false }
 
+# 黄历模块 - 统一农历转换
+pallet-almanac = { path = "../almanac", default-features = false }
+
 [dev-dependencies]
 sp-io = { workspace = true, features = ["std"] }
 pallet-balances = { workspace = true, features = ["std"] }
@@ -44,6 +47,7 @@ std = [
   "sp-io/std",
   "log/std",
   "pallet-timestamp/std",
+  "pallet-almanac/std",
 ]
 runtime-benchmarks = [
   "frame-support/runtime-benchmarks",

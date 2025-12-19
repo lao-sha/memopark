@@ -497,6 +497,76 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 公历时间起卦 - 根据公历日期时间自动计算干支后起卦
+        ///
+        /// 此方法使用 pallet-almanac 自动将公历日期转换为农历和四柱干支，
+        /// 然后进行时间起卦。用户无需手动计算干支。
+        ///
+        /// # 参数
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        #[pallet::call_index(6)]
+        #[pallet::weight(Weight::from_parts(120_000_000, 0))]
+        pub fn divine_by_solar_time(
+            origin: OriginFor<T>,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidNumber);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidNumber);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidNumber);
+            ensure!(hour < 24, Error::<T>::InvalidNumber);
+
+            // 检查每日限制
+            Self::check_daily_limit(&who)?;
+
+            // 调用 almanac 计算四柱
+            let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
+
+            // 调用 almanac 转农历（用于起卦公式）
+            let lunar = pallet_almanac::solar_to_lunar(solar_year, solar_month, solar_day)
+                .ok_or(Error::<T>::InvalidNumber)?;
+
+            // 计算时辰地支数（0-11）
+            let hour_zhi = pallet_almanac::hour_to_dizhi_num(hour).saturating_sub(1); // 1-based 转 0-based
+
+            // 调用时间起卦算法
+            let year_zhi = pallet_almanac::year_to_dizhi_num(lunar.year).saturating_sub(1); // 1-based 转 0-based
+            let yaos = time_to_yaos(year_zhi, lunar.month, lunar.day, hour_zhi);
+
+            // 执行排卦
+            let gua_id = Self::do_divine(
+                &who,
+                yaos,
+                DivinationMethod::TimeMethod,
+                (TianGan::from_index(pillars.year.gan), DiZhi::from_index(pillars.year.zhi)),
+                (TianGan::from_index(pillars.month.gan), DiZhi::from_index(pillars.month.zhi)),
+                (TianGan::from_index(pillars.day.gan), DiZhi::from_index(pillars.day.zhi)),
+                (TianGan::from_index(pillars.hour.gan), DiZhi::from_index(pillars.hour.zhi)),
+            )?;
+
+            // 更新每日计数
+            Self::increment_daily_count(&who);
+
+            // 发出事件
+            let gua = Guas::<T>::get(gua_id).ok_or(Error::<T>::GuaNotFound)?;
+            Self::deposit_event(Event::GuaCreated {
+                gua_id,
+                creator: who,
+                method: DivinationMethod::TimeMethod,
+                original_name_idx: gua.original_name_idx,
+            });
+
+            Ok(())
+        }
+
         /// 设置卦象可见性
         #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]

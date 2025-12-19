@@ -65,7 +65,7 @@ export default function ClaimMemoForm() {
   return (
     <Card 
       style={{ 
-        maxWidth: 480, 
+        maxWidth: 414, 
         margin: '0 auto',
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
@@ -219,7 +219,7 @@ export default function ClaimMemoForm() {
                 fontSize: '15px',
                 fontWeight: 'bold',
                 borderRadius: '8px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
                 border: 'none',
                 boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
               }}

@@ -115,7 +115,7 @@ export const MessageSearch: React.FC<MessageSearchProps> = ({
   };
   
   return (
-    <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: 16, maxWidth: 414, margin: '0 auto' }}>
       {/* 搜索框 */}
       <Input
         placeholder="搜索消息内容"

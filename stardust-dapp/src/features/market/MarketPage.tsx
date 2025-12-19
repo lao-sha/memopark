@@ -1,357 +1,85 @@
 /**
- * 占卜服务市场页面
+ * 玄学服务市场页面（统一入口）
  *
  * 功能：
- * - 展示服务提供者列表
- * - 按占卜类型、等级、擅长领域筛选
- * - 查看服务套餐和下单
+ * - 智能双模式：浏览模式 + 下单模式
+ * - 浏览模式：探索大师、对比服务（双Tab视图）
+ * - 下单模式：快速筛选、完成下单（展开列表）
+ * - 应用华易网风格配色
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import {
-  Card,
-  Button,
-  Typography,
-  Space,
-  Divider,
-  Tag,
-  Input,
-  Select,
-  Rate,
-  Avatar,
-  List,
-  Badge,
-  Tabs,
-  Empty,
-  Spin,
-} from 'antd';
-import {
-  ShopOutlined,
-  SearchOutlined,
-  FilterOutlined,
-  StarOutlined,
-  UserOutlined,
-  SafetyCertificateOutlined,
-  FireOutlined,
-  TeamOutlined,
-} from '@ant-design/icons';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Card, Button, Typography, Empty, Spin, message, Modal, Divider, Space } from 'antd';
+import { ShopOutlined, HistoryOutlined, QuestionCircleOutlined, ArrowRightOutlined, UserAddOutlined } from '@ant-design/icons';
+import { usePolkadot } from '@/providers/WalletProvider';
 
+// Hooks
+import { useMarketMode } from './hooks/useMarketMode';
+import { useMarketData } from './hooks/useMarketData';
+
+// View Components
+import { BrowsingView } from './components/BrowsingView';
+import { OrderingView } from './components/OrderingView';
+import { MarketFilters } from './components/MarketFilters';
+import { ProviderDetailView } from './components/ProviderDetailView';
+
+// Types and Utils
 import {
   DivinationType,
   ProviderTier,
   Specialty,
-  ServiceType,
-  DIVINATION_TYPE_NAMES,
-  DIVINATION_TYPE_ICONS,
-  PROVIDER_TIER_NAMES,
-  PROVIDER_TIER_COLORS,
-  SPECIALTY_NAMES,
-  SERVICE_TYPE_NAMES,
   type ServiceProvider,
   type ServicePackage,
-  calculateAverageRating,
-  calculateCompletionRate,
-  getSpecialties,
   getSupportedDivinationTypes,
+  getSpecialties,
 } from '../../types/divination';
 
+// Styles
+import './MarketPage.css';
+
 const { Title, Text, Paragraph } = Typography;
-const { Search } = Input;
 
 /**
- * 模拟服务提供者数据
+ * 格式化价格
  */
-const MOCK_PROVIDERS: ServiceProvider[] = [
-  {
-    account: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    name: '玄真子',
-    bio: '从事命理研究二十余年，擅长八字、紫微斗数，为您指点迷津',
-    avatarCid: undefined,
-    tier: ProviderTier.Master,
-    isActive: true,
-    deposit: BigInt(100000000000000),
-    registeredAt: 1000000,
-    totalOrders: 528,
-    completedOrders: 520,
-    cancelledOrders: 3,
-    totalRatings: 450,
-    ratingSum: 2200,
-    totalEarnings: BigInt(5000000000000000),
-    specialties: 0b1111, // 事业、感情、财运、健康
-    supportedDivinationTypes: 0b11110, // 八字、六爻、奇门、紫微
-    acceptsUrgent: true,
-    lastActiveAt: 2000000,
-  },
-  {
-    account: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-    name: '易简居士',
-    bio: '专注梅花易数与六爻预测，解读准确，言简意赅',
-    avatarCid: undefined,
-    tier: ProviderTier.Expert,
-    isActive: true,
-    deposit: BigInt(50000000000000),
-    registeredAt: 1100000,
-    totalOrders: 215,
-    completedOrders: 210,
-    cancelledOrders: 2,
-    totalRatings: 180,
-    ratingSum: 850,
-    totalEarnings: BigInt(2000000000000000),
-    specialties: 0b110001, // 事业、寻人寻物
-    supportedDivinationTypes: 0b101, // 梅花、六爻
-    acceptsUrgent: true,
-    lastActiveAt: 2000100,
-  },
-  {
-    account: '5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y',
-    name: '紫云道长',
-    bio: '道家传承，精通奇门遁甲、大六壬，择日选时有独到见解',
-    avatarCid: undefined,
-    tier: ProviderTier.Senior,
-    isActive: true,
-    deposit: BigInt(30000000000000),
-    registeredAt: 1200000,
-    totalOrders: 85,
-    completedOrders: 82,
-    cancelledOrders: 1,
-    totalRatings: 70,
-    ratingSum: 320,
-    totalEarnings: BigInt(800000000000000),
-    specialties: 0b1100000011, // 事业、感情、风水、择日
-    supportedDivinationTypes: 0b101000, // 奇门、大六壬
-    acceptsUrgent: false,
-    lastActiveAt: 1999000,
-  },
-  {
-    account: '5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy',
-    name: '小六壬新手',
-    bio: '刚入门小六壬，虚心学习中，收费优惠',
-    avatarCid: undefined,
-    tier: ProviderTier.Novice,
-    isActive: true,
-    deposit: BigInt(10000000000000),
-    registeredAt: 1900000,
-    totalOrders: 5,
-    completedOrders: 5,
-    cancelledOrders: 0,
-    totalRatings: 4,
-    ratingSum: 18,
-    totalEarnings: BigInt(50000000000000),
-    specialties: 0b1, // 事业
-    supportedDivinationTypes: 0b1000000, // 小六壬
-    acceptsUrgent: false,
-    lastActiveAt: 2000050,
-  },
-];
-
-/**
- * 模拟服务套餐数据
- */
-const MOCK_PACKAGES: ServicePackage[] = [
-  {
-    id: 1,
-    divinationType: DivinationType.Bazi,
-    serviceType: ServiceType.TextReading,
-    name: '八字基础解读',
-    description: '分析八字格局、五行喜忌、大运流年',
-    price: BigInt(100000000000000),
-    duration: 0,
-    followUpCount: 2,
-    urgentAvailable: true,
-    urgentSurcharge: 5000,
-    isActive: true,
-    salesCount: 156,
-  },
-  {
-    id: 2,
-    divinationType: DivinationType.Ziwei,
-    serviceType: ServiceType.VoiceReading,
-    name: '紫微全盘解析',
-    description: '十二宫位详解、大限流年分析、四化飞星',
-    price: BigInt(200000000000000),
-    duration: 30,
-    followUpCount: 3,
-    urgentAvailable: true,
-    urgentSurcharge: 3000,
-    isActive: true,
-    salesCount: 89,
-  },
-  {
-    id: 3,
-    divinationType: DivinationType.Qimen,
-    serviceType: ServiceType.TextReading,
-    name: '奇门时盘预测',
-    description: '当下时盘分析、用神分析、趋吉避凶建议',
-    price: BigInt(80000000000000),
-    duration: 0,
-    followUpCount: 1,
-    urgentAvailable: false,
-    urgentSurcharge: 0,
-    isActive: true,
-    salesCount: 45,
-  },
-];
-
-/**
- * 格式化金额
- */
-function formatAmount(amount: bigint): string {
-  const dust = Number(amount) / 1e12;
-  return dust >= 1000 ? `${(dust / 1000).toFixed(1)}K` : dust.toFixed(2);
-}
-
-/**
- * 服务提供者卡片组件
- */
-const ProviderCard: React.FC<{
-  provider: ServiceProvider;
-  onViewDetail: (provider: ServiceProvider) => void;
-}> = ({ provider, onViewDetail }) => {
-  const avgRating = calculateAverageRating(provider);
-  const completionRate = calculateCompletionRate(provider);
-  const specialties = getSpecialties(provider.specialties);
-  const divinationTypes = getSupportedDivinationTypes(provider.supportedDivinationTypes);
-
-  return (
-    <Card
-      hoverable
-      style={{ marginBottom: 12 }}
-      onClick={() => onViewDetail(provider)}
-    >
-      <div style={{ display: 'flex', gap: 12 }}>
-        {/* 头像 */}
-        <Avatar
-          size={64}
-          icon={<UserOutlined />}
-          style={{ backgroundColor: PROVIDER_TIER_COLORS[provider.tier] }}
-        />
-
-        {/* 信息 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* 名称和等级 */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-            <Text strong style={{ fontSize: 16, marginRight: 8 }}>
-              {provider.name}
-            </Text>
-            <Tag color={PROVIDER_TIER_COLORS[provider.tier]}>
-              {PROVIDER_TIER_NAMES[provider.tier]}
-            </Tag>
-            {provider.acceptsUrgent && (
-              <Tag color="red" icon={<FireOutlined />}>
-                接急单
-              </Tag>
-            )}
-          </div>
-
-          {/* 简介 */}
-          <Paragraph
-            type="secondary"
-            style={{ fontSize: 12, marginBottom: 8 }}
-            ellipsis={{ rows: 2 }}
-          >
-            {provider.bio}
-          </Paragraph>
-
-          {/* 评分和订单 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
-            <span>
-              <Rate disabled defaultValue={avgRating} style={{ fontSize: 12 }} />
-              <Text style={{ marginLeft: 4, fontSize: 12 }}>{avgRating.toFixed(1)}</Text>
-            </span>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              <TeamOutlined /> {provider.completedOrders}单
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              完成率 {completionRate.toFixed(0)}%
-            </Text>
-          </div>
-
-          {/* 支持的占卜类型 */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {divinationTypes.slice(0, 4).map((type) => (
-              <Tag key={type} style={{ fontSize: 10 }}>
-                {DIVINATION_TYPE_ICONS[type]} {DIVINATION_TYPE_NAMES[type]}
-              </Tag>
-            ))}
-            {divinationTypes.length > 4 && (
-              <Tag style={{ fontSize: 10 }}>+{divinationTypes.length - 4}</Tag>
-            )}
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
+const formatPrice = (price: bigint): string => {
+  const dust = Number(price) / 1e12;
+  return dust.toFixed(2);
 };
 
 /**
- * 服务套餐卡片组件
- */
-const PackageCard: React.FC<{
-  pkg: ServicePackage;
-  onSelect: (pkg: ServicePackage) => void;
-}> = ({ pkg, onSelect }) => (
-  <Card
-    size="small"
-    hoverable
-    style={{ marginBottom: 8 }}
-    onClick={() => onSelect(pkg)}
-  >
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ marginBottom: 4 }}>
-          <Tag color="blue">{DIVINATION_TYPE_NAMES[pkg.divinationType]}</Tag>
-          <Tag>{SERVICE_TYPE_NAMES[pkg.serviceType]}</Tag>
-        </div>
-        <Text strong>{pkg.name}</Text>
-        <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 4, marginTop: 4 }}>
-          {pkg.description}
-        </Paragraph>
-        <Space size={8}>
-          {pkg.followUpCount > 0 && (
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              含{pkg.followUpCount}次追问
-            </Text>
-          )}
-          {pkg.urgentAvailable && (
-            <Tag color="red" style={{ fontSize: 10 }}>
-              可加急
-            </Tag>
-          )}
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            已售{pkg.salesCount}
-          </Text>
-        </Space>
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <Text strong style={{ fontSize: 18, color: '#f5222d' }}>
-          {formatAmount(pkg.price)}
-        </Text>
-        <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>
-          DUST
-        </Text>
-      </div>
-    </div>
-  </Card>
-);
-
-/**
- * 占卜服务市场页面
+ * 玄学服务市场页面
  */
 const MarketPage: React.FC = () => {
-  // 状态
-  const [loading, setLoading] = useState(false);
+  const { api } = usePolkadot();
+
+  // 模式检测
+  const mode = useMarketMode();
+
+  // 加载市场数据
+  const { providers, packages, loading, error } = useMarketData(
+    api,
+    mode.divinationType
+  );
+
+  // 筛选状态
   const [searchText, setSearchText] = useState('');
   const [filterType, setFilterType] = useState<DivinationType | 'all'>('all');
   const [filterTier, setFilterTier] = useState<ProviderTier | 'all'>('all');
   const [filterSpecialty, setFilterSpecialty] = useState<Specialty | 'all'>('all');
+
+  // 视图状态
   const [selectedProvider, setSelectedProvider] = useState<ServiceProvider | null>(null);
-  const [activeTab, setActiveTab] = useState<'providers' | 'packages'>('providers');
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState<ServicePackage | null>(null);
+  const [orderingProvider, setOrderingProvider] = useState<ServiceProvider | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   /**
    * 筛选后的提供者列表
    */
   const filteredProviders = useMemo(() => {
-    return MOCK_PROVIDERS.filter((provider) => {
+    return providers.filter((provider) => {
       // 搜索文本
       if (searchText && !provider.name.includes(searchText) && !provider.bio.includes(searchText)) {
         return false;
@@ -376,302 +104,260 @@ const MarketPage: React.FC = () => {
       }
       return true;
     });
-  }, [searchText, filterType, filterTier, filterSpecialty]);
+  }, [providers, searchText, filterType, filterTier, filterSpecialty]);
 
   /**
-   * 筛选后的套餐列表
+   * 处理查看提供者详情（浏览模式）
    */
-  const filteredPackages = useMemo(() => {
-    return MOCK_PACKAGES.filter((pkg) => {
-      if (filterType !== 'all' && pkg.divinationType !== filterType) {
-        return false;
-      }
-      if (searchText && !pkg.name.includes(searchText) && !pkg.description.includes(searchText)) {
-        return false;
-      }
-      return true;
-    });
-  }, [searchText, filterType]);
-
-  /**
-   * 处理查看提供者详情
-   */
-  const handleViewProvider = useCallback((provider: ServiceProvider) => {
+  const handleViewProviderDetail = useCallback((provider: ServiceProvider) => {
     setSelectedProvider(provider);
   }, []);
 
   /**
-   * 处理选择套餐
+   * 处理选择套餐（下单模式和浏览模式）
    */
-  const handleSelectPackage = useCallback((pkg: ServicePackage) => {
-    console.log('Selected package:', pkg);
-    // TODO: 跳转到下单页面
+  const handleSelectPackage = useCallback(
+    (provider: ServiceProvider, pkg: ServicePackage) => {
+      if (!mode.resultId) {
+        message.warning('请先起卦后再选择服务');
+        window.location.hash = '#/divination';
+        return;
+      }
+
+      if (!provider.isActive) {
+        message.warning('该提供者当前不接单');
+        return;
+      }
+
+      setOrderingProvider(provider);
+      setSelectedPackage(pkg);
+      setOrderModalVisible(true);
+    },
+    [mode.resultId]
+  );
+
+  /**
+   * 处理返回列表（从详情页）
+   */
+  const handleBackToList = useCallback(() => {
+    setSelectedProvider(null);
   }, []);
 
   /**
-   * 渲染筛选器
+   * 确认下单
    */
-  const renderFilters = () => (
-    <Card size="small" style={{ marginBottom: 16 }}>
-      <Space direction="vertical" style={{ width: '100%' }} size="small">
-        {/* 搜索框 */}
-        <Search
-          placeholder="搜索大师或服务"
-          allowClear
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{ width: '100%' }}
-        />
+  const handleConfirmOrder = useCallback(() => {
+    if (!orderingProvider || !selectedPackage || !mode.resultId) return;
 
-        {/* 筛选项 */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Select
-            size="small"
-            style={{ width: 100 }}
-            value={filterType}
-            onChange={setFilterType}
-            options={[
-              { label: '全部类型', value: 'all' },
-              ...Object.entries(DIVINATION_TYPE_NAMES).map(([value, label]) => ({
-                label,
-                value: Number(value),
-              })),
-            ]}
-          />
-          <Select
-            size="small"
-            style={{ width: 90 }}
-            value={filterTier}
-            onChange={setFilterTier}
-            options={[
-              { label: '全部等级', value: 'all' },
-              ...Object.entries(PROVIDER_TIER_NAMES).map(([value, label]) => ({
-                label,
-                value: Number(value),
-              })),
-            ]}
-          />
-          <Select
-            size="small"
-            style={{ width: 100 }}
-            value={filterSpecialty}
-            onChange={setFilterSpecialty}
-            options={[
-              { label: '全部领域', value: 'all' },
-              ...Object.entries(SPECIALTY_NAMES).map(([value, label]) => ({
-                label,
-                value: Number(value),
-              })),
-            ]}
-          />
-        </div>
-      </Space>
-    </Card>
-  );
+    // TODO: 实现下单逻辑
+    message.success('下单功能开发中...');
+    setOrderModalVisible(false);
 
-  /**
-   * 渲染提供者列表
-   */
-  const renderProviderList = () => (
-    <div>
-      {filteredProviders.length === 0 ? (
-        <Empty description="暂无匹配的服务大师" />
-      ) : (
-        filteredProviders.map((provider) => (
-          <ProviderCard
-            key={provider.account}
-            provider={provider}
-            onViewDetail={handleViewProvider}
-          />
-        ))
-      )}
-    </div>
-  );
+    // 跳转到订单创建页面
+    window.location.hash = `#/order/create?provider=${orderingProvider.account}&package=${selectedPackage.id}&resultId=${mode.resultId}`;
+  }, [orderingProvider, selectedPackage, mode.resultId]);
 
-  /**
-   * 渲染套餐列表
-   */
-  const renderPackageList = () => (
-    <div>
-      {filteredPackages.length === 0 ? (
-        <Empty description="暂无匹配的服务套餐" />
-      ) : (
-        filteredPackages.map((pkg) => (
-          <PackageCard key={pkg.id} pkg={pkg} onSelect={handleSelectPackage} />
-        ))
-      )}
-    </div>
-  );
-
-  /**
-   * 渲染提供者详情
-   */
-  const renderProviderDetail = () => {
-    if (!selectedProvider) return null;
-
-    const avgRating = calculateAverageRating(selectedProvider);
-    const completionRate = calculateCompletionRate(selectedProvider);
-    const specialties = getSpecialties(selectedProvider.specialties);
-    const divinationTypes = getSupportedDivinationTypes(selectedProvider.supportedDivinationTypes);
-
+  // 加载状态
+  if (loading) {
     return (
-      <Card>
-        <Button type="link" onClick={() => setSelectedProvider(null)} style={{ padding: 0, marginBottom: 16 }}>
-          ← 返回列表
-        </Button>
-
-        {/* 基本信息 */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-          <Avatar
-            size={80}
-            icon={<UserOutlined />}
-            style={{ backgroundColor: PROVIDER_TIER_COLORS[selectedProvider.tier] }}
-          />
-          <div>
-            <Title level={4} style={{ marginBottom: 8 }}>
-              {selectedProvider.name}
-              <Tag color={PROVIDER_TIER_COLORS[selectedProvider.tier]} style={{ marginLeft: 8 }}>
-                {PROVIDER_TIER_NAMES[selectedProvider.tier]}
-              </Tag>
-            </Title>
-            <Paragraph type="secondary">{selectedProvider.bio}</Paragraph>
-          </div>
+      <div className="market-page">
+        <div className="market-loading">
+          <Spin size="large" tip="加载市场数据..." />
         </div>
-
-        {/* 统计数据 */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 8,
-            marginBottom: 16,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ padding: 12, backgroundColor: '#fafafa', borderRadius: 8 }}>
-            <Text strong style={{ fontSize: 20, display: 'block' }}>
-              {avgRating.toFixed(1)}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              评分
-            </Text>
-          </div>
-          <div style={{ padding: 12, backgroundColor: '#fafafa', borderRadius: 8 }}>
-            <Text strong style={{ fontSize: 20, display: 'block' }}>
-              {selectedProvider.completedOrders}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              完成订单
-            </Text>
-          </div>
-          <div style={{ padding: 12, backgroundColor: '#fafafa', borderRadius: 8 }}>
-            <Text strong style={{ fontSize: 20, display: 'block' }}>
-              {completionRate.toFixed(0)}%
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              完成率
-            </Text>
-          </div>
-          <div style={{ padding: 12, backgroundColor: '#fafafa', borderRadius: 8 }}>
-            <Text strong style={{ fontSize: 20, display: 'block' }}>
-              {formatAmount(selectedProvider.totalEarnings)}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              总收入
-            </Text>
-          </div>
-        </div>
-
-        {/* 擅长领域 */}
-        <div style={{ marginBottom: 16 }}>
-          <Text strong>擅长领域：</Text>
-          <div style={{ marginTop: 8 }}>
-            {specialties.map((s) => (
-              <Tag key={s} color="green">
-                {SPECIALTY_NAMES[s]}
-              </Tag>
-            ))}
-          </div>
-        </div>
-
-        {/* 支持的占卜类型 */}
-        <div style={{ marginBottom: 16 }}>
-          <Text strong>支持的占卜：</Text>
-          <div style={{ marginTop: 8 }}>
-            {divinationTypes.map((t) => (
-              <Tag key={t} color="blue">
-                {DIVINATION_TYPE_ICONS[t]} {DIVINATION_TYPE_NAMES[t]}
-              </Tag>
-            ))}
-          </div>
-        </div>
-
-        <Divider />
-
-        {/* 服务套餐 */}
-        <Title level={5}>服务套餐</Title>
-        {MOCK_PACKAGES.filter((pkg) => divinationTypes.includes(pkg.divinationType)).map((pkg) => (
-          <PackageCard key={pkg.id} pkg={pkg} onSelect={handleSelectPackage} />
-        ))}
-
-        <Divider />
-
-        {/* 咨询按钮 */}
-        <Button type="primary" size="large" block icon={<ShopOutlined />}>
-          立即咨询
-        </Button>
-      </Card>
+      </div>
     );
-  };
+  }
+
+  // 错误状态
+  if (error) {
+    return (
+      <div className="market-page">
+        <Card>
+          <Empty description={error} image={Empty.PRESENTED_IMAGE_SIMPLE}>
+            <Button type="primary" onClick={() => window.location.reload()}>
+              重新加载
+            </Button>
+          </Empty>
+        </Card>
+      </div>
+    );
+  }
+
+  // 浏览模式 - 提供者详情视图
+  if (mode.isBrowsing && selectedProvider) {
+    return (
+      <div className="market-page">
+        <ProviderDetailView
+          provider={selectedProvider}
+          packages={packages.get(selectedProvider.account) || []}
+          onBack={handleBackToList}
+          onSelectPackage={(pkg) => handleSelectPackage(selectedProvider, pkg)}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="market-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
-      <Spin spinning={loading}>
-        {selectedProvider ? (
-          renderProviderDetail()
-        ) : (
-          <>
-            {/* 页面标题 */}
-            <Card className="header-card" style={{ marginBottom: 16 }}>
-              <Title level={4}>
-                <ShopOutlined /> 玄学服务市场
-              </Title>
-              <Paragraph type="secondary">
-                汇聚各派名师，为您提供专业的命理解读服务
-              </Paragraph>
-            </Card>
+    <div className="market-page">
+      {/* 顶部导航卡片 - 复刻八字页面风格 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+        {/* 左边：我的订单 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+          onClick={() => (window.location.hash = '#/order/my')}
+        >
+          <HistoryOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>我的订单</div>
+        </div>
 
-            {/* 筛选器 */}
-            {renderFilters()}
+        {/* 中间：服务市场 */}
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>服务市场</div>
 
-            {/* 标签页 */}
-            <Tabs
-              activeKey={activeTab}
-              onChange={(key) => setActiveTab(key as 'providers' | 'packages')}
-              items={[
-                {
-                  key: 'providers',
-                  label: (
-                    <span>
-                      <SafetyCertificateOutlined /> 大师
-                    </span>
-                  ),
-                  children: renderProviderList(),
-                },
-                {
-                  key: 'packages',
-                  label: (
-                    <span>
-                      <StarOutlined /> 服务
-                    </span>
-                  ),
-                  children: renderPackageList(),
-                },
-              ]}
-            />
-          </>
+        {/* 右边：使用说明 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', cursor: 'pointer' }}
+          onClick={() => setShowInstructions(true)}
+        >
+          <QuestionCircleOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>说明</div>
+        </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
+      {/* 输入卡片 */}
+      <Card className="input-card">
+        <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
+          <ShopOutlined /> 玄学服务市场
+        </Title>
+        <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
+          {mode.isBrowsing
+            ? '汇聚各派名师，为您提供专业的命理解读服务'
+            : '已有占卜结果，快速找到适合您的大师'}
+        </Text>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 操作按钮 */}
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Button
+            block
+            type="primary"
+            size="large"
+            icon={<UserAddOutlined />}
+            onClick={() => window.location.hash = '#/provider/register'}
+            style={{
+              background: '#000000',
+              borderColor: '#000000',
+              borderRadius: '54px',
+              height: '54px',
+              fontSize: '19px',
+              fontWeight: '700',
+              color: '#F7D3A1',
+            }}
+          >
+            大师入驻
+          </Button>
+        </Space>
+      </Card>
+
+      {/* 筛选器 */}
+      <MarketFilters
+        searchText={searchText}
+        filterType={filterType}
+        filterTier={filterTier}
+        filterSpecialty={filterSpecialty}
+        onSearchChange={setSearchText}
+        onTypeChange={setFilterType}
+        onTierChange={setFilterTier}
+        onSpecialtyChange={setFilterSpecialty}
+        showAdvanced={true}
+      />
+
+      {/* 内容区：根据模式切换 */}
+      {mode.isBrowsing ? (
+        <BrowsingView
+          providers={filteredProviders}
+          packages={packages}
+          onViewProviderDetail={handleViewProviderDetail}
+        />
+      ) : (
+        <OrderingView
+          resultId={mode.resultId!}
+          divinationType={mode.divinationType}
+          providers={filteredProviders}
+          packages={packages}
+          onSelectPackage={handleSelectPackage}
+        />
+      )}
+
+      {/* 下单确认弹窗 */}
+      <Modal
+        title="确认下单"
+        open={orderModalVisible}
+        onCancel={() => setOrderModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setOrderModalVisible(false)}>
+            取消
+          </Button>,
+          <Button key="confirm" type="primary" onClick={handleConfirmOrder}>
+            确认下单
+          </Button>,
+        ]}
+      >
+        {orderingProvider && selectedPackage && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>服务提供者：</Text>
+              <Text>{orderingProvider.name}</Text>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>服务套餐：</Text>
+              <Text>{selectedPackage.name}</Text>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>价格：</Text>
+              <Text style={{ color: '#faad14', fontSize: 18 }}>
+                {formatPrice(selectedPackage.price)} DUST
+              </Text>
+            </div>
+            <Divider />
+            <Paragraph type="secondary" style={{ fontSize: 12 }}>
+              点击"确认下单"后，您将跳转到订单创建页面完成支付。
+            </Paragraph>
+          </div>
         )}
-      </Spin>
+      </Modal>
+
+      {/* 底部导航 */}
+      <div className="bottom-nav">
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/order/my')}>
+            <HistoryOutlined /> 我的订单
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
+      </div>
     </div>
   );
 };

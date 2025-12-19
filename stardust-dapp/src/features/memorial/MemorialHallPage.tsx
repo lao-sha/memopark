@@ -38,7 +38,7 @@ const MemorialHallPage: React.FC = () => {
   }))
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', background: '#f7f1e6' }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left', background: '#f7f1e6' }}>
       {/* 顶部背景 + 交互条 */}
       <div style={{ position: 'relative' }}>
         <img src="https://picsum.photos/seed/park-forest/1200/800" style={{ width: '100%', display: 'block' }} />

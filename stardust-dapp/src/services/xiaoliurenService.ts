@@ -48,8 +48,8 @@ export async function divineByTime(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineByTime) {
+  // 检查 xiaoLiuRen pallet 是否存在（注意：runtime 中命名为 XiaoLiuRen，API 中为驼峰式 xiaoLiuRen）
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineByTime) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -58,7 +58,7 @@ export async function divineByTime(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineByTime(
+  const tx = api.tx.xiaoLiuRen.divineByTime(
     lunarMonth,
     lunarDay,
     hour,
@@ -85,7 +85,7 @@ export async function divineByTime(
       if (status.isInBlock || status.isFinalized) {
         console.log('[xiaoliuren.divineByTime] 交易已打包，事件数量:', events.length);
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -128,8 +128,8 @@ export async function divineByNumber(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineByNumber) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineByNumber) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -138,7 +138,7 @@ export async function divineByNumber(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineByNumber(
+  const tx = api.tx.xiaoLiuRen.divineByNumber(
     x,
     y,
     z,
@@ -163,7 +163,7 @@ export async function divineByNumber(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -195,8 +195,8 @@ export async function divineRandom(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineRandom) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineRandom) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -205,7 +205,7 @@ export async function divineRandom(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineRandom(questionCidParam, isPublic);
+  const tx = api.tx.xiaoLiuRen.divineRandom(questionCidParam, isPublic);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
@@ -224,7 +224,7 @@ export async function divineRandom(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -262,8 +262,8 @@ export async function divineManual(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineManual) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineManual) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -272,7 +272,7 @@ export async function divineManual(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineManual(
+  const tx = api.tx.xiaoLiuRen.divineManual(
     yueIndex,
     riIndex,
     shiIndex,
@@ -297,7 +297,7 @@ export async function divineManual(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -337,8 +337,8 @@ export async function divineByHourKe(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineByHourKe) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineByHourKe) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -347,7 +347,7 @@ export async function divineByHourKe(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineByHourKe(
+  const tx = api.tx.xiaoLiuRen.divineByHourKe(
     hour,
     minute,
     questionCidParam,
@@ -371,7 +371,7 @@ export async function divineByHourKe(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -406,8 +406,8 @@ export async function divineByDigits(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineByDigits) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineByDigits) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -416,7 +416,7 @@ export async function divineByDigits(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineByDigits(
+  const tx = api.tx.xiaoLiuRen.divineByDigits(
     digits,
     questionCidParam,
     isPublic
@@ -439,7 +439,7 @@ export async function divineByDigits(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -481,8 +481,8 @@ export async function divineByThreeNumbers(
 ): Promise<number> {
   const api = await getSignedApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.divineByThreeNumbers) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.divineByThreeNumbers) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
@@ -491,7 +491,7 @@ export async function divineByThreeNumbers(
     ? { Some: Array.from(new TextEncoder().encode(questionCid)) }
     : null;
 
-  const tx = api.tx.xiaoliuren.divineByThreeNumbers(
+  const tx = api.tx.xiaoLiuRen.divineByThreeNumbers(
     num1,
     num2,
     num3,
@@ -516,7 +516,7 @@ export async function divineByThreeNumbers(
 
       if (status.isInBlock || status.isFinalized) {
         const event = events.find((e) =>
-          e.event.section === 'xiaoliuren' && e.event.method === 'PanCreated'
+          e.event.section === 'xiaoLiuRen' && e.event.method === 'PanCreated'
         );
         if (event) {
           const panId = event.event.data[0].toNumber();
@@ -544,14 +544,14 @@ export async function divineByThreeNumbers(
 export async function getPan(panId: number): Promise<XiaoLiuRenPan | null> {
   const api = await getApi();
 
-  // 检查 xiaoliuren pallet 是否存在
-  if (!api.query.xiaoliuren || !api.query.xiaoliuren.pans) {
+  // 检查 xiaoLiuRen pallet 是否存在
+  if (!api.query.xiaoLiuRen || !api.query.xiaoLiuRen.pans) {
     console.error('[getPan] xiaoliuren pallet 不存在');
     return null;
   }
 
   console.log('[getPan] 查询课盘 ID:', panId);
-  const result = await api.query.xiaoliuren.pans(panId);
+  const result = await api.query.xiaoLiuRen.pans(panId);
 
   if (result.isNone) {
     console.log('[getPan] 课盘不存在');
@@ -618,12 +618,12 @@ export async function getPan(panId: number): Promise<XiaoLiuRenPan | null> {
 export async function getUserPans(address: string): Promise<number[]> {
   const api = await getApi();
 
-  if (!api.query.xiaoliuren || !api.query.xiaoliuren.userPans) {
+  if (!api.query.xiaoLiuRen || !api.query.xiaoLiuRen.userPans) {
     console.error('[getUserPans] xiaoliuren pallet 不存在');
     return [];
   }
 
-  const result = await api.query.xiaoliuren.userPans(address);
+  const result = await api.query.xiaoLiuRen.userPans(address);
   return result.map((id: { toNumber: () => number }) => id.toNumber());
 }
 
@@ -635,12 +635,12 @@ export async function getUserPans(address: string): Promise<number[]> {
 export async function getPublicPans(): Promise<number[]> {
   const api = await getApi();
 
-  if (!api.query.xiaoliuren || !api.query.xiaoliuren.publicPans) {
+  if (!api.query.xiaoLiuRen || !api.query.xiaoLiuRen.publicPans) {
     console.error('[getPublicPans] xiaoliuren pallet 不存在');
     return [];
   }
 
-  const result = await api.query.xiaoliuren.publicPans();
+  const result = await api.query.xiaoLiuRen.publicPans();
   return result.map((id: { toNumber: () => number }) => id.toNumber());
 }
 
@@ -657,11 +657,11 @@ export async function getUserStats(address: string): Promise<{
 } | null> {
   const api = await getApi();
 
-  if (!api.query.xiaoliuren || !api.query.xiaoliuren.userStats) {
+  if (!api.query.xiaoLiuRen || !api.query.xiaoLiuRen.userStats) {
     return null;
   }
 
-  const result = await api.query.xiaoliuren.userStats(address);
+  const result = await api.query.xiaoLiuRen.userStats(address);
   if (!result) return null;
 
   return {
@@ -682,11 +682,11 @@ export async function getUserStats(address: string): Promise<{
 export async function setPanVisibility(panId: number, isPublic: boolean): Promise<void> {
   const api = await getSignedApi();
 
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.setPanVisibility) {
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.setPanVisibility) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
-  const tx = api.tx.xiaoliuren.setPanVisibility(panId, isPublic);
+  const tx = api.tx.xiaoLiuRen.setPanVisibility(panId, isPublic);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, dispatchError }) => {
@@ -723,11 +723,11 @@ export async function setPanVisibility(panId: number, isPublic: boolean): Promis
 export async function requestAiInterpretation(panId: number): Promise<void> {
   const api = await getSignedApi();
 
-  if (!api.tx.xiaoliuren || !api.tx.xiaoliuren.requestAiInterpretation) {
+  if (!api.tx.xiaoLiuRen || !api.tx.xiaoLiuRen.requestAiInterpretation) {
     throw new Error('区块链节点未包含小六壬模块（pallet-xiaoliuren），请检查节点配置');
   }
 
-  const tx = api.tx.xiaoliuren.requestAiInterpretation(panId);
+  const tx = api.tx.xiaoLiuRen.requestAiInterpretation(panId);
 
   return new Promise((resolve, reject) => {
     tx.signAndSend(api.signer, ({ status, dispatchError }) => {

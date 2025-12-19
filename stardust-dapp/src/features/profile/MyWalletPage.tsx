@@ -20,6 +20,7 @@ import {
   SendOutlined,
   ShoppingCartOutlined,
   RetweetOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getCurrentAddress } from '../../lib/keystore';
@@ -460,53 +461,53 @@ const MyWalletPage: React.FC = () => {
 
   return (
     <div className="wallet-page">
-      {/* 顶部用户信息区域 */}
-      <div className="wallet-header">
-        <div className="user-info">
-          {/* 用户头像 */}
-          <div className="user-avatar">
-            {nickname ? nickname.charAt(0) : '黄'}
-          </div>
+      {/* 黑色顶部用户信息区域 - 参考问真排盘风格 */}
+      <div className="wallet-top-header">
+        {/* 用户头像 */}
+        <div className="header-avatar">
+          <span className="avatar-text">{nickname ? nickname.charAt(0) : '尘'}</span>
+        </div>
 
-          {/* 用户详细信息 */}
-          <div className="user-details">
-            <div className="user-name">
-              <Text strong className="wallet-text-primary">
-                {nickname}
-              </Text>
-              <EditOutlined
-                onClick={handleEditNickname}
-                className="edit-nickname-btn"
-              />
-              <Text type="secondary" style={{ fontSize: '14px' }}>
-                当前钱包
-              </Text>
-            </div>
-            <div className="user-address-info">
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                {address ? address : '未连接'}
-              </Text>
-              {refCode && (
-                <>
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    获取测试
-                  </Text>
-                </>
-              )}
-            </div>
+        {/* 用户信息 */}
+        <div className="header-user-info">
+          <div className="header-user-row">
+            <span className="header-nickname">{nickname || '星尘用户'}</span>
+            <EditOutlined
+              onClick={handleEditNickname}
+              className="header-edit-btn"
+            />
+            <span className="header-tag">会员</span>
+            <span className="header-tag vip">VIP</span>
+          </div>
+          <div className="header-address">
+            {address ? `${address.slice(0, 8)}...${address.slice(-6)}` : '未连接'}
           </div>
         </div>
 
         {/* 消息通知图标 */}
         <Badge count={1} offset={[-5, 5]}>
           <NotificationOutlined
-            className="notification-badge"
+            className="header-notification"
             onClick={() => {
               message.info('查看通知');
               window.location.hash = '#/notifications';
             }}
           />
         </Badge>
+      </div>
+
+      {/* VIP会员卡片 - 参考问真排盘风格 */}
+      <div className="vip-card" onClick={() => (window.location.hash = '#/membership')}>
+        <div className="vip-card-left">
+          <span className="vip-icon">💎</span>
+          <div className="vip-info">
+            <span className="vip-title">星尘VIP会员</span>
+            <span className="vip-desc">成为星尘VIP享受专属特权</span>
+          </div>
+        </div>
+        <div className="vip-card-btn">
+          会员特权 <RightOutlined />
+        </div>
       </div>
 
       {/* 快捷操作卡片区域 */}

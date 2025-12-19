@@ -1,13 +1,20 @@
 /**
  * 梅花易数模块样式
+ * 主题色：金棕色 #B2955D（统一风格）
+ * 复刻目标：参考八字页面 BaziPage
  */
+
+@import '../divination/divination-common.css';
 
 /* ==================== 通用样式 ==================== */
 
 .meihua-page {
-  max-width: 640px;
+  max-width: 414px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 12px;
+  padding-bottom: 80px;
+  min-height: 100vh;
+  background: #F5F5F7;
 }
 
 .meihua-page.loading {
@@ -24,21 +31,39 @@
   padding: 48px;
 }
 
+/* ==================== 输入卡片（复刻八字页面风格） ==================== */
+
+.meihua-page .input-card {
+  border-radius: 16px;
+  background: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: none;
+  padding: 20px 16px 24px;
+}
+
 /* ==================== 起卦页面 ==================== */
 
 .divination-card {
-  border-radius: 12px;
+  border-radius: 16px;
+  background: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: none;
 }
 
 .page-title {
   text-align: center;
   margin-bottom: 4px !important;
+  color: #333333;
+  font-size: 20px;
+  font-weight: 400;
 }
 
 .page-subtitle {
   display: block;
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  color: #CCCCCC;
+  font-size: 14px;
 }
 
 .divination-panel {
@@ -349,7 +374,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5DBAAA 0%, #4A9A8C 100%);
   border-radius: 8px;
 }
 
@@ -651,9 +676,26 @@
   border-radius: 8px;
 }
 
+/* ==================== 底部导航（复刻八字页面风格） ==================== */
+
+.meihua-page .bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 414px;
+  margin: 0;
+}
+
 /* ==================== 响应式调整 ==================== */
 
-@media (max-width: 480px) {
+@media (max-width: 414px) {
   .meihua-page {
     padding: 12px;
   }

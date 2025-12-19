@@ -60,7 +60,7 @@ const BannerCarousel: React.FC = () => {
 
 const CelebritiesPage: React.FC = () => {
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', paddingBottom: 16 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left', paddingBottom: 16 }}>
       {/* 顶部栏 */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: '#fff', padding: '8px 8px 8px 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#333' }}>

@@ -134,7 +134,7 @@ export const CacheManagement: React.FC = () => {
       </div>
       
       {/* 内容区域 */}
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: 16 }}>
+      <div style={{ maxWidth: 414, margin: '0 auto', padding: 16 }}>
         {/* 统计信息卡片 */}
         <Card
           loading={loading}

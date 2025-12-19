@@ -1,39 +1,71 @@
 /**
  * 通用占卜页面样式
+ * 主题色：金棕色 #B2955D（问真排盘风格）
  */
+
+:root {
+  --divination-primary: #B2955D;
+  --divination-primary-light: #C9B07A;
+  --divination-primary-dark: #9A7D4A;
+  --divination-bg-gradient: linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%);
+}
 
 .divination-entry-page {
   padding: 12px;
-  max-width: 640px;
+  padding-bottom: 80px; /* 为底部导航栏留出空间 */
+  max-width: 414px;
   margin: 0 auto;
+  background: #F5F5F7;
+  min-height: 100vh;
 }
 
 .divination-entry-page .header-card {
   text-align: center;
   margin-bottom: 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 100%);
   border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 24px 16px;
 }
 
 .divination-entry-page .header-card .ant-typography {
-  color: white !important;
+  color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .divination-entry-page .header-card h3 {
-  color: white !important;
+  color: #F7D3A1 !important;
   margin-bottom: 8px;
+}
+
+/* 分类标题 */
+.divination-entry-page .types-section {
+  margin-bottom: 16px;
+}
+
+.divination-entry-page .section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+  padding-left: 4px;
+  border-left: 3px solid var(--divination-primary);
+  padding-left: 8px;
 }
 
 /* 占卜类型卡片 */
 .divination-type-card {
   border-radius: 12px;
-  border-width: 2px;
+  border-width: 1px;
+  border-color: #E8DCC4 !important;
   transition: all 0.3s ease;
+  background: white;
 }
 
 .divination-type-card:hover:not(.disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(217, 104, 90, 0.2);
+  border-color: var(--divination-primary) !important;
 }
 
 .divination-type-card.disabled {
@@ -55,6 +87,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(217, 104, 90, 0.1) 0%, rgba(217, 104, 90, 0.2) 100%) !important;
+  color: var(--divination-primary) !important;
 }
 
 .divination-type-card .type-icon .icon-text {
@@ -75,37 +109,59 @@
 
 .divination-type-card .type-name {
   font-size: 16px;
+  color: #333;
 }
 
 .divination-type-card .type-description {
   font-size: 12px;
   margin-bottom: 0 !important;
+  color: #666;
 }
 
 .divination-type-card .arrow-icon {
   font-size: 18px;
   flex-shrink: 0;
+  color: var(--divination-primary) !important;
+}
+
+/* 历史记录按钮 */
+.divination-type-card .ant-btn-link {
+  color: var(--divination-primary) !important;
 }
 
 /* 服务入口卡片 */
 .services-card {
   margin-top: 16px;
   border-radius: 12px;
+  border: 1px solid #e8e8e8;
 }
 
 .services-card h5 {
   margin-bottom: 12px;
+  color: #333;
+}
+
+.services-card .ant-btn-primary {
+  background: var(--divination-primary) !important;
+  border-color: var(--divination-primary) !important;
+}
+
+.services-card .ant-btn-primary:hover {
+  background: var(--divination-primary-dark) !important;
+  border-color: var(--divination-primary-dark) !important;
 }
 
 /* 功能说明卡片 */
 .info-card {
   margin-top: 16px;
   border-radius: 12px;
-  background: #fafafa;
+  background: linear-gradient(135deg, #FAF8F4 0%, #F5F1E8 100%);
+  border: 1px solid rgba(217, 104, 90, 0.2);
 }
 
 .info-card h5 {
   margin-bottom: 12px;
+  color: #333;
 }
 
 .info-card .info-item {
@@ -114,10 +170,14 @@
   gap: 2px;
 }
 
+.info-card .info-item .ant-typography-strong {
+  color: var(--divination-primary-dark);
+}
+
 /* 通用占卜服务市场页面 */
 .divination-market-page {
   padding: 12px;
-  max-width: 640px;
+  max-width: 414px;
   margin: 0 auto;
 }
 
@@ -253,7 +313,7 @@
 /* 通用 NFT 市场页面 */
 .divination-nft-page {
   padding: 12px;
-  max-width: 640px;
+  max-width: 414px;
   margin: 0 auto;
 }
 
@@ -358,7 +418,7 @@
 /* 我的 NFT 页面 */
 .my-divination-nft-page {
   padding: 12px;
-  max-width: 640px;
+  max-width: 414px;
   margin: 0 auto;
 }
 

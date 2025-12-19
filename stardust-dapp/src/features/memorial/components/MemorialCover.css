@@ -436,12 +436,12 @@
 /* 适配最大宽度 */
 @media (min-width: 480px) {
   .memorial-cover {
-    max-width: 480px;
+    max-width: 414px;
     margin: 0 auto;
   }
 
   .memorial-cover-footer {
-    max-width: 480px;
+    max-width: 414px;
     left: 50%;
     transform: translateX(-50%);
   }

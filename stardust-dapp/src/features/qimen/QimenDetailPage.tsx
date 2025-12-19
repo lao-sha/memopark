@@ -234,7 +234,7 @@ const QimenDetailPage: React.FC = () => {
    * 渲染错误状态
    */
   const renderError = () => (
-    <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ padding: 12, maxWidth: 414, paddingBottom: 80, minHeight: '100vh', background: 'linear-gradient(180deg, #F5F5F7 0%, #ffffff 100%)', margin: '0 auto' }}>
       {renderHeader()}
       <Alert
         message="加载失败"
@@ -259,7 +259,7 @@ const QimenDetailPage: React.FC = () => {
    * 渲染加载状态
    */
   const renderLoading = () => (
-    <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ padding: 12, maxWidth: 414, paddingBottom: 80, minHeight: '100vh', background: 'linear-gradient(180deg, #F5F5F7 0%, #ffffff 100%)', margin: '0 auto' }}>
       {renderHeader()}
       <Card>
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -284,7 +284,7 @@ const QimenDetailPage: React.FC = () => {
       : [];
 
     return (
-      <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ padding: 12, maxWidth: 414, paddingBottom: 80, minHeight: '100vh', background: 'linear-gradient(180deg, #F5F5F7 0%, #ffffff 100%)', margin: '0 auto' }}>
         {renderHeader()}
 
         {/* 核心解卦 */}

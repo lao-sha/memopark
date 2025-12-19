@@ -1,0 +1,629 @@
+/**
+ * 占卜模块公共样式
+ *
+ * 配色体系：双主题支持
+ * 1. 经典主题（华易网风格）- 适合传统用户
+ * 2. 星空主题（年轻人偏好）- 深色+紫色渐变
+ *
+ * 使用方式：
+ * - 默认：经典主题
+ * - 添加 .theme-starry 类到容器启用星空主题
+ */
+
+:root {
+  /* ========== 经典主题：金棕色（问真排盘风格） ========== */
+  --divination-primary: #B2955D;
+  --divination-primary-light: #C9B07A;
+  --divination-primary-lighter: #E0CFA0;
+  --divination-primary-dark: #9A7D4A;
+  --divination-primary-darker: #7A6038;
+  --divination-primary-bg: rgba(178, 149, 93, 0.1);
+  --divination-primary-bg-hover: rgba(178, 149, 93, 0.15);
+  --divination-bg-gradient: linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%);
+  --divination-bg-gradient-hover: linear-gradient(135deg, #C9B07A 0%, #B2955D 100%);
+
+  /* ========== 辅助色：玄紫（VIP/高级功能） ========== */
+  --divination-purple: #6B4C9A;
+  --divination-purple-light: #9B7BC7;
+  --divination-purple-dark: #4A3570;
+  --divination-purple-bg: rgba(107, 76, 154, 0.1);
+  --divination-purple-gradient: linear-gradient(135deg, #6B4C9A 0%, #4A3570 100%);
+
+  /* ========== 点缀色：金色（强调/吉祥） ========== */
+  --divination-gold: #D4AF37;
+  --divination-gold-light: #F0D77C;
+  --divination-gold-dark: #B8960B;
+  --divination-gold-bg: rgba(212, 175, 55, 0.15);
+  --divination-gold-gradient: linear-gradient(135deg, #F0D77C 0%, #D4AF37 100%);
+
+  /* ========== 背景色系：浅灰白（问真排盘风格） ========== */
+  --divination-page-bg: #F5F5F7;
+  --divination-page-bg-solid: #F5F5F7;
+  --divination-card-bg: #FFFFFF;
+  --divination-card-bg-hover: #FDFCFA;
+  --divination-info-bg: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
+
+  /* ========== 边框色系 ========== */
+  --divination-border: #E5E5E5;
+  --divination-border-light: #F0F0F0;
+  --divination-border-dark: #D9D9D9;
+  --divination-border-primary: rgba(178, 149, 93, 0.3);
+
+  /* ========== 文字色系 ========== */
+  --divination-text-primary: #333333;
+  --divination-text-secondary: #666666;
+  --divination-text-tertiary: #999999;
+  --divination-text-white: #FFFFFF;
+  --divination-text-white-secondary: rgba(255, 255, 255, 0.85);
+
+  /* ========== 语义色系 ========== */
+  --divination-success: #52C41A;
+  --divination-success-bg: rgba(82, 196, 26, 0.1);
+  --divination-warning: #FAAD14;
+  --divination-warning-bg: #FFFBE6;
+  --divination-warning-border: #FFE58F;
+  --divination-error: #FF4D4F;
+  --divination-error-bg: rgba(255, 77, 79, 0.1);
+  --divination-info: #1890FF;
+  --divination-info-bg: rgba(24, 144, 255, 0.1);
+
+  /* ========== 五行色系（用于卦象展示） ========== */
+  --divination-wood: #52C41A;
+  --divination-fire: #FF4D4F;
+  --divination-earth: #D4AF37;
+  --divination-metal: #FFFFFF;
+  --divination-water: #1890FF;
+
+  /* ========== 阴影效果 ========== */
+  --divination-shadow-sm: 0 2px 8px rgba(178, 149, 93, 0.08);
+  --divination-shadow-md: 0 4px 16px rgba(178, 149, 93, 0.15);
+  --divination-shadow-lg: 0 8px 24px rgba(178, 149, 93, 0.2);
+  --divination-shadow-gold: 0 4px 16px rgba(212, 175, 55, 0.3);
+
+  /* ========== 尺寸变量 ========== */
+  --divination-max-width: 414px;
+  --divination-radius-sm: 8px;
+  --divination-radius-md: 12px;
+  --divination-radius-lg: 16px;
+  --divination-radius-xl: 20px;
+}
+
+/* ================================================================
+   星空主题（年轻人偏好）- 深色 + 紫色渐变 + 玻璃态
+   ================================================================ */
+
+.theme-starry {
+  /* ========== 主色系：星空紫 ========== */
+  --divination-primary: #7C3AED;
+  --divination-primary-light: #A78BFA;
+  --divination-primary-lighter: #C4B5FD;
+  --divination-primary-dark: #5B21B6;
+  --divination-primary-darker: #4C1D95;
+  --divination-primary-bg: rgba(124, 58, 237, 0.15);
+  --divination-primary-bg-hover: rgba(124, 58, 237, 0.25);
+  --divination-bg-gradient: linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%);
+  --divination-bg-gradient-hover: linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%);
+
+  /* ========== 辅助色：玫红（强调） ========== */
+  --divination-purple: #EC4899;
+  --divination-purple-light: #F472B6;
+  --divination-purple-dark: #DB2777;
+  --divination-purple-bg: rgba(236, 72, 153, 0.15);
+  --divination-purple-gradient: linear-gradient(135deg, #EC4899 0%, #DB2777 100%);
+
+  /* ========== 点缀色：明金（强调/吉祥） ========== */
+  --divination-gold: #FBBF24;
+  --divination-gold-light: #FCD34D;
+  --divination-gold-dark: #F59E0B;
+  --divination-gold-bg: rgba(251, 191, 36, 0.15);
+  --divination-gold-gradient: linear-gradient(135deg, #FCD34D 0%, #FBBF24 100%);
+
+  /* ========== 背景色系：深空渐变 ========== */
+  --divination-page-bg: linear-gradient(180deg, #0F0A1A 0%, #1E1B4B 100%);
+  --divination-page-bg-solid: #0F0A1A;
+  --divination-card-bg: rgba(255, 255, 255, 0.05);
+  --divination-card-bg-hover: rgba(255, 255, 255, 0.08);
+  --divination-info-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(91, 33, 182, 0.1) 100%);
+
+  /* ========== 边框色系 ========== */
+  --divination-border: rgba(255, 255, 255, 0.1);
+  --divination-border-light: rgba(255, 255, 255, 0.05);
+  --divination-border-dark: rgba(255, 255, 255, 0.15);
+  --divination-border-primary: rgba(124, 58, 237, 0.4);
+
+  /* ========== 文字色系 ========== */
+  --divination-text-primary: #FFFFFF;
+  --divination-text-secondary: rgba(255, 255, 255, 0.7);
+  --divination-text-tertiary: rgba(255, 255, 255, 0.5);
+  --divination-text-white: #FFFFFF;
+  --divination-text-white-secondary: rgba(255, 255, 255, 0.85);
+
+  /* ========== 语义色系（暗色适配） ========== */
+  --divination-success: #34D399;
+  --divination-success-bg: rgba(52, 211, 153, 0.15);
+  --divination-warning: #FBBF24;
+  --divination-warning-bg: rgba(251, 191, 36, 0.15);
+  --divination-warning-border: rgba(251, 191, 36, 0.3);
+  --divination-error: #F87171;
+  --divination-error-bg: rgba(248, 113, 113, 0.15);
+  --divination-info: #60A5FA;
+  --divination-info-bg: rgba(96, 165, 250, 0.15);
+
+  /* ========== 五行色系（暗色适配） ========== */
+  --divination-wood: #34D399;
+  --divination-fire: #F87171;
+  --divination-earth: #FBBF24;
+  --divination-metal: #E5E7EB;
+  --divination-water: #60A5FA;
+
+  /* ========== 阴影效果（发光效果） ========== */
+  --divination-shadow-sm: 0 2px 8px rgba(124, 58, 237, 0.2);
+  --divination-shadow-md: 0 4px 20px rgba(124, 58, 237, 0.3);
+  --divination-shadow-lg: 0 8px 32px rgba(124, 58, 237, 0.4);
+  --divination-shadow-gold: 0 4px 20px rgba(251, 191, 36, 0.4);
+}
+
+/* ========== 星空主题特殊样式 ========== */
+
+.theme-starry .divination-page-container {
+  background: var(--divination-page-bg);
+}
+
+/* 星空背景装饰（星星效果） */
+.theme-starry .divination-page-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(2px 2px at 130px 80px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 160px 120px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 200px 50px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 250px 160px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(2px 2px at 300px 90px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 350px 200px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 400px 140px, rgba(255,255,255,0.2), transparent);
+  background-repeat: repeat;
+  background-size: 400px 300px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+
+.theme-starry .divination-page-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 玻璃态卡片 */
+.theme-starry .divination-card,
+.theme-starry .ant-card {
+  background: var(--divination-card-bg) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--divination-border) !important;
+  box-shadow: var(--divination-shadow-sm);
+}
+
+.theme-starry .divination-card:hover,
+.theme-starry .ant-card:hover {
+  background: var(--divination-card-bg-hover) !important;
+  border-color: var(--divination-border-primary) !important;
+  box-shadow: var(--divination-shadow-md);
+}
+
+/* 标题卡片霓虹效果 */
+.theme-starry .divination-header-card,
+.theme-starry .header-card {
+  background: var(--divination-bg-gradient) !important;
+  box-shadow: var(--divination-shadow-lg), 0 0 40px rgba(124, 58, 237, 0.3);
+  border: 1px solid rgba(167, 139, 250, 0.3) !important;
+}
+
+/* 按钮霓虹效果 */
+.theme-starry .ant-btn-primary {
+  background: var(--divination-bg-gradient) !important;
+  border: none !important;
+  box-shadow: var(--divination-shadow-md);
+  transition: all 0.3s ease;
+}
+
+.theme-starry .ant-btn-primary:hover {
+  background: var(--divination-bg-gradient-hover) !important;
+  box-shadow: var(--divination-shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* 文字颜色适配 */
+.theme-starry,
+.theme-starry .ant-typography,
+.theme-starry .ant-card-head-title,
+.theme-starry h1, .theme-starry h2, .theme-starry h3,
+.theme-starry h4, .theme-starry h5, .theme-starry h6 {
+  color: var(--divination-text-primary) !important;
+}
+
+.theme-starry .ant-typography-secondary,
+.theme-starry .ant-typography.ant-typography-secondary {
+  color: var(--divination-text-secondary) !important;
+}
+
+/* 输入框暗色适配 */
+.theme-starry .ant-input,
+.theme-starry .ant-select-selector,
+.theme-starry .ant-picker {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: var(--divination-border) !important;
+  color: var(--divination-text-primary) !important;
+}
+
+.theme-starry .ant-input::placeholder,
+.theme-starry .ant-select-selection-placeholder {
+  color: var(--divination-text-tertiary) !important;
+}
+
+.theme-starry .ant-input:focus,
+.theme-starry .ant-input:hover,
+.theme-starry .ant-select-selector:hover,
+.theme-starry .ant-picker:hover {
+  border-color: var(--divination-primary) !important;
+  box-shadow: 0 0 0 2px var(--divination-primary-bg) !important;
+}
+
+/* Alert 暗色适配 */
+.theme-starry .ant-alert {
+  background: var(--divination-card-bg) !important;
+  border-color: var(--divination-border) !important;
+}
+
+.theme-starry .ant-alert-warning {
+  background: var(--divination-warning-bg) !important;
+  border-color: var(--divination-warning-border) !important;
+}
+
+/* Divider 暗色适配 */
+.theme-starry .ant-divider {
+  border-color: var(--divination-border) !important;
+}
+
+/* Tag 暗色适配 */
+.theme-starry .ant-tag {
+  background: var(--divination-primary-bg) !important;
+  border-color: var(--divination-border-primary) !important;
+  color: var(--divination-primary-light) !important;
+}
+
+/* Tabs 暗色适配 */
+.theme-starry .ant-tabs-tab {
+  color: var(--divination-text-secondary) !important;
+}
+
+.theme-starry .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--divination-primary-light) !important;
+}
+
+.theme-starry .ant-tabs-ink-bar {
+  background: var(--divination-primary) !important;
+}
+
+/* Radio/Checkbox 暗色适配 */
+.theme-starry .ant-radio-wrapper,
+.theme-starry .ant-checkbox-wrapper {
+  color: var(--divination-text-primary) !important;
+}
+
+/* Modal 暗色适配 */
+.theme-starry .ant-modal-content {
+  background: linear-gradient(180deg, #1E1B4B 0%, #0F0A1A 100%) !important;
+  border: 1px solid var(--divination-border) !important;
+}
+
+.theme-starry .ant-modal-header {
+  background: transparent !important;
+  border-bottom-color: var(--divination-border) !important;
+}
+
+.theme-starry .ant-modal-title {
+  color: var(--divination-text-primary) !important;
+}
+
+.theme-starry .ant-modal-close-x {
+  color: var(--divination-text-secondary) !important;
+}
+
+/* ==================== 通用页面容器 ==================== */
+
+.divination-page-container {
+  max-width: var(--divination-max-width);
+  margin: 0 auto;
+  padding: 12px;
+  padding-bottom: 80px;
+  min-height: 100vh;
+  background: var(--divination-page-bg);
+}
+
+/* ==================== 页面标题卡片 ==================== */
+
+.divination-header-card {
+  text-align: center;
+  margin-bottom: 16px;
+  background: linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 100%) !important;
+  border: none !important;
+  border-radius: 0 0 16px 16px !important; /* 上直角，下圆角 */
+  box-shadow: none;
+  position: relative;
+  margin-left: -12px;
+  margin-right: -12px;
+  margin-top: -12px;
+  width: calc(100% + 24px);
+}
+
+.divination-header-card .ant-card-body {
+  padding: 20px 16px;
+}
+
+.divination-header-card h3,
+.divination-header-card h4 {
+  color: #F7D3A1 !important;
+}
+
+.divination-header-card .ant-typography {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.divination-header-card .ant-typography-secondary {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ==================== 通用卡片样式 ==================== */
+
+.divination-card {
+  border-radius: var(--divination-radius-md) !important;
+  border: 1px solid var(--divination-border) !important;
+  margin-bottom: 12px;
+  background: var(--divination-card-bg);
+  transition: all 0.3s ease;
+}
+
+.divination-card:hover {
+  border-color: var(--divination-primary) !important;
+  box-shadow: var(--divination-shadow-md);
+}
+
+/* ==================== 主题色按钮 ==================== */
+
+.divination-btn-primary {
+  background: var(--divination-primary) !important;
+  border-color: var(--divination-primary) !important;
+  transition: all 0.3s ease;
+}
+
+.divination-btn-primary:hover,
+.divination-btn-primary:focus {
+  background: var(--divination-primary-dark) !important;
+  border-color: var(--divination-primary-dark) !important;
+}
+
+/* 金色按钮（用于强调/VIP） */
+.divination-btn-gold {
+  background: var(--divination-gold-gradient) !important;
+  border-color: var(--divination-gold) !important;
+  color: var(--divination-text-primary) !important;
+  font-weight: 500;
+}
+
+.divination-btn-gold:hover {
+  box-shadow: var(--divination-shadow-gold);
+}
+
+/* 紫色按钮（用于高级功能） */
+.divination-btn-purple {
+  background: var(--divination-purple-gradient) !important;
+  border-color: var(--divination-purple) !important;
+}
+
+.divination-btn-purple:hover {
+  background: var(--divination-purple-dark) !important;
+}
+
+/* ==================== 主题色链接和文字 ==================== */
+
+.divination-link,
+.divination-text-primary {
+  color: var(--divination-primary) !important;
+}
+
+.divination-link:hover {
+  color: var(--divination-primary-dark) !important;
+}
+
+.divination-text-gold {
+  color: var(--divination-gold) !important;
+}
+
+.divination-text-purple {
+  color: var(--divination-purple) !important;
+}
+
+/* ==================== 主题色图标背景 ==================== */
+
+.divination-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--divination-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--divination-primary-bg);
+  color: var(--divination-primary);
+  transition: all 0.3s ease;
+}
+
+.divination-icon-box:hover {
+  background: var(--divination-primary-bg-hover);
+  transform: scale(1.05);
+}
+
+.divination-icon-box-gold {
+  background: var(--divination-gold-bg);
+  color: var(--divination-gold-dark);
+}
+
+.divination-icon-box-purple {
+  background: var(--divination-purple-bg);
+  color: var(--divination-purple);
+}
+
+/* ==================== 功能说明卡片 ==================== */
+
+.divination-info-card {
+  border-radius: var(--divination-radius-md) !important;
+  background: var(--divination-info-bg) !important;
+  border: 1px solid var(--divination-border-primary) !important;
+}
+
+/* ==================== 分割线样式 ==================== */
+
+.divination-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--divination-text-primary);
+  margin-bottom: 12px;
+  padding-left: 8px;
+  border-left: 3px solid var(--divination-gold);
+}
+
+/* ==================== 加载状态 ==================== */
+
+.divination-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+/* ==================== 标签样式 ==================== */
+
+.divination-tag-primary {
+  color: var(--divination-primary) !important;
+  background: var(--divination-primary-bg) !important;
+  border-color: var(--divination-primary) !important;
+}
+
+.divination-tag-gold {
+  color: var(--divination-gold-dark) !important;
+  background: var(--divination-gold-bg) !important;
+  border-color: var(--divination-gold) !important;
+}
+
+.divination-tag-purple {
+  color: var(--divination-purple) !important;
+  background: var(--divination-purple-bg) !important;
+  border-color: var(--divination-purple-light) !important;
+}
+
+/* 五行标签 */
+.divination-tag-wood { color: var(--divination-wood) !important; background: rgba(82, 196, 26, 0.1) !important; }
+.divination-tag-fire { color: var(--divination-fire) !important; background: rgba(255, 77, 79, 0.1) !important; }
+.divination-tag-earth { color: var(--divination-gold-dark) !important; background: var(--divination-gold-bg) !important; }
+.divination-tag-metal { color: #666 !important; background: #f5f5f5 !important; border: 1px solid #d9d9d9 !important; }
+.divination-tag-water { color: var(--divination-water) !important; background: rgba(24, 144, 255, 0.1) !important; }
+
+.divination-page-container .ant-tag-processing {
+  color: var(--divination-primary);
+  background: var(--divination-primary-bg);
+  border-color: var(--divination-primary);
+}
+
+/* ==================== 输入框聚焦样式 ==================== */
+
+.divination-page-container .ant-input:focus,
+.divination-page-container .ant-input-focused,
+.divination-page-container .ant-input:hover,
+.divination-page-container .ant-picker:hover,
+.divination-page-container .ant-picker-focused,
+.divination-page-container .ant-select:hover .ant-select-selector,
+.divination-page-container .ant-select-focused .ant-select-selector {
+  border-color: var(--divination-primary) !important;
+}
+
+.divination-page-container .ant-input:focus,
+.divination-page-container .ant-input-focused {
+  box-shadow: 0 0 0 2px var(--divination-primary-bg) !important;
+}
+
+/* ==================== Tabs 样式覆盖 ==================== */
+
+.divination-page-container .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--divination-primary) !important;
+}
+
+.divination-page-container .ant-tabs-ink-bar {
+  background: var(--divination-primary) !important;
+}
+
+/* ==================== 进度条样式 ==================== */
+
+.divination-page-container .ant-progress-bg {
+  background: var(--divination-primary) !important;
+}
+
+/* ==================== 结果/提示卡片 ==================== */
+
+.divination-result-card {
+  background: linear-gradient(135deg, var(--divination-primary-bg) 0%, rgba(217, 104, 90, 0.05) 100%) !important;
+  border: 1px solid var(--divination-border-primary) !important;
+  border-radius: var(--divination-radius-md) !important;
+}
+
+/* 金色高亮卡片（用于重要结果） */
+.divination-highlight-card {
+  background: linear-gradient(135deg, var(--divination-gold-bg) 0%, rgba(212, 175, 55, 0.05) 100%) !important;
+  border: 1px solid var(--divination-gold) !important;
+  border-radius: var(--divination-radius-md) !important;
+  box-shadow: var(--divination-shadow-gold);
+}
+
+/* VIP/高级卡片 */
+.divination-vip-card {
+  background: var(--divination-purple-gradient) !important;
+  border: none !important;
+  border-radius: var(--divination-radius-md) !important;
+  color: white;
+}
+
+/* ==================== 警告提示样式 ==================== */
+
+.divination-alert-warning {
+  background: var(--divination-warning-bg) !important;
+  border: 1px solid var(--divination-warning-border) !important;
+  border-radius: var(--divination-radius-sm) !important;
+}
+
+/* ==================== 价格显示 ==================== */
+
+.divination-price {
+  color: var(--divination-gold-dark);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.divination-price-small {
+  color: var(--divination-gold);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* ==================== 响应式 ==================== */
+
+@media (max-width: 414px) {
+  .divination-page-container {
+    padding: 8px;
+    padding-bottom: 80px;
+  }
+}

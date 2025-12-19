@@ -76,7 +76,7 @@ const OrderDetailPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left' }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left' }}>
       <div style={{ padding: '8px 8px 0' }}>
         <Typography.Title level={4} style={{ margin: 0 }}>订单详情</Typography.Title>
         <Alert type="info" showIcon message="数据由 Subsquid 提供；动作使用直发或代付页入口。" />

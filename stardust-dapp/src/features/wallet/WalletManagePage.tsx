@@ -169,7 +169,7 @@ const WalletManagePage: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '480px',
+        maxWidth: '414px',
         margin: '0 auto',
         minHeight: '100vh',
         background: '#f5f5f5',
@@ -240,7 +240,7 @@ const WalletManagePage: React.FC = () => {
       <div style={{ padding: '16px' }}>
         <div
           style={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
             borderRadius: '16px',
             padding: '16px',
             color: '#fff',
@@ -461,7 +461,7 @@ const WalletManagePage: React.FC = () => {
                       width: '40px',
                       height: '40px',
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -531,7 +531,7 @@ const WalletManagePage: React.FC = () => {
           bottom: 0,
           left: 0,
           right: 0,
-          maxWidth: '480px',
+          maxWidth: '414px',
           margin: '0 auto',
           background: '#fff',
           borderTop: '1px solid #f0f0f0',

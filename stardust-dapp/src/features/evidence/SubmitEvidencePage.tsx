@@ -82,7 +82,7 @@ const SubmitEvidencePage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', paddingBottom: 88 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left', paddingBottom: 88 }}>
       {/* 顶部标题栏 */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: '#fff', padding: '8px 8px 0 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

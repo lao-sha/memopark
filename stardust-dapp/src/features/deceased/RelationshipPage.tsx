@@ -52,7 +52,7 @@ const RelationshipPage: React.FC = () => {
   }, [])
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 16 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 16 }}>
       {/* 顶部栏 */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>

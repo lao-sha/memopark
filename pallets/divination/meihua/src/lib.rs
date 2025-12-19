@@ -14,6 +14,11 @@
 //! - **五行**: 金、木、水、火、土
 //! - **体用关系**: 判断吉凶的核心依据
 //! - **本卦、变卦、互卦**: 完整的梅花易数排盘结果
+//!
+//! ## 农历转换
+//!
+//! 本模块使用 pallet-almanac 进行统一的公历农历转换，
+//! 避免重复实现农历算法，确保数据一致性。
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -25,8 +30,24 @@ pub use pallet::*;
 pub mod algorithm;
 pub mod constants;
 pub mod interpretation;
-pub mod lunar;
 pub mod types;
+
+// 农历模块改为从 pallet-almanac 重新导出
+// 保持 API 兼容性，但实际实现由 almanac 提供
+pub mod lunar {
+    //! 农历转换模块（重新导出自 pallet-almanac）
+    //!
+    //! 本模块为兼容层，实际实现由 pallet-almanac 提供。
+    //! 保留原有的类型别名以确保向后兼容。
+
+    pub use pallet_almanac::{
+        MeihuaLunarDate as LunarDate,
+        LunarConvertError as LunarError,
+        timestamp_to_meihua_lunar as timestamp_to_lunar,
+        hour_to_dizhi_num,
+        year_to_dizhi_num,
+    };
+}
 
 #[cfg(test)]
 mod mock;

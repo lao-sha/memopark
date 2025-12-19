@@ -226,7 +226,7 @@ export default function DecryptFilePage() {
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
         padding: '20px',
         position: 'relative'
       }}
@@ -249,7 +249,7 @@ export default function DecryptFilePage() {
       </div>
 
       {/* 主内容 */}
-      <div style={{ maxWidth: 480, margin: '60px auto 0', padding: '0 20px' }}>
+      <div style={{ maxWidth: 414, margin: '60px auto 0', padding: '0 20px' }}>
         <Card
           style={{
             borderRadius: '12px',
@@ -259,7 +259,7 @@ export default function DecryptFilePage() {
           <Space direction="vertical" style={{ width: '100%' }} size="large">
             {/* 标题 */}
             <div style={{ textAlign: 'center' }}>
-              <UnlockOutlined style={{ fontSize: 48, color: '#667eea', marginBottom: 16 }} />
+              <UnlockOutlined style={{ fontSize: 48, color: '#B2955D', marginBottom: 16 }} />
               <Typography.Title level={3} style={{ margin: 0 }}>
                 私密文件解密工具
               </Typography.Title>
@@ -318,7 +318,7 @@ export default function DecryptFilePage() {
               disabled={!cid || !password}
               style={{
                 height: 48,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
                 border: 'none',
                 fontSize: 16
               }}

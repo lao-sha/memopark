@@ -16,7 +16,7 @@ const MyOrders: React.FC = () => {
   }
   useEffect(() => { load() }, [])
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12, textAlign: 'left' }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12, textAlign: 'left' }}>
       <Space style={{ width: '100%', justifyContent: 'space-between' }}>
         <Typography.Title level={4}>我的购买</Typography.Title>
         <Space>

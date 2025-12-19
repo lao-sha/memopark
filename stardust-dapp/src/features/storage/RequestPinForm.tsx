@@ -40,7 +40,7 @@ export default function RequestPinForm() {
   }, [api, account])
 
   return (
-    <Card style={{ maxWidth: 480, margin: '0 auto' }}>
+    <Card style={{ maxWidth: 414, margin: '0 auto' }}>
       <Form layout="vertical" onFinish={onFinish}>
         <Form.Item label="签名账户地址（SS58）" required>
           <Input placeholder="请输入你的账户地址" value={account} onChange={e => setAccount(e.target.value)} />

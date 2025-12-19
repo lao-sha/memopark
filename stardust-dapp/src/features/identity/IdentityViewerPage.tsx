@@ -32,7 +32,7 @@ const IdentityViewerPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <Space direction="vertical" style={{ width:'100%' }} size={12}>
         {error && <Alert type="error" showIcon message={error} />}
         <Typography.Title level={4} style={{ margin: 0 }}>身份(Identity) 查看</Typography.Title>

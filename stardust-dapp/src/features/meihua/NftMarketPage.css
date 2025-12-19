@@ -1,13 +1,19 @@
 /**
  * 梅花易数 NFT 市场页面样式
+ * 主题色：青绿色 #5DBAAA（与导航栏统一）
  */
+
+@import '../divination/divination-common.css';
 
 /* ==================== 页面布局 ==================== */
 
 .nft-market-page {
-  max-width: 640px;
+  max-width: 414px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 12px;
+  padding-bottom: 80px;
+  min-height: 100vh;
+  background: #F5F5F7;
 }
 
 .page-header {
@@ -70,7 +76,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5DBAAA 0%, #4A9A8C 100%);
   border-bottom: 3px solid;
 }
 
@@ -114,7 +120,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5DBAAA 0%, #4A9A8C 100%);
   border-radius: 12px;
   border: 3px solid;
   flex-shrink: 0;
@@ -218,7 +224,7 @@
 
 /* ==================== 响应式调整 ==================== */
 
-@media (max-width: 480px) {
+@media (max-width: 414px) {
   .nft-market-page {
     padding: 12px;
   }

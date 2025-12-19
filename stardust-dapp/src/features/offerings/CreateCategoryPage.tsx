@@ -105,7 +105,7 @@ const CreateCategoryPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <Card title="创建类目">
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <Space direction="vertical" style={{ width: '100%' }} size={12}>

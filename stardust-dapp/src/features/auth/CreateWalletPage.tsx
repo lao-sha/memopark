@@ -172,7 +172,7 @@ const CreateWalletPage: React.FC<{ onCreated?: (address: string) => void }> = ({
 
   // 默认：显示错误页面（不应该到达这里）
   return (
-    <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: 16, maxWidth: 414, margin: '0 auto' }}>
       <Card>
         <Alert type="error" showIcon message="页面加载异常，请刷新重试" />
       </Card>

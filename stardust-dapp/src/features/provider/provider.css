@@ -1,0 +1,122 @@
+/* 大师入驻相关页面样式 */
+
+/* 入驻说明页 */
+.provider-info-page {
+  min-height: 100vh;
+}
+
+.provider-info-page .ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.provider-info-page .ant-collapse-header {
+  font-weight: 500;
+  color: #262626;
+}
+
+/* 注册页面 */
+.provider-register-page {
+  min-height: 100vh;
+}
+
+.provider-register-page .ant-steps-item-finish .ant-steps-item-icon {
+  background-color: #B2955D;
+  border-color: #B2955D;
+}
+
+.provider-register-page .ant-steps-item-process .ant-steps-item-icon {
+  background-color: #B2955D;
+  border-color: #B2955D;
+}
+
+.provider-register-page .ant-tag-checkable-checked {
+  background-color: #f5ead8;
+  border-color: #B2955D;
+}
+
+/* 主按钮样式 - 参考 market 页面 */
+.provider-register-page .ant-btn-primary {
+  background: #000000 !important;
+  border-color: #000000 !important;
+  color: #F7D3A1 !important;
+}
+
+.provider-register-page .ant-btn-primary span {
+  color: #F7D3A1 !important;
+}
+
+.provider-register-page .ant-btn-primary:hover:not(:disabled) {
+  background: #1a1a1a !important;
+  border-color: #1a1a1a !important;
+  color: #F7D3A1 !important;
+}
+
+.provider-register-page .ant-btn-primary:hover:not(:disabled) span {
+  color: #F7D3A1 !important;
+}
+
+/* 工作台页面 */
+.provider-dashboard {
+  min-height: 100vh;
+}
+
+.provider-dashboard .ant-statistic-title {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.provider-dashboard .ant-statistic-content-value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.provider-dashboard .ant-badge-count {
+  background-color: #ff4d4f;
+}
+
+/* 订单卡片 */
+.order-card {
+  transition: all 0.3s ease;
+}
+
+.order-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 市场页面入驻横幅 */
+.provider-recruitment-banner {
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.provider-recruitment-banner:hover {
+  transform: scale(1.02);
+}
+
+.provider-recruitment-banner .ant-btn-ghost {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.provider-recruitment-banner .ant-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 响应式调整 */
+@media (max-width: 576px) {
+  .provider-info-page .ant-col {
+    margin-bottom: 8px;
+  }
+
+  .provider-dashboard .ant-statistic-content-value {
+    font-size: 18px;
+  }
+
+  .provider-recruitment-banner .ant-space-item {
+    margin-bottom: 4px;
+  }
+}

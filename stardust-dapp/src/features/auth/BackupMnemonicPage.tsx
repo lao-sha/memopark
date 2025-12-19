@@ -65,7 +65,7 @@ const BackupMnemonicPage: React.FC<BackupMnemonicPageProps> = ({
     <div
       style={{
         padding: '20px',
-        maxWidth: '480px',
+        maxWidth: '414px',
         margin: '0 auto',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #fff7e6 0%, #ffffff 100%)',

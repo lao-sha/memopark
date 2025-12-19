@@ -26,7 +26,7 @@ export const AIStrategyDemo: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: 24, maxWidth: 414, margin: '0 auto' }}>
       <Title level={2}>🤖 AI 交易策略中心</Title>
       <Paragraph>
         基于深度学习的智能交易助手，提供实时市场分析和交易建议。

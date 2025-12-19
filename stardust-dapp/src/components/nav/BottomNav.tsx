@@ -1,12 +1,12 @@
 import React from 'react'
 import { Modal } from 'antd'
-import { HomeOutlined, TeamOutlined, WalletOutlined, PlusCircleOutlined, MessageOutlined, HeartOutlined } from '@ant-design/icons'
+import { HomeOutlined, TeamOutlined, WalletOutlined, MessageOutlined, TrophyOutlined } from '@ant-design/icons'
 
   /**
    * 函数级详细中文注释：底部固定导航栏（移动端5按钮）
-   * - 入口：主页、聊天、创建纪念馆（FAB）、我的纪念、我的钱包
+   * - 入口：首页、聊天、悬赏问答、大师解读、我的钱包
    * - 事件：优先触发 mp.nav 切换 `AuthEntryPage` 内部 Tab；同时回退到哈希路由
-   * - 样式：固定于底部，最大宽度 480px 居中（与页面宽度一致）
+   * - 样式：固定于底部，最大宽度 414px 居中（与页面宽度一致）
    * - 隐藏：在进入群聊详情页面时自动隐藏
    */
 const BottomNav: React.FC = () => {
@@ -18,12 +18,15 @@ const BottomNav: React.FC = () => {
    * 函数级中文注释：根据 hash 推断激活项
    * - 纪念馆首页（#/memorial 或 #/ 或 #/home）对应 home
    * - 聊天页面（#/chat）对应 chat
+   * - 悬赏问答页面（#/bounty）对应 bounty
+   * - 大师解读页面（#/market）对应 master
    */
   const computeActiveByHash = React.useCallback(() => {
     const h = window.location.hash || ''
     if (h === '#/' || h === '' || h === '#/home' || h === '#/memorial') return 'home'
     if (h.startsWith('#/chat') || h.startsWith('#/smart-chat')) return 'chat'
-    if (h.startsWith('#/memorial/my')) return 'my-memorial'
+    if (h.startsWith('#/bounty')) return 'bounty'
+    if (h.startsWith('#/market')) return 'master'
     if (h.startsWith('#/contacts')) return 'contacts'
     return 'home'
   }, [])
@@ -129,21 +132,21 @@ const BottomNav: React.FC = () => {
     <>
       {/* 底部导航栏 */}
       <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
-        <div style={{ 
-          maxWidth: 480, 
-          margin: '0 auto', 
-          background: '#fff', 
-          borderTop: '2px solid rgba(184, 134, 11, 0.2)',
-          boxShadow: '0 -2px 12px rgba(47, 79, 79, 0.08)',
+        <div style={{
+          maxWidth: 414,
+          margin: '0 auto',
+          background: '#fff',
+          borderTop: '1px solid #E5E5E5',
+          boxShadow: '0 -2px 12px rgba(178, 149, 93, 0.08)',
           padding: '8px 8px calc(8px + env(safe-area-inset-bottom))'
         }}>
-          <div style={{ 
+          <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr 64px 1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr',
             gap: 0,
             alignItems: 'center'
           }}>
-            <button onClick={() => go('home', '#/memorial')} style={{ ...btnStyle, ...(active==='home'?btnActiveHomeStyle:undefined) }}>
+            <button onClick={() => go('home', '#/')} style={{ ...btnStyle, ...(active==='home'?btnActiveHomeStyle:undefined) }}>
               <HomeOutlined style={{ fontSize: 22 }} />
               <span style={txtStyle}>首页</span>
             </button>
@@ -153,12 +156,14 @@ const BottomNav: React.FC = () => {
               <span style={txtStyle}>聊天</span>
             </button>
 
-            {/* FAB中心大按钮（占位，不计入grid流） */}
-            <div />
+            <button onClick={() => go('bounty', '#/bounty')} style={{ ...btnStyle, ...(active==='bounty'?btnActiveDivinationStyle:undefined) }}>
+              <TrophyOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>悬赏问答</span>
+            </button>
 
-            <button onClick={() => go('my-memorial', '#/memorial/my')} style={{ ...btnStyle, ...(active==='my-memorial'?btnActiveMemorialStyle:undefined) }}>
-              <HeartOutlined style={{ fontSize: 22 }} />
-              <span style={txtStyle}>我的纪念</span>
+            <button onClick={() => go('master', '#/market')} style={{ ...btnStyle, ...(active==='master'?btnActiveMasterStyle:undefined) }}>
+              <TeamOutlined style={{ fontSize: 22 }} />
+              <span style={txtStyle}>大师解读</span>
             </button>
 
             <button onClick={() => go('my-wallet', '#/profile')} style={{ ...btnStyle, ...(active==='my-wallet'?btnActiveWalletStyle:undefined) }}>
@@ -167,60 +172,6 @@ const BottomNav: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
-
-      {/* FAB浮动创建按钮 */}
-      <div style={{
-        position: 'fixed',
-        left: '50%',
-        bottom: 'calc(28px + env(safe-area-inset-bottom))',
-        transform: 'translateX(-50%)',
-        zIndex: 1001
-      }}>
-        <button
-          onClick={() => {
-            // 显示创建菜单
-            const needAddr = !current
-            if (needAddr) {
-              Modal.confirm({
-                title: '需要钱包',
-                content: '请先登录或创建本地钱包后再创建纪念馆',
-                okText: '去创建钱包',
-                cancelText: '取消',
-                onOk: () => { 
-                  try { window.dispatchEvent(new CustomEvent('mp.nav', { detail: { tab: 'create' } })) } catch {} 
-                }
-              })
-              return
-            }
-            // 直接跳转创建纪念馆
-            // 跳转到逝者创建页
-            try { window.location.hash = '#/deceased/create' } catch {}
-          }}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            border: 'none',
-            background: 'linear-gradient(135deg, #B8860B 0%, #D4AF37 100%)',
-            color: '#fff',
-            fontSize: 28,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(184, 134, 11, 0.3)',
-            transition: 'all 0.2s ease'
-          }}
-          onTouchStart={(e) => {
-            e.currentTarget.style.transform = 'scale(0.95)'
-          }}
-          onTouchEnd={(e) => {
-            e.currentTarget.style.transform = 'scale(1)'
-          }}
-        >
-          <PlusCircleOutlined />
-        </button>
       </div>
     </>
   )
@@ -256,43 +207,51 @@ const txtStyle: React.CSSProperties = {
 }
 
 /**
- * 函数级中文注释：激活态样式（统一青绿色）
- * 参考图片配色：青绿色 #5DBAAA（云上思念风格）
+ * 函数级中文注释：激活态样式（统一金棕色）
+ * 参考问真排盘风格：金棕色 #B2955D
  */
 const btnActiveStyle: React.CSSProperties = {
-  color: '#5DBAAA',
+  color: '#B2955D',
   fontWeight: 600
 }
 
 /**
- * 函数级中文注释：首页激活态样式（青绿色）
+ * 函数级中文注释：首页激活态样式（金棕色）
  */
 const btnActiveHomeStyle: React.CSSProperties = {
-  color: '#5DBAAA',
+  color: '#B2955D',
   fontWeight: 600
 }
 
 /**
- * 函数级中文注释：聊天激活态样式（青绿色）
+ * 函数级中文注释：聊天激活态样式（金棕色）
  */
 const btnActiveChatStyle: React.CSSProperties = {
-  color: '#5DBAAA',
+  color: '#B2955D',
   fontWeight: 600
 }
 
 /**
- * 函数级中文注释：我的纪念馆激活态样式（青绿色）
+ * 函数级中文注释：太极玄鉴激活态样式（金棕色）
  */
-const btnActiveMemorialStyle: React.CSSProperties = {
-  color: '#5DBAAA',
+const btnActiveDivinationStyle: React.CSSProperties = {
+  color: '#B2955D',
   fontWeight: 600
 }
 
 /**
- * 函数级中文注释：钱包激活态样式（青绿色）
+ * 函数级中文注释：大师解读激活态样式（金棕色）
+ */
+const btnActiveMasterStyle: React.CSSProperties = {
+  color: '#B2955D',
+  fontWeight: 600
+}
+
+/**
+ * 函数级中文注释：钱包激活态样式（金棕色）
  */
 const btnActiveWalletStyle: React.CSSProperties = {
-  color: '#5DBAAA',
+  color: '#B2955D',
   fontWeight: 600
 }
 

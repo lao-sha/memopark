@@ -1,97 +1,169 @@
 /**
- * 函数级详细中文注释：我的钱包页面样式（统一青绿色UI风格）
+ * 函数级详细中文注释：我的钱包页面样式（参考问真排盘风格）
  *
  * 设计目标：
- * - 统一青绿色 #5DBAAA 主题风格，与底部导航栏保持一致
- * - 移动端优先设计（max-width: 480px）
- * - 简洁现代的卡片式布局
- * - 清晰的视觉层次和良好的用户体验
- * - 符合金融应用的严谨和专业感
+ * - 黑色顶部栏，参考问真排盘"我的"页面风格
+ * - 金棕色 #B2955D 主题
+ * - 移动端优先设计（max-width: 414px）
  */
 
 /* 主容器 */
 .wallet-page {
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
   min-height: 100vh;
-  background: linear-gradient(180deg, #F0F9F8 0%, #FAFAFA 100%);
-  padding-bottom: 80px; /* 为底部导航留空间 */
+  background: #f5f5f5;
+  padding-bottom: 80px;
 }
 
-/* 顶部用户信息区域 */
-.wallet-header {
-  background: #fff;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
-  margin-bottom: 16px;
-}
-
-.user-info {
+/* ==================== 黑色顶部用户信息区域 ==================== */
+.wallet-top-header {
+  background: linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 100%);
+  padding: 24px 20px;
   display: flex;
   align-items: center;
   gap: 16px;
-  flex: 1;
 }
 
-.user-avatar {
+/* 头像 */
+.header-avatar {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%);
+  border: 2px solid #B2955D;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3);
-  fontSize: 24px;
-  color: #fff;
+  flex-shrink: 0;
+}
+
+.header-avatar .avatar-text {
+  font-size: 24px;
+  color: #1a1a1a;
   font-weight: bold;
 }
 
-.user-details {
+/* 用户信息 */
+.header-user-info {
   flex: 1;
+  min-width: 0;
 }
 
-.user-name {
+.header-user-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
-}
-
-.user-name .wallet-text-primary {
-  font-size: 18px;
-}
-
-.edit-nickname-btn {
-  font-size: 14px;
-  color: #8c8c8c;
-  cursor: pointer;
-  transition: color 0.3s;
-}
-
-.edit-nickname-btn:hover {
-  color: #5DBAAA;
-}
-
-.user-address-info {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 
-.notification-badge {
-  color: #8c8c8c;
-  font-size: 24px;
+.header-nickname {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.header-edit-btn {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   transition: color 0.3s;
 }
 
-.notification-badge:hover {
-  color: #5DBAAA;
+.header-edit-btn:hover {
+  color: #F7D3A1;
+}
+
+.header-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.header-tag.vip {
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%);
+  border: none;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.header-address {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'Courier New', monospace;
+}
+
+.header-notification {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.header-notification:hover {
+  color: #F7D3A1;
+}
+
+/* ==================== VIP会员卡片 ==================== */
+.vip-card {
+  margin: -12px 16px 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(178, 149, 93, 0.3);
+  transition: all 0.3s ease;
+}
+
+.vip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(178, 149, 93, 0.4);
+}
+
+.vip-card-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vip-icon {
+  font-size: 24px;
+}
+
+.vip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vip-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.vip-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.vip-card-btn {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* 快捷操作卡片区域 */
@@ -114,14 +186,14 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(93, 186, 170, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border: 2px solid transparent;
 }
 
 .action-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(93, 186, 170, 0.2);
-  border-color: rgba(93, 186, 170, 0.1);
+  box-shadow: 0 4px 16px rgba(178, 149, 93, 0.2);
+  border-color: rgba(178, 149, 93, 0.1);
 }
 
 .action-icon {
@@ -136,7 +208,7 @@
 }
 
 .action-icon.transfer {
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%);
 }
 
 .action-icon.receive {
@@ -169,7 +241,7 @@
   border-radius: 16px;
   margin: 0 16px;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(93, 186, 170, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .menu-item {
@@ -179,7 +251,7 @@
   justify-content: space-between;
   cursor: pointer;
   transition: all 0.3s ease;
-  border-bottom: 1px solid rgba(93, 186, 170, 0.1);
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .menu-item:last-child {
@@ -187,11 +259,11 @@
 }
 
 .menu-item:hover {
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
 }
 
 .menu-item.active {
-  background: rgba(93, 186, 170, 0.1);
+  background: rgba(178, 149, 93, 0.1);
 }
 
 .menu-left {
@@ -202,7 +274,7 @@
 }
 
 .menu-icon {
-  color: #5DBAAA;
+  color: #B2955D;
   display: flex;
   align-items: center;
   font-size: 20px;
@@ -221,7 +293,7 @@
 }
 
 .menu-badge {
-  background-color: #5DBAAA !important;
+  background-color: #B2955D !important;
   box-shadow: 0 0 0 1px #fff;
 }
 
@@ -238,7 +310,7 @@
 /* 分组间隔 */
 .menu-divider {
   height: 8px;
-  background: rgba(93, 186, 170, 0.05);
+  background: #f5f5f5;
   margin: 0 -16px;
 }
 
@@ -248,15 +320,15 @@
   bottom: 0;
   left: 0;
   right: 0;
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
   background: #fff;
-  border-top: 2px solid rgba(93, 186, 170, 0.1);
+  border-top: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-around;
   padding: 8px 0;
   z-index: 1000;
-  box-shadow: 0 -2px 12px rgba(93, 186, 170, 0.1);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .nav-item {
@@ -271,11 +343,11 @@
 }
 
 .nav-item:hover {
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
 }
 
 .nav-item.active {
-  background: rgba(93, 186, 170, 0.1);
+  background: rgba(178, 149, 93, 0.1);
 }
 
 .nav-icon {
@@ -297,7 +369,7 @@
 }
 
 .nav-text.active {
-  color: #5DBAAA;
+  color: #B2955D;
 }
 
 .nav-text.inactive {
@@ -323,15 +395,15 @@
 }
 
 .wallet-modal .ant-modal-header {
-  background: linear-gradient(135deg, #F0F9F8 0%, #FAFAFA 100%);
-  border-bottom: 2px solid rgba(93, 186, 170, 0.15);
+  background: #f5f5f5;
+  border-bottom: 1px solid #f0f0f0;
   padding: 16px 20px;
 }
 
 .wallet-modal .ant-modal-title {
   font-size: 18px;
   font-weight: 600;
-  color: #2F4F4F;
+  color: #333;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -355,16 +427,16 @@
 }
 
 .nickname-form .ant-input:focus {
-  border-color: #5DBAAA !important;
-  box-shadow: 0 0 0 2px rgba(93, 186, 170, 0.15) !important;
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.15) !important;
 }
 
 .nickname-tips {
-  background: rgba(93, 186, 170, 0.08);
+  background: rgba(178, 149, 93, 0.08);
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 12px;
-  border-left: 4px solid #5DBAAA;
+  border-left: 4px solid #B2955D;
 }
 
 .nickname-tips .wallet-text-secondary {
@@ -384,7 +456,7 @@
   padding: 20px;
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.15);
+  box-shadow: 0 4px 12px rgba(178, 149, 93, 0.15);
   margin-bottom: 24px;
 }
 
@@ -402,15 +474,15 @@
 }
 
 .address-display {
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
   padding: 12px;
   border-radius: 8px;
-  border: 2px solid rgba(93, 186, 170, 0.1);
+  border: 2px solid rgba(178, 149, 93, 0.1);
   word-break: break-all;
   text-align: center;
   font-size: 13px;
   font-family: 'Courier New', monospace;
-  color: #2F4F4F;
+  color: #333;
 }
 
 .copy-address-btn {
@@ -418,24 +490,24 @@
   border-radius: 24px !important;
   font-size: 16px !important;
   font-weight: 600 !important;
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%) !important;
   border: none !important;
-  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(178, 149, 93, 0.3) !important;
 }
 
 .copy-address-btn:hover {
-  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
-  box-shadow: 0 6px 16px rgba(93, 186, 170, 0.4) !important;
+  background: linear-gradient(135deg, #9A7D4A 0%, #B2955D 100%) !important;
+  box-shadow: 0 6px 16px rgba(178, 149, 93, 0.4) !important;
   transform: translateY(-2px);
 }
 
 .receive-tips {
   margin-top: 16px;
   padding: 12px;
-  background: rgba(93, 186, 170, 0.08);
+  background: rgba(178, 149, 93, 0.08);
   border-radius: 8px;
   width: 100%;
-  border-left: 4px solid #5DBAAA;
+  border-left: 4px solid #B2955D;
 }
 
 /* 链上数据弹窗 */
@@ -443,15 +515,15 @@
   margin-bottom: 24px;
   padding: 16px;
   border-radius: 8px;
-  border: 2px solid rgba(93, 186, 170, 0.1);
+  border: 2px solid rgba(178, 149, 93, 0.1);
 }
 
 .chain-data-section.primary {
-  background: linear-gradient(135deg, rgba(93, 186, 170, 0.15) 0%, rgba(125, 212, 198, 0.15) 100%);
+  background: linear-gradient(135deg, rgba(178, 149, 93, 0.15) 0%, rgba(201, 176, 122, 0.15) 100%);
 }
 
 .chain-data-section.secondary {
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
 }
 
 .chain-data-title {
@@ -459,7 +531,7 @@
   font-weight: 600;
   margin-bottom: 12px;
   display: block;
-  color: #2F4F4F;
+  color: #333;
 }
 
 .chain-data-loading {
@@ -468,26 +540,26 @@
 }
 
 .chain-data-loading .ant-spin-dot-item {
-  background-color: #5DBAAA !important;
+  background-color: #B2955D !important;
 }
 
 .chain-data-tips {
   margin-top: 16px;
   padding: 12px;
-  background: rgba(93, 186, 170, 0.08);
+  background: rgba(178, 149, 93, 0.08);
   border-radius: 8px;
-  border-left: 4px solid #5DBAAA;
+  border-left: 4px solid #B2955D;
 }
 
 .refresh-btn {
-  color: #5DBAAA !important;
-  border-color: rgba(93, 186, 170, 0.3) !important;
+  color: #B2955D !important;
+  border-color: rgba(178, 149, 93, 0.3) !important;
 }
 
 .refresh-btn:hover {
-  color: #4AA896 !important;
-  border-color: #4AA896 !important;
-  background: rgba(93, 186, 170, 0.05) !important;
+  color: #9A7D4A !important;
+  border-color: #9A7D4A !important;
+  background: rgba(178, 149, 93, 0.05) !important;
 }
 
 /* 治理平台弹窗 */
@@ -502,13 +574,13 @@
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%);
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 40px;
   margin-bottom: 24px;
-  box-shadow: 0 8px 24px rgba(93, 186, 170, 0.3);
+  box-shadow: 0 8px 24px rgba(178, 149, 93, 0.3);
 }
 
 .governance-description {
@@ -521,7 +593,7 @@
   display: block;
   margin-bottom: 12px;
   font-weight: 600;
-  color: #2F4F4F;
+  color: #333;
 }
 
 .governance-subtitle {
@@ -533,16 +605,16 @@
   width: 100%;
   margin-bottom: 16px;
   padding: 16px;
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
   border-radius: 8px;
-  border: 2px solid rgba(93, 186, 170, 0.1);
+  border: 2px solid rgba(178, 149, 93, 0.1);
   text-align: center;
 }
 
 .governance-link-text {
   font-size: 14px;
   font-family: 'Courier New', monospace;
-  color: #5DBAAA;
+  color: #B2955D;
   word-break: break-all;
   font-weight: 600;
 }
@@ -552,23 +624,23 @@
   border-radius: 24px !important;
   font-size: 16px !important;
   font-weight: 600 !important;
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%) !important;
   border: none !important;
   margin-bottom: 16px;
-  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(178, 149, 93, 0.3) !important;
 }
 
 .governance-tips {
   width: 100%;
   padding: 12px;
-  background: rgba(93, 186, 170, 0.08);
+  background: rgba(178, 149, 93, 0.08);
   border-radius: 8px;
-  border-left: 4px solid #5DBAAA;
+  border-left: 4px solid #B2955D;
 }
 
 /* 按钮统一样式 */
 .wallet-btn-primary {
-  background: linear-gradient(135deg, #5DBAAA 0%, #7DD4C6 100%) !important;
+  background: linear-gradient(135deg, #B2955D 0%, #C9B07A 100%) !important;
   border: none !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
@@ -576,14 +648,14 @@
 }
 
 .wallet-btn-primary:hover {
-  background: linear-gradient(135deg, #4AA896 0%, #5DBAAA 100%) !important;
+  background: linear-gradient(135deg, #9A7D4A 0%, #B2955D 100%) !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(93, 186, 170, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(178, 149, 93, 0.3) !important;
 }
 
 /* 文本样式 */
 .wallet-text-primary {
-  color: #2F4F4F;
+  color: #333;
   font-weight: 600;
 }
 
@@ -593,7 +665,7 @@
 }
 
 .wallet-text-accent {
-  color: #5DBAAA;
+  color: #B2955D;
   font-weight: 600;
 }
 
@@ -606,17 +678,17 @@
 .wallet-descriptions .ant-descriptions-item-label {
   color: #8c8c8c;
   font-weight: 500;
-  background: rgba(93, 186, 170, 0.05);
+  background: rgba(178, 149, 93, 0.05);
 }
 
 .wallet-descriptions .ant-descriptions-item-content {
-  color: #2F4F4F;
+  color: #333;
   font-weight: 500;
 }
 
 /* 账户余额特殊样式 */
 .balance-highlight {
-  color: #5DBAAA !important;
+  color: #B2955D !important;
   font-weight: 600;
   font-size: 14px;
 }

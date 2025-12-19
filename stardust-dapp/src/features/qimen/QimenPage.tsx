@@ -20,6 +20,7 @@ import {
   Radio,
   Spin,
   Switch,
+  Modal,
 } from 'antd';
 import {
   CompassOutlined,
@@ -29,6 +30,8 @@ import {
   CloudOutlined,
   DesktopOutlined,
   BookOutlined,
+  QuestionCircleOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -62,6 +65,7 @@ import {
   getYiMaGong,
 } from '../../types/qimen';
 import * as qimenService from '../../services/qimenService';
+import './QimenPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -265,6 +269,9 @@ const QimenPage: React.FC = () => {
   const [useChain, setUseChain] = useState(false); // 是否使用链端
   const [chainChartId, setChainChartId] = useState<number | null>(null);
 
+  // 说明弹窗状态
+  const [showInstructions, setShowInstructions] = useState(false);
+
   /**
    * 查看详细解卦
    */
@@ -353,19 +360,119 @@ const QimenPage: React.FC = () => {
   }, []);
 
   /**
+   * 渲染说明弹窗
+   */
+  const renderInstructionsModal = () => (
+    <Modal
+      title={
+        <span style={{ fontSize: 18, fontWeight: 600 }}>
+          <QuestionCircleOutlined style={{ marginRight: 8, color: '#B2955D' }} />
+          奇门遁甲 · 起局说明
+        </span>
+      }
+      open={showInstructions}
+      onCancel={() => setShowInstructions(false)}
+      footer={null}
+      width={460}
+      style={{ top: 20 }}
+    >
+      <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px 0' }}>
+        {/* 温馨提示 */}
+        <Title level={5} style={{ color: '#B2955D', marginTop: 16 }}>温馨提示</Title>
+        <Paragraph>
+          起局结果将上链保存，可永久查询。起局需要支付少量 Gas 费用。本地起局可快速预览盘面结构。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 奇门遁甲基础 */}
+        <Title level={5} style={{ color: '#B2955D' }}>奇门遁甲基础</Title>
+        <Paragraph>
+          <Text strong>奇门遁甲</Text>是中国古代最高层次的预测学，号称"帝王之学"，被誉为易经最高层次的预测学。以《易经》八卦为基础，融合天文历法、阴阳五行、八卦九宫等多种学说，用于预测战争、决策、运筹、择时等。
+        </Paragraph>
+        <Paragraph>
+          奇门遁甲将时空、天文、地理、人事完美结合，通过排盘分析天时地利人和，精确判断事物发展趋势和最佳行动时机。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 四盘结构说明 */}
+        <Title level={5} style={{ color: '#B2955D' }}>四盘结构</Title>
+
+        <Paragraph>
+          <Text strong style={{ color: '#B2955D' }}>• 天盘（九星）：</Text>代表天时，包括天蓬、天任、天冲、天辅、天英、天芮、天柱、天心、天禽九星，主管吉凶祸福
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 地盘（九宫）：</Text>代表地利，分为乾、坎、艮、震、巽、离、坤、兑、中九宫，对应八卦方位
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 人盘（八门）：</Text>代表人和，包括休、生、伤、杜、景、死、惊、开八门，主管行动方向
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 神盘（八神）：</Text>辅助判断，包括值符、螣蛇、太阴、六合、白虎、玄武、九地、九天八神
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 三奇六仪 */}
+        <Title level={5} style={{ color: '#B2955D' }}>三奇六仪</Title>
+        <Paragraph>
+          <Text strong>三奇：</Text>乙（日奇）、丙（月奇）、丁（星奇），为吉利之象，代表智慧、机遇、贵人
+          <br />
+          <Text strong>六仪：</Text>戊、己、庚、辛、壬、癸，为十天干中的六仪，代表不同的能量状态
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 区块链优势 */}
+        <Title level={5} style={{ color: '#B2955D' }}>区块链优势</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>链上存储：</Text>所有排盘数据上链保存，永不丢失
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>可追溯性：</Text>随时可查询历史记录，包含完整的起局信息
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>智能分析：</Text>链端AI自动分析格局，提供专业解读
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>隐私保护：</Text>可选择公开或私密，保护个人隐私
+            </li>
+          </ul>
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 操作提示 */}
+        <Title level={5} style={{ color: '#B2955D' }}>操作提示</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>起局前请心诚意诚，专注于所问之事</li>
+            <li style={{ marginBottom: 8 }}>同一问题不宜短期内重复占测</li>
+            <li style={{ marginBottom: 8 }}>链端起局需要连接钱包并支付少量 Gas 费用</li>
+            <li style={{ marginBottom: 8 }}>本地起局可快速预览盘面结构，不上链存储</li>
+            <li style={{ marginBottom: 8 }}>如需专业解读，可前往"占卜服务市场"寻找大师</li>
+          </ul>
+        </Paragraph>
+      </div>
+    </Modal>
+  );
+
+  /**
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card">
-      <Title level={4} className="page-title">
-        <CompassOutlined /> 奇门遁甲 · 起局
+    <Card className="input-card" style={{ position: 'relative' }}>
+      <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
+        起局
       </Title>
-      <Paragraph type="secondary" className="page-subtitle">
+      <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
         帝王之学，运筹帷幄
-      </Paragraph>
+      </Text>
+
+      <Divider style={{ margin: '16px 0' }} />
 
       {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <Switch
           checked={useChain}
           onChange={setUseChain}
@@ -377,17 +484,16 @@ const QimenPage: React.FC = () => {
         </Text>
       </div>
 
-      <Divider />
-
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         {/* 占测日期 */}
-        <div>
+        <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 8 }}>
           <Text strong><CalendarOutlined /> 占测日期</Text>
           <DatePicker
             style={{ width: '100%', marginTop: 8 }}
             placeholder="选择日期"
             value={selectedDate}
             onChange={setSelectedDate}
+            variant="borderless"
           />
         </div>
 
@@ -415,7 +521,7 @@ const QimenPage: React.FC = () => {
           </div>
         </div>
 
-        <Divider />
+        <Divider style={{ margin: '16px 0' }} />
 
         {/* 操作按钮 */}
         <Button
@@ -425,10 +531,19 @@ const QimenPage: React.FC = () => {
           onClick={handleCalculate}
           loading={loading}
           icon={<CompassOutlined />}
+          style={{
+            background: '#000000',
+            borderColor: '#000000',
+            borderRadius: '54px',
+            height: '54px',
+            fontSize: '19px',
+            fontWeight: '700',
+            color: '#F7D3A1',
+          }}
         >
           排盘
         </Button>
-        <Button block onClick={handleReset} icon={<ReloadOutlined />}>
+        <Button block onClick={handleReset} icon={<ReloadOutlined />} style={{ borderRadius: '27px', height: '44px' }}>
           重置
         </Button>
       </Space>
@@ -629,48 +744,70 @@ const QimenPage: React.FC = () => {
   };
 
   return (
-    <div className="qimen-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div className="qimen-page">
+      {/* 顶部导航卡片 - 复刻八字页面风格 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+        {/* 左边：我的排盘 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+          onClick={() => (window.location.hash = '#/qimen/list')}
+        >
+          <HistoryOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>我的排盘</div>
+        </div>
+
+        {/* 中间：奇门遁甲 */}
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>奇门遁甲</div>
+
+        {/* 右边：使用说明 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', cursor: 'pointer' }}
+          onClick={() => setShowInstructions(true)}
+        >
+          <QuestionCircleOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>说明</div>
+        </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
       <Spin spinning={loading}>
         {renderInputForm()}
         {renderChainResult()}
         {renderPan()}
       </Spin>
 
-      {/* 说明卡片 */}
-      <Card style={{ marginTop: 16 }}>
-        <Title level={5}>奇门遁甲说明</Title>
-        <Space direction="vertical" size={8}>
-          <div>
-            <Text strong>四盘结构：</Text>
-            <Text type="secondary">天盘（九星）、地盘（九宫）、人盘（八门）、神盘（八神）</Text>
-          </div>
-          <div>
-            <Text strong>三奇六仪：</Text>
-            <Text type="secondary">乙丙丁为三奇，戊己庚辛壬癸为六仪</Text>
-          </div>
-          <div>
-            <Text strong>八门吉凶：</Text>
-            <Text type="secondary">
-              <Tag color={BA_MEN_COLORS[BaMen.Kai]}>开门吉</Tag>
-              <Tag color={BA_MEN_COLORS[BaMen.Xiu]}>休门吉</Tag>
-              <Tag color={BA_MEN_COLORS[BaMen.Sheng]}>生门吉</Tag>
-              <Tag color={BA_MEN_COLORS[BaMen.Si]}>死门凶</Tag>
-              <Tag color={BA_MEN_COLORS[BaMen.Jing2]}>惊门凶</Tag>
-              <Tag color={BA_MEN_COLORS[BaMen.Shang]}>伤门凶</Tag>
-            </Text>
-          </div>
-          <div>
-            <Text strong>局数：</Text>
-            <Text type="secondary">阳遁一至九局，阴遁一至九局，共18局</Text>
-          </div>
-        </Space>
-      </Card>
+      {/* 说明弹窗 */}
+      {renderInstructionsModal()}
 
       {/* 底部导航 */}
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
-          <HistoryOutlined /> 返回占卜入口
-        </Button>
+      <div className="bottom-nav">
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/qimen/list')}>
+            <HistoryOutlined /> 我的排盘
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
       </div>
     </div>
   );

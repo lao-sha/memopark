@@ -4,7 +4,7 @@
  * 设计参考: https://m.yssn.cn/wap/index/pc_index.html
  *
  * 样式特点：
- * - 移动端优先设计（max-width: 480px）
+ * - 移动端优先设计（max-width: 414px）
  * - 统一配色：主色调青绿色 #5DBAAA（与底部导航栏一致）
  * - 辅助色：深青色 #2F4F4F、米白 #F5F5DC
  * - 简洁优雅的卡片式布局
@@ -51,7 +51,7 @@
 
 /* 主要内容区域 */
 .page-content {
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -457,7 +457,7 @@
 /* 响应式设计 */
 @media (min-width: 768px) {
   .create-deceased-page {
-    max-width: 480px;
+    max-width: 414px;
     margin: 0 auto;
     box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
   }

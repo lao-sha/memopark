@@ -7,6 +7,12 @@ pub struct Cli {
 
     #[clap(flatten)]
     pub run: RunCmd,
+
+    /// 黄历 API AppCode (阿里云)
+    /// 也可通过环境变量 ALMANAC_APPCODE 设置
+    /// 用于 Off-chain Worker 获取黄历数据
+    #[clap(long)]
+    pub almanac_appcode: Option<String>,
 }
 
 #[derive(Debug, clap::Subcommand)]

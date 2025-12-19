@@ -52,7 +52,7 @@
 
 /* ============== 移动端内容区域 ============== */
 .mobile-content {
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -271,7 +271,7 @@
 /* ============== 大屏幕居中 ============== */
 @media (min-width: 768px) {
   .mobile-page-container {
-    max-width: 480px;
+    max-width: 414px;
     margin: 0 auto;
     box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
   }

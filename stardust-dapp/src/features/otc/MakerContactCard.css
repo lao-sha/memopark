@@ -344,7 +344,7 @@
 }
 
 /* 确保卡片在移动端的可读性 */
-@media (max-width: 480px) {
+@media (max-width: 414px) {
   .maker-contact-card .ant-card-body {
     padding: 16px 12px;
   }

@@ -308,7 +308,7 @@ export default function MarketMakerConfigPage() {
       {/* 主内容区域 */}
       <div
         style={{
-          maxWidth: '480px',
+          maxWidth: '414px',
           margin: '0 auto',
         }}
       >

@@ -102,7 +102,7 @@ const ReferralBindPage: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: 12, maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: 12, maxWidth: 414, margin: '0 auto' }}>
       <Card size="small" title="按码绑定上家（一次性）">
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <Typography.Text>当前账户：<Typography.Text code>{current || '（未选择）'}</Typography.Text></Typography.Text>

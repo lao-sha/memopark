@@ -10,7 +10,7 @@
   min-height: 100vh;
   background: linear-gradient(180deg, #87CEEB 0%, #B0C4DE 30%, #808080 100%);
   overflow: hidden;
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
 }
 
@@ -392,7 +392,7 @@
   padding: 12px 16px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgba(51, 51, 51, 0.95) 0%, #222 100%);
-  max-width: 480px;
+  max-width: 414px;
   margin: 0 auto;
 }
 
@@ -436,12 +436,12 @@
 /* 适配最大宽度 */
 @media (min-width: 480px) {
   .graveyard-view {
-    max-width: 480px;
+    max-width: 414px;
     margin: 0 auto;
   }
 
   .graveyard-actions {
-    max-width: 480px;
+    max-width: 414px;
     left: 50%;
     transform: translateX(-50%);
   }

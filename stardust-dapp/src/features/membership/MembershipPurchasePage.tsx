@@ -214,7 +214,7 @@ const MembershipPurchasePage: React.FC = () => {
   ]
 
   return (
-    <div style={{ padding: '60px 20px 80px', maxWidth: '480px', margin: '0 auto' }}>
+    <div style={{ padding: '60px 20px 80px', maxWidth: '414px', margin: '0 auto' }}>
       {/* 返回按钮 */}
       <Button
         icon={<ArrowLeftOutlined />}
@@ -226,7 +226,7 @@ const MembershipPurchasePage: React.FC = () => {
 
       {/* 标题 */}
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <Title level={2} style={{ color: '#667eea', marginBottom: '8px' }}>
+        <Title level={2} style={{ color: '#B2955D', marginBottom: '8px' }}>
           购买年费会员
         </Title>
         <Text type="secondary">

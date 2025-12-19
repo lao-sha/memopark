@@ -2,6 +2,7 @@
  * 悬赏回答提交组件
  *
  * 允许大师提交对悬赏问题的解读回答
+ * 修复：更新导入路径从 ../../ 到 ../../../
  */
 
 import React, { useState } from 'react';
@@ -26,14 +27,14 @@ import {
 } from '@ant-design/icons';
 import type {
   BountyQuestion,
-} from '../../types/divination';
+} from '../../../types/divination';
 import {
   DIVINATION_TYPE_NAMES,
   DIVINATION_TYPE_ICONS,
   formatBountyAmount,
   canSubmitAnswer,
   getBountyTimeRemaining,
-} from '../../types/divination';
+} from '../../../types/divination';
 import { BountyService } from '../../services/bountyService';
 
 const { Title, Text, Paragraph } = Typography;

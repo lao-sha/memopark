@@ -20,6 +20,7 @@ import {
   Radio,
   Spin,
   Switch,
+  Modal,
 } from 'antd';
 import {
   StarOutlined,
@@ -29,6 +30,9 @@ import {
   CalendarOutlined,
   CloudOutlined,
   DesktopOutlined,
+  UnorderedListOutlined,
+  QuestionCircleOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -54,6 +58,7 @@ import {
   getSiHuaDescription,
 } from '../../types/ziwei';
 import * as ziweiService from '../../services/ziweiService';
+import './ZiweiPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -242,6 +247,9 @@ const ZiweiPage: React.FC = () => {
   const [useChain, setUseChain] = useState(false); // 是否使用链端
   const [chainChartId, setChainChartId] = useState<number | null>(null);
 
+  // 说明弹窗状态
+  const [showInstructions, setShowInstructions] = useState(false);
+
   /**
    * 本地排盘
    */
@@ -259,7 +267,12 @@ const ZiweiPage: React.FC = () => {
       gender
     );
     setChart(result);
-    message.success('命盘排列完成');
+    message.success('命盘排列完成（本地模拟）');
+
+    // 提示用户可以查看解盘详情
+    setTimeout(() => {
+      message.info('本地排盘仅供预览，使用链端排盘可获得完整解读');
+    }, 1000);
   }, [birthDate, birthHour, gender]);
 
   /**
@@ -283,8 +296,10 @@ const ZiweiPage: React.FC = () => {
       setChainChartId(chartId);
       message.success(`链端排盘成功，命盘ID: ${chartId}`);
 
-      // 可选：查询命盘详情并显示
-      // const chartData = await ziweiService.getChart(chartId);
+      // 跳转到解盘详情页
+      setTimeout(() => {
+        window.location.hash = `#/ziwei/interpretation/${chartId}`;
+      }, 1500);
     } catch (error: any) {
       console.error('链端排盘失败:', error);
       message.error(`链端排盘失败: ${error.message || '请检查钱包连接'}`);
@@ -322,19 +337,136 @@ const ZiweiPage: React.FC = () => {
   }, []);
 
   /**
+   * 渲染说明弹窗
+   */
+  const renderInstructionsModal = () => (
+    <Modal
+      title={
+        <span style={{ fontSize: 18, fontWeight: 600 }}>
+          <QuestionCircleOutlined style={{ marginRight: 8, color: '#B2955D' }} />
+          紫微斗数 · 排盘说明
+        </span>
+      }
+      open={showInstructions}
+      onCancel={() => setShowInstructions(false)}
+      footer={null}
+      width={460}
+      style={{ top: 20 }}
+    >
+      <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px 0' }}>
+        {/* 温馨提示 */}
+        <Title level={5} style={{ color: '#B2955D', marginTop: 16 }}>温馨提示</Title>
+        <Paragraph>
+          排盘结果将上链保存，可永久查询。排盘需要支付少量 Gas 费用。本地排盘可快速预览命盘结构。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 紫微斗数基础 */}
+        <Title level={5} style={{ color: '#B2955D' }}>紫微斗数基础</Title>
+        <Paragraph>
+          <Text strong>紫微斗数</Text>是中国传统命理学的重要分支，号称"天下第一神数"。以星宿为主导，结合阴阳五行、天干地支、十二宫位，通过分析命盘推断人的性格、命运、流年运势。
+        </Paragraph>
+        <Paragraph>
+          紫微斗数以出生的年、月、日、时和性别为基础，排列出十二宫位的星曜分布，再通过大限、流年、流月、流日来分析运势变化，是最细致准确的命理体系之一。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 十二宫位 */}
+        <Title level={5} style={{ color: '#B2955D' }}>十二宫位</Title>
+        <Paragraph>
+          <Text strong style={{ color: '#B2955D' }}>• 命宫：</Text>主管性格、气质、先天运势
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 兄弟宫：</Text>兄弟姐妹关系、合作运
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 夫妻宫：</Text>婚姻感情、配偶状况
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 子女宫：</Text>子女关系、生育状况
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 财帛宫：</Text>财运、理财能力
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 疾厄宫：</Text>健康状况、体质
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 迁移宫：</Text>出外运、变动运
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 交友宫：</Text>朋友、同事、下属关系
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 官禄宫：</Text>事业、工作、成就
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 田宅宫：</Text>不动产、家庭环境
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 福德宫：</Text>精神生活、享受
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 父母宫：</Text>父母关系、长辈运
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 星曜系统 */}
+        <Title level={5} style={{ color: '#B2955D' }}>星曜系统</Title>
+        <Paragraph>
+          <Text strong>主星：</Text>紫微星系（紫微、天机、太阳、武曲、天同、廉贞）和天府星系（天府、太阴、贪狼、巨门、天相、天梁、七杀、破军）14颗主星，决定命运的基本格局
+          <br />
+          <Text strong>辅星：</Text>文昌、文曲、左辅、右弼等，辅助主星发挥作用
+          <br />
+          <Text strong>煞星：</Text>擎羊、陀罗、火星、铃星、地空、地劫等，主管挫折和磨难
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 区块链优势 */}
+        <Title level={5} style={{ color: '#B2955D' }}>区块链优势</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>链上存储：</Text>所有命盘数据上链保存，永不丢失
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>可追溯性：</Text>随时可查询历史记录，包含完整的排盘信息
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>智能分析：</Text>链端AI自动分析命盘，提供专业解读
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>隐私保护：</Text>可选择公开或私密，保护个人隐私
+            </li>
+          </ul>
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 操作提示 */}
+        <Title level={5} style={{ color: '#B2955D' }}>操作提示</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>排盘需要准确的出生时间，如不确定时辰可选择相近时段</li>
+            <li style={{ marginBottom: 8 }}>性别会影响大限的顺逆排列</li>
+            <li style={{ marginBottom: 8 }}>链端排盘需要连接钱包并支付少量 Gas 费用</li>
+            <li style={{ marginBottom: 8 }}>本地排盘可快速预览命盘结构，不上链存储</li>
+            <li style={{ marginBottom: 8 }}>如需专业解读，可前往"占卜服务市场"寻找大师</li>
+          </ul>
+        </Paragraph>
+      </div>
+    </Modal>
+  );
+
+  /**
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card">
-      <Title level={4} className="page-title">
-        <StarOutlined /> 紫微斗数 · 排盘
+    <Card className="input-card" style={{ position: 'relative' }}>
+      <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
+        排盘
       </Title>
-      <Paragraph type="secondary" className="page-subtitle">
+      <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
         输入出生时间，排列紫微命盘
-      </Paragraph>
+      </Text>
+
+      <Divider style={{ margin: '16px 0' }} />
 
       {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <Switch
           checked={useChain}
           onChange={setUseChain}
@@ -346,11 +478,9 @@ const ZiweiPage: React.FC = () => {
         </Text>
       </div>
 
-      <Divider />
-
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         {/* 出生日期 */}
-        <div>
+        <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 8 }}>
           <Text strong><CalendarOutlined /> 出生日期</Text>
           <DatePicker
             style={{ width: '100%', marginTop: 8 }}
@@ -358,6 +488,7 @@ const ZiweiPage: React.FC = () => {
             value={birthDate}
             onChange={setBirthDate}
             disabledDate={(current) => current && current > dayjs()}
+            variant="borderless"
           />
         </div>
 
@@ -388,19 +519,41 @@ const ZiweiPage: React.FC = () => {
         {/* 性别 */}
         <div>
           <Text strong><UserOutlined /> 性别</Text>
-          <div style={{ marginTop: 8 }}>
-            <Radio.Group
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              buttonStyle="solid"
+          <div style={{ marginTop: 8, display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setGender(Gender.Male)}
+              style={{
+                padding: '8px 24px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: gender === Gender.Male ? '#B2955D' : 'transparent',
+                color: gender === Gender.Male ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
             >
-              <Radio.Button value={Gender.Male}>男</Radio.Button>
-              <Radio.Button value={Gender.Female}>女</Radio.Button>
-            </Radio.Group>
+              男
+            </button>
+            <button
+              onClick={() => setGender(Gender.Female)}
+              style={{
+                padding: '8px 24px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: gender === Gender.Female ? '#B2955D' : 'transparent',
+                color: gender === Gender.Female ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
+            >
+              女
+            </button>
           </div>
         </div>
 
-        <Divider />
+        <Divider style={{ margin: '16px 0' }} />
 
         {/* 操作按钮 */}
         <Button
@@ -410,10 +563,19 @@ const ZiweiPage: React.FC = () => {
           onClick={handleCalculate}
           loading={loading}
           icon={<StarOutlined />}
+          style={{
+            background: '#000000',
+            borderColor: '#000000',
+            borderRadius: '54px',
+            height: '54px',
+            fontSize: '19px',
+            fontWeight: '700',
+            color: '#F7D3A1',
+          }}
         >
           排盘
         </Button>
-        <Button block onClick={handleReset} icon={<ReloadOutlined />}>
+        <Button block onClick={handleReset} icon={<ReloadOutlined />} style={{ borderRadius: '27px', height: '44px' }}>
           重置
         </Button>
       </Space>
@@ -500,59 +662,94 @@ const ZiweiPage: React.FC = () => {
             </Tag>
           ))}
         </div>
+
+        {/* 链端排盘提示 */}
+        {!useChain && chainChartId && (
+          <div style={{ marginTop: 16 }}>
+            <Button
+              type="primary"
+              block
+              onClick={() => window.location.hash = `#/ziwei/interpretation/${chainChartId}`}
+            >
+              查看完整解盘
+            </Button>
+          </div>
+        )}
+        {!useChain && !chainChartId && (
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              本地排盘仅供预览，使用链端排盘可获得完整解读
+            </Text>
+          </div>
+        )}
       </Card>
     );
   };
 
   return (
-    <div className="ziwei-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div className="ziwei-page">
+      {/* 顶部导航卡片 - 复刻八字页面风格 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+        {/* 左边：我的命盘 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+          onClick={() => (window.location.hash = '#/ziwei/list')}
+        >
+          <HistoryOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>我的命盘</div>
+        </div>
+
+        {/* 中间：紫微斗数 */}
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>紫微斗数</div>
+
+        {/* 右边：使用说明 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', cursor: 'pointer' }}
+          onClick={() => setShowInstructions(true)}
+        >
+          <QuestionCircleOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>说明</div>
+        </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
       <Spin spinning={loading}>
         {renderInputForm()}
         {renderChart()}
       </Spin>
 
-      {/* 说明卡片 */}
-      <Card style={{ marginTop: 16 }}>
-        <Title level={5}>紫微斗数说明</Title>
-        <Space direction="vertical" size={8}>
-          <div>
-            <Text strong>十二宫位：</Text>
-            <Text type="secondary">命宫、兄弟、夫妻、子女、财帛、疾厄、迁移、交友、官禄、田宅、福德、父母</Text>
-          </div>
-          <div>
-            <Text strong>主星系统：</Text>
-            <Text type="secondary">
-              紫微星系（紫微、天机、太阳、武曲、天同、廉贞）和天府星系（天府、太阴、贪狼、巨门、天相、天梁、七杀、破军）
-            </Text>
-          </div>
-          <div>
-            <Text strong>四化飞星：</Text>
-            <Text type="secondary">化禄（财）、化权（权力）、化科（名声）、化忌（阻碍）</Text>
-          </div>
-          {chart && (
-            <div>
-              <Text strong>{TIAN_GAN_NAMES[chart.birthYear % 10]}年四化：</Text>
-              <Text type="secondary">{getSiHuaDescription(chart.birthYear % 10)}</Text>
-            </div>
-          )}
-          <div>
-            <Text strong>庙旺利陷：</Text>
-            <Text type="secondary">
-              <Tag color={BRIGHTNESS_COLORS[4]}>庙</Tag>
-              <Tag color={BRIGHTNESS_COLORS[3]}>旺</Tag>
-              <Tag color={BRIGHTNESS_COLORS[2]}>得</Tag>
-              <Tag color={BRIGHTNESS_COLORS[1]}>平</Tag>
-              <Tag color={BRIGHTNESS_COLORS[0]}>陷</Tag>
-            </Text>
-          </div>
-        </Space>
-      </Card>
+      {/* 说明弹窗 */}
+      {renderInstructionsModal()}
 
       {/* 底部导航 */}
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
-          <HistoryOutlined /> 返回占卜入口
-        </Button>
+      <div className="bottom-nav">
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/ziwei/list')}>
+            <HistoryOutlined /> 我的命盘
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
       </div>
     </div>
   );

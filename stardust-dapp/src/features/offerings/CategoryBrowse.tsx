@@ -171,7 +171,7 @@ const CategoryBrowse: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <Typography.Title level={4} style={{ textAlign: 'left' }}>二级类目浏览</Typography.Title>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Card size="small">

@@ -68,7 +68,7 @@ const OfferingsTimeline: React.FC = () => {
   }, [items])
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12, textAlign: 'left' }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12, textAlign: 'left' }}>
       <Typography.Title level={4}>目标供奉时间线</Typography.Title>
       <Alert type="warning" showIcon message="功能暂时禁用" description="当前采用全局链上直连模式，供奉时间线功能暂时禁用。需要部署 Subsquid 索引器后启用。" style={{ marginBottom: 12 }} />
       <Card size="small">

@@ -105,7 +105,7 @@ const DashboardPage: React.FC = () => {
   }, [decimals, symbol])
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>数据面板</Typography.Title>
         <Space>

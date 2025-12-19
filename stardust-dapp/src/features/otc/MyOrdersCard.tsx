@@ -284,8 +284,8 @@ export const MyOrdersCard: React.FC = () => {
     <Card
       title={
         <Space>
-          <ShoppingOutlined style={{ color: '#667eea' }} />
-          <Text strong style={{ fontSize: '16px', color: '#667eea' }}>
+          <ShoppingOutlined style={{ color: '#B2955D' }} />
+          <Text strong style={{ fontSize: '16px', color: '#B2955D' }}>
             我的订单
           </Text>
         </Space>

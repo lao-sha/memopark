@@ -31,7 +31,7 @@ const MyOtcPage: React.FC = () => {
   React.useEffect(() => { load() }, [load])
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left' }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left' }}>
       <div style={{ padding: '8px 8px 0' }}>
         <Typography.Title level={4} style={{ margin: 0 }}>我的OTC</Typography.Title>
         <Alert type="info" showIcon message="数据由 Subsquid 提供；链上操作如取消/标记已付通过钱包直发。" />

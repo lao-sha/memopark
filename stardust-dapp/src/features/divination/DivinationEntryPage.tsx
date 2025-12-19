@@ -7,10 +7,14 @@
  * - 六爻占卜：铜钱摇卦
  * - 奇门遁甲：时空预测
  * - 紫微斗数：星盘推算
+ *
+ * 支持双主题：
+ * - 经典主题（华易网风格）
+ * - 星空主题（年轻人偏好）
  */
 
 import React from 'react';
-import { Card, Row, Col, Typography, Space, Tag, Button } from 'antd';
+import { Card, Row, Col, Typography, Tag, Button, Tooltip } from 'antd';
 import {
   ArrowRightOutlined,
   StarOutlined,
@@ -18,6 +22,8 @@ import {
   AppstoreOutlined,
   CompassOutlined,
   RadarChartOutlined,
+  HistoryOutlined,
+  BgColorsOutlined,
 } from '@ant-design/icons';
 import {
   DivinationType,
@@ -25,7 +31,9 @@ import {
   DIVINATION_TYPE_DESCRIPTIONS,
   DIVINATION_TYPE_ICONS,
 } from '../../types/divination';
+import { useTheme } from '../../hooks/useTheme';
 import './DivinationPage.css';
+import './divination-common.css';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -39,6 +47,7 @@ interface DivinationTypeConfig {
   icon: string;
   antIcon: React.ReactNode;
   route: string;
+  listRoute?: string; // 历史记录路由
   color: string;
   enabled: boolean;
   comingSoon?: boolean;
@@ -55,6 +64,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     icon: DIVINATION_TYPE_ICONS[DivinationType.Meihua],
     antIcon: <AppstoreOutlined />,
     route: '#/meihua',
+    listRoute: '#/meihua/list',
     color: '#1890ff',
     enabled: true,
   },
@@ -65,6 +75,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     icon: DIVINATION_TYPE_ICONS[DivinationType.Bazi],
     antIcon: <ClockCircleOutlined />,
     route: '#/bazi',
+    listRoute: '#/bazi/list',
     color: '#52c41a',
     enabled: true,
   },
@@ -95,6 +106,7 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     icon: DIVINATION_TYPE_ICONS[DivinationType.Ziwei],
     antIcon: <RadarChartOutlined />,
     route: '#/ziwei',
+    listRoute: '#/ziwei/list',
     color: '#eb2f96',
     enabled: true,
   },
@@ -106,6 +118,26 @@ const DIVINATION_CONFIGS: DivinationTypeConfig[] = [
     antIcon: <ClockCircleOutlined />,
     route: '#/xiaoliuren',
     color: '#2f54eb',
+    enabled: true,
+  },
+  {
+    type: DivinationType.Daliuren,
+    name: DIVINATION_TYPE_NAMES[DivinationType.Daliuren],
+    description: DIVINATION_TYPE_DESCRIPTIONS[DivinationType.Daliuren],
+    icon: DIVINATION_TYPE_ICONS[DivinationType.Daliuren],
+    antIcon: <CompassOutlined />,
+    route: '#/daliuren',
+    color: '#13c2c2',
+    enabled: true,
+  },
+  {
+    type: DivinationType.Tarot,
+    name: DIVINATION_TYPE_NAMES[DivinationType.Tarot],
+    description: DIVINATION_TYPE_DESCRIPTIONS[DivinationType.Tarot],
+    icon: DIVINATION_TYPE_ICONS[DivinationType.Tarot],
+    antIcon: <StarOutlined />,
+    route: '#/tarot',
+    color: '#f5222d',
     enabled: true,
   },
 ];
@@ -137,6 +169,21 @@ const DivinationTypeCard: React.FC<{
         <Paragraph type="secondary" className="type-description" ellipsis={{ rows: 2 }}>
           {config.description}
         </Paragraph>
+        {/* 历史记录快捷入口 */}
+        {config.listRoute && (
+          <Button
+            type="link"
+            size="small"
+            icon={<HistoryOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.hash = config.listRoute!;
+            }}
+            style={{ padding: 0, height: 'auto', fontSize: 12 }}
+          >
+            查看历史
+          </Button>
+        )}
       </div>
       {config.enabled && (
         <ArrowRightOutlined className="arrow-icon" style={{ color: config.color }} />
@@ -149,6 +196,8 @@ const DivinationTypeCard: React.FC<{
  * 通用占卜入口页面
  */
 const DivinationEntryPage: React.FC = () => {
+  const { theme, toggleTheme, isStarry } = useTheme();
+
   const handleSelectType = (config: DivinationTypeConfig) => {
     if (config.enabled) {
       window.location.hash = config.route;
@@ -156,12 +205,29 @@ const DivinationEntryPage: React.FC = () => {
   };
 
   return (
-    <div className="divination-entry-page">
+    <div className="divination-entry-page divination-page-container">
       {/* 页面标题 */}
-      <Card className="header-card">
-        <Title level={3}>玄学占卜</Title>
+      <Card className="header-card divination-header-card">
+        {/* 主题切换按钮（右上角） */}
+        <Tooltip title={`切换到${isStarry ? '经典' : '星空'}主题`}>
+          <Button
+            type="text"
+            icon={<BgColorsOutlined />}
+            onClick={toggleTheme}
+            style={{
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              color: 'rgba(255,255,255,0.9)',
+              fontSize: 18,
+              zIndex: 10,
+            }}
+          />
+        </Tooltip>
+
+        <Title level={3}>星尘玄鉴</Title>
         <Paragraph type="secondary">
-          选择一种占卜方式，探索命运的奥秘
+          探索天机，洞察命理，启迪智慧
         </Paragraph>
       </Card>
 
@@ -178,77 +244,6 @@ const DivinationEntryPage: React.FC = () => {
           ))}
         </Row>
       </div>
-
-      {/* 服务入口 */}
-      <Card className="services-card">
-        <Title level={5}>占卜服务</Title>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Button
-            block
-            size="large"
-            type="primary"
-            onClick={() => window.location.hash = '#/market'}
-          >
-            🏪 玄学服务市场
-          </Button>
-          <Button
-            block
-            size="large"
-            onClick={() => window.location.hash = '#/bounty'}
-            style={{ borderColor: '#faad14', color: '#faad14' }}
-          >
-            🏆 悬赏问答
-          </Button>
-          <Button
-            block
-            size="large"
-            onClick={() => window.location.hash = '#/divination/market'}
-          >
-            🔮 找大师解读
-          </Button>
-          <Button
-            block
-            size="large"
-            onClick={() => window.location.hash = '#/divination/nft'}
-          >
-            🎨 占卜 NFT 市场
-          </Button>
-          <Button
-            block
-            size="large"
-            onClick={() => window.location.hash = '#/divination/my-nft'}
-          >
-            📦 我的占卜 NFT
-          </Button>
-        </Space>
-      </Card>
-
-      {/* 功能说明 */}
-      <Card className="info-card">
-        <Title level={5}>功能说明</Title>
-        <Space direction="vertical" size={8}>
-          <div className="info-item">
-            <Text strong>🔮 起卦占卜</Text>
-            <Text type="secondary">根据不同玄学体系进行占卜，获得卦象或命盘</Text>
-          </div>
-          <div className="info-item">
-            <Text strong>🏆 悬赏问答</Text>
-            <Text type="secondary">设置悬赏金额，邀请多位大师解读，投票选出最佳答案</Text>
-          </div>
-          <div className="info-item">
-            <Text strong>🤖 AI 解读</Text>
-            <Text type="secondary">智能 AI 分析占卜结果，提供专业解读建议</Text>
-          </div>
-          <div className="info-item">
-            <Text strong>👨‍🏫 大师服务</Text>
-            <Text type="secondary">连接专业命理师，获取一对一深度解读</Text>
-          </div>
-          <div className="info-item">
-            <Text strong>🖼️ NFT 收藏</Text>
-            <Text type="secondary">将珍贵的占卜结果铸造为 NFT，永久保存</Text>
-          </div>
-        </Space>
-      </Card>
     </div>
   );
 };

@@ -955,6 +955,24 @@ pub mod runtime {
 	#[runtime::pallet_index(85)]
 	pub type XiaoLiuRen = pallet_xiaoliuren;
 
+	/// 🆕 2025-12-15 黄历模块
+	///
+	/// 通过 Off-chain Worker 获取黄历数据并存储到链上，
+	/// 为占卜系统提供日期相关的黄历信息查询服务。
+	///
+	/// **功能特性**：
+	/// - 通过 OCW 定期从阿里云黄历 API 获取数据
+	/// - 支持手动设置黄历数据 (需要权限)
+	/// - 提供按日期查询黄历的接口
+	/// - 支持查询节气、节日等信息
+	///
+	/// **启动方式**：
+	/// ```bash
+	/// ALMANAC_APPCODE=xxx ./target/release/solochain-template-node --dev
+	/// ```
+	#[runtime::pallet_index(86)]
+	pub type Almanac = pallet_almanac;
+
 	// 🆕 2025-11-03 Frontier: 以太坊兼容层（官方 Parity Pallet）
 	// ⚠️ 临时禁用以排查 runtime 启动问题
 	// /// 函数级中文注释：EVM 虚拟机（执行以太坊智能合约）

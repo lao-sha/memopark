@@ -10,7 +10,7 @@ export interface RouteItem {
 const lazy = (factory: () => Promise<any>) => React.lazy(factory);
 
 export const routes: RouteItem[] = [
-  { match: h => h === '#/home' || h === '#/', component: lazy(() => import('./features/memorial/HomePage')) },  // 🆕 默认首页（纪念馆风格）
+  { match: h => h === '#/home' || h === '#/', component: lazy(() => import('./features/divination/DivinationEntryPage')) },  // 🆕 默认首页（占卜入口）
   { match: h => h === '#/memorial-browser', component: lazy(() => import('./features/memorial/MemorialEmbeddedPage')) },  // 🆕 纪念馆内嵌浏览器页
   { match: h => h === '#/admin/pause', component: lazy(() => import('./features/offerings/AdminPause')) },
   { match: h => h === '#/admin/category', component: lazy(() => import('./features/offerings/AdminCategory')) },
@@ -96,7 +96,7 @@ export const routes: RouteItem[] = [
   // 梅花易数模块
   { match: h => h === '#/meihua', component: lazy(() => import('./features/meihua/DivinationPage')) },  // 🆕 梅花易数起卦页面
   { match: h => h === '#/meihua/list', component: lazy(() => import('./features/meihua/HexagramListPage')) },  // 🆕 我的卦象列表
-  { match: h => h === '#/meihua/market', component: lazy(() => import('./features/meihua/MarketplacePage')) },  // 🆕 占卜服务市场
+  { match: h => h === '#/meihua/market' || h.startsWith('#/meihua/market?'), component: lazy(() => import('./features/meihua/MarketplacePage')) },  // 🆕 占卜服务市场
   { match: h => h === '#/meihua/nft', component: lazy(() => import('./features/meihua/NftMarketPage')) },  // 🆕 卦象 NFT 市场
   { match: h => h === '#/meihua/my-nft', component: lazy(() => import('./features/meihua/MyNftPage')) },  // 🆕 我的 NFT 管理
   { match: h => h.startsWith('#/meihua/ai/'), component: lazy(() => import('./features/meihua/AiInterpretationPage')) },  // 🆕 AI 解卦服务
@@ -104,7 +104,7 @@ export const routes: RouteItem[] = [
 
   // 🆕 通用占卜系统（支持多种玄学体系）
   { match: h => h === '#/divination', component: lazy(() => import('./features/divination/DivinationEntryPage')) },  // 占卜入口页面
-  { match: h => h === '#/divination/market' || h.startsWith('#/divination/market?'), component: lazy(() => import('./features/divination/DivinationMarketPage')) },  // 通用服务市场
+  // ❌ 已删除: #/divination/market - 合并到统一的 #/market 入口
   { match: h => h === '#/divination/nft' || h.startsWith('#/divination/nft?'), component: lazy(() => import('./features/divination/DivinationNftMarketPage')) },  // 通用 NFT 市场
   { match: h => h === '#/divination/my-nft', component: lazy(() => import('./features/divination/MyDivinationNftPage')) },  // 我的占卜 NFT
   { match: h => h.startsWith('#/divination/interpretation/'), component: lazy(() => import('./features/divination/InterpretationResultPage')) },  // AI解读结果页面
@@ -120,6 +120,7 @@ export const routes: RouteItem[] = [
 
   // 🆕 紫微斗数模块
   { match: h => h === '#/ziwei', component: lazy(() => import('./features/ziwei/ZiweiPage')) },  // 紫微斗数排盘页面
+  { match: h => h === '#/ziwei/list', component: lazy(() => import('./features/ziwei/ZiweiListPage')) },  // 我的命盘列表
   { match: h => h.startsWith('#/ziwei/interpretation/'), component: lazy(() => import('./features/ziwei/ZiweiInterpretationPage')) },  // 紫微斗数解卦页面
 
   // 🆕 奇门遁甲模块
@@ -129,8 +130,27 @@ export const routes: RouteItem[] = [
   // 🆕 小六壬模块
   { match: h => h === '#/xiaoliuren', component: lazy(() => import('./features/xiaoliuren/XiaoLiuRenPage')) },  // 小六壬排盘页面
 
-  // 🆕 占卜服务市场模块
-  { match: h => h === '#/market', component: lazy(() => import('./features/market/MarketPage')) },  // 占卜服务市场页面
+  // 🆕 大六壬模块
+  { match: h => h === '#/daliuren', component: lazy(() => import('./features/daliuren/DaliurenPage')) },  // 大六壬排盘页面
+  { match: h => h.startsWith('#/daliuren/detail/'), component: lazy(() => import('./features/daliuren/DaliurenDetailPage')) },  // 大六壬详情页面
+
+  // 🆕 塔罗牌模块
+  { match: h => h === '#/tarot', component: lazy(() => import('./features/tarot/TarotPage')) },  // 塔罗牌占卜页面
+  { match: h => h === '#/tarot/history', component: lazy(() => import('./features/tarot/TarotHistoryPage')) },  // 塔罗牌历史记录页面
+  { match: h => h.startsWith('#/tarot/reading/'), component: lazy(() => import('./features/tarot/TarotReadingPage')) },  // 塔罗牌结果页面
+
+  // 🆕 占卜服务市场模块（统一入口，支持浏览和下单模式）
+  { match: h => h === '#/market' || h.startsWith('#/market?'), component: lazy(() => import('./features/market/MarketPage')) },  // 玄学服务市场（统一入口）
+
+  // 🆕 大师入驻模块
+  { match: h => h === '#/provider/info', component: lazy(() => import('./features/provider/ProviderInfoPage')) },  // 大师入驻说明页
+  { match: h => h === '#/provider/register', component: lazy(() => import('./features/provider/ProviderRegisterPage')) },  // 大师注册页面
+  { match: h => h === '#/provider/dashboard', component: lazy(() => import('./features/provider/ProviderDashboardPage')) },  // 大师工作台
+
+  // 🆕 订单系统
+  { match: h => h.startsWith('#/order/create'), component: lazy(() => import('./features/order/OrderCreatePage')) },  // 订单创建页面
+  { match: h => h.match(/#\/order\/\d+/), component: lazy(() => import('./features/order/OrderDetailPage')) },  // 订单详情页面
+  { match: h => h === '#/my-orders', component: lazy(() => import('./features/order/MyOrdersPage')) },  // 我的订单列表
 
   // 🆕 悬赏问答系统（基于占卜结果）
   { match: h => h === '#/bounty', component: lazy(() => import('./features/bounty/BountyListPage')) },  // 悬赏列表页面

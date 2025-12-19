@@ -23,6 +23,7 @@ import {
   InputNumber,
   Collapse,
   Switch,
+  Modal,
 } from 'antd';
 import {
   FieldTimeOutlined,
@@ -33,6 +34,8 @@ import {
   EditOutlined,
   CloudOutlined,
   DesktopOutlined,
+  QuestionCircleOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -62,6 +65,7 @@ import {
   formatSanGong,
 } from '../../types/xiaoliuren';
 import * as xiaoliurenService from '../../services/xiaoliurenService';
+import './XiaoLiuRenPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -233,6 +237,9 @@ const XiaoLiuRenPage: React.FC = () => {
   const [pan, setPan] = useState<XiaoLiuRenPan | null>(null);
   const [useChain, setUseChain] = useState(false); // 是否使用链端
 
+  // 说明弹窗状态
+  const [showInstructions, setShowInstructions] = useState(false);
+
   /**
    * 本地起课（模拟算法）
    */
@@ -370,6 +377,111 @@ const XiaoLiuRenPage: React.FC = () => {
     setManualGongs([LiuGong.DaAn, LiuGong.DaAn, LiuGong.DaAn]);
     setPan(null);
   }, []);
+
+  /**
+   * 渲染说明弹窗
+   */
+  const renderInstructionsModal = () => (
+    <Modal
+      title={
+        <span style={{ fontSize: 18, fontWeight: 600 }}>
+          <QuestionCircleOutlined style={{ marginRight: 8, color: '#B2955D' }} />
+          小六壬 · 起课说明
+        </span>
+      }
+      open={showInstructions}
+      onCancel={() => setShowInstructions(false)}
+      footer={null}
+      width={460}
+      style={{ top: 20 }}
+    >
+      <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px 0' }}>
+        {/* 温馨提示 */}
+        <Title level={5} style={{ color: '#B2955D', marginTop: 16 }}>温馨提示</Title>
+        <Paragraph>
+          起课结果将上链保存，可永久查询。起课需要支付少量 Gas 费用。本地起课可快速预览结果。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 小六壬基础 */}
+        <Title level={5} style={{ color: '#B2955D' }}>小六壬基础</Title>
+        <Paragraph>
+          <Text strong>小六壬</Text>是中国传统占卜术数之一，又称"诸葛马前课"，相传为诸葛亮所创。以六宫（大安、留连、速喜、赤口、小吉、空亡）掐指推算，快速占卜吉凶祸福，简单实用。
+        </Paragraph>
+        <Paragraph>
+          小六壬通过月、日、时三宫的组合，结合五行生克和体用关系，迅速判断事物的发展趋势和吉凶走向，是民间最流行的速算占卜方法之一。
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 六宫详解 */}
+        <Title level={5} style={{ color: '#B2955D' }}>六宫详解</Title>
+        <Paragraph>
+          <Text strong style={{ color: '#B2955D' }}>• 大安（木）：</Text>安静守成，凡事大吉，不宜妄动
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 留连（土）：</Text>延滞阻隔，拖延迟缓，难以速成
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 速喜（火）：</Text>快速喜庆，有惊喜至，宜行动
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 赤口（金）：</Text>口舌是非，官司纠纷，不利之兆
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 小吉（水）：</Text>小有喜事，渐入佳境，可期待
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>• 空亡（土）：</Text>落空无果，希望破灭，不宜进取
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 起课方式 */}
+        <Title level={5} style={{ color: '#B2955D' }}>起课方式</Title>
+        <Paragraph>
+          <Text strong style={{ color: '#B2955D' }}>时间起课：</Text>根据农历月日时推算，"大安起正月，月上起日，日上起时"
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>数字起课：</Text>心中默念问题后，随口说出三个数字进行起课
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>随机起课：</Text>使用链上随机数快速生成三宫
+          <br />
+          <Text strong style={{ color: '#B2955D' }}>手动起课：</Text>自行选择三宫，适合掐指推算后的结果输入
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 区块链优势 */}
+        <Title level={5} style={{ color: '#B2955D' }}>区块链优势</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>链上存储：</Text>所有课盘数据上链保存，永不丢失
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>可追溯性：</Text>随时可查询历史记录，包含完整的起课信息
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>真随机性：</Text>链上随机数保证起课的公平性
+            </li>
+            <li style={{ marginBottom: 8 }}>
+              <Text strong>隐私保护：</Text>可选择公开或私密，保护个人隐私
+            </li>
+          </ul>
+        </Paragraph>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 操作提示 */}
+        <Title level={5} style={{ color: '#B2955D' }}>操作提示</Title>
+        <Paragraph>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li style={{ marginBottom: 8 }}>起课前请心诚意诚，专注于所问之事</li>
+            <li style={{ marginBottom: 8 }}>同一问题不宜短期内重复占卜</li>
+            <li style={{ marginBottom: 8 }}>链端起课需要连接钱包并支付少量 Gas 费用</li>
+            <li style={{ marginBottom: 8 }}>本地起课可快速预览结果，不上链存储</li>
+            <li style={{ marginBottom: 8 }}>如需专业解读，可前往"占卜服务市场"寻找大师</li>
+          </ul>
+        </Paragraph>
+      </div>
+    </Modal>
+  );
 
   /**
    * 渲染起课方式选择
@@ -512,16 +624,16 @@ const XiaoLiuRenPage: React.FC = () => {
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card">
-      <Title level={4} className="page-title">
-        <FieldTimeOutlined /> 小六壬 · 掐指速算
+    <Card className="input-card" style={{ position: 'relative' }}>
+      <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
+        起课
       </Title>
-      <Paragraph type="secondary" className="page-subtitle">
+      <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
         快速占卜吉凶的简易术数
-      </Paragraph>
+      </Text>
 
       {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <Switch
           checked={useChain}
           onChange={setUseChain}
@@ -554,15 +666,19 @@ const XiaoLiuRenPage: React.FC = () => {
         onClick={handleCalculate}
         loading={loading}
         icon={<ThunderboltOutlined />}
+        style={{
+          background: '#000000',
+          borderColor: '#000000',
+          borderRadius: '54px',
+          height: '54px',
+          fontSize: '19px',
+          fontWeight: '700',
+          color: '#F7D3A1',
+        }}
       >
         起课
       </Button>
-      <Button
-        block
-        onClick={handleReset}
-        icon={<ReloadOutlined />}
-        style={{ marginTop: 8 }}
-      >
+      <Button block onClick={handleReset} icon={<ReloadOutlined />} style={{ borderRadius: '27px', height: '44px', marginTop: 8 }}>
         重置
       </Button>
     </Card>
@@ -719,53 +835,69 @@ const XiaoLiuRenPage: React.FC = () => {
   };
 
   return (
-    <div className="xiaoliuren-page" style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div className="xiaoliuren-page">
+      {/* 顶部导航卡片 - 复刻八字页面风格 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+        {/* 左边：我的课盘 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+          onClick={() => (window.location.hash = '#/xiaoliuren/list')}
+        >
+          <HistoryOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>我的课盘</div>
+        </div>
+
+        {/* 中间：小六壬 */}
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>小六壬</div>
+
+        {/* 右边：使用说明 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', cursor: 'pointer' }}
+          onClick={() => setShowInstructions(true)}
+        >
+          <QuestionCircleOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>说明</div>
+        </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
       <Spin spinning={loading}>
         {renderInputForm()}
         {renderResult()}
       </Spin>
 
-      {/* 说明卡片 */}
-      <Card style={{ marginTop: 16 }}>
-        <Title level={5}>小六壬说明</Title>
-        <Space direction="vertical" size={8}>
-          <div>
-            <Text strong>六宫：</Text>
-            <Text type="secondary">
-              <Tag color={LIU_GONG_COLORS[LiuGong.DaAn]}>大安</Tag>
-              <Tag color={LIU_GONG_COLORS[LiuGong.LiuLian]}>留连</Tag>
-              <Tag color={LIU_GONG_COLORS[LiuGong.SuXi]}>速喜</Tag>
-              <Tag color={LIU_GONG_COLORS[LiuGong.ChiKou]}>赤口</Tag>
-              <Tag color={LIU_GONG_COLORS[LiuGong.XiaoJi]}>小吉</Tag>
-              <Tag color={LIU_GONG_COLORS[LiuGong.KongWang]}>空亡</Tag>
-            </Text>
-          </div>
-          <div>
-            <Text strong>起课口诀：</Text>
-            <Text type="secondary">
-              "大安起正月，月上起日，日上起时"
-            </Text>
-          </div>
-          <div>
-            <Text strong>体用关系：</Text>
-            <Text type="secondary">
-              月宫为体（代表自己），时宫为用（代表所求之事），日宫为中介
-            </Text>
-          </div>
-          <div>
-            <Text strong>五行生克：</Text>
-            <Text type="secondary">
-              体生用为泄，体克用为成，用生体为得，用克体为凶，比和为平
-            </Text>
-          </div>
-        </Space>
-      </Card>
+      {/* 说明弹窗 */}
+      {renderInstructionsModal()}
 
       {/* 底部导航 */}
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
-          <HistoryOutlined /> 返回占卜入口
-        </Button>
+      <div className="bottom-nav">
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/xiaoliuren/list')}>
+            <HistoryOutlined /> 我的课盘
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
       </div>
     </div>
   );

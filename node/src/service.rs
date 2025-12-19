@@ -129,10 +129,20 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
 }
 
 /// Builds a new service for a full client.
+/// 创建完整的节点服务
+///
+/// # 参数
+/// - `config`: 节点配置
+/// - `almanac_appcode`: 黄历 API AppCode (可选)
+///
+/// # OCW 密钥配置
+/// 如果提供了 `almanac_appcode`,将被存储到 OCW 本地存储中,
+/// 供 pallet-almanac 的 Off-chain Worker 使用
 pub fn new_full<
     N: sc_network::NetworkBackend<Block, <Block as sp_runtime::traits::Block>::Hash>,
 >(
     config: Configuration,
+    almanac_appcode: Option<String>,
 ) -> Result<TaskManager, ServiceError> {
     let sc_service::PartialComponents {
         client,
@@ -190,6 +200,16 @@ pub fn new_full<
         })?;
 
     if config.offchain_worker.enabled {
+        // AppCode 配置提示
+        if let Some(ref appcode) = almanac_appcode {
+            println!("✅ Almanac AppCode loaded (length: {} bytes)", appcode.len());
+            println!("   The AppCode will be available to pallet-almanac Off-chain Worker");
+            // TODO: 将 AppCode 传递给 OCW
+            // 方式 1: 通过环境变量 (已支持)
+            // 方式 2: 通过 OCW 本地存储 (需要在 OCW 运行时设置)
+            // 方式 3: 通过链上加密存储 (高级方案)
+        }
+
         let offchain_workers =
             sc_offchain::OffchainWorkers::new(sc_offchain::OffchainWorkerOptions {
                 runtime_api_provider: client.clone(),

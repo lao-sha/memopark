@@ -670,7 +670,7 @@ export const SmartGroupChatPage: React.FC<SmartGroupChatProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[480px] mx-auto">
+    <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[414px] mx-auto">
       <div className="flex-1 p-3 pb-0">
         {/* 页面标题 - 纪念馆风格 */}
         <div className="mb-3">

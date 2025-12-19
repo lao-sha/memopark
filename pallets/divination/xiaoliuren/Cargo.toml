@@ -26,6 +26,9 @@ pallet-timestamp.workspace = true
 # 本地依赖
 pallet-divination-common = { path = "../common", default-features = false }
 
+# 黄历模块 - 统一农历转换
+pallet-almanac = { path = "../almanac", default-features = false }
+
 # 可选依赖
 serde = { workspace = true, optional = true, features = ["derive"] }
 
@@ -47,6 +50,7 @@ std = [
     "pallet-balances/std",
     "pallet-timestamp/std",
     "pallet-divination-common/std",
+    "pallet-almanac/std",
     "serde/std",
 ]
 runtime-benchmarks = [

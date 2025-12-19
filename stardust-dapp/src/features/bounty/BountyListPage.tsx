@@ -20,6 +20,7 @@ import {
   message,
   Statistic,
   Badge,
+  Divider,
 } from 'antd';
 import {
   FireOutlined,
@@ -28,6 +29,9 @@ import {
   SearchOutlined,
   ReloadOutlined,
   PlusOutlined,
+  HistoryOutlined,
+  QuestionCircleOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import type {
   BountyQuestion,
@@ -43,6 +47,7 @@ import {
   getBountyTimeRemaining,
 } from '../../types/divination';
 import { BountyService } from '../../services/bountyService';
+import { usePolkadot } from '@/providers/WalletProvider';
 import './BountyListPage.css';
 
 const { Title, Text } = Typography;
@@ -139,6 +144,7 @@ const BountyCard: React.FC<{
  * 悬赏问答列表页面组件
  */
 export const BountyListPage: React.FC = () => {
+  const { api } = usePolkadot();
   const [bounties, setBounties] = useState<BountyQuestion[]>([]);
   const [stats, setStats] = useState<BountyStatistics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,21 +152,24 @@ export const BountyListPage: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<DivinationType | 'all'>('all');
   const [currentBlock, setCurrentBlock] = useState(0);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   /**
    * 加载悬赏列表
    */
   const loadBounties = async () => {
+    if (!api) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: 获取API实例
-      const api = null as any;
       const service = new BountyService(api);
 
       // 获取当前区块号
-      // const block = await api.query.system.number();
-      // setCurrentBlock(block.toNumber());
-      setCurrentBlock(1000000); // 临时模拟值
+      const block = await api.query.system.number();
+      setCurrentBlock(block.toNumber());
 
       // 加载统计信息
       const statistics = await service.getBountyStatistics();
@@ -193,7 +202,7 @@ export const BountyListPage: React.FC = () => {
 
   useEffect(() => {
     loadBounties();
-  }, [activeTab, selectedType]);
+  }, [api, activeTab, selectedType]);
 
   /**
    * 筛选后的悬赏列表
@@ -264,66 +273,143 @@ export const BountyListPage: React.FC = () => {
     })),
   ];
 
+  // API 未连接时显示提示
+  if (!api) {
+    return (
+      <div className="bounty-list-page">
+        <Card className="input-card">
+          <Empty
+            description="正在连接区块链..."
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          >
+            <Spin />
+          </Empty>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="bounty-list-page">
-      {/* 页面头部 */}
-      <Card className="page-header">
-        <div className="header-content">
-          <div>
-            <Title level={4} style={{ margin: 0 }}>
-              🎯 悬赏问答
-            </Title>
-            <Text type="secondary">悬赏求解，专业解读</Text>
-          </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={() => message.info('请先选择占卜结果后发起悬赏')}
-          >
-            发起悬赏
-          </Button>
+      {/* 顶部导航卡片 - 复刻八字页面风格 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+        {/* 左边：我的悬赏 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+          onClick={() => (window.location.hash = '#/bounty/my')}
+        >
+          <HistoryOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>我的悬赏</div>
         </div>
+
+        {/* 中间：悬赏问答 */}
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>悬赏问答</div>
+
+        {/* 右边：使用说明 */}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', cursor: 'pointer' }}
+          onClick={() => setShowInstructions(true)}
+        >
+          <QuestionCircleOutlined style={{ fontSize: '18px', color: '#999' }} />
+          <div style={{ fontSize: '10px', color: '#999' }}>说明</div>
+        </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
+      {/* 输入卡片 */}
+      <Card className="input-card">
 
         {/* 统计数据 */}
         {stats && (
-          <Row gutter={16} style={{ marginTop: 16 }}>
+          <Row gutter={8} style={{ marginBottom: 16 }}>
             <Col span={6}>
               <Statistic
-                title="总悬赏数"
+                title="总悬赏"
                 value={stats.totalBounties}
-                prefix={<TrophyOutlined />}
+                valueStyle={{ fontSize: 16 }}
               />
             </Col>
             <Col span={6}>
               <Statistic
-                title="活跃悬赏"
+                title="活跃"
                 value={stats.activeBounties}
-                prefix={<FireOutlined />}
-                valueStyle={{ color: '#52c41a' }}
+                valueStyle={{ fontSize: 16, color: '#52c41a' }}
               />
             </Col>
             <Col span={6}>
               <Statistic
-                title="总回答数"
+                title="回答"
                 value={stats.totalAnswers}
-                prefix={<FireOutlined />}
+                valueStyle={{ fontSize: 16 }}
               />
             </Col>
             <Col span={6}>
               <Statistic
-                title="总奖金池"
+                title="奖金池"
                 value={formatBountyAmount(stats.totalBountyAmount)}
-                suffix="DUST"
-                valueStyle={{ color: '#faad14' }}
+                valueStyle={{ fontSize: 14, color: '#faad14' }}
               />
             </Col>
           </Row>
         )}
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        {/* 操作按钮 */}
+        <Row gutter={8}>
+          <Col span={14}>
+            <Button
+              block
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => message.info('请先选择占卜结果后发起悬赏')}
+              style={{
+                background: '#000000',
+                borderColor: '#000000',
+                borderRadius: '22px',
+                height: '44px',
+                fontSize: '16px',
+                fontWeight: '600',
+                color: '#F7D3A1',
+              }}
+            >
+              发起悬赏
+            </Button>
+          </Col>
+          <Col span={10}>
+            <Button
+              block
+              onClick={loadBounties}
+              icon={<ReloadOutlined />}
+              style={{ borderRadius: '22px', height: '44px', fontSize: '16px' }}
+            >
+              刷新列表
+            </Button>
+          </Col>
+        </Row>
       </Card>
 
       {/* 筛选区域 */}
-      <Card className="filter-section">
+      <Card className="filter-section" style={{ marginTop: 16 }}>
         {/* 标签页 */}
         <Tabs
           activeKey={activeTab}
@@ -340,6 +426,10 @@ export const BountyListPage: React.FC = () => {
                 type={selectedType.toString() === item.key ? 'primary' : 'default'}
                 size="small"
                 onClick={() => setSelectedType(item.key === 'all' ? 'all' : parseInt(item.key) as DivinationType)}
+                style={selectedType.toString() === item.key ? {
+                  background: '#B2955D',
+                  borderColor: '#B2955D',
+                } : {}}
               >
                 {item.label}
               </Button>
@@ -355,13 +445,6 @@ export const BountyListPage: React.FC = () => {
             enterButton={<SearchOutlined />}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            suffix={
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={loadBounties}
-              />
-            }
           />
         </div>
       </Card>
@@ -372,7 +455,7 @@ export const BountyListPage: React.FC = () => {
           <Spin size="large" tip="加载悬赏列表..." />
         </div>
       ) : filteredBounties.length === 0 ? (
-        <Card>
+        <Card style={{ marginTop: 16 }}>
           <Empty
             description={
               searchText
@@ -385,10 +468,10 @@ export const BountyListPage: React.FC = () => {
           />
         </Card>
       ) : (
-        <div className="bounties-grid">
+        <div className="bounties-grid" style={{ marginTop: 16 }}>
           <Row gutter={[16, 16]}>
             {filteredBounties.map((bounty) => (
-              <Col key={bounty.id} xs={24} sm={12} md={8} lg={6}>
+              <Col key={bounty.id} xs={24}>
                 <BountyCard
                   bounty={bounty}
                   currentBlock={currentBlock}
@@ -399,6 +482,18 @@ export const BountyListPage: React.FC = () => {
           </Row>
         </div>
       )}
+
+      {/* 底部导航 */}
+      <div className="bottom-nav">
+        <Space split={<Divider type="vertical" />}>
+          <Button type="link" onClick={() => (window.location.hash = '#/bounty/my')}>
+            <HistoryOutlined /> 我的悬赏
+          </Button>
+          <Button type="link" onClick={() => (window.location.hash = '#/divination')}>
+            <ArrowRightOutlined /> 占卜入口
+          </Button>
+        </Space>
+      </div>
     </div>
   );
 };

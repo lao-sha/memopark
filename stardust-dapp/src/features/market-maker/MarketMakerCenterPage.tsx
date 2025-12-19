@@ -155,7 +155,7 @@ const MarketMakerCenterPage: React.FC = () => {
           title="📋 核心功能" 
           style={{ 
             marginBottom: 16,
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
             border: 'none'
           }}
           headStyle={{ 
@@ -172,7 +172,7 @@ const MarketMakerCenterPage: React.FC = () => {
                 style={{ 
                   height: '80px',
                   background: '#fff',
-                  border: '2px solid #667eea',
+                  border: '2px solid #B2955D',
                   borderRadius: '8px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -180,7 +180,7 @@ const MarketMakerCenterPage: React.FC = () => {
                   alignItems: 'center',
                   fontSize: '13px',
                   fontWeight: 'bold',
-                  color: '#667eea'
+                  color: '#B2955D'
                 }}
                 onClick={() => window.location.hash = '#/otc/mm-apply'}
               >
@@ -195,7 +195,7 @@ const MarketMakerCenterPage: React.FC = () => {
                 style={{ 
                   height: '80px',
                   background: '#fff',
-                  border: '2px solid #764ba2',
+                  border: '2px solid #9A7D4A',
                   borderRadius: '8px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -203,7 +203,7 @@ const MarketMakerCenterPage: React.FC = () => {
                   alignItems: 'center',
                   fontSize: '13px',
                   fontWeight: 'bold',
-                  color: '#764ba2'
+                  color: '#9A7D4A'
                 }}
                 onClick={() => window.location.hash = '#/otc/market-maker-config'}
               >

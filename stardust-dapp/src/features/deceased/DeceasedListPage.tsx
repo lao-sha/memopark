@@ -57,7 +57,7 @@ const DeceasedListPage: React.FC = () => {
   React.useEffect(()=> { load() }, [load])
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <Card title="逝者列表" extra={<Button size="small" onClick={load} loading={loading}>刷新</Button>}>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         <Space style={{ marginBottom: 8 }}>

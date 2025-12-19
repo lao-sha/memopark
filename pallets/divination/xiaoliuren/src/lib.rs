@@ -337,6 +337,63 @@ pub mod pallet {
             )
         }
 
+        /// 公历时间起课
+        ///
+        /// 此方法使用 pallet-almanac 自动将公历日期转换为农历，
+        /// 然后进行小六壬起课。用户无需手动计算农历。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `question_cid`: 问题 CID（可选）
+        /// - `is_public`: 是否公开
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_parts(60_000_000, 0))]
+        pub fn divine_by_solar_time(
+            origin: OriginFor<T>,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidLunarMonth);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidLunarMonth);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidLunarDay);
+            ensure!(hour <= 23, Error::<T>::InvalidHour);
+
+            // 调用 almanac 转农历
+            let lunar = pallet_almanac::solar_to_lunar(solar_year, solar_month, solar_day)
+                .ok_or(Error::<T>::InvalidLunarMonth)?;
+
+            // 计算时辰
+            let shi_chen = ShiChen::from_hour(hour);
+
+            // 使用时间起课算法
+            let san_gong = algorithm::divine_by_time(lunar.month, lunar.day, shi_chen);
+
+            // 创建课盘
+            Self::create_pan(
+                who,
+                DivinationMethod::TimeMethod,
+                san_gong,
+                lunar.month,
+                lunar.day,
+                hour,
+                Some(shi_chen),
+                question_cid,
+                is_public,
+            )
+        }
+
         /// 数字起课（活数起课法）
         ///
         /// 使用三个数字进行起课，适合即兴占卜。

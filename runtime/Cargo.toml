@@ -119,6 +119,9 @@ pallet-liuyao = { path = "../pallets/divination/liuyao", default-features = fals
 pallet-daliuren = { path = "../pallets/divination/daliuren", default-features = false }
 pallet-xiaoliuren = { path = "../pallets/divination/xiaoliuren", default-features = false }
 
+# 🆕 2025-12-15 黄历模块 - OCW 获取黄历数据
+pallet-almanac = { path = "../pallets/divination/almanac", default-features = false }
+
 # 🔴 2025-10-29 已移除: pallet-simple-bridge 已整合到 pallet-trading
 # pallet-simple-bridge = { path = "../pallets/simple-bridge", default-features = false }
 
@@ -243,6 +246,8 @@ std = [
 	"pallet-daliuren/std",  # 大六壬链上排盘
 	# 🆕 2025-12-01 小六壬排盘系统
 	"pallet-xiaoliuren/std",  # 小六壬掐指速算链上排盘
+	# 🆕 2025-12-15 黄历模块
+	"pallet-almanac/std",  # 黄历 OCW 模块
     # "pallet-simple-bridge/std",  # 🔴 2025-10-29 已移除 - 整合到 pallet-trading
     "pallet-chat/std",
 	"pallet-social/std",  # 🆕 2025-11-17: 多类型目标关注系统

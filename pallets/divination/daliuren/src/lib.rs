@@ -334,6 +334,95 @@ pub mod pallet {
             )
         }
 
+        /// 公历时间起课
+        ///
+        /// 此方法使用 pallet-almanac 自动将公历日期转换为四柱干支，
+        /// 然后进行大六壬起课。用户无需手动计算干支和月将。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `question_cid`: 占问事项 CID（可选）
+        ///
+        /// # 说明
+        /// - 月将由当前月份自动推算（以中气为准）
+        /// - 占时由小时转换为地支时辰
+        /// - 昼夜判断由小时自动计算（6-18时为昼）
+        #[pallet::call_index(6)]
+        #[pallet::weight(Weight::from_parts(80_000_000, 0))]
+        pub fn divine_by_solar_time(
+            origin: OriginFor<T>,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidGanZhi);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidGanZhi);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidGanZhi);
+            ensure!(hour < 24, Error::<T>::InvalidGanZhi);
+
+            // 检查每日限额
+            Self::check_daily_limit(&who)?;
+
+            // 收取费用
+            Self::charge_fee(&who, T::DivinationFee::get())?;
+
+            // 调用 pallet-almanac 计算四柱干支
+            let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
+
+            // 转换为本模块的干支类型
+            let year_gz = (
+                TianGan::from_index(pillars.year.gan),
+                DiZhi::from_index(pillars.year.zhi),
+            );
+            let month_gz = (
+                TianGan::from_index(pillars.month.gan),
+                DiZhi::from_index(pillars.month.zhi),
+            );
+            let day_gz = (
+                TianGan::from_index(pillars.day.gan),
+                DiZhi::from_index(pillars.day.zhi),
+            );
+            let hour_gz = (
+                TianGan::from_index(pillars.hour.gan),
+                DiZhi::from_index(pillars.hour.zhi),
+            );
+
+            // 计算月将（根据节气，以中气为准）
+            // 月将是太阳所在宫位对应的地支
+            // 简化算法：使用月份推算
+            // 正月雨水后用亥将，二月春分后用戌将...以此类推
+            let yue_jiang = Self::calc_yue_jiang_from_month(solar_month);
+
+            // 占时为时辰对应的地支
+            let zhan_shi = DiZhi::from_index(pallet_almanac::hour_to_dizhi_num(hour).saturating_sub(1));
+
+            // 昼夜判断：6-18时为昼
+            let is_day = hour >= 6 && hour < 18;
+
+            // 执行起课
+            Self::do_divine(
+                who,
+                DivinationMethod::TimeMethod,
+                year_gz,
+                month_gz,
+                day_gz,
+                hour_gz,
+                yue_jiang,
+                zhan_shi,
+                is_day,
+                question_cid,
+            )
+        }
+
         /// 随机起课
         ///
         /// 使用链上随机数生成月将和占时进行起课。
@@ -727,6 +816,47 @@ pub mod pallet {
         fn block_to_u32(block: BlockNumberFor<T>) -> u32 {
             use sp_runtime::traits::UniqueSaturatedInto;
             block.unique_saturated_into()
+        }
+
+        /// 根据公历月份计算月将
+        ///
+        /// 大六壬月将遵循"以中气为准"的原则：
+        /// - 雨水后（约2月）用亥将（登明）
+        /// - 春分后（约3月）用戌将（河魁）
+        /// - 谷雨后（约4月）用酉将（从魁）
+        /// - 小满后（约5月）用申将（传送）
+        /// - 夏至后（约6月）用未将（小吉）
+        /// - 大暑后（约7月）用午将（胜光）
+        /// - 处暑后（约8月）用巳将（太乙）
+        /// - 秋分后（约9月）用辰将（天罡）
+        /// - 霜降后（约10月）用卯将（太冲）
+        /// - 小雪后（约11月）用寅将（功曹）
+        /// - 冬至后（约12月）用丑将（大吉）
+        /// - 大寒后（约1月）用子将（神后）
+        ///
+        /// # 参数
+        /// - `solar_month`: 公历月份 (1-12)
+        ///
+        /// # 返回
+        /// - 月将对应的地支
+        fn calc_yue_jiang_from_month(solar_month: u8) -> DiZhi {
+            // 简化映射：根据公历月份推算月将
+            // 月将与中气对应，这里使用近似值
+            match solar_month {
+                1 => DiZhi::Zi,    // 大寒后 - 神后
+                2 => DiZhi::Hai,   // 雨水后 - 登明
+                3 => DiZhi::Xu,    // 春分后 - 河魁
+                4 => DiZhi::You,   // 谷雨后 - 从魁
+                5 => DiZhi::Shen,  // 小满后 - 传送
+                6 => DiZhi::Wei,   // 夏至后 - 小吉
+                7 => DiZhi::Wu,    // 大暑后 - 胜光
+                8 => DiZhi::Si,    // 处暑后 - 太乙
+                9 => DiZhi::Chen,  // 秋分后 - 天罡
+                10 => DiZhi::Mao,  // 霜降后 - 太冲
+                11 => DiZhi::Yin,  // 小雪后 - 功曹
+                12 => DiZhi::Chou, // 冬至后 - 大吉
+                _ => DiZhi::Zi,    // 默认
+            }
         }
     }
 

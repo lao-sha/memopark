@@ -283,16 +283,43 @@ export class BountyService {
    * @returns Promise<BountyStatistics>
    */
   async getBountyStatistics(): Promise<BountyStatistics> {
+    // 检查 pallet 是否存在
+    if (!this.api.query.divinationMarket?.bountyStatistics) {
+      console.warn('divinationMarket.bountyStatistics 未部署到链上');
+      return {
+        totalBounties: 0,
+        activeBounties: 0,
+        settledBounties: 0,
+        totalAnswers: 0,
+        totalBountyAmount: BigInt(0),
+        totalRewardsDistributed: BigInt(0),
+        totalPlatformFees: BigInt(0),
+      };
+    }
+
     const stats = await this.api.query.divinationMarket.bountyStatistics();
 
+    // 检查返回值是否有效
+    if (!stats || stats.isEmpty) {
+      return {
+        totalBounties: 0,
+        activeBounties: 0,
+        settledBounties: 0,
+        totalAnswers: 0,
+        totalBountyAmount: BigInt(0),
+        totalRewardsDistributed: BigInt(0),
+        totalPlatformFees: BigInt(0),
+      };
+    }
+
     return {
-      totalBounties: stats.totalBounties.toNumber(),
-      activeBounties: stats.activeBounties.toNumber(),
-      settledBounties: stats.settledBounties.toNumber(),
-      totalAnswers: stats.totalAnswers.toNumber(),
-      totalBountyAmount: stats.totalBountyAmount.toBigInt(),
-      totalRewardsDistributed: stats.totalRewardsDistributed.toBigInt(),
-      totalPlatformFees: stats.totalPlatformFees.toBigInt(),
+      totalBounties: stats.totalBounties?.toNumber() ?? 0,
+      activeBounties: stats.activeBounties?.toNumber() ?? 0,
+      settledBounties: stats.settledBounties?.toNumber() ?? 0,
+      totalAnswers: stats.totalAnswers?.toNumber() ?? 0,
+      totalBountyAmount: stats.totalBountyAmount?.toBigInt() ?? BigInt(0),
+      totalRewardsDistributed: stats.totalRewardsDistributed?.toBigInt() ?? BigInt(0),
+      totalPlatformFees: stats.totalPlatformFees?.toBigInt() ?? BigInt(0),
     };
   }
 

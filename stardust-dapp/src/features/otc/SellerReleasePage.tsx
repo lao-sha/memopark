@@ -415,10 +415,10 @@ export const SellerReleasePage: React.FC = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
       padding: '40px 20px'
     }}>
-      <div style={{ maxWidth: 480, margin: '0 auto' }}>
+      <div style={{ maxWidth: 414, margin: '0 auto' }}>
         {/* 页面标题 */}
         <Card
           style={{
@@ -429,7 +429,7 @@ export const SellerReleasePage: React.FC = () => {
           }}
         >
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Title level={2} style={{ margin: 0, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <Title level={2} style={{ margin: 0, background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               释放MEMO给买家
             </Title>
             <Text type="secondary">

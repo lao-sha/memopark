@@ -347,9 +347,9 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
 
   // 渲染群组列表
   const renderGroupList = () => (
-    <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[480px] mx-auto font-['-apple-system','BlinkMacSystemFont','Segoe_UI','PingFang_SC']">
-      {/* 标题栏 - 纪念馆风格绿色渐变 */}
-      <div className="bg-gradient-to-r from-[#4CAF50] to-[#66BB6A] text-white shadow-md">
+    <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[414px] mx-auto pb-[80px] font-['-apple-system','BlinkMacSystemFont','Segoe_UI','PingFang_SC']">
+      {/* 标题栏 - 金棕色渐变风格 */}
+      <div style={{ background: 'linear-gradient(135deg, #B2955D 0%, #C9B07A 100%)' }} className="text-white shadow-md">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -406,28 +406,28 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* 用户信息卡片 - 白色卡片风格 */}
+      {/* 用户信息卡片 - 金棕色卡片风格 */}
       <div className="px-4 py-3">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+        <div style={{ background: 'linear-gradient(135deg, #B2955D 0%, #C9B07A 100%)' }} className="rounded-xl shadow-sm p-3">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <Avatar size={48} className="bg-gradient-to-br from-[#4CAF50] to-[#66BB6A] text-base font-semibold shadow-sm">
+              <Avatar size={48} style={{ background: 'rgba(255, 255, 255, 0.3)', border: '2px solid rgba(255, 255, 255, 0.5)' }} className="text-base font-semibold shadow-sm text-white">
                 {currentUser ? currentUser.slice(0, 2).toUpperCase() : 'U'}
               </Avatar>
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-gray-900 text-sm mb-0.5 truncate">
+              <div className="font-medium text-white text-sm mb-0.5 truncate">
                 {currentUser ? `${currentUser.slice(0, 8)}...${currentUser.slice(-6)}` : '未连接钱包'}
               </div>
               <div className="flex items-center gap-3 text-xs">
-                <span className="flex items-center gap-1 text-gray-600">
-                  <UsergroupDeleteOutlined className="text-[#4CAF50]" />
-                  <span className="font-medium text-[#4CAF50]">{userGroups.length}</span> 个群组
+                <span className="flex items-center gap-1 text-white/90">
+                  <UsergroupDeleteOutlined className="text-white" />
+                  <span className="font-medium text-white">{userGroups.length}</span> 个群组
                 </span>
-                <span className="text-gray-300">•</span>
-                <span className="text-green-600 font-medium flex items-center gap-1">
-                  <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                <span className="text-white/50">•</span>
+                <span className="text-white font-medium flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
                   在线
                 </span>
               </div>
@@ -552,9 +552,9 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
     };
 
     return (
-      <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[480px] mx-auto font-['-apple-system','BlinkMacSystemFont','Segoe_UI','PingFang_SC']">
-        {/* 标题栏 - 纪念馆风格绿色渐变 */}
-        <div className="bg-gradient-to-r from-[#4CAF50] to-[#66BB6A] text-white shadow-md">
+      <div className="min-h-screen bg-[#f5f5f5] flex flex-col max-w-[414px] mx-auto font-['-apple-system','BlinkMacSystemFont','Segoe_UI','PingFang_SC']">
+        {/* 标题栏 - 金棕色渐变风格 */}
+        <div style={{ background: 'linear-gradient(135deg, #B2955D 0%, #C9B07A 100%)' }} className="text-white shadow-md">
           <div className="px-4 py-3">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -597,7 +597,7 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#4CAF50] focus:ring-1 focus:ring-[#4CAF50] transition-all text-gray-900 text-sm"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#B2955D] focus:ring-1 focus:ring-[#B2955D] transition-all text-gray-900 text-sm"
                     placeholder="例如：开发团队、产品讨论"
                     maxLength={64}
                   />
@@ -610,7 +610,7 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#4CAF50] focus:ring-1 focus:ring-[#4CAF50] resize-none transition-all text-gray-900 text-sm"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#B2955D] focus:ring-1 focus:ring-[#B2955D] resize-none transition-all text-gray-900 text-sm"
                     placeholder="描述群组用途和规则（可选）"
                     rows={3}
                     maxLength={512}
@@ -623,10 +623,10 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">加密模式</label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { mode: 'Military' as const, label: '🔒 军用级', desc: '最高安全', color: 'from-red-50 to-red-100', border: 'border-red-300', text: 'text-red-700' },
-                      { mode: 'Business' as const, label: '🏢 商用级', desc: '平衡性能', color: 'from-green-50 to-green-100', border: 'border-[#4CAF50]', text: 'text-green-700' },
-                      { mode: 'Selective' as const, label: '🎯 选择性', desc: '自主选择', color: 'from-yellow-50 to-yellow-100', border: 'border-yellow-300', text: 'text-yellow-700' },
-                      { mode: 'Transparent' as const, label: '🌐 透明', desc: '高性能', color: 'from-blue-50 to-blue-100', border: 'border-blue-300', text: 'text-blue-700' },
+                      { mode: 'Military' as const, label: '🔒 军用级', desc: '最高安全', color: 'from-red-50 to-red-100', border: 'border-[#9A7D4A]', text: 'text-red-700' },
+                      { mode: 'Business' as const, label: '🏢 商用级', desc: '平衡性能', color: 'from-orange-50 to-orange-100', border: 'border-[#B2955D]', text: 'text-orange-700' },
+                      { mode: 'Selective' as const, label: '🎯 选择性', desc: '自主选择', color: 'from-amber-50 to-amber-100', border: 'border-[#E88B7F]', text: 'text-amber-700' },
+                      { mode: 'Transparent' as const, label: '🌐 透明', desc: '高性能', color: 'from-rose-50 to-rose-100', border: 'border-[#D4AF37]', text: 'text-rose-700' },
                     ].map(({ mode, label, desc, color, border, text }) => (
                       <div
                         key={mode}
@@ -653,7 +653,7 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
                     id="isPublic"
                     checked={formData.isPublic}
                     onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
-                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-[#4CAF50] focus:ring-[#4CAF50]"
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-[#B2955D] focus:ring-[#B2955D]"
                   />
                   <label htmlFor="isPublic" className="flex-1 cursor-pointer">
                     <div className="font-semibold text-gray-800 text-sm mb-0.5">公开群组</div>
@@ -661,11 +661,14 @@ export const SmartChatApp: React.FC<SmartChatAppProps> = ({ onBack }) => {
                   </label>
                 </div>
 
-                {/* 提交按钮 - 橙色强调按钮 */}
+                {/* 提交按钮 - 金棕色强调按钮 */}
                 <button
                   onClick={handleSubmit}
                   disabled={!formData.name.trim() || loading}
-                  className="w-full py-2.5 bg-[#ff6b35] hover:bg-[#ff5722] text-white font-semibold rounded-lg shadow-sm hover:shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed transition-all active:scale-[0.98] disabled:scale-100 text-sm"
+                  style={{
+                    background: formData.name.trim() && !loading ? 'linear-gradient(135deg, #B2955D 0%, #C9B07A 100%)' : '#d9d9d9'
+                  }}
+                  className="w-full py-2.5 text-white font-semibold rounded-lg shadow-sm hover:shadow-md disabled:cursor-not-allowed transition-all active:scale-[0.98] disabled:scale-100 text-sm"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">

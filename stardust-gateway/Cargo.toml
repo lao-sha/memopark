@@ -1,0 +1,70 @@
+[package]
+name = "stardust-gateway"
+version = "0.1.0"
+edition = "2021"
+authors = ["Stardust Team"]
+description = "星尘链 API Gateway - 统一入口网关"
+
+[dependencies]
+# Web 框架
+axum = { version = "0.7", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors", "compression-gzip", "limit"] }
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 异步运行时
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json"] }
+
+# Substrate 集成
+subxt = { version = "0.37", features = ["substrate-compat"] }
+sp-core = "34.0"
+sp-runtime = "39.0"
+
+# Redis 缓存
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# 配置管理
+config = "0.14"
+dotenv = "0.15"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+
+# 认证
+jsonwebtoken = "9.3"
+bcrypt = "0.15"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# 限流
+governor = "0.6"
+
+# UUID
+uuid = { version = "1.8", features = ["v4", "serde"] }
+
+# 编码工具
+hex = "0.4"
+
+[dev-dependencies]
+mockall = "0.12"
+wiremock = "0.6"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

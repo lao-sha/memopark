@@ -1,9 +1,11 @@
 import React from 'react'
-import { Drawer, Space, Switch, Typography, Button } from 'antd'
+import { Drawer, Space, Switch, Typography, Divider } from 'antd'
 import { useGovernanceUi } from '../../providers/GovernanceUiProvider'
+import ThemeToggle from '../ThemeToggle'
 
 /**
  * 函数级详细中文注释：设置抽屉（专家/治理模式开关）
+ * - 主题切换：经典主题（华易网风格）/ 星空主题（年轻人偏好）
  * - 主开关：显示治理入口（对象旁申诉/恢复）
  * - 子开关：仅长按/悬停显示、显示恢复构建器快捷入口
  */
@@ -18,6 +20,11 @@ const SettingsDrawer: React.FC = () => {
   return (
     <Drawer open={open} onClose={()=> setOpen(false)} title="设置" placement="right" width={320}>
       <Space direction="vertical" style={{ width: '100%' }}>
+        {/* 主题切换 */}
+        <ThemeToggle mode="switch" showLabel />
+
+        <Divider style={{ margin: '12px 0' }} />
+
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <Typography.Text>显示治理入口（申诉/恢复）</Typography.Text>
           <Switch checked={gov.showEntries} onChange={gov.setShowEntries} />
@@ -27,7 +34,7 @@ const SettingsDrawer: React.FC = () => {
           <Switch checked={gov.hoverOnly} onChange={gov.setHoverOnly} />
         </div>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <Typography.Text>显示“恢复旧版本构建器”快捷入口</Typography.Text>
+          <Typography.Text>显示"恢复旧版本构建器"快捷入口</Typography.Text>
           <Switch checked={gov.showRestoreShortcut} onChange={gov.setShowRestoreShortcut} />
         </div>
         <div>

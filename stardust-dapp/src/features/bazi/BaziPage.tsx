@@ -1,14 +1,19 @@
 /**
- * 八字排盘页面
+ * 八字排盘页面 - 链端生成版
  *
- * 功能：
- * - 输入出生年月日时进行排盘
- * - 显示四柱八字和十神
- * - 显示五行分布和缺失
- * - 显示大运流年
+ * 架构说明：
+ * 1. 用户输入出生信息
+ * 2. 提交到链端，由 pallet-bazi-chart 生成八字命盘
+ * 3. 通过 Runtime API 免费获取完整解盘结果
+ * 4. 前端只负责展示，不进行八字计算
+ *
+ * 优势：
+ * - ✅ 算法一致性：避免前后端算法不同步
+ * - ✅ 自动升级：链端升级算法，前端无需更新
+ * - ✅ 免费计算：Runtime API 不消耗 gas
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Card,
   Button,
@@ -24,14 +29,20 @@ import {
   message,
   Radio,
   Modal,
+  Spin,
+  Cascader,
 } from 'antd';
 import {
   CalendarOutlined,
   UserOutlined,
   HistoryOutlined,
   ArrowRightOutlined,
-  ThunderboltOutlined,
   RobotOutlined,
+  LoadingOutlined,
+  QuestionCircleOutlined,
+  BgColorsOutlined,
+  GiftOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -43,21 +54,21 @@ import {
   WU_XING_NAMES,
   WU_XING_COLORS,
   WU_XING_BG_COLORS,
-  SHI_SHEN_NAMES,
   SHI_SHEN_SHORT,
   SHI_SHEN_COLORS,
   DI_ZHI_HOURS,
   DiZhi,
-  BaziResult,
-  ZhuDetail,
-  DaYun,
   getGanZhiName,
+  GanZhi,
+  WuXing,
+  ShiShen,
+  TianGan,
 } from '../../types/bazi';
-import { calculateBazi, formatBazi, calculateLiuNian } from '../../services/baziService';
 import {
   saveBaziToChain,
-  uploadBaziResultToIpfs,
-  getUserBaziCharts,
+  getBaziChart,
+  getInterpretation,
+  type V3FullInterpretation,
 } from '../../services/baziChainService';
 import {
   requestDivinationInterpretation,
@@ -65,113 +76,204 @@ import {
 } from '../../services/divinationService';
 import { DivinationType, InterpretationType } from '../../types/divination';
 import { getFriendlyErrorMessage } from '../../services/nodeStatusService';
-import NodeStatusChecker from '../../components/NodeStatusChecker';
 import { useWalletStore } from '../../stores/walletStore';
+import { getCityCoordinate, getDefaultCoordinate, type CityCoordinate } from '../../data/cityCoordinates';
+// @ts-ignore - china-division 没有类型定义
+import pcaData from 'china-division/dist/pca.json';
 import './BaziPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
 /**
+ * 将 china-division 的 pca.json 转换为 Cascader 需要的格式
+ */
+interface CascaderOption {
+  value: string;
+  label: string;
+  children?: CascaderOption[];
+}
+
+const convertToCascaderOptions = (data: Record<string, Record<string, string[]>>): CascaderOption[] => {
+  return Object.entries(data).map(([province, cities]) => ({
+    value: province,
+    label: province,
+    children: Object.entries(cities).map(([city, districts]) => ({
+      value: city,
+      label: city,
+      children: districts.map(district => ({
+        value: district,
+        label: district,
+      })),
+    })),
+  }));
+};
+
+// 预处理 Cascader 选项数据（只执行一次）
+const cascaderOptions = convertToCascaderOptions(pcaData as Record<string, Record<string, string[]>>);
+
+/**
+ * 链上八字命盘数据（从 getBaziChart 返回）
+ */
+interface ChainBaziChart {
+  id: number;
+  creator: string;
+  birthYear: number;
+  birthMonth: number;
+  birthDay: number;
+  birthHour: number;
+  gender: number;
+  isPublic: boolean;
+  createdAt: number;
+  status: number;
+}
+
+/**
  * 八字排盘页面组件
  */
 const BaziPage: React.FC = () => {
   // 输入状态
+  const [name, setName] = useState<string>(''); // 姓名
   const [birthDate, setBirthDate] = useState<dayjs.Dayjs | null>(null);
   const [birthHour, setBirthHour] = useState<number>(12);
   const [gender, setGender] = useState<Gender>(Gender.Male);
+  const [calendarType, setCalendarType] = useState<'solar' | 'lunar'>('solar'); // 公历/农历
+  const [location, setLocation] = useState<string>('未知地'); // 地点
+  const [longitude, setLongitude] = useState<number>(116.416); // 经度（默认北京）
+  const [latitude, setLatitude] = useState<number>(39.9288); // 纬度（默认北京）
+  const [selectedAddress, setSelectedAddress] = useState<string[]>([]); // Cascader 选中的地址
+
+  /**
+   * 处理地址选择变化
+   */
+  const handleAddressChange = useCallback((value: (string | number)[]) => {
+    const stringValue = value.map(v => String(v));
+    setSelectedAddress(stringValue);
+
+    if (stringValue.length >= 2) {
+      // 获取城市名（第二级）
+      const cityName = stringValue[1];
+      const coord = getCityCoordinate(cityName);
+
+      if (coord) {
+        setLocation(cityName);
+        setLongitude(coord.longitude);
+        setLatitude(coord.latitude);
+      } else {
+        // 如果没有找到城市经纬度，使用省会
+        const provinceName = stringValue[0];
+        const provinceCoord = getCityCoordinate(provinceName.replace(/省|自治区|特别行政区/g, ''));
+        if (provinceCoord) {
+          setLocation(cityName);
+          setLongitude(provinceCoord.longitude);
+          setLatitude(provinceCoord.latitude);
+        } else {
+          // 使用默认（北京）
+          const defaultCoord = getDefaultCoordinate();
+          setLocation(cityName);
+          setLongitude(defaultCoord.longitude);
+          setLatitude(defaultCoord.latitude);
+        }
+      }
+    } else if (stringValue.length === 1) {
+      // 只选择了省份
+      const provinceName = stringValue[0];
+      setLocation(provinceName);
+      const coord = getCityCoordinate(provinceName);
+      if (coord) {
+        setLongitude(coord.longitude);
+        setLatitude(coord.latitude);
+      }
+    }
+  }, []);
 
   // 结果状态
-  const [result, setResult] = useState<BaziResult | null>(null);
+  const [chartData, setChartData] = useState<ChainBaziChart | null>(null);
+  const [interpretation, setInterpretation] = useState<V3FullInterpretation | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [savedChartId, setSavedChartId] = useState<number | null>(null);
 
   // AI解读状态
   const [requestingAI, setRequestingAI] = useState(false);
-  const [aiRequestId, setAiRequestId] = useState<number | null>(null);
 
   // 钱包状态
   const { selectedAccount, isConnected } = useWalletStore();
 
   /**
-   * 执行排盘
+   * 执行排盘（提交到链端）
    */
-  const handleCalculate = useCallback(() => {
+  const handleCalculate = useCallback(async () => {
     if (!birthDate) {
       message.warning('请选择出生日期');
       return;
     }
 
-    setLoading(true);
-    try {
-      const baziResult = calculateBazi({
-        year: birthDate.year(),
-        month: birthDate.month() + 1,
-        day: birthDate.date(),
-        hour: birthHour,
-        gender,
-      });
-      setResult(baziResult);
-      message.success('排盘成功！');
-    } catch (error) {
-      console.error('排盘失败:', error);
-      message.error('排盘失败，请检查输入');
-    } finally {
-      setLoading(false);
-    }
-  }, [birthDate, birthHour, gender]);
-
-  /**
-   * 重新排盘
-   */
-  const handleReset = useCallback(() => {
-    setResult(null);
-    setBirthDate(null);
-    setBirthHour(12);
-    setGender(Gender.Male);
-    setSavedChartId(null);
-  }, []);
-
-  /**
-   * 保存到链上
-   */
-  const handleSaveToChain = useCallback(async () => {
-    if (!result || !birthDate || !isConnected || !selectedAccount) {
+    if (!isConnected || !selectedAccount) {
       message.warning('请先连接钱包');
       return;
     }
 
-    setSaving(true);
+    setLoading(true);
     try {
-      // 上传完整八字数据到IPFS
-      const dataCid = await uploadBaziResultToIpfs(result);
-
-      // 保存到链上
+      // 提交到链端生成八字
+      message.info('正在提交到区块链...');
       const chartId = await saveBaziToChain({
         year: birthDate.year(),
         month: birthDate.month() + 1,
         day: birthDate.date(),
         hour: birthHour,
         gender,
-        isPublic: false,
-        dataCid,
       });
 
       setSavedChartId(chartId);
-      message.success('八字命盘已保存到链上！');
+      message.success('八字命盘已生成！');
+
+      // 获取链上数据
+      const chart = await getBaziChart(chartId);
+      if (!chart) {
+        throw new Error('获取命盘数据失败');
+      }
+      setChartData(chart);
+
+      // 通过 Runtime API 获取完整解盘（免费）
+      message.info('正在获取解盘结果...');
+      const interp = await getInterpretation(chartId);
+      if (!interp) {
+        throw new Error('获取解盘失败，命盘可能不存在');
+      }
+      setInterpretation(interp);
+
+      message.success('排盘完成！');
     } catch (error) {
-      console.error('保存失败:', error);
+      console.error('排盘失败:', error);
       const friendlyMessage = getFriendlyErrorMessage(error);
       Modal.error({
-        title: '保存失败',
+        title: '排盘失败',
         content: <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{friendlyMessage}</pre>,
         width: 500,
       });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  }, [result, birthDate, birthHour, gender, isConnected, selectedAccount]);
+  }, [birthDate, birthHour, gender, isConnected, selectedAccount]);
+
+  /**
+   * 重新排盘
+   */
+  const handleReset = useCallback(() => {
+    setChartData(null);
+    setInterpretation(null);
+    setName('');
+    setBirthDate(null);
+    setBirthHour(12);
+    setGender(Gender.Male);
+    setCalendarType('solar');
+    setSavedChartId(null);
+    setLocation('未知地');
+    setLongitude(116.416);
+    setLatitude(39.9288);
+    setSelectedAddress([]);
+  }, []);
 
   /**
    * 查看详情页
@@ -198,26 +300,23 @@ const BaziPage: React.FC = () => {
 
     setRequestingAI(true);
     try {
-      // 请求AI解读 - 使用综合解读类型
       const requestId = await requestDivinationInterpretation(
         DivinationType.Bazi,
         savedChartId,
-        InterpretationType.Comprehensive
+        InterpretationType.Professional // 使用"专业解读"类型
       );
 
-      setAiRequestId(requestId);
       message.success('AI解读请求已提交，正在处理中...');
 
       // 轮询检查解读状态
       const checkInterval = setInterval(async () => {
         try {
           const request = await getDivinationInterpretationRequest(requestId);
-          if (request && request.status === 2) { // 2 = Completed
+          if (request && request.status === 2) {
             clearInterval(checkInterval);
             message.success('AI解读完成！');
-            // 跳转到解读结果页面
             window.location.hash = `#/divination/interpretation/${requestId}`;
-          } else if (request && request.status === 3) { // 3 = Failed
+          } else if (request && request.status === 3) {
             clearInterval(checkInterval);
             message.error('AI解读失败，请稍后重试');
             setRequestingAI(false);
@@ -225,9 +324,8 @@ const BaziPage: React.FC = () => {
         } catch (error) {
           console.error('检查解读状态失败:', error);
         }
-      }, 3000); // 每3秒检查一次
+      }, 3000);
 
-      // 30秒后停止轮询
       setTimeout(() => {
         clearInterval(checkInterval);
         if (requestingAI) {
@@ -235,7 +333,6 @@ const BaziPage: React.FC = () => {
           message.info('解读处理时间较长，请稍后在"我的解读"页面查看结果');
         }
       }, 30000);
-
     } catch (error) {
       console.error('请求AI解读失败:', error);
       message.error(`请求失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -244,192 +341,160 @@ const BaziPage: React.FC = () => {
   }, [savedChartId, isConnected, selectedAccount, requestingAI]);
 
   /**
-   * 渲染单柱
+   * 渲染四柱（基于链上解盘结果）
    */
-  const renderZhu = (
-    title: string,
-    detail: ZhuDetail,
-    isRiZhu: boolean = false
-  ) => {
-    const { ganZhi, tianGanShiShen, cangGan, cangGanShiShen, tianGanWuXing, diZhiWuXing } = detail;
+  const renderSiZhu = () => {
+    if (!interpretation) return null;
+
+    // 从链上解盘结果重构四柱数据
+    // 注意：链上 Runtime API 返回的是完整解盘，包含四柱、用神等信息
+    // 这里我们只展示基础信息
 
     return (
-      <div className="zhu-column">
-        <div className="zhu-title">{title}</div>
-
-        {/* 天干十神 */}
-        <div className="shi-shen-row">
-          {isRiZhu ? (
-            <Tag color="purple">日主</Tag>
-          ) : tianGanShiShen !== null ? (
-            <Tag color={SHI_SHEN_COLORS[tianGanShiShen]}>
-              {SHI_SHEN_SHORT[tianGanShiShen]}
-            </Tag>
-          ) : null}
+      <Card className="si-zhu-card" size="small">
+        <Title level={5}>四柱八字</Title>
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <Text type="secondary">
+            链上已生成命盘，命盘ID: {savedChartId}
+          </Text>
+          <br />
+          <Button type="link" onClick={handleViewDetail}>
+            查看完整命盘详情 →
+          </Button>
         </div>
-
-        {/* 天干 */}
-        <div
-          className="gan-box"
-          style={{
-            backgroundColor: WU_XING_BG_COLORS[tianGanWuXing],
-            borderColor: WU_XING_COLORS[tianGanWuXing],
-          }}
-        >
-          <span className="gan-text">{TIAN_GAN_NAMES[ganZhi.tianGan]}</span>
-          <span className="wu-xing-label" style={{ color: WU_XING_COLORS[tianGanWuXing] }}>
-            {WU_XING_NAMES[tianGanWuXing]}
-          </span>
-        </div>
-
-        {/* 地支 */}
-        <div
-          className="zhi-box"
-          style={{
-            backgroundColor: WU_XING_BG_COLORS[diZhiWuXing],
-            borderColor: WU_XING_COLORS[diZhiWuXing],
-          }}
-        >
-          <span className="zhi-text">{DI_ZHI_NAMES[ganZhi.diZhi]}</span>
-          <span className="wu-xing-label" style={{ color: WU_XING_COLORS[diZhiWuXing] }}>
-            {WU_XING_NAMES[diZhiWuXing]}
-          </span>
-        </div>
-
-        {/* 藏干 */}
-        <div className="cang-gan-section">
-          {cangGan.map((g, idx) => (
-            <div key={idx} className="cang-gan-item">
-              <span className="cang-gan-name">{TIAN_GAN_NAMES[g]}</span>
-              <Tag size="small" color={SHI_SHEN_COLORS[cangGanShiShen[idx]]}>
-                {SHI_SHEN_SHORT[cangGanShiShen[idx]]}
-              </Tag>
-            </div>
-          ))}
-        </div>
-      </div>
+      </Card>
     );
   };
 
   /**
-   * 渲染五行统计
+   * 渲染解盘核心信息
    */
-  const renderWuXingStats = () => {
-    if (!result) return null;
-    const { wuXingCount, wuXingLack } = result;
+  const renderInterpretationCore = () => {
+    if (!interpretation) return null;
 
-    const items = [
-      { name: '木', count: wuXingCount.mu, color: WU_XING_COLORS[0], bg: WU_XING_BG_COLORS[0] },
-      { name: '火', count: wuXingCount.huo, color: WU_XING_COLORS[1], bg: WU_XING_BG_COLORS[1] },
-      { name: '土', count: wuXingCount.tu, color: WU_XING_COLORS[2], bg: WU_XING_BG_COLORS[2] },
-      { name: '金', count: wuXingCount.jin, color: WU_XING_COLORS[3], bg: WU_XING_BG_COLORS[3] },
-      { name: '水', count: wuXingCount.shui, color: WU_XING_COLORS[4], bg: WU_XING_BG_COLORS[4] },
-    ];
+    const { core } = interpretation;
 
     return (
-      <Card className="wu-xing-card" size="small">
-        <Title level={5}>五行统计</Title>
-        <div className="wu-xing-bars">
-          {items.map((item) => (
-            <div key={item.name} className="wu-xing-bar-item">
-              <div className="bar-label">
-                <span style={{ color: item.color }}>{item.name}</span>
-                <span>{item.count}</span>
-              </div>
-              <div className="bar-track" style={{ backgroundColor: item.bg }}>
-                <div
-                  className="bar-fill"
-                  style={{
-                    width: `${Math.min(item.count * 12.5, 100)}%`,
-                    backgroundColor: item.color,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        {wuXingLack.length > 0 && (
-          <div className="wu-xing-lack">
-            <Text type="secondary">五行缺：</Text>
-            {wuXingLack.map((wx) => (
-              <Tag key={wx} color="warning">
-                {WU_XING_NAMES[wx]}
-              </Tag>
-            ))}
+      <Card className="interpretation-card" size="small">
+        <Title level={5}>命盘解析</Title>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic title="格局" value={core.geJu} valueStyle={{ fontSize: 16 }} />
+            </Col>
+            <Col span={12}>
+              <Statistic title="强弱" value={core.qiangRuo} valueStyle={{ fontSize: 16 }} />
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic
+                title="用神"
+                value={core.yongShen}
+                valueStyle={{ fontSize: 16, color: '#52c41a' }}
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="喜神"
+                value={core.xiShen}
+                valueStyle={{ fontSize: 16, color: '#1890ff' }}
+              />
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic
+                title="忌神"
+                value={core.jiShen}
+                valueStyle={{ fontSize: 16, color: '#ff4d4f' }}
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="综合评分"
+                value={core.score}
+                suffix="分"
+                valueStyle={{ fontSize: 16 }}
+              />
+            </Col>
+          </Row>
+          <Divider style={{ margin: '8px 0' }} />
+          <div>
+            <Text strong>用神类型：</Text>
+            <Tag color="blue">{core.yongShenType}</Tag>
           </div>
-        )}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              可信度: {core.confidence}% | 算法版本: v{core.algorithmVersion}
+            </Text>
+          </div>
+        </Space>
       </Card>
     );
   };
 
   /**
-   * 渲染大运
+   * 渲染性格分析
    */
-  const renderDaYun = () => {
-    if (!result) return null;
-    const { daYunList, qiYunAge, daYunShun } = result;
+  const renderXingGeAnalysis = () => {
+    if (!interpretation || !interpretation.xingGe) return null;
+
+    const { xingGe } = interpretation;
 
     return (
-      <Card className="da-yun-card" size="small">
-        <div className="da-yun-header">
-          <Title level={5}>大运</Title>
-          <Space>
-            <Tag color={daYunShun ? 'blue' : 'orange'}>
-              {daYunShun ? '顺行' : '逆行'}
-            </Tag>
-            <Text type="secondary">{qiYunAge}岁起运</Text>
-          </Space>
-        </div>
-        <div className="da-yun-list">
-          {daYunList.slice(0, 8).map((dy: DaYun) => (
-            <div key={dy.index} className="da-yun-item">
-              <div className="da-yun-age">{dy.startAge}-{dy.endAge}</div>
-              <div className="da-yun-gan-zhi">
-                <span className="gan">{TIAN_GAN_NAMES[dy.ganZhi.tianGan]}</span>
-                <span className="zhi">{DI_ZHI_NAMES[dy.ganZhi.diZhi]}</span>
+      <Card className="xingge-card" size="small">
+        <Title level={5}>性格分析</Title>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {xingGe.zhuYaoTeDian.length > 0 && (
+            <div>
+              <Text strong>主要特点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.zhuYaoTeDian.map((trait, idx) => (
+                  <Tag key={idx} color="blue" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
               </div>
-              <Tag size="small" color={SHI_SHEN_COLORS[dy.tianGanShiShen]}>
-                {SHI_SHEN_SHORT[dy.tianGanShiShen]}
-              </Tag>
             </div>
-          ))}
-        </div>
-      </Card>
-    );
-  };
-
-  /**
-   * 渲染流年
-   */
-  const renderLiuNian = () => {
-    if (!result) return null;
-
-    const currentYear = new Date().getFullYear();
-    const liuNianList = calculateLiuNian(
-      result.siZhu,
-      result.birthInfo.year,
-      currentYear,
-      10
-    );
-
-    return (
-      <Card className="liu-nian-card" size="small">
-        <Title level={5}>流年</Title>
-        <div className="liu-nian-list">
-          {liuNianList.map((ln) => (
-            <div
-              key={ln.year}
-              className={`liu-nian-item ${ln.year === currentYear ? 'current' : ''}`}
-            >
-              <div className="liu-nian-year">{ln.year}</div>
-              <div className="liu-nian-gan-zhi">{getGanZhiName(ln.ganZhi)}</div>
-              <Tag size="small" color={SHI_SHEN_COLORS[ln.tianGanShiShen]}>
-                {SHI_SHEN_SHORT[ln.tianGanShiShen]}
-              </Tag>
-              <div className="liu-nian-age">{ln.age}岁</div>
+          )}
+          {xingGe.youDian.length > 0 && (
+            <div>
+              <Text strong>优点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.youDian.map((trait, idx) => (
+                  <Tag key={idx} color="green" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+          {xingGe.queDian.length > 0 && (
+            <div>
+              <Text strong>缺点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.queDian.map((trait, idx) => (
+                  <Tag key={idx} color="orange" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
+              </div>
+            </div>
+          )}
+          {xingGe.shiHeZhiYe.length > 0 && (
+            <div>
+              <Text strong>适合职业：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.shiHeZhiYe.map((career, idx) => (
+                  <Tag key={idx} color="purple" style={{ marginBottom: 4 }}>
+                    {career}
+                  </Tag>
+                ))}
+              </div>
+            </div>
+          )}
+        </Space>
       </Card>
     );
   };
@@ -438,71 +503,214 @@ const BaziPage: React.FC = () => {
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card">
-      <Title level={4} className="page-title">
-        <CalendarOutlined /> 八字命理 · 排盘
-      </Title>
-      <Paragraph type="secondary" className="page-subtitle">
-        输入您的出生年月日时，生成专属八字命盘
-      </Paragraph>
+    <>
+      {/* 顶部导航卡片 */}
+      <div className="nav-card" style={{
+        borderRadius: '0',
+        background: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        border: 'none',
+        position: 'fixed',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '414px',
+        zIndex: 100,
+        height: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px'
+      }}>
+          {/* 左边：五运六气 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+            <BgColorsOutlined style={{ fontSize: '18px', color: '#999' }} />
+            <div style={{ fontSize: '10px', color: '#999' }}>五运六气</div>
+          </div>
 
-      <Divider />
+          {/* 中间：问真排盘 */}
+          <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>问真排盘</div>
 
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* 出生日期 */}
+          {/* 右边：生日 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+            <CalendarOutlined style={{ fontSize: '18px', color: '#999' }} />
+            <div style={{ fontSize: '10px', color: '#999' }}>生日</div>
+          </div>
+      </div>
+
+      {/* 顶部占位 */}
+      <div style={{ height: '50px' }}></div>
+
+      {/* 主卡片 */}
+      <Card className="input-card" style={{ position: 'relative' }}>
+
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        {/* 姓名输入框 - 下划线样式 */}
         <div className="form-item">
-          <Text strong>出生日期（公历）</Text>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="请输入姓名"
+            className="name-input"
+            style={{
+              width: '100%',
+              padding: '12px 0',
+              fontSize: '15px',
+              border: 'none',
+              borderBottom: '1px solid #e5e5e5',
+              borderRadius: '0',
+              outline: 'none',
+              backgroundColor: '#FFFFFF',
+              color: '#333',
+            }}
+          />
+        </div>
+
+        {/* 性别和日历类型按钮组 - 两组分别靠两边 */}
+        <div className="form-item" style={{ display: 'flex', gap: '16px', justifyContent: 'space-between' }}>
+          {/* 性别选择组 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setGender(Gender.Male)}
+              style={{
+                padding: '8px 18px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: gender === Gender.Male ? '#B2955D' : 'transparent',
+                color: gender === Gender.Male ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
+            >
+              男
+            </button>
+            <button
+              onClick={() => setGender(Gender.Female)}
+              style={{
+                padding: '8px 18px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: gender === Gender.Female ? '#B2955D' : 'transparent',
+                color: gender === Gender.Female ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
+            >
+              女
+            </button>
+          </div>
+
+          {/* 日历类型选择组 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setCalendarType('solar')}
+              style={{
+                padding: '8px 18px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: calendarType === 'solar' ? '#B2955D' : 'transparent',
+                color: calendarType === 'solar' ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
+            >
+              公历
+            </button>
+            <button
+              onClick={() => setCalendarType('lunar')}
+              style={{
+                padding: '8px 18px',
+                fontSize: '14px',
+                borderRadius: '18px',
+                border: 'none',
+                backgroundColor: calendarType === 'lunar' ? '#B2955D' : 'transparent',
+                color: calendarType === 'lunar' ? '#FFFFFF' : '#929292',
+                cursor: 'pointer',
+                fontWeight: '400',
+              }}
+            >
+              农历
+            </button>
+          </div>
+        </div>
+        {/* 出生日期 - 下划线样式显示 */}
+        <div className="form-item" style={{
+          borderBottom: '1px solid #e5e5e5',
+          paddingBottom: '8px',
+        }}>
           <DatePicker
             value={birthDate}
             onChange={(date) => setBirthDate(date)}
             placeholder="选择出生日期"
-            style={{ width: '100%', marginTop: 8 }}
-            size="large"
+            style={{ width: '100%' }}
+            size="middle"
+            bordered={false}
             disabledDate={(current) => current && current > dayjs()}
+            format="YYYY年MM月DD日 HH:mm"
+            showTime={{ format: 'HH:mm' }}
           />
         </div>
 
-        {/* 出生时辰 */}
-        <div className="form-item">
-          <Text strong>出生时辰</Text>
-          <Select
-            value={birthHour}
-            onChange={(v) => setBirthHour(v)}
-            style={{ width: '100%', marginTop: 8 }}
-            size="large"
-          >
-            {Object.entries(DI_ZHI_HOURS).map(([key, value]) => {
-              const diZhi = parseInt(key) as DiZhi;
-              const zhiName = DI_ZHI_NAMES[diZhi];
-              // 根据时辰范围计算代表小时
-              const hour = diZhi === 0 ? 0 : diZhi * 2 - 1;
-              return (
-                <Option key={diZhi} value={hour}>
-                  {zhiName}时 ({value})
-                </Option>
-              );
-            })}
-          </Select>
+        {/* 地点选择 - 下划线样式 */}
+        <div className="form-item" style={{
+          borderBottom: '1px solid #e5e5e5',
+          paddingBottom: '4px',
+        }}>
+          <Cascader
+            options={cascaderOptions}
+            value={selectedAddress}
+            onChange={handleAddressChange}
+            placeholder="选择出生地（省/市/区）"
+            style={{ width: '100%' }}
+            size="small"
+            variant="borderless"
+            showSearch={{
+              filter: (inputValue, path) =>
+                path.some(option =>
+                  (option.label as string).toLowerCase().indexOf(inputValue.toLowerCase()) > -1
+                ),
+            }}
+            changeOnSelect
+            expandTrigger="hover"
+          />
         </div>
 
-        {/* 性别 */}
-        <div className="form-item">
-          <Text strong>性别</Text>
-          <div style={{ marginTop: 8 }}>
-            <Radio.Group
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              size="large"
-            >
-              <Radio.Button value={Gender.Male}>
-                <UserOutlined /> {GENDER_NAMES[Gender.Male]}
-              </Radio.Button>
-              <Radio.Button value={Gender.Female}>
-                <UserOutlined /> {GENDER_NAMES[Gender.Female]}
-              </Radio.Button>
-            </Radio.Group>
+        {/* 经纬度和地点显示 - 下划线样式 */}
+        <div className="form-item" style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 0',
+          borderBottom: '1px solid #e5e5e5',
+          backgroundColor: '#FFFFFF',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <EnvironmentOutlined style={{ color: '#999' }} />
+            <Text style={{ color: '#333' }}>{location}</Text>
           </div>
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            北纬{latitude.toFixed(4)} 东经{longitude.toFixed(3)}
+          </Text>
         </div>
+
+        {/* 真太阳时显示 - 简洁样式 */}
+        {birthDate && (
+          <div className="form-item" style={{
+            padding: '8px 0',
+            backgroundColor: '#FFFFFF',
+          }}>
+            <Text style={{ fontSize: '13px', color: '#999' }}>
+              真太阳时：{birthDate.format('YYYY-MM-DD HH:mm')}
+            </Text>
+          </div>
+        )}
+
+        {/* 删除原有的单独时辰选择和性别选择 */}
 
         <Button
           type="primary"
@@ -510,33 +718,37 @@ const BaziPage: React.FC = () => {
           block
           onClick={handleCalculate}
           loading={loading}
-          disabled={!birthDate}
+          disabled={!birthDate || !isConnected}
+          style={{
+            background: '#000000',
+            borderColor: '#000000',
+            borderRadius: '54px',
+            height: '54px',
+            fontSize: '19px',
+            fontWeight: '700',
+            color: '#F7D3A1',
+          }}
         >
-          开始排盘
+          {isConnected ? '开始排盘' : '请先连接钱包'}
         </Button>
+
+        {!isConnected && (
+          <div style={{ textAlign: 'center' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              💡 需要连接钱包才能使用区块链生成八字
+            </Text>
+          </div>
+        )}
       </Space>
-
-      <Divider />
-
-      <div className="input-tips">
-        <Title level={5}>排盘须知</Title>
-        <ul>
-          <li>请输入准确的公历出生日期和时辰</li>
-          <li>如不确定时辰，可选择中午时段</li>
-          <li>性别会影响大运的顺逆方向</li>
-          <li>排盘结果仅供参考，命运掌握在自己手中</li>
-        </ul>
-      </div>
     </Card>
+    </>
   );
 
   /**
    * 渲染排盘结果
    */
   const renderResult = () => {
-    if (!result) return null;
-
-    const { siZhu, siZhuDetail, lunarInfo, birthInfo } = result;
+    if (!chartData || !interpretation) return null;
 
     return (
       <div className="result-container">
@@ -546,105 +758,61 @@ const BaziPage: React.FC = () => {
             <Col span={12}>
               <Statistic
                 title="公历"
-                value={`${birthInfo.year}年${birthInfo.month}月${birthInfo.day}日`}
+                value={`${chartData.birthYear}年${chartData.birthMonth}月${chartData.birthDay}日`}
                 valueStyle={{ fontSize: 14 }}
               />
             </Col>
             <Col span={12}>
               <Statistic
-                title="农历"
-                value={`${lunarInfo.year}年${lunarInfo.isLeapMonth ? '闰' : ''}${lunarInfo.month}月${lunarInfo.day}日`}
+                title="性别"
+                value={chartData.gender === 0 ? '女' : '男'}
                 valueStyle={{ fontSize: 14 }}
               />
             </Col>
           </Row>
           <Divider style={{ margin: '12px 0' }} />
           <div className="bazi-summary">
-            <Text strong>八字：</Text>
-            <Text code style={{ fontSize: 16 }}>{formatBazi(siZhu)}</Text>
+            <Text strong>命盘ID：</Text>
+            <Text code style={{ fontSize: 16 }}>#{savedChartId}</Text>
           </div>
         </Card>
 
-        {/* 四柱详情 */}
-        <Card className="si-zhu-card" size="small">
-          <Title level={5}>四柱八字</Title>
-          <div className="si-zhu-container">
-            {renderZhu('年柱', siZhuDetail.nian)}
-            {renderZhu('月柱', siZhuDetail.yue)}
-            {renderZhu('日柱', siZhuDetail.ri, true)}
-            {renderZhu('时柱', siZhuDetail.shi)}
-          </div>
-        </Card>
+        {/* 四柱 */}
+        {renderSiZhu()}
 
-        {/* 五行统计 */}
-        {renderWuXingStats()}
+        {/* 解盘核心 */}
+        {renderInterpretationCore()}
 
-        {/* 大运 */}
-        {renderDaYun()}
-
-        {/* 流年 */}
-        {renderLiuNian()}
+        {/* 性格分析 */}
+        {renderXingGeAnalysis()}
 
         {/* 操作按钮 */}
         <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
-          {!savedChartId ? (
-            <>
-              <Button
-                type="primary"
-                block
-                onClick={handleSaveToChain}
-                loading={saving}
-                disabled={!isConnected}
-              >
-                {isConnected ? '保存到链上' : '请先连接钱包'}
-              </Button>
-              <Button block onClick={handleReset}>
-                重新排盘
-              </Button>
-              {/* 未保存时显示禁用的AI按钮，提示用户需要先保存 */}
-              <div style={{ padding: '8px 0' }}>
-                <Button
-                  icon={<RobotOutlined />}
-                  block
-                  disabled
-                  style={{ opacity: 0.6 }}
-                >
-                  AI智能解盘（需先保存）
-                </Button>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 4 }}>
-                  💡 保存命盘后可使用AI智能解读功能
-                </Text>
-              </div>
-            </>
-          ) : (
-            <>
-              <Button
-                type="primary"
-                icon={<RobotOutlined />}
-                block
-                onClick={handleRequestAIInterpretation}
-                loading={requestingAI}
-                disabled={!isConnected || requestingAI}
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  borderColor: '#667eea',
-                }}
-              >
-                {requestingAI ? 'AI解读中...' : 'AI智能解盘'}
-              </Button>
-              <Button
-                type="default"
-                block
-                onClick={handleViewDetail}
-                icon={<ArrowRightOutlined />}
-              >
-                查看命盘详情
-              </Button>
-              <Button block onClick={handleReset}>
-                重新排盘
-              </Button>
-            </>
-          )}
+          <Button
+            type="primary"
+            icon={<RobotOutlined />}
+            block
+            onClick={handleRequestAIInterpretation}
+            loading={requestingAI}
+            disabled={!isConnected || requestingAI}
+            style={{
+              background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
+              borderColor: '#B2955D',
+            }}
+          >
+            {requestingAI ? 'AI解读中...' : 'AI智能解盘'}
+          </Button>
+          <Button
+            type="default"
+            block
+            onClick={handleViewDetail}
+            icon={<ArrowRightOutlined />}
+          >
+            查看命盘详情
+          </Button>
+          <Button block onClick={handleReset}>
+            重新排盘
+          </Button>
           <Divider style={{ margin: '12px 0' }} />
           <Button
             type="link"
@@ -660,10 +828,16 @@ const BaziPage: React.FC = () => {
 
   return (
     <div className="bazi-page">
-      {/* 节点状态检查 */}
-      <NodeStatusChecker autoCheck={true} checkInterval={10000} />
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Spin
+            indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
+            tip="正在区块链上生成八字命盘..."
+          />
+        </div>
+      )}
 
-      {result ? renderResult() : renderInputForm()}
+      {!loading && (chartData && interpretation ? renderResult() : renderInputForm())}
 
       {/* 底部导航 */}
       <div className="bottom-nav">

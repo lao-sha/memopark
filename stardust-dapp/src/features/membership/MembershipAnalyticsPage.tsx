@@ -184,7 +184,7 @@ const MembershipAnalyticsPage: React.FC = () => {
 
       {/* 标题 */}
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <Title level={2} style={{ color: '#667eea', marginBottom: '8px' }}>
+        <Title level={2} style={{ color: '#B2955D', marginBottom: '8px' }}>
           会员系统数据监控
         </Title>
         <Text type="secondary">

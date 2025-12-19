@@ -327,23 +327,86 @@ export async function getChart(chartId: number): Promise<ZiweiChart | null> {
       aiInterpretationCid = new TextDecoder().decode(new Uint8Array(cidBytes));
     }
 
+    // 辅助函数：安全地从Codec或数字中提取数值
+    const toNum = (val: any): number => {
+      if (typeof val === 'number') return val;
+      if (val && typeof val.toNumber === 'function') return val.toNumber();
+      if (val && typeof val === 'string') return parseInt(val.replace(/,/g, ''), 10);
+      return 0;
+    };
+
+    // 辅助函数：安全地从Codec或布尔值中提取布尔值
+    const toBool = (val: any): boolean => {
+      if (typeof val === 'boolean') return val;
+      if (val && typeof val.isTrue === 'boolean') return val.isTrue;
+      return false;
+    };
+
+    // 辅助函数：从枚举名称字符串或Codec中提取枚举值
+    const toEnum = (val: any, enumObj: any): number => {
+      if (typeof val === 'number') return val;
+      if (val && typeof val.toNumber === 'function') return val.toNumber();
+      if (typeof val === 'string') {
+        // 尝试匹配枚举名称
+        const key = Object.keys(enumObj).find(k => k === val);
+        if (key) return enumObj[key];
+      }
+      return 0;
+    };
+
+    // 地支映射（用于解析 birthHour）
+    const DiZhiMap: Record<string, DiZhi> = {
+      'Zi': DiZhi.Zi, 'Chou': DiZhi.Chou, 'Yin': DiZhi.Yin, 'Mao': DiZhi.Mao,
+      'Chen': DiZhi.Chen, 'Si': DiZhi.Si, 'Wu': DiZhi.Wu, 'Wei': DiZhi.Wei,
+      'Shen': DiZhi.Shen, 'You': DiZhi.You, 'Xu': DiZhi.Xu, 'Hai': DiZhi.Hai,
+    };
+
+    // 天干映射
+    const TianGanMap: Record<string, TianGan> = {
+      'Jia': TianGan.Jia, 'Yi': TianGan.Yi, 'Bing': TianGan.Bing, 'Ding': TianGan.Ding,
+      'Wu': TianGan.Wu, 'Ji': TianGan.Ji, 'Geng': TianGan.Geng, 'Xin': TianGan.Xin,
+      'Ren': TianGan.Ren, 'Gui': TianGan.Gui,
+    };
+
+    // 性别映射
+    const GenderMap: Record<string, Gender> = {
+      'Male': Gender.Male,
+      'Female': Gender.Female,
+    };
+
+    // 五行局映射
+    const WuXingJuMap: Record<string, WuXingJu> = {
+      'Water': WuXingJu.Shui,
+      'Wood': WuXingJu.Mu,
+      'Metal': WuXingJu.Jin,
+      'Earth': WuXingJu.Tu,
+      'Fire': WuXingJu.Huo,
+    };
+
+    const parseEnum = (val: any, map: Record<string, number>): number => {
+      if (typeof val === 'number') return val;
+      if (val && typeof val.toNumber === 'function') return val.toNumber();
+      if (typeof val === 'string' && map[val] !== undefined) return map[val];
+      return 0;
+    };
+
     const chart: ZiweiChart = {
       id: chartId,
       creator: data.creator.toString(),
-      lunarYear: data.lunarYear.toNumber(),
-      lunarMonth: data.lunarMonth.toNumber(),
-      lunarDay: data.lunarDay.toNumber(),
-      birthHour: data.birthHour.toNumber() as DiZhi,
-      gender: data.gender.toNumber() as Gender,
-      isLeapMonth: data.isLeapMonth.isTrue,
-      yearGan: data.yearGan.toNumber() as TianGan,
-      yearZhi: data.yearZhi.toNumber() as DiZhi,
-      wuXingJu: data.wuXingJu.toNumber() as WuXingJu,
-      juShu: data.juShu.toNumber(),
-      mingGong: data.mingGong.toNumber(),
-      shenGong: data.shenGong.toNumber(),
-      createdAt: data.createdAt.toNumber(),
-      isPublic: data.isPublic.isTrue,
+      lunarYear: toNum(data.lunarYear),
+      lunarMonth: toNum(data.lunarMonth),
+      lunarDay: toNum(data.lunarDay),
+      birthHour: parseEnum(data.birthHour, DiZhiMap) as DiZhi,
+      gender: parseEnum(data.gender, GenderMap) as Gender,
+      isLeapMonth: toBool(data.isLeapMonth),
+      yearGan: parseEnum(data.yearGan, TianGanMap) as TianGan,
+      yearZhi: parseEnum(data.yearZhi, DiZhiMap) as DiZhi,
+      wuXingJu: parseEnum(data.wuXingJu, WuXingJuMap) as WuXingJu,
+      juShu: toNum(data.juShu),
+      mingGong: toNum(data.mingGongPos || data.mingGong),
+      shenGong: toNum(data.shenGongPos || data.shenGong),
+      createdAt: toNum(data.createdAt || data.timestamp),
+      isPublic: toBool(data.isPublic),
       aiInterpretationCid,
     };
 

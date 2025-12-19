@@ -187,7 +187,7 @@ export const StrategyListPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 414, margin: '0 auto' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2}>

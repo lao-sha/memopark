@@ -6382,6 +6382,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lite-json"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0e787ffe1153141a0f6f6d759fdf1cc34b1226e088444523812fd412a5cca2"
+dependencies = [
+ "lite-parser",
+]
+
+[[package]]
+name = "lite-parser"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d5f9dc37c52d889a21fd701983d02bb6a84f852c5140a6c80ef4557f7dc29e"
+dependencies = [
+ "paste",
+]
+
+[[package]]
 name = "litemap"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7440,6 +7458,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-almanac"
+version = "0.1.0"
+dependencies = [
+ "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "frame-system 41.0.2",
+ "lite-json",
+ "log",
+ "pallet-balances 42.0.0",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 37.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-io 41.0.1 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-runtime 42.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+]
+
+[[package]]
 name = "pallet-arbitration"
 version = "0.1.0"
 dependencies = [
@@ -7744,6 +7780,7 @@ dependencies = [
  "frame-benchmarking 41.0.1",
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -8070,6 +8107,7 @@ dependencies = [
  "frame-benchmarking 41.0.1",
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -8106,6 +8144,7 @@ dependencies = [
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
  "log",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -8262,6 +8301,7 @@ dependencies = [
  "frame-benchmarking 41.0.1",
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-divination-common",
  "pallet-timestamp",
@@ -8613,6 +8653,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-divination-common",
  "pallet-timestamp",
@@ -8633,6 +8674,7 @@ dependencies = [
  "frame-benchmarking 41.0.1",
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
+ "pallet-almanac",
  "pallet-balances 42.0.0",
  "pallet-divination-common",
  "pallet-timestamp",
@@ -14996,6 +15038,7 @@ dependencies = [
  "pallet-affiliate",
  "pallet-ai-chat",
  "pallet-ai-trader",
+ "pallet-almanac",
  "pallet-arbitration",
  "pallet-aura",
  "pallet-balances 42.0.0",

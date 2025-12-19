@@ -451,6 +451,12 @@ export class SmartChatService {
     try {
       const api = await this.ensureApi();
 
+      // 检查 pallet 是否存在
+      if (!api.query.smartGroupChat) {
+        console.warn('smartGroupChat pallet 未部署到链上');
+        return [];
+      }
+
       const groups: GroupInfo[] = [];
 
       // 获取用户作为成员的所有群组

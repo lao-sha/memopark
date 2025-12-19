@@ -25,7 +25,7 @@ const SubmitAppealPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 12 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 12 }}>
       <h3>提交内容申诉</h3>
       
       {/* 引导提示 */}

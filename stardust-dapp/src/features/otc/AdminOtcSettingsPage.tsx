@@ -38,7 +38,7 @@ const AdminOtcSettingsPage: React.FC = () => {
   }
 
   return (
-    <Flex vertical gap={8} style={{ padding: 12, maxWidth: 480, margin: '0 auto' }}>
+    <Flex vertical gap={8} style={{ padding: 12, maxWidth: 414, margin: '0 auto' }}>
       <Typography.Title level={4} style={{ margin: 0 }}>OTC 管理</Typography.Title>
       <Alert type="warning" showIcon message="仅管理员/治理可用；切换后影响全局做市商发布方向。" />
       <Card size="small" loading={loading} title="AllowBuyListings（允许挂买单）">

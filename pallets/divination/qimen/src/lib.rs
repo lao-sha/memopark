@@ -309,6 +309,92 @@ pub mod pallet {
             )
         }
 
+        /// 公历时间起局排盘
+        ///
+        /// 此方法使用 pallet-almanac 自动将公历日期转换为四柱干支和节气，
+        /// 然后进行奇门遁甲排盘。用户无需手动计算干支和节气。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(120_000_000, 0))]
+        pub fn divine_by_solar_time(
+            origin: OriginFor<T>,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+            question_hash: [u8; 32],
+            is_public: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidJieQi);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidJieQi);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidJieQi);
+            ensure!(hour < 24, Error::<T>::InvalidJieQi);
+
+            // 调用 almanac 计算四柱
+            let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
+
+            // 转换为本模块的 GanZhi 类型
+            let year_gz = GanZhi {
+                gan: TianGan::from_index(pillars.year.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                zhi: DiZhi::from_index(pillars.year.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+            };
+            let month_gz = GanZhi {
+                gan: TianGan::from_index(pillars.month.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                zhi: DiZhi::from_index(pillars.month.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+            };
+            let day_gz = GanZhi {
+                gan: TianGan::from_index(pillars.day.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                zhi: DiZhi::from_index(pillars.day.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+            };
+            let hour_gz = GanZhi {
+                gan: TianGan::from_index(pillars.hour.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                zhi: DiZhi::from_index(pillars.hour.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+            };
+
+            // 获取节气（返回 Option<u8>，0-23）
+            let jie_qi_idx = pallet_almanac::get_solar_term(solar_year, solar_month, solar_day)
+                .unwrap_or(0);
+            let jieqi = JieQi::from_index(jie_qi_idx).unwrap_or(JieQi::LiChun);
+
+            // 计算节气内天数（简化为1-15）
+            // 每个节气约15天，根据日期估算
+            let day_in_jieqi = ((solar_day - 1) % 15) + 1;
+
+            // 调用排盘算法
+            let (dun_type, san_yuan, ju_number, zhi_fu_xing, zhi_shi_men, palaces) =
+                algorithm::generate_qimen_chart(year_gz, month_gz, day_gz, hour_gz, jieqi, day_in_jieqi);
+
+            Self::create_chart(
+                who,
+                DivinationMethod::ByTime,
+                year_gz,
+                month_gz,
+                day_gz,
+                hour_gz,
+                jieqi,
+                dun_type,
+                san_yuan,
+                ju_number,
+                zhi_fu_xing,
+                zhi_shi_men,
+                palaces,
+                question_hash,
+                is_public,
+            )
+        }
+
         /// 数字起局排盘
         ///
         /// 使用用户输入的数字生成局数。

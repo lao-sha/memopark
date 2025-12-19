@@ -439,7 +439,7 @@ const LiuyaoDetailPage: React.FC = () => {
 
   if (!gua || error) {
     return (
-      <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ padding: 12, maxWidth: 414, paddingBottom: 80, minHeight: '100vh', background: 'linear-gradient(180deg, #F5F5F7 0%, #ffffff 100%)', margin: '0 auto' }}>
         <Result
           status="warning"
           title="卦象加载失败"
@@ -482,7 +482,7 @@ const LiuyaoDetailPage: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: 16, maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ padding: 12, maxWidth: 414, paddingBottom: 80, minHeight: '100vh', background: 'linear-gradient(180deg, #F5F5F7 0%, #ffffff 100%)', margin: '0 auto' }}>
       {/* 页面标题 */}
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -182,7 +182,7 @@ export const BlockedUsersPage: React.FC = () => {
       </div>
       
       {/* 内容区域 */}
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: 16 }}>
+      <div style={{ maxWidth: 414, margin: '0 auto', padding: 16 }}>
         <Card
           bordered={false}
           loading={loading}

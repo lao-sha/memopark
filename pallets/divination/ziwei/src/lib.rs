@@ -397,6 +397,73 @@ pub mod pallet {
             Ok(())
         }
 
+        /// 公历时间起盘 - 根据公历出生时间计算命盘
+        ///
+        /// 此方法自动将公历日期转换为农历，然后进行排盘。
+        /// 使用 pallet-almanac 进行统一的公历农历转换。
+        ///
+        /// # 参数
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `birth_hour`: 出生时辰
+        /// - `gender`: 性别
+        #[pallet::call_index(6)]
+        #[pallet::weight(Weight::from_parts(120_000_000, 0))]
+        pub fn divine_by_solar_time(
+            origin: OriginFor<T>,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            birth_hour: DiZhi,
+            gender: Gender,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidYear);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidLunarMonth);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidLunarDay);
+
+            // 检查每日限制
+            Self::check_daily_limit(&who)?;
+
+            // 调用 almanac 进行公历转农历
+            let lunar = pallet_almanac::solar_to_lunar(solar_year, solar_month, solar_day)
+                .ok_or(Error::<T>::InvalidYear)?;
+
+            // 计算年干支（使用农历年）
+            let year_gan = TianGan::from_index(((lunar.year - 4) % 10) as u8);
+            let year_zhi = DiZhi::from_index(((lunar.year - 4) % 12) as u8);
+
+            // 执行排盘
+            let chart_id = Self::do_divine(
+                &who,
+                lunar.year,
+                lunar.month,
+                lunar.day,
+                birth_hour,
+                gender,
+                lunar.is_leap,
+                year_gan,
+                year_zhi,
+            )?;
+
+            // 更新每日计数
+            Self::increment_daily_count(&who);
+
+            // 发出事件
+            let chart = Charts::<T>::get(chart_id).ok_or(Error::<T>::ChartNotFound)?;
+            Self::deposit_event(Event::ChartCreated {
+                chart_id,
+                creator: who,
+                wu_xing_ju: chart.wu_xing_ju,
+                ju_shu: chart.ju_shu,
+            });
+
+            Ok(())
+        }
+
         /// 请求 AI 解读（已废弃）
         ///
         /// **注意**：此函数已废弃，请使用 `pallet_divination_ai::request_interpretation`

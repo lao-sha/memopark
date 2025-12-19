@@ -1,8 +1,14 @@
 /**
- * 八字排盘详情页面
+ * 八字排盘详情页面 - 链端生成版
+ *
+ * 架构说明：
+ * - 八字数据和解盘结果完全由链端生成
+ * - 前端只负责展示，不进行任何八字计算
+ * - 通过 Runtime API 免费获取解盘结果
  *
  * 功能：
  * - 展示已保存的八字命盘详情
+ * - 展示链端生成的解盘结果
  * - 提供AI解读入口
  * - 提供大师服务入口
  * - 集成悬赏问答功能
@@ -24,7 +30,6 @@ import {
   Spin,
   Empty,
   Result,
-  Collapse,
 } from 'antd';
 import {
   CalendarOutlined,
@@ -34,32 +39,17 @@ import {
   ShareAltOutlined,
   StarOutlined,
   ArrowLeftOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import {
   Gender,
   GENDER_NAMES,
-  TIAN_GAN_NAMES,
-  DI_ZHI_NAMES,
-  WU_XING_NAMES,
-  WU_XING_COLORS,
-  WU_XING_BG_COLORS,
-  SHI_SHEN_SHORT,
-  SHI_SHEN_COLORS,
-  BaziResult,
-  ZhuDetail,
-  DaYun,
-  getGanZhiName,
 } from '../../types/bazi';
-import { calculateBazi, calculateLiuNian, formatBazi } from '../../services/baziService';
 import {
   getBaziChart,
-  downloadBaziResultFromIpfs,
-  interpretBaziOnChain,
-  getOnChainInterpretation,
+  getInterpretation,
   type OnChainBaziChart,
-  type OnChainInterpretation,
+  type V3FullInterpretation,
 } from '../../services/baziChainService';
 import { CreateBountyModal } from '../bounty/components/CreateBountyModal';
 import { BasicInterpretationCard } from './components/BasicInterpretationCard';
@@ -68,7 +58,6 @@ import { useWalletStore } from '../../stores/walletStore';
 import './BaziPage.css';
 
 const { Title, Text, Paragraph } = Typography;
-const { Panel } = Collapse;
 
 /**
  * 八字详情页面组件
@@ -79,14 +68,10 @@ const BaziDetailPage: React.FC = () => {
   const baziId = hashMatch ? parseInt(hashMatch[1]) : null;
 
   // 状态
-  const [result, setResult] = useState<BaziResult | null>(null);
   const [chartData, setChartData] = useState<OnChainBaziChart | null>(null);
+  const [interpretation, setInterpretation] = useState<V3FullInterpretation | null>(null);
   const [loading, setLoading] = useState(true);
   const [bountyModalVisible, setBountyModalVisible] = useState(false);
-
-  // 链上解盘状态
-  const [interpretation, setInterpretation] = useState<OnChainInterpretation | null>(null);
-  const [interpreting, setInterpreting] = useState(false);
 
   // 从钱包store获取用户账户
   const { selectedAccount } = useWalletStore();
@@ -110,8 +95,7 @@ const BaziDetailPage: React.FC = () => {
   }
 
   /**
-   * 加载八字数据
-   * 优化后的加载逻辑：优先使用链上数据计算，减少对IPFS的依赖
+   * 加载八字数据（完全依赖链端）
    */
   const loadBaziData = useCallback(async () => {
     setLoading(true);
@@ -127,36 +111,10 @@ const BaziDetailPage: React.FC = () => {
 
       setChartData(chart);
 
-      // 根据链上基本信息计算八字（主要数据来源）
-      const baziInput = {
-        year: chart.birthYear,
-        month: chart.birthMonth,
-        day: chart.birthDay,
-        hour: chart.birthHour,
-        gender: chart.gender as Gender,
-      };
-
-      const calculatedResult = calculateBazi(baziInput);
-      setResult(calculatedResult);
-
-      // 可选：尝试从IPFS加载补充数据（不阻塞主流程）
-      if (chart.dataCid) {
-        downloadBaziResultFromIpfs(chart.dataCid)
-          .then((ipfsResult) => {
-            if (ipfsResult) {
-              console.log('[BaziDetailPage] IPFS数据加载成功，作为补充');
-              // 可以合并一些IPFS的额外数据
-            }
-          })
-          .catch((err) => {
-            console.warn('[BaziDetailPage] IPFS数据加载失败，使用计算结果:', err);
-          });
-      }
-
-      // 加载链上解盘结果（旧版，保留兼容）
-      const onChainInterpretation = await getOnChainInterpretation(baziId);
-      if (onChainInterpretation) {
-        setInterpretation(onChainInterpretation);
+      // 通过 Runtime API 获取链上生成的完整解盘（免费）
+      const interp = await getInterpretation(baziId);
+      if (interp) {
+        setInterpretation(interp);
       }
 
       setLoading(false);
@@ -197,8 +155,8 @@ const BaziDetailPage: React.FC = () => {
    */
   const handleShare = useCallback(async () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}#/bazi/${baziId}`;
-    const shareText = result
-      ? `我的八字命盘：${formatBazi(result.siZhu)}`
+    const shareText = chartData
+      ? `查看我的八字命盘 #${baziId}`
       : `查看我的八字命盘`;
 
     // 尝试使用 Web Share API
@@ -221,7 +179,7 @@ const BaziDetailPage: React.FC = () => {
       // 降级到复制链接
       copyToClipboard(shareUrl);
     }
-  }, [baziId, result]);
+  }, [baziId, chartData]);
 
   /**
    * 复制到剪贴板
@@ -252,385 +210,134 @@ const BaziDetailPage: React.FC = () => {
   };
 
   /**
-   * 执行链上解盘
+   * 渲染链上解盘核心信息
    */
-  const handleInterpretOnChain = useCallback(async () => {
-    if (!selectedAccount) {
-      message.warning('请先连接钱包');
-      return;
-    }
+  const renderInterpretationCore = () => {
+    if (!interpretation) return null;
 
-    if (interpretation) {
-      message.info('该八字已经解盘过了，可以直接查看结果');
-      return;
-    }
-
-    setInterpreting(true);
-    try {
-      await interpretBaziOnChain(baziId!);
-      message.success('链上解盘成功！');
-
-      // 重新加载解盘结果
-      const newInterpretation = await getOnChainInterpretation(baziId!);
-      setInterpretation(newInterpretation);
-    } catch (error) {
-      console.error('链上解盘失败:', error);
-      message.error(`解盘失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    } finally {
-      setInterpreting(false);
-    }
-  }, [baziId, selectedAccount, interpretation]);
-
-  /**
-   * 渲染单柱
-   */
-  const renderZhu = (
-    title: string,
-    detail: ZhuDetail,
-    isRiZhu: boolean = false
-  ) => {
-    const { ganZhi, tianGanShiShen, cangGan, cangGanShiShen, tianGanWuXing, diZhiWuXing } = detail;
+    const { core } = interpretation;
 
     return (
-      <div className="zhu-column">
-        <div className="zhu-title">{title}</div>
-
-        {/* 天干十神 */}
-        <div className="shi-shen-row">
-          {isRiZhu ? (
-            <Tag color="purple">日主</Tag>
-          ) : tianGanShiShen !== null ? (
-            <Tag color={SHI_SHEN_COLORS[tianGanShiShen]}>
-              {SHI_SHEN_SHORT[tianGanShiShen]}
-            </Tag>
-          ) : null}
-        </div>
-
-        {/* 天干 */}
-        <div
-          className="gan-box"
-          style={{
-            backgroundColor: WU_XING_BG_COLORS[tianGanWuXing],
-            borderColor: WU_XING_COLORS[tianGanWuXing],
-          }}
-        >
-          <span className="gan-text">{TIAN_GAN_NAMES[ganZhi.tianGan]}</span>
-          <span className="wu-xing-label" style={{ color: WU_XING_COLORS[tianGanWuXing] }}>
-            {WU_XING_NAMES[tianGanWuXing]}
-          </span>
-        </div>
-
-        {/* 地支 */}
-        <div
-          className="zhi-box"
-          style={{
-            backgroundColor: WU_XING_BG_COLORS[diZhiWuXing],
-            borderColor: WU_XING_COLORS[diZhiWuXing],
-          }}
-        >
-          <span className="zhi-text">{DI_ZHI_NAMES[ganZhi.diZhi]}</span>
-          <span className="wu-xing-label" style={{ color: WU_XING_COLORS[diZhiWuXing] }}>
-            {WU_XING_NAMES[diZhiWuXing]}
-          </span>
-        </div>
-
-        {/* 藏干 */}
-        <div className="cang-gan-section">
-          {cangGan.map((g, idx) => (
-            <div key={idx} className="cang-gan-item">
-              <span className="cang-gan-name">{TIAN_GAN_NAMES[g]}</span>
-              <Tag color={SHI_SHEN_COLORS[cangGanShiShen[idx]]} style={{ fontSize: 11 }}>
-                {SHI_SHEN_SHORT[cangGanShiShen[idx]]}
-              </Tag>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  /**
-   * 渲染五行统计
-   */
-  const renderWuXingStats = () => {
-    if (!result) return null;
-    const { wuXingCount, wuXingLack } = result;
-
-    const items = [
-      { name: '木', count: wuXingCount.mu, color: WU_XING_COLORS[0], bg: WU_XING_BG_COLORS[0] },
-      { name: '火', count: wuXingCount.huo, color: WU_XING_COLORS[1], bg: WU_XING_BG_COLORS[1] },
-      { name: '土', count: wuXingCount.tu, color: WU_XING_COLORS[2], bg: WU_XING_BG_COLORS[2] },
-      { name: '金', count: wuXingCount.jin, color: WU_XING_COLORS[3], bg: WU_XING_BG_COLORS[3] },
-      { name: '水', count: wuXingCount.shui, color: WU_XING_COLORS[4], bg: WU_XING_BG_COLORS[4] },
-    ];
-
-    return (
-      <Card className="wu-xing-card" size="small">
-        <Title level={5}>五行统计</Title>
-        <div className="wu-xing-bars">
-          {items.map((item) => (
-            <div key={item.name} className="wu-xing-bar-item">
-              <div className="bar-label">
-                <span style={{ color: item.color }}>{item.name}</span>
-                <span>{item.count}</span>
-              </div>
-              <div className="bar-track" style={{ backgroundColor: item.bg }}>
-                <div
-                  className="bar-fill"
-                  style={{
-                    width: `${Math.min(item.count * 12.5, 100)}%`,
-                    backgroundColor: item.color,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        {wuXingLack.length > 0 && (
-          <div className="wu-xing-lack">
-            <Text type="secondary">五行缺：</Text>
-            {wuXingLack.map((wx) => (
-              <Tag key={wx} color="warning">
-                {WU_XING_NAMES[wx]}
-              </Tag>
-            ))}
+      <Card className="interpretation-card" size="small" style={{ marginTop: 16 }}>
+        <Title level={5}>命盘解析（链端生成）</Title>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic title="格局" value={core.geJu} valueStyle={{ fontSize: 16 }} />
+            </Col>
+            <Col span={12}>
+              <Statistic title="强弱" value={core.qiangRuo} valueStyle={{ fontSize: 16 }} />
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic
+                title="用神"
+                value={core.yongShen}
+                valueStyle={{ fontSize: 16, color: '#52c41a' }}
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="喜神"
+                value={core.xiShen}
+                valueStyle={{ fontSize: 16, color: '#1890ff' }}
+              />
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Statistic
+                title="忌神"
+                value={core.jiShen}
+                valueStyle={{ fontSize: 16, color: '#ff4d4f' }}
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="综合评分"
+                value={core.score}
+                suffix="分"
+                valueStyle={{ fontSize: 16 }}
+              />
+            </Col>
+          </Row>
+          <Divider style={{ margin: '8px 0' }} />
+          <div>
+            <Text strong>用神类型：</Text>
+            <Tag color="blue">{core.yongShenType}</Tag>
           </div>
-        )}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              可信度: {core.confidence}% | 算法版本: v{core.algorithmVersion}
+            </Text>
+          </div>
+        </Space>
       </Card>
     );
   };
 
   /**
-   * 渲染大运（折叠面板）
+   * 渲染性格分析
    */
-  const renderDaYun = () => {
-    if (!result) return null;
-    const { daYunList, qiYunAge, daYunShun } = result;
+  const renderXingGeAnalysis = () => {
+    if (!interpretation || !interpretation.xingGe) return null;
+
+    const { xingGe } = interpretation;
 
     return (
-      <Collapse defaultActiveKey={['dayun']} style={{ marginTop: 16 }}>
-        <Panel
-          header={
-            <Space>
-              <span style={{ fontWeight: 500 }}>大运</span>
-              <Tag color={daYunShun ? 'blue' : 'orange'}>
-                {daYunShun ? '顺行' : '逆行'}
-              </Tag>
-              <Text type="secondary" style={{ fontSize: 12 }}>{qiYunAge}岁起运</Text>
-            </Space>
-          }
-          key="dayun"
-        >
-          <div className="da-yun-list">
-            {daYunList.slice(0, 10).map((dy: DaYun) => (
-              <div key={dy.index} className="da-yun-item">
-                <div className="da-yun-age">{dy.startAge}-{dy.endAge}</div>
-                <div className="da-yun-gan-zhi">
-                  <span className="gan">{TIAN_GAN_NAMES[dy.ganZhi.tianGan]}</span>
-                  <span className="zhi">{DI_ZHI_NAMES[dy.ganZhi.diZhi]}</span>
-                </div>
-                <Tag color={SHI_SHEN_COLORS[dy.tianGanShiShen]} style={{ fontSize: 11 }}>
-                  {SHI_SHEN_SHORT[dy.tianGanShiShen]}
-                </Tag>
+      <Card className="xingge-card" size="small" style={{ marginTop: 16 }}>
+        <Title level={5}>性格分析</Title>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {xingGe.zhuYaoTeDian.length > 0 && (
+            <div>
+              <Text strong>主要特点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.zhuYaoTeDian.map((trait, idx) => (
+                  <Tag key={idx} color="blue" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
               </div>
-            ))}
-          </div>
-        </Panel>
-      </Collapse>
-    );
-  };
-
-  /**
-   * 渲染流年（折叠面板）
-   */
-  const renderLiuNian = () => {
-    if (!result) return null;
-
-    const currentYear = new Date().getFullYear();
-    const liuNianList = calculateLiuNian(
-      result.siZhu,
-      result.birthInfo.year,
-      currentYear,
-      15 // 显示前后共15年
-    );
-
-    return (
-      <Collapse style={{ marginTop: 16 }}>
-        <Panel
-          header={
-            <Space>
-              <span style={{ fontWeight: 500 }}>流年</span>
-              <Text type="secondary" style={{ fontSize: 12 }}>近15年运势</Text>
-            </Space>
-          }
-          key="liunian"
-        >
-          <div className="liu-nian-list">
-            {liuNianList.map((ln) => (
-              <div
-                key={ln.year}
-                className={`liu-nian-item ${ln.year === currentYear ? 'current' : ''}`}
-              >
-                <div className="liu-nian-year">
-                  {ln.year}
-                  {ln.year === currentYear && (
-                    <Tag color="red" style={{ marginLeft: 4, fontSize: 10 }}>本年</Tag>
-                  )}
-                </div>
-                <div className="liu-nian-gan-zhi">{getGanZhiName(ln.ganZhi)}</div>
-                <Tag color={SHI_SHEN_COLORS[ln.tianGanShiShen]} style={{ fontSize: 11 }}>
-                  {SHI_SHEN_SHORT[ln.tianGanShiShen]}
-                </Tag>
-                <div className="liu-nian-age">{ln.age}岁</div>
+            </div>
+          )}
+          {xingGe.youDian.length > 0 && (
+            <div>
+              <Text strong>优点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.youDian.map((trait, idx) => (
+                  <Tag key={idx} color="green" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
               </div>
-            ))}
-          </div>
-        </Panel>
-      </Collapse>
-    );
-  };
-
-  /**
-   * 渲染链上解盘结果（V1 完整版）
-   */
-  const renderOnChainInterpretation = () => {
-    if (!interpretation) return null;
-
-    return (
-      <Card
-        title={
-          <Space>
-            <ThunderboltOutlined style={{ color: '#faad14' }} />
-            <span>链上解盘结果</span>
-            <Tag color="gold">V1 完整版</Tag>
-          </Space>
-        }
-        className="interpretation-card"
-        size="small"
-        style={{ marginTop: 16 }}
-      >
-        {/* 核心指标 */}
-        <Row gutter={[16, 16]}>
-          <Col span={12}>
-            <Card type="inner" size="small">
-              <Statistic
-                title="格局"
-                value={interpretation.geJu}
-                valueStyle={{ fontSize: 18, color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col span={12}>
-            <Card type="inner" size="small">
-              <Statistic
-                title="命局强弱"
-                value={interpretation.qiangRuo}
-                valueStyle={{ fontSize: 18, color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col span={12}>
-            <Card type="inner" size="small">
-              <Statistic
-                title="用神"
-                value={interpretation.yongShen}
-                valueStyle={{ fontSize: 18, color: '#f5222d' }}
-              />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {interpretation.yongShenType}
-              </Text>
-            </Card>
-          </Col>
-          <Col span={12}>
-            <Card type="inner" size="small">
-              <Statistic
-                title="综合评分"
-                value={interpretation.score}
-                suffix="/100"
-                valueStyle={{ fontSize: 18, color: '#722ed1' }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        {/* 忌神 */}
-        {interpretation.jiShen.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <Text strong>忌神：</Text>
-            <Space size={4} style={{ marginLeft: 8 }}>
-              {interpretation.jiShen.map((ji, idx) => (
-                <Tag key={idx} color="volcano">{ji}</Tag>
-              ))}
-            </Space>
-          </div>
-        )}
-
-        {/* 性格分析 */}
-        {interpretation.xingGe && (
-          <div style={{ marginTop: 16 }}>
-            <Divider orientation="left">性格分析</Divider>
-
-            {/* 主要性格特点 */}
-            {interpretation.xingGe.zhuYaoTeDian.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong>主要特点：</Text>
-                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
-                  {interpretation.xingGe.zhuYaoTeDian.map((trait, idx) => (
-                    <Tag key={idx} color="blue">{trait}</Tag>
-                  ))}
-                </Space>
+            </div>
+          )}
+          {xingGe.queDian.length > 0 && (
+            <div>
+              <Text strong>缺点：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.queDian.map((trait, idx) => (
+                  <Tag key={idx} color="orange" style={{ marginBottom: 4 }}>
+                    {trait}
+                  </Tag>
+                ))}
               </div>
-            )}
-
-            {/* 优点 */}
-            {interpretation.xingGe.youDian.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong>优点：</Text>
-                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
-                  {interpretation.xingGe.youDian.map((trait, idx) => (
-                    <Tag key={idx} color="green">{trait}</Tag>
-                  ))}
-                </Space>
+            </div>
+          )}
+          {xingGe.shiHeZhiYe.length > 0 && (
+            <div>
+              <Text strong>适合职业：</Text>
+              <div style={{ marginTop: 8 }}>
+                {xingGe.shiHeZhiYe.map((career, idx) => (
+                  <Tag key={idx} color="purple" style={{ marginBottom: 4 }}>
+                    {career}
+                  </Tag>
+                ))}
               </div>
-            )}
-
-            {/* 缺点 */}
-            {interpretation.xingGe.queDian.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong>缺点：</Text>
-                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
-                  {interpretation.xingGe.queDian.map((trait, idx) => (
-                    <Tag key={idx} color="orange">{trait}</Tag>
-                  ))}
-                </Space>
-              </div>
-            )}
-
-            {/* 适合职业 */}
-            {interpretation.xingGe.shiHeZhiYe.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong>适合职业：</Text>
-                <Space size={4} style={{ marginLeft: 8, flexWrap: 'wrap' }}>
-                  {interpretation.xingGe.shiHeZhiYe.map((career, idx) => (
-                    <Tag key={idx} color="purple">{career}</Tag>
-                  ))}
-                </Space>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 解盘详情 */}
-        {interpretation.texts.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <Divider orientation="left">解盘详情</Divider>
-            {interpretation.texts.map((text, idx) => (
-              <Paragraph key={idx} style={{ marginBottom: 8 }}>
-                {idx + 1}. {text}
-              </Paragraph>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </Space>
       </Card>
     );
   };
@@ -645,7 +352,6 @@ const BaziDetailPage: React.FC = () => {
     );
   }
 
-  // 开发阶段显示占位页面
   return (
     <div className="bazi-page">
       {/* 返回按钮 */}
@@ -657,7 +363,7 @@ const BaziDetailPage: React.FC = () => {
         >
           返回排盘
         </Button>
-        {result && (
+        {chartData && (
           <Button
             icon={<ShareAltOutlined />}
             onClick={handleShare}
@@ -668,45 +374,25 @@ const BaziDetailPage: React.FC = () => {
       </div>
 
       {/* 无数据时显示提示 */}
-      {!result && (
+      {!chartData && (
         <Result
           icon={<CalendarOutlined style={{ color: '#1890ff' }} />}
-          title="八字详情页"
-          subTitle={chartData ? `命盘ID: ${baziId} | 创建者: ${chartData.creator.slice(0, 8)}...` : `八字ID: ${baziId}`}
+          title="八字命盘不存在"
+          subTitle={`八字ID: ${baziId}`}
           extra={[
             <Button
-              key="bounty"
+              key="back"
               type="primary"
-              icon={<GiftOutlined />}
-              onClick={() => setBountyModalVisible(true)}
-              style={{ borderColor: '#faad14', backgroundColor: '#faad14' }}
+              onClick={() => window.location.hash = '#/bazi'}
             >
-              发起悬赏问答
-            </Button>,
-            <Button key="ai" icon={<RobotOutlined />} onClick={handleRequestAi}>
-              AI 解读
-            </Button>,
-            <Button key="master" icon={<UserOutlined />} onClick={handleFindMaster}>
-              找大师解读
-            </Button>,
-            <Button key="nft" icon={<StarOutlined />} onClick={handleMintNft}>
-              铸造NFT
+              返回排盘页面
             </Button>,
           ]}
-        >
-          <div className="result-content">
-            <Paragraph>
-              此页面用于展示已保存到链上的八字命盘详情。
-            </Paragraph>
-            <Paragraph type="secondary">
-              功能包括：查看四柱八字、五行分析、大运流年、AI解读、大师服务、悬赏问答、NFT铸造等。
-            </Paragraph>
-          </div>
-        </Result>
+        />
       )}
 
       {/* 结果展示区域（有数据时显示） */}
-      {result && (
+      {chartData && (
         <>
           {/* 基本信息 */}
           <Card className="info-card" size="small">
@@ -714,7 +400,7 @@ const BaziDetailPage: React.FC = () => {
               <Col span={12}>
                 <Statistic
                   title="出生日期"
-                  value={`${result.birthInfo.year}/${result.birthInfo.month}/${result.birthInfo.day}`}
+                  value={`${chartData.birthYear}/${chartData.birthMonth}/${chartData.birthDay}`}
                   valueStyle={{ fontSize: 14 }}
                   prefix={<CalendarOutlined />}
                 />
@@ -722,66 +408,42 @@ const BaziDetailPage: React.FC = () => {
               <Col span={12}>
                 <Statistic
                   title="性别"
-                  value={GENDER_NAMES[result.birthInfo.gender]}
+                  value={chartData.gender === 0 ? '女' : '男'}
                   valueStyle={{ fontSize: 14 }}
                 />
               </Col>
               <Col span={12}>
                 <Statistic
-                  title="农历"
-                  value={`${result.lunarInfo.year}年${result.lunarInfo.isLeapMonth ? '闰' : ''}${result.lunarInfo.month}月${result.lunarInfo.day}日`}
+                  title="出生时辰"
+                  value={`${chartData.birthHour}时`}
                   valueStyle={{ fontSize: 14 }}
                 />
               </Col>
               <Col span={12}>
                 <Statistic
                   title="当前年龄"
-                  value={`${new Date().getFullYear() - result.birthInfo.year}岁`}
+                  value={`${new Date().getFullYear() - chartData.birthYear}岁`}
                   valueStyle={{ fontSize: 14 }}
                 />
               </Col>
             </Row>
             <Divider style={{ margin: '12px 0' }} />
             <div className="bazi-summary">
-              <Text strong>八字：</Text>
-              <Text code style={{ fontSize: 16, fontWeight: 500 }}>{formatBazi(result.siZhu)}</Text>
+              <Text strong>命盘ID：</Text>
+              <Text code style={{ fontSize: 16 }}>#{chartData.id}</Text>
             </div>
-            {chartData && (
-              <>
-                <Divider style={{ margin: '12px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    命盘ID: {chartData.id}
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    创建于区块 #{chartData.createdAt}
-                  </Text>
-                </div>
-              </>
-            )}
-          </Card>
-
-          {/* 四柱详情 */}
-          <Card className="si-zhu-card" size="small">
-            <Title level={5}>四柱八字</Title>
-            <div className="si-zhu-container">
-              {renderZhu('年柱', result.siZhuDetail.nian)}
-              {renderZhu('月柱', result.siZhuDetail.yue)}
-              {renderZhu('日柱', result.siZhuDetail.ri, true)}
-              {renderZhu('时柱', result.siZhuDetail.shi)}
+            <Divider style={{ margin: '12px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                创建者: {chartData.creator.slice(0, 8)}...
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                创建于区块 #{chartData.createdAt}
+              </Text>
             </div>
           </Card>
 
-          {/* 五行统计 */}
-          {renderWuXingStats()}
-
-          {/* 大运 */}
-          {renderDaYun()}
-
-          {/* 流年 */}
-          {renderLiuNian()}
-
-          {/* V2 精简版解盘（优先显示） */}
+          {/* V2 精简版解盘（BasicInterpretationCard 组件） */}
           {baziId !== null && (
             <div style={{ marginTop: 16 }}>
               <BasicInterpretationCard
@@ -791,12 +453,14 @@ const BaziDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* 链上解盘结果（旧版，保留兼容） */}
-          {renderOnChainInterpretation()}
+          {/* 链上解盘核心信息 */}
+          {renderInterpretationCore()}
+
+          {/* 性格分析 */}
+          {renderXingGeAnalysis()}
 
           {/* 解读服务 */}
-          <Card title="获取专业解读" className="service-card">
-            {/* 免费链上解盘（V2精简版已经在上面展示了，这里只需要显示其他服务） */}
+          <Card title="获取专业解读" className="service-card" style={{ marginTop: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Button
                 type="primary"
@@ -805,7 +469,7 @@ const BaziDetailPage: React.FC = () => {
                 block
                 onClick={handleRequestAi}
                 style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
                   borderColor: 'transparent',
                 }}
               >

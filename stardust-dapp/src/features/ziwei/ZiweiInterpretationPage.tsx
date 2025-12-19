@@ -156,20 +156,43 @@ const ZiweiInterpretationPage: React.FC = () => {
 
   // 错误状态
   if (error) {
+    const isNotFound = error.includes('不存在');
+
     return (
       <Result
-        status="error"
-        title="加载失败"
+        status={isNotFound ? '404' : 'error'}
+        title={isNotFound ? '命盘不存在' : '加载失败'}
         subTitle={error}
         extra={[
           <Button key="back" icon={<ArrowLeftOutlined />} onClick={handleBack}>
             返回
           </Button>,
-          <Button key="retry" type="primary" icon={<ReloadOutlined />} onClick={handleRefresh}>
-            重试
-          </Button>,
+          isNotFound ? (
+            <Button
+              key="create"
+              type="primary"
+              onClick={() => window.location.hash = '#/ziwei'}
+            >
+              去排盘
+            </Button>
+          ) : (
+            <Button key="retry" type="primary" icon={<ReloadOutlined />} onClick={handleRefresh}>
+              重试
+            </Button>
+          ),
         ]}
-      />
+      >
+        {isNotFound && (
+          <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
+            <Space direction="vertical" size={8}>
+              <Text type="secondary">💡 提示：</Text>
+              <Text type="secondary">• 命盘ID {chartId} 不存在或已删除</Text>
+              <Text type="secondary">• 请返回排盘页面创建新的命盘</Text>
+              <Text type="secondary">• 或在"我的命盘"中查看已有命盘</Text>
+            </Space>
+          </div>
+        )}
+      </Result>
     );
   }
 
@@ -321,7 +344,7 @@ const ZiweiInterpretationPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '0 16px 80px', maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ padding: '0 16px 80px', maxWidth: 414, margin: '0 auto' }}>
       {/* 页面标题 */}
       <div style={{ padding: '16px 0', borderBottom: '1px solid #f0f0f0', marginBottom: 16 }}>
         <Space>

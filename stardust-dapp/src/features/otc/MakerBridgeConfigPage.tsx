@@ -640,7 +640,7 @@ export default function MakerBridgeConfigPage() {
               >
                 <Descriptions column={2} size="small" bordered>
                   <Descriptions.Item label="账户地址" span={2}>
-                    <Text copyable={{ text: marketMakerInfo.owner }} ellipsis style={{ maxWidth: 480 }}>
+                    <Text copyable={{ text: marketMakerInfo.owner }} ellipsis style={{ maxWidth: 414 }}>
                       {marketMakerInfo.owner}
                     </Text>
                   </Descriptions.Item>

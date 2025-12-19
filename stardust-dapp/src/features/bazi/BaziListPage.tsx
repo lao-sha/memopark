@@ -114,7 +114,7 @@ const BaziListPage: React.FC = () => {
                 width: 48,
                 height: 48,
                 borderRadius: 8,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: 'linear-gradient(135deg, #B2955D 0%, #9A7D4A 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

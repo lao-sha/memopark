@@ -4577,3 +4577,25 @@ impl pallet_xiaoliuren::Config for Runtime {
     type AiOracleOrigin = frame_system::EnsureSigned<AccountId>;
 }
 
+// ============================================================================
+// 🆕 2025-12-15: 黄历模块 (pallet-almanac)
+// ============================================================================
+//
+// 该模块通过 Off-chain Worker 获取黄历数据并存储到链上，
+// 为占卜系统提供日期相关的黄历信息查询服务。
+//
+// 功能特性：
+// - 通过 OCW 定期从阿里云黄历 API 获取数据
+// - 支持手动设置黄历数据 (需要权限)
+// - 提供按日期查询黄历的接口
+// - 支持查询节气、节日等信息
+//
+// 启动方式：
+// ALMANAC_APPCODE=xxx ./target/release/solochain-template-node --dev
+// ============================================================================
+impl pallet_almanac::Config for Runtime {
+    type WeightInfo = ();
+    type MaxBatchSize = frame_support::traits::ConstU32<90>;
+    type MaxHistoryYears = frame_support::traits::ConstU32<3>;
+}
+

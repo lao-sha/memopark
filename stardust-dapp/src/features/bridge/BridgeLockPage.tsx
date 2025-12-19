@@ -78,7 +78,7 @@ const BridgeLockPage: React.FC = () => {
   }
 
   return (
-    <Flex vertical gap={12} style={{ padding: 12, maxWidth: 480, margin: '0 auto' }}>
+    <Flex vertical gap={12} style={{ padding: 12, maxWidth: 414, margin: '0 auto' }}>
       <Card size="small" title="链上价格" loading={loading} extra={<Button size="small" onClick={refresh}>刷新</Button>}>
         <Space wrap>
           <Statistic title="价格分子(num)" value={price ? price.num.toString() : '-'} />

@@ -206,7 +206,7 @@ export const MakerBridgeComplaintPage: React.FC = () => {
   };
   
   return (
-    <div style={{ padding: '16px', maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: '16px', maxWidth: 414, margin: '0 auto' }}>
       <Card>
         {/* 返回按钮 */}
         <Button 

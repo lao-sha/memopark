@@ -22,7 +22,7 @@ const subTabs = ['生平', '回忆相册', '纪念视频', '追忆文章']
 const LifeStoryPage: React.FC = () => {
   const [active, setActive] = useState<string>('生平')
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left', paddingBottom: 80 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', textAlign: 'left', paddingBottom: 80 }}>
       {/* 顶部栏 */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: '#fff', padding: '8px 8px 0 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

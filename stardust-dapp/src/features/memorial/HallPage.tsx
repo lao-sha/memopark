@@ -54,7 +54,7 @@ const HallPage: React.FC<{ id: number }> = ({ id }) => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: 8 }}>
+    <div style={{ maxWidth: 414, margin: '0 auto', padding: 8 }}>
       <Typography.Title level={4}>纪念馆 #{id}</Typography.Title>
       {hall && (
         <Card style={{ marginBottom: 8 }}>

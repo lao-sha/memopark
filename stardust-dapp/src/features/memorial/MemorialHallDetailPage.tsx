@@ -385,7 +385,7 @@ const MemorialHallDetailPage: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: 480,
+        maxWidth: 414,
         margin: '0 auto',
         minHeight: '100vh',
         background: MemorialColors.bgPrimary,

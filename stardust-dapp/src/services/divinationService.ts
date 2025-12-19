@@ -679,37 +679,71 @@ export async function getDivinationServiceProviders(
   const entries = await api.query.divinationMarket.providers.entries();
 
   const providers: ServiceProvider[] = [];
-  for (const [, value] of entries) {
+  for (const [key, value] of entries) {
     if (value.isNone) continue;
-    const data = value.unwrap();
+
+    // 使用 toJSON() 来解析数据，更安全可靠
+    const data = value.unwrap().toJSON() as any;
 
     // 过滤占卜类型（如果指定）
     if (divinationType !== undefined) {
-      const supportedTypes = data.supportedDivinationTypes.toNumber();
+      const supportedTypes = data.supportedDivinationTypes || 0;
       if ((supportedTypes & (1 << divinationType)) === 0) continue;
     }
 
+    // 提取账户地址
+    const accountId = key.args[0].toString();
+
+    // 解码名称和简介（处理十六进制格式）
+    const decodeName = (nameData: any): string => {
+      if (!nameData) return '未命名大师';
+      if (typeof nameData === 'string' && nameData.startsWith('0x')) {
+        try {
+          const hex = nameData.slice(2);
+          const bytes = new Uint8Array(hex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []);
+          return new TextDecoder().decode(bytes).trim() || '未命名大师';
+        } catch (e) {
+          return '未命名大师';
+        }
+      }
+      if (typeof nameData === 'string') return nameData;
+      return '未命名大师';
+    };
+
+    const decodeBio = (bioData: any): string => {
+      if (!bioData) return '暂无简介';
+      if (typeof bioData === 'string' && bioData.startsWith('0x')) {
+        try {
+          const hex = bioData.slice(2);
+          const bytes = new Uint8Array(hex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []);
+          return new TextDecoder().decode(bytes).trim() || '暂无简介';
+        } catch (e) {
+          return '暂无简介';
+        }
+      }
+      if (typeof bioData === 'string') return bioData;
+      return '暂无简介';
+    };
+
     providers.push({
-      account: data.account.toString(),
-      name: new TextDecoder().decode(new Uint8Array(data.name.toU8a())),
-      bio: new TextDecoder().decode(new Uint8Array(data.bio.toU8a())),
-      avatarCid: data.avatarCid.isSome
-        ? new TextDecoder().decode(new Uint8Array(data.avatarCid.unwrap().toU8a()))
-        : undefined,
-      tier: data.tier.toNumber(),
-      isActive: data.isActive.isTrue,
-      deposit: data.deposit.toBigInt(),
-      registeredAt: data.registeredAt.toNumber(),
-      totalOrders: data.totalOrders.toNumber(),
-      completedOrders: data.completedOrders.toNumber(),
-      cancelledOrders: data.cancelledOrders.toNumber(),
-      totalRatings: data.totalRatings.toNumber(),
-      ratingSum: data.ratingSum.toNumber(),
-      totalEarnings: data.totalEarnings.toBigInt(),
-      specialties: data.specialties.toNumber(),
-      supportedDivinationTypes: data.supportedDivinationTypes.toNumber(),
-      acceptsUrgent: data.acceptsUrgent.isTrue,
-      lastActiveAt: data.lastActiveAt.toNumber(),
+      account: accountId,
+      name: decodeName(data.name),
+      bio: decodeBio(data.bio),
+      avatarCid: data.avatarCid,
+      tier: data.tier || 0,
+      isActive: data.isActive || true,
+      deposit: BigInt(data.deposit || 0),
+      registeredAt: data.registeredAt || 0,
+      totalOrders: data.totalOrders || 0,
+      completedOrders: data.completedOrders || 0,
+      cancelledOrders: data.cancelledOrders || 0,
+      totalRatings: data.totalRatings || 0,
+      ratingSum: data.ratingSum || 0,
+      totalEarnings: BigInt(data.totalEarnings || 0),
+      specialties: data.specialties || 0,
+      supportedDivinationTypes: data.supportedDivinationTypes || 0,
+      acceptsUrgent: data.acceptsUrgent || false,
+      lastActiveAt: data.lastActiveAt || 0,
     });
   }
 
@@ -725,28 +759,59 @@ export async function getDivinationServiceProvider(address: string): Promise<Ser
 
   if (result.isNone) return null;
 
-  const data = result.unwrap();
+  // 使用 toJSON() 来解析数据
+  const data = result.unwrap().toJSON() as any;
+
+  // 解码名称和简介
+  const decodeName = (nameData: any): string => {
+    if (!nameData) return '未命名大师';
+    if (typeof nameData === 'string' && nameData.startsWith('0x')) {
+      try {
+        const hex = nameData.slice(2);
+        const bytes = new Uint8Array(hex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []);
+        return new TextDecoder().decode(bytes).trim() || '未命名大师';
+      } catch (e) {
+        return '未命名大师';
+      }
+    }
+    if (typeof nameData === 'string') return nameData;
+    return '未命名大师';
+  };
+
+  const decodeBio = (bioData: any): string => {
+    if (!bioData) return '暂无简介';
+    if (typeof bioData === 'string' && bioData.startsWith('0x')) {
+      try {
+        const hex = bioData.slice(2);
+        const bytes = new Uint8Array(hex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []);
+        return new TextDecoder().decode(bytes).trim() || '暂无简介';
+      } catch (e) {
+        return '暂无简介';
+      }
+    }
+    if (typeof bioData === 'string') return bioData;
+    return '暂无简介';
+  };
+
   return {
-    account: data.account.toString(),
-    name: new TextDecoder().decode(new Uint8Array(data.name.toU8a())),
-    bio: new TextDecoder().decode(new Uint8Array(data.bio.toU8a())),
-    avatarCid: data.avatarCid.isSome
-      ? new TextDecoder().decode(new Uint8Array(data.avatarCid.unwrap().toU8a()))
-      : undefined,
-    tier: data.tier.toNumber(),
-    isActive: data.isActive.isTrue,
-    deposit: data.deposit.toBigInt(),
-    registeredAt: data.registeredAt.toNumber(),
-    totalOrders: data.totalOrders.toNumber(),
-    completedOrders: data.completedOrders.toNumber(),
-    cancelledOrders: data.cancelledOrders.toNumber(),
-    totalRatings: data.totalRatings.toNumber(),
-    ratingSum: data.ratingSum.toNumber(),
-    totalEarnings: data.totalEarnings.toBigInt(),
-    specialties: data.specialties.toNumber(),
-    supportedDivinationTypes: data.supportedDivinationTypes.toNumber(),
-    acceptsUrgent: data.acceptsUrgent.isTrue,
-    lastActiveAt: data.lastActiveAt.toNumber(),
+    account: address,
+    name: decodeName(data.name),
+    bio: decodeBio(data.bio),
+    avatarCid: data.avatarCid,
+    tier: data.tier || 0,
+    isActive: data.isActive || true,
+    deposit: BigInt(data.deposit || 0),
+    registeredAt: data.registeredAt || 0,
+    totalOrders: data.totalOrders || 0,
+    completedOrders: data.completedOrders || 0,
+    cancelledOrders: data.cancelledOrders || 0,
+    totalRatings: data.totalRatings || 0,
+    ratingSum: data.ratingSum || 0,
+    totalEarnings: BigInt(data.totalEarnings || 0),
+    specialties: data.specialties || 0,
+    supportedDivinationTypes: data.supportedDivinationTypes || 0,
+    acceptsUrgent: data.acceptsUrgent || false,
+    lastActiveAt: data.lastActiveAt || 0,
   };
 }
 
@@ -763,25 +828,27 @@ export async function getDivinationProviderPackages(
   const packages: ServicePackage[] = [];
   for (const [key, value] of entries) {
     if (value.isNone) continue;
+
+    // 使用 toJSON() 来解析数据
+    const data = value.unwrap().toJSON() as any;
     const packageId = key.args[1].toNumber();
-    const data = value.unwrap();
 
     // 过滤占卜类型（如果指定）
-    if (divinationType !== undefined && data.divinationType.toNumber() !== divinationType) continue;
+    if (divinationType !== undefined && data.divinationType !== divinationType) continue;
 
     packages.push({
       id: packageId,
-      divinationType: data.divinationType.toNumber(),
-      serviceType: data.serviceType.toNumber(),
-      name: new TextDecoder().decode(new Uint8Array(data.name.toU8a())),
-      description: new TextDecoder().decode(new Uint8Array(data.description.toU8a())),
-      price: data.price.toBigInt(),
-      duration: data.duration.toNumber(),
-      followUpCount: data.followUpCount.toNumber(),
-      urgentAvailable: data.urgentAvailable.isTrue,
-      urgentSurcharge: data.urgentSurcharge.toNumber(),
-      isActive: data.isActive.isTrue,
-      salesCount: data.salesCount.toNumber(),
+      divinationType: data.divinationType || 0,
+      serviceType: data.serviceType || 0,
+      name: data.name || '未命名套餐',
+      description: data.description || '',
+      price: BigInt(data.price || 0),
+      duration: data.duration || 0,
+      followUpCount: data.followUpCount || 0,
+      urgentAvailable: data.urgentAvailable || false,
+      urgentSurcharge: data.urgentSurcharge || 0,
+      isActive: data.isActive || false,
+      salesCount: data.salesCount || 0,
     });
   }
 
