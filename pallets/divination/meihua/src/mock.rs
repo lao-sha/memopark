@@ -21,6 +21,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         Timestamp: pallet_timestamp,
+        Privacy: pallet_divination_privacy,
         Meihua: pallet_meihua,
     }
 );
@@ -95,6 +96,29 @@ impl pallet_timestamp::Config for Test {
     type Moment = u64;
     type OnTimestampSet = ();
     type MinimumPeriod = MinimumPeriod;
+    type WeightInfo = ();
+}
+
+// 隐私授权模块配置
+parameter_types! {
+    pub const MaxEncryptedDataLen: u32 = 512;
+    pub const MaxEncryptedKeyLen: u32 = 128;
+    pub const MaxGranteesPerRecord: u32 = 20;
+    pub const MaxRecordsPerUser: u32 = 1000;
+    pub const MaxProvidersPerType: u32 = 1000;
+    pub const MaxGrantsPerProvider: u32 = 500;
+    pub const MaxAuthorizationsPerBounty: u32 = 100;
+}
+
+impl pallet_divination_privacy::Config for Test {
+    type MaxEncryptedDataLen = MaxEncryptedDataLen;
+    type MaxEncryptedKeyLen = MaxEncryptedKeyLen;
+    type MaxGranteesPerRecord = MaxGranteesPerRecord;
+    type MaxRecordsPerUser = MaxRecordsPerUser;
+    type MaxProvidersPerType = MaxProvidersPerType;
+    type MaxGrantsPerProvider = MaxGrantsPerProvider;
+    type MaxAuthorizationsPerBounty = MaxAuthorizationsPerBounty;
+    type EventHandler = ();
     type WeightInfo = ();
 }
 

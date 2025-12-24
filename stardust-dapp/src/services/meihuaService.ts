@@ -24,6 +24,14 @@ import type {
   FullDivinationDetail,
 } from '../types/meihua';
 import { parseBoundedVecToString } from '../types/meihua';
+import {
+  MeihuaPrivacyUtils,
+  PrivacyMode,
+  encryptedResultToChainParams,
+  hashQuestion,
+  type DivinerPrivateData,
+  type EncryptedPrivacyResult,
+} from './meihuaPrivacyService';
 
 // ==================== 起卦服务 ====================
 
@@ -1421,6 +1429,191 @@ export async function getInterpretationData(hexagramId: number): Promise<any | n
     console.error('[getInterpretationData] 解析失败:', error);
     return null;
   }
+}
+
+// ==================== 带隐私数据的起卦服务 ====================
+
+/**
+ * 带隐私数据的起卦方式枚举
+ *
+ * 仅支持以下三种方式进行原子性隐私数据起卦
+ */
+export type PrivacyDivinationMethod = 'LunarDateTime' | 'GregorianDateTime' | 'Random';
+
+/**
+ * 带隐私数据的起卦参数
+ */
+export interface DivineWithPrivacyParams {
+  /** 占卜问题原文 */
+  questionText: string;
+  /** 是否公开卦象 */
+  isPublic: boolean;
+  /** 性别（0: 未指定, 1: 男, 2: 女） */
+  gender: number;
+  /** 出生年份（可选，用于本命卦、应期推算） */
+  birthYear?: number;
+  /** 占卜类别（0: 未指定, 1: 事业, 2: 财运, 3: 感情, 4: 健康, 5: 学业, 6: 其他） */
+  category: number;
+  /** 起卦方式（仅支持 LunarDateTime、GregorianDateTime、Random） */
+  method: PrivacyDivinationMethod;
+  /** 可选的隐私数据（如姓名、完整生日等） */
+  privateData?: DivinerPrivateData;
+  /** 所有者的 X25519 公钥（用于加密隐私数据） */
+  ownerPublicKey?: Uint8Array;
+  /** 隐私模式（默认 Private） */
+  privacyMode?: PrivacyMode;
+}
+
+/**
+ * 带隐私数据的起卦结果
+ */
+export interface DivineWithPrivacyResult {
+  /** 卦象 ID */
+  hexagramId: number;
+  /** 是否包含加密数据 */
+  hasEncryptedData: boolean;
+}
+
+/**
+ * 带隐私数据的起卦
+ *
+ * 在单个交易中原子性地创建卦象和加密隐私记录。
+ * 使用 X25519 密钥交换 + AES-256-GCM 加密敏感数据。
+ *
+ * ## 数据分层
+ * | 层级 | 存储位置 | 内容 |
+ * |------|----------|------|
+ * | 公开层 | meihua::Hexagram | gender, birth_year |
+ * | 加密层 | privacy::EncryptedRecord | 姓名、完整生日等 |
+ *
+ * @param params - 起卦参数
+ * @returns 卦象 ID 和是否包含加密数据
+ *
+ * @example
+ * ```typescript
+ * // 生成密钥对（首次使用）
+ * const keyPair = MeihuaPrivacyUtils.generateKeyPair();
+ *
+ * // 带隐私数据起卦
+ * const result = await divineWithPrivacy({
+ *   questionText: '今日运势如何？',
+ *   isPublic: false,
+ *   gender: 1,
+ *   birthYear: 1990,
+ *   category: 1,
+ *   method: 'LunarDateTime',
+ *   privateData: { name: '张三', birthDate: '1990-06-15' },
+ *   ownerPublicKey: keyPair.publicKey,
+ *   privacyMode: PrivacyMode.Private,
+ * });
+ * ```
+ */
+export async function divineWithPrivacy(
+  params: DivineWithPrivacyParams
+): Promise<DivineWithPrivacyResult> {
+  const api = await getSignedApi();
+
+  // 检查 meihua pallet 是否存在
+  if (!api.tx.meihua || !api.tx.meihua.divineWithPrivacy) {
+    throw new Error('区块链节点未包含带隐私功能的梅花易数模块，请检查节点配置');
+  }
+
+  // 计算问题哈希
+  const questionHashArray = Array.from(hashQuestion(params.questionText));
+
+  // 转换起卦方式为枚举值
+  const methodMap: Record<PrivacyDivinationMethod, { [key: string]: null }> = {
+    'LunarDateTime': { LunarDateTime: null },
+    'GregorianDateTime': { GregorianDateTime: null },
+    'Random': { Random: null },
+  };
+  const methodEnum = methodMap[params.method];
+
+  // 准备加密隐私数据参数
+  let encryptedPrivacyParam: { Some: unknown } | { None: null } = { None: null };
+
+  if (params.privateData && params.ownerPublicKey) {
+    // 加密隐私数据
+    const privacyMode = params.privacyMode ?? PrivacyMode.Private;
+    const encryptedResult = MeihuaPrivacyUtils.encryptPrivateData(
+      params.privateData,
+      params.ownerPublicKey,
+      privacyMode
+    );
+
+    // 转换为链上参数格式
+    const chainParams = encryptedResultToChainParams(encryptedResult);
+
+    encryptedPrivacyParam = {
+      Some: {
+        privacyMode: chainParams.privacyMode,
+        encryptedData: chainParams.encryptedData,
+        nonce: chainParams.nonce,
+        authTag: chainParams.authTag,
+        dataHash: chainParams.dataHash,
+        ownerEncryptedKey: chainParams.ownerEncryptedKey,
+      }
+    };
+
+    console.log('[divineWithPrivacy] 已加密隐私数据，长度:', encryptedResult.encryptedData.length);
+  }
+
+  // 构造交易
+  const tx = api.tx.meihua.divineWithPrivacy(
+    questionHashArray,
+    params.isPublic,
+    params.gender,
+    params.birthYear ? { Some: params.birthYear } : { None: null },
+    params.category,
+    methodEnum,
+    encryptedPrivacyParam
+  );
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer, ({ status, events, dispatchError }) => {
+      console.log('[divineWithPrivacy] 交易状态:', status.type);
+
+      // 检查调度错误
+      if (dispatchError) {
+        if (dispatchError.isModule) {
+          const decoded = api.registry.findMetaError(dispatchError.asModule);
+          const { docs, name, section } = decoded;
+          reject(new Error(`${section}.${name}: ${docs.join(' ')}`));
+        } else {
+          reject(new Error(dispatchError.toString()));
+        }
+        return;
+      }
+
+      if (status.isInBlock || status.isFinalized) {
+        console.log('[divineWithPrivacy] 交易已打包，事件数量:', events.length);
+
+        // 查找 HexagramCreatedWithPrivacy 事件
+        const event = events.find((e) =>
+          e.event.section === 'meihua' && e.event.method === 'HexagramCreatedWithPrivacy'
+        );
+
+        if (event) {
+          const hexagramId = event.event.data[0].toNumber();
+          const hasEncryptedData = event.event.data[2].isTrue;
+
+          console.log('[divineWithPrivacy] 起卦成功，卦象ID:', hexagramId, '包含加密数据:', hasEncryptedData);
+
+          resolve({
+            hexagramId,
+            hasEncryptedData,
+          });
+        } else if (status.isFinalized) {
+          // 如果最终确认后仍未找到事件，则报错
+          console.error('[divineWithPrivacy] 未找到 HexagramCreatedWithPrivacy 事件');
+          reject(new Error('交易成功但未找到卦象创建事件'));
+        }
+      }
+    }).catch((error) => {
+      console.error('[divineWithPrivacy] 交易失败:', error);
+      reject(error);
+    });
+  });
 }
 
 /**

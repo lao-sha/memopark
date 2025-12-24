@@ -21,7 +21,11 @@ import {
   Spin,
   Switch,
   Modal,
+  Input,
+  InputNumber,
+  Select,
 } from 'antd';
+import type { RadioChangeEvent } from 'antd';
 import {
   StarOutlined,
   HistoryOutlined,
@@ -33,6 +37,7 @@ import {
   UnorderedListOutlined,
   QuestionCircleOutlined,
   ArrowRightOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -58,9 +63,48 @@ import {
   getSiHuaDescription,
 } from '../../types/ziwei';
 import * as ziweiService from '../../services/ziweiService';
+import { getCityCoordinate, getDefaultCoordinate } from '../../data/cityCoordinates';
+// @ts-ignore - china-division 没有类型定义
+import pcaData from 'china-division/dist/pca.json';
 import './ZiweiPage.css';
 
 const { Title, Text, Paragraph } = Typography;
+
+/**
+ * 将 china-division 的 pca.json 转换为省市区数据
+ */
+interface ProvinceData {
+  province: string;
+  cities: {
+    city: string;
+    districts: string[];
+  }[];
+}
+
+const convertToProvinceData = (data: Record<string, Record<string, string[]>>): ProvinceData[] => {
+  return Object.entries(data).map(([province, cities]) => ({
+    province,
+    cities: Object.entries(cities).map(([city, districts]) => ({
+      city,
+      districts,
+    })),
+  }));
+};
+
+// 预处理省市区数据（只执行一次）
+const provinceData = convertToProvinceData(pcaData as Record<string, Record<string, string[]>>);
+
+// 省份选项
+const provinceOptions = provinceData.map(p => ({
+  value: p.province,
+  label: p.province,
+}));
+
+/** 日期类型 */
+type DateType = 'solar' | 'lunar';
+
+/** 紫微盘式类型 */
+type ChartType = 'xiantian' | 'liunian' | 'liuyue' | 'liuri';
 
 /**
  * 时辰选项
@@ -79,6 +123,43 @@ const HOUR_OPTIONS = [
   { label: '戌时 (19-21)', value: 10 },
   { label: '亥时 (21-23)', value: 11 },
 ];
+
+/**
+ * 二十四小时时辰选项（下拉框用，每小时一个选项，参考卜易居）
+ */
+const SHICHEN_OPTIONS = [
+  { value: 0, label: '0-子' },
+  { value: 1, label: '1-丑' },
+  { value: 2, label: '2-丑' },
+  { value: 3, label: '3-寅' },
+  { value: 4, label: '4-寅' },
+  { value: 5, label: '5-卯' },
+  { value: 6, label: '6-卯' },
+  { value: 7, label: '7-辰' },
+  { value: 8, label: '8-辰' },
+  { value: 9, label: '9-巳' },
+  { value: 10, label: '10-巳' },
+  { value: 11, label: '11-午' },
+  { value: 12, label: '12-午' },
+  { value: 13, label: '13-未' },
+  { value: 14, label: '14-未' },
+  { value: 15, label: '15-申' },
+  { value: 16, label: '16-申' },
+  { value: 17, label: '17-酉' },
+  { value: 18, label: '18-酉' },
+  { value: 19, label: '19-戌' },
+  { value: 20, label: '20-戌' },
+  { value: 21, label: '21-亥' },
+  { value: 22, label: '22-亥' },
+  { value: 23, label: '23-子' },
+];
+
+/**
+ * 获取当前小时（24小时制）
+ */
+const getCurrentHour = (): number => {
+  return new Date().getHours();
+};
 
 /**
  * 模拟生成紫微命盘（实际应调用后端算法）
@@ -238,10 +319,94 @@ const GongCard: React.FC<{ gongInfo: GongInfo }> = ({ gongInfo }) => (
  * 紫微斗数排盘页面
  */
 const ZiweiPage: React.FC = () => {
-  // 状态
-  const [birthDate, setBirthDate] = useState<Dayjs | null>(null);
-  const [birthHour, setBirthHour] = useState<number>(0);
+  // 命主信息
+  const [name, setName] = useState('求测者');
   const [gender, setGender] = useState<Gender>(Gender.Male);
+
+  // 真太阳时
+  const [useTrueSolarTime, setUseTrueSolarTime] = useState(false);
+
+  // 出生地点
+  const [selectedProvince, setSelectedProvince] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('');
+  const [location, setLocation] = useState<string>('未知地');
+  const [longitude, setLongitude] = useState<number>(116.416); // 经度（默认北京）
+  const [latitude, setLatitude] = useState<number>(39.9288); // 纬度（默认北京）
+
+  // 根据选中的省份获取城市列表
+  const cityOptions = useMemo(() => {
+    if (!selectedProvince) return [];
+    const province = provinceData.find(p => p.province === selectedProvince);
+    return province?.cities.map(c => ({ value: c.city, label: c.city })) || [];
+  }, [selectedProvince]);
+
+  // 根据选中的城市获取区县列表
+  const districtOptions = useMemo(() => {
+    if (!selectedProvince || !selectedCity) return [];
+    const province = provinceData.find(p => p.province === selectedProvince);
+    const city = province?.cities.find(c => c.city === selectedCity);
+    return city?.districts.map(d => ({ value: d, label: d })) || [];
+  }, [selectedProvince, selectedCity]);
+
+  /**
+   * 处理省份选择变化
+   */
+  const handleProvinceChange = useCallback((value: string) => {
+    setSelectedProvince(value);
+    setSelectedCity('');
+    setSelectedDistrict('');
+    // 更新经纬度
+    const coord = getCityCoordinate(value.replace(/省|自治区|特别行政区/g, ''));
+    if (coord) {
+      setLocation(value);
+      setLongitude(coord.longitude);
+      setLatitude(coord.latitude);
+    }
+  }, []);
+
+  /**
+   * 处理城市选择变化
+   */
+  const handleCityChange = useCallback((value: string) => {
+    setSelectedCity(value);
+    setSelectedDistrict('');
+    // 更新经纬度
+    const coord = getCityCoordinate(value);
+    if (coord) {
+      setLocation(value);
+      setLongitude(coord.longitude);
+      setLatitude(coord.latitude);
+    } else {
+      setLocation(value);
+    }
+  }, []);
+
+  /**
+   * 处理区县选择变化
+   */
+  const handleDistrictChange = useCallback((value: string) => {
+    setSelectedDistrict(value);
+    setLocation(selectedCity ? `${selectedCity} ${value}` : value);
+  }, [selectedCity]);
+
+  // 日期类型
+  const [dateType, setDateType] = useState<DateType>('solar');
+
+  // 出生日期
+  const [birthDate, setBirthDate] = useState<Dayjs>(dayjs());
+  const [birthHour, setBirthHour] = useState<number>(getCurrentHour());
+  const [birthMinute, setBirthMinute] = useState<number>(new Date().getMinutes());
+
+  // 紫微盘式
+  const [chartType, setChartType] = useState<ChartType>('xiantian');
+
+  // 流年日期
+  const [flowDate, setFlowDate] = useState<Dayjs>(dayjs());
+  const [flowHour, setFlowHour] = useState<number>(getCurrentHour());
+  const [flowMinute, setFlowMinute] = useState<number>(new Date().getMinutes());
+
+  // 加载状态
   const [loading, setLoading] = useState(false);
   const [chart, setChart] = useState<ZiweiChart | null>(null);
   const [useChain, setUseChain] = useState(false); // 是否使用链端
@@ -254,11 +419,6 @@ const ZiweiPage: React.FC = () => {
    * 本地排盘
    */
   const handleLocalCalculate = useCallback(async () => {
-    if (!birthDate) {
-      message.warning('请选择出生日期');
-      return;
-    }
-
     const result = generateMockZiweiChart(
       birthDate.year(),
       birthDate.month() + 1,
@@ -279,11 +439,6 @@ const ZiweiPage: React.FC = () => {
    * 链端排盘
    */
   const handleChainCalculate = useCallback(async () => {
-    if (!birthDate) {
-      message.warning('请选择出生日期');
-      return;
-    }
-
     try {
       const chartId = await ziweiService.divineByTime(
         birthDate.year(),
@@ -329,11 +484,30 @@ const ZiweiPage: React.FC = () => {
    * 重置
    */
   const handleReset = useCallback(() => {
-    setBirthDate(null);
-    setBirthHour(0);
+    setName('求测者');
     setGender(Gender.Male);
+    setUseTrueSolarTime(false);
+    setProvince('');
+    setCity('');
+    setDateType('solar');
+    setBirthDate(dayjs());
+    setBirthHour(getCurrentHour());
+    setBirthMinute(new Date().getMinutes());
+    setChartType('xiantian');
+    setFlowDate(dayjs());
+    setFlowHour(getCurrentHour());
+    setFlowMinute(new Date().getMinutes());
     setChart(null);
     setChainChartId(null);
+  }, []);
+
+  /**
+   * 使用当前时间
+   */
+  const useCurrentTime = useCallback(() => {
+    setBirthDate(dayjs());
+    setBirthHour(getCurrentHour());
+    setBirthMinute(new Date().getMinutes());
   }, []);
 
   /**
@@ -455,130 +629,284 @@ const ZiweiPage: React.FC = () => {
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card" style={{ position: 'relative' }}>
-      <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
-        排盘
-      </Title>
-      <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
-        输入出生时间，排列紫微命盘
-      </Text>
-
-      <Divider style={{ margin: '16px 0' }} />
-
-      {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Switch
-          checked={useChain}
-          onChange={setUseChain}
-          checkedChildren={<CloudOutlined />}
-          unCheckedChildren={<DesktopOutlined />}
-        />
-        <Text type="secondary">
-          {useChain ? '链端排盘（结果上链存储）' : '本地排盘（快速预览）'}
-        </Text>
+    <Card className="divination-card input-card" style={{ margin: '12px', borderRadius: '8px', width: 'calc(100% + 10px)', marginLeft: '-5px' }}>
+      {/* 命主姓名 + 性别 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          命主姓名：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="求测者"
+            style={{ width: 80 }}
+          />
+          <span style={{ color: '#8B6914', fontSize: 14, whiteSpace: 'nowrap' }}>性别：</span>
+          <Radio.Group
+            value={gender}
+            onChange={(e: RadioChangeEvent) => setGender(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value={Gender.Male}>男</Radio.Button>
+            <Radio.Button value={Gender.Female}>女</Radio.Button>
+          </Radio.Group>
+        </div>
       </div>
 
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        {/* 出生日期 */}
-        <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 8 }}>
-          <Text strong><CalendarOutlined /> 出生日期</Text>
-          <DatePicker
-            style={{ width: '100%', marginTop: 8 }}
-            placeholder="选择出生日期"
-            value={birthDate}
-            onChange={setBirthDate}
-            disabledDate={(current) => current && current > dayjs()}
-            variant="borderless"
+      {/* 真太阳时 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          真太阳时：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+          <Radio.Group
+            value={useTrueSolarTime}
+            onChange={(e: RadioChangeEvent) => setUseTrueSolarTime(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value={false}>不使用</Radio.Button>
+            <Radio.Button value={true}>使用</Radio.Button>
+          </Radio.Group>
+        </div>
+      </div>
+
+      {/* 出生地点 - 使用三个独立 Select（手机友好） */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          出生地点：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+          <Select
+            value={selectedProvince || undefined}
+            onChange={handleProvinceChange}
+            placeholder="省份"
+            style={{ width: 100 }}
+            options={provinceOptions}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          />
+          <Select
+            value={selectedCity || undefined}
+            onChange={handleCityChange}
+            placeholder="城市"
+            style={{ width: 100 }}
+            options={cityOptions}
+            disabled={!selectedProvince}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          />
+          <Select
+            value={selectedDistrict || undefined}
+            onChange={handleDistrictChange}
+            placeholder="区县"
+            style={{ width: 100 }}
+            options={districtOptions}
+            disabled={!selectedCity}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
           />
         </div>
+      </div>
 
-        {/* 出生时辰 */}
-        <div>
-          <Text strong><HistoryOutlined /> 出生时辰</Text>
-          <div style={{ marginTop: 8 }}>
-            <Radio.Group
-              value={birthHour}
-              onChange={(e) => setBirthHour(e.target.value)}
-              style={{ width: '100%' }}
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {HOUR_OPTIONS.map((opt) => (
-                  <Radio.Button
-                    key={opt.value}
-                    value={opt.value}
-                    style={{ textAlign: 'center', fontSize: 12 }}
-                  >
-                    {opt.label}
-                  </Radio.Button>
-                ))}
-              </div>
-            </Radio.Group>
+      {/* 经纬度和地点显示 */}
+      <div className="form-row" style={{ marginBottom: 8 }}>
+        <div className="form-label" style={{ width: 65 }}></div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <EnvironmentOutlined style={{ color: '#999', fontSize: 12 }} />
+            <Text style={{ color: '#333', fontSize: 12 }}>{location}</Text>
+          </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            北纬{latitude.toFixed(4)} 东经{longitude.toFixed(3)}
+          </Text>
+        </div>
+      </div>
+
+      {/* 真太阳时显示 */}
+      {useTrueSolarTime && (
+        <div className="form-row" style={{ marginBottom: 8 }}>
+          <div className="form-label" style={{ width: 65 }}></div>
+          <div className="form-content" style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, color: '#999' }}>
+              真太阳时：{birthDate.year()}年{birthDate.month() + 1}月{birthDate.date()}日 {birthHour}时{birthMinute}分
+            </Text>
           </div>
         </div>
+      )}
 
-        {/* 性别 */}
-        <div>
-          <Text strong><UserOutlined /> 性别</Text>
-          <div style={{ marginTop: 8, display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setGender(Gender.Male)}
-              style={{
-                padding: '8px 24px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: gender === Gender.Male ? '#B2955D' : 'transparent',
-                color: gender === Gender.Male ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
-            >
-              男
-            </button>
-            <button
-              onClick={() => setGender(Gender.Female)}
-              style={{
-                padding: '8px 24px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: gender === Gender.Female ? '#B2955D' : 'transparent',
-                color: gender === Gender.Female ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
-            >
-              女
-            </button>
-          </div>
+      {/* 日期类型 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          日期类型：
         </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+          <Radio.Group
+            value={dateType}
+            onChange={(e: RadioChangeEvent) => setDateType(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="solar">阳历</Radio.Button>
+            <Radio.Button value="lunar">阴历</Radio.Button>
+          </Radio.Group>
+        </div>
+      </div>
 
-        <Divider style={{ margin: '16px 0' }} />
+      {/* 出生日期（年月日 + 时分，参考卜易居合并一行） */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          出生日期：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+          <Select
+            value={birthDate.year()}
+            onChange={(v) => setBirthDate(birthDate.year(v))}
+            style={{ width: 85 }}
+            options={Array.from({ length: 100 }, (_, i) => ({
+              value: 1950 + i,
+              label: `${1950 + i}年`
+            }))}
+          />
+          <Select
+            value={birthDate.month() + 1}
+            onChange={(v) => setBirthDate(birthDate.month(v - 1))}
+            style={{ width: 70 }}
+            options={Array.from({ length: 12 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}月`
+            }))}
+          />
+          <Select
+            value={birthDate.date()}
+            onChange={(v) => setBirthDate(birthDate.date(v))}
+            style={{ width: 70 }}
+            options={Array.from({ length: 31 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}日`
+            }))}
+          />
+          <Select
+            value={birthHour}
+            onChange={setBirthHour}
+            style={{ width: 78 }}
+            options={SHICHEN_OPTIONS}
+          />
+          <span>时</span>
+          <Select
+            value={birthMinute}
+            onChange={setBirthMinute}
+            style={{ width: 58 }}
+            options={Array.from({ length: 60 }, (_, i) => ({
+              value: i,
+              label: `${i}`
+            }))}
+          />
+          <span>分</span>
+        </div>
+      </div>
 
-        {/* 操作按钮 */}
+      {/* 紫微盘式 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          紫微盘式：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+          <Radio.Group
+            value={chartType}
+            onChange={(e: RadioChangeEvent) => setChartType(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="xiantian">先天</Radio.Button>
+            <Radio.Button value="liunian">流年</Radio.Button>
+            <Radio.Button value="liuyue">流月</Radio.Button>
+            <Radio.Button value="liuri">流日</Radio.Button>
+          </Radio.Group>
+        </div>
+      </div>
+
+      {/* 流年日期 - 始终显示（参考卜易居） */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+          流年日期：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+          <Select
+            value={flowDate.year()}
+            onChange={(v) => setFlowDate(flowDate.year(v))}
+            style={{ width: 85 }}
+            options={Array.from({ length: 50 }, (_, i) => ({
+              value: 2000 + i,
+              label: `${2000 + i}年`
+            }))}
+          />
+          <Select
+            value={flowDate.month() + 1}
+            onChange={(v) => setFlowDate(flowDate.month(v - 1))}
+            style={{ width: 70 }}
+            options={Array.from({ length: 12 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}月`
+            }))}
+          />
+          <Select
+            value={flowDate.date()}
+            onChange={(v) => setFlowDate(flowDate.date(v))}
+            style={{ width: 70 }}
+            options={Array.from({ length: 31 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}日`
+            }))}
+          />
+          <Select
+            value={flowHour}
+            onChange={setFlowHour}
+            style={{ width: 78 }}
+            options={SHICHEN_OPTIONS}
+          />
+          <span>时</span>
+          <Select
+            value={flowMinute}
+            onChange={setFlowMinute}
+            style={{ width: 58 }}
+            options={Array.from({ length: 60 }, (_, i) => ({
+              value: i,
+              label: `${i}`
+            }))}
+          />
+          <span>分</span>
+        </div>
+      </div>
+
+      {/* 排盘按钮 */}
+      <div style={{ marginTop: 24 }}>
         <Button
           type="primary"
           size="large"
-          block
           onClick={handleCalculate}
           loading={loading}
-          icon={<StarOutlined />}
+          block
           style={{
-            background: '#000000',
-            borderColor: '#000000',
-            borderRadius: '54px',
-            height: '54px',
-            fontSize: '19px',
-            fontWeight: '700',
-            color: '#F7D3A1',
+            background: '#1a1a1a',
+            border: 'none',
+            height: 48,
+            fontSize: 16,
+            fontWeight: 500,
+            borderRadius: 24
           }}
         >
-          排盘
+          开始排盘
         </Button>
-        <Button block onClick={handleReset} icon={<ReloadOutlined />} style={{ borderRadius: '27px', height: '44px' }}>
-          重置
-        </Button>
-      </Space>
+      </div>
     </Card>
   );
 
@@ -717,7 +1045,7 @@ const ZiweiPage: React.FC = () => {
         </div>
 
         {/* 中间：紫微斗数 */}
-        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>紫微斗数</div>
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>星尘玄鉴-紫微斗数排盘</div>
 
         {/* 右边：使用说明 */}
         <div

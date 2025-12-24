@@ -2,7 +2,7 @@
 //!
 //! 本模块实现梅花易数排盘的核心计算逻辑，包括：
 //! - 卦数计算（上卦、下卦、动爻）
-//! - 时间起卦、双数起卦、单数起卦、随机起卦
+//! - 农历时间起卦、公历时间起卦、双数起卦、单数起卦、随机起卦、链摇起卦
 //! - 变卦计算
 //! - 互卦计算
 //! - 错卦、综卦计算
@@ -53,7 +53,7 @@ pub fn calc_dong_yao(n: u32) -> u8 {
     }
 }
 
-/// 时间起卦算法
+/// 农历时间起卦算法
 ///
 /// 使用农历年月日时计算上卦、下卦、动爻
 ///
@@ -83,6 +83,100 @@ pub fn divine_by_datetime(lunar: &LunarDate) -> (u8, u8, u8) {
     let dong_yao = calc_dong_yao(year_num + month_num + day_num + hour_num);
 
     (shang_gua_num, xia_gua_num, dong_yao)
+}
+
+/// 公历时间起卦算法
+///
+/// 使用公历年月日时计算上卦、下卦、动爻（现代简化方式）
+///
+/// # 算法
+/// - 上卦数 = (年份后两位 + 月 + 日) % 8
+/// - 下卦数 = (年份后两位 + 月 + 日 + 小时) % 8
+/// - 动爻数 = (年份后两位 + 月 + 日 + 小时) % 6
+///
+/// # 参数
+/// - `year`: 公历年份（如 2024）
+/// - `month`: 公历月份（1-12）
+/// - `day`: 公历日期（1-31）
+/// - `hour`: 24小时制小时（0-23）
+///
+/// # 返回
+/// - (上卦数, 下卦数, 动爻数)
+///
+/// # 示例
+/// ```ignore
+/// // 2024年12月24日 14时
+/// let (shang, xia, dong) = divine_by_gregorian_datetime(2024, 12, 24, 14);
+/// // 年份后两位=24, 上卦=(24+12+24)%8=60%8=4(震)
+/// // 下卦=(24+12+24+14)%8=74%8=2(兑)
+/// // 动爻=(24+12+24+14)%6=74%6=2
+/// ```
+pub fn divine_by_gregorian_datetime(year: u32, month: u8, day: u8, hour: u8) -> (u8, u8, u8) {
+    // 年份取后两位
+    let year_num = (year % 100) as u32;
+    let month_num = month as u32;
+    let day_num = day as u32;
+    let hour_num = hour as u32;
+
+    // 上卦数：(年份后两位+月+日) % 8
+    let shang_gua_num = calc_gua_num(year_num + month_num + day_num);
+
+    // 下卦数：(年份后两位+月+日+小时) % 8
+    let xia_gua_num = calc_gua_num(year_num + month_num + day_num + hour_num);
+
+    // 动爻数：(年份后两位+月+日+小时) % 6
+    let dong_yao = calc_dong_yao(year_num + month_num + day_num + hour_num);
+
+    (shang_gua_num, xia_gua_num, dong_yao)
+}
+
+/// 从 Unix 时间戳提取公历日期时间
+///
+/// # 参数
+/// - `timestamp`: Unix 时间戳（秒）
+///
+/// # 返回
+/// - (年, 月, 日, 小时)
+pub fn timestamp_to_gregorian(timestamp: u64) -> (u32, u8, u8, u8) {
+    // UTC+8 时区偏移（秒）
+    const TIMEZONE_OFFSET: u64 = 8 * 3600;
+    let local_timestamp = timestamp + TIMEZONE_OFFSET;
+
+    // 从 Unix 时间戳计算日期
+    // Unix 纪元：1970-01-01 00:00:00 UTC
+    let days_since_epoch = (local_timestamp / 86400) as i64;
+    let seconds_in_day = (local_timestamp % 86400) as u32;
+    let hour = (seconds_in_day / 3600) as u8;
+
+    // 使用简化的日期计算（考虑闰年）
+    let (year, month, day) = days_to_ymd(days_since_epoch);
+
+    (year as u32, month, day, hour)
+}
+
+/// 将天数转换为年月日
+///
+/// # 参数
+/// - `days`: 从 1970-01-01 起的天数
+///
+/// # 返回
+/// - (年, 月, 日)
+fn days_to_ymd(days: i64) -> (i32, u8, u8) {
+    // 调整到 2000-03-01 为基准（方便处理闰年）
+    // 从 1970-01-01 到 2000-03-01 共 11017 天
+    let days = days + 719468; // 调整到公元1年3月1日
+
+    let era = if days >= 0 { days / 146097 } else { (days - 146096) / 146097 };
+    let doe = (days - era * 146097) as u32; // 400年周期内的天数
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i32 + era as i32 * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    (y, m as u8, d as u8)
 }
 
 /// 双数起卦算法
@@ -216,6 +310,88 @@ pub fn divine_by_random(random_seed: &[u8; 32]) -> (u8, u8, u8) {
     let dong_yao = calc_dong_yao(random_seed[2] as u32);
 
     (shang_gua_num, xia_gua_num, dong_yao)
+}
+
+/// 链摇起卦算法
+///
+/// 从6个爻的阴阳值构建上下卦，并根据时间戳计算动爻
+///
+/// # 参数
+/// - `yaos`: 6个爻的值（0=阴爻，1=阳爻），按顺序为初爻到上爻
+/// - `last_timestamp`: 最后一次摇卦的时间戳（毫秒），用于计算动爻
+///
+/// # 返回
+/// - (上卦数, 下卦数, 动爻数)
+///
+/// # 爻位说明
+/// ```text
+/// yaos[5] - 上爻（第6爻）  ─┐
+/// yaos[4] - 五爻（第5爻）   │ 上卦
+/// yaos[3] - 四爻（第4爻）  ─┘
+/// yaos[2] - 三爻（第3爻）  ─┐
+/// yaos[1] - 二爻（第2爻）   │ 下卦
+/// yaos[0] - 初爻（第1爻）  ─┘
+/// ```
+///
+/// # 示例
+/// ```ignore
+/// // 6个爻：阳阳阳阴阴阴（下卦乾、上卦坤）
+/// let yaos = [1, 1, 1, 0, 0, 0];
+/// let (shang, xia, dong) = divine_by_shake(&yaos, 1735000000000);
+/// // 上卦二进制 000 = 坤(8)
+/// // 下卦二进制 111 = 乾(1)
+/// ```
+pub fn divine_by_shake(yaos: &[u8; 6], last_timestamp: u64) -> (u8, u8, u8) {
+    // 下卦：yaos[0..3]，二进制从低位到高位
+    // bit0 = 初爻, bit1 = 二爻, bit2 = 三爻
+    let xia_binary = ((yaos[2] & 1) << 2) | ((yaos[1] & 1) << 1) | (yaos[0] & 1);
+
+    // 上卦：yaos[3..6]，二进制从低位到高位
+    // bit0 = 四爻, bit1 = 五爻, bit2 = 上爻
+    let shang_binary = ((yaos[5] & 1) << 2) | ((yaos[4] & 1) << 1) | (yaos[3] & 1);
+
+    // 从二进制转换为先天八卦数
+    let shang_gua_num = Bagua::from_binary(shang_binary).number();
+    let xia_gua_num = Bagua::from_binary(xia_binary).number();
+
+    // 动爻：使用最后一次摇卦时间戳计算
+    // 取毫秒部分增加随机性
+    let dong_yao = calc_dong_yao((last_timestamp % 1000) as u32 + 1);
+
+    (shang_gua_num, xia_gua_num, dong_yao)
+}
+
+/// 验证摇卦时间戳的合理性
+///
+/// 防止机器人批量摇卦，确保有真实的用户交互
+///
+/// # 参数
+/// - `timestamps`: 6次摇卦的时间戳（毫秒）
+/// - `min_interval`: 最小间隔（毫秒），默认 300ms
+/// - `max_interval`: 最大间隔（毫秒），默认 30000ms（30秒）
+///
+/// # 返回
+/// - `Ok(())`: 时间戳合理
+/// - `Err(index)`: 第 index 次摇卦时间间隔不合理
+pub fn validate_shake_timestamps(
+    timestamps: &[u64; 6],
+    min_interval: u64,
+    max_interval: u64,
+) -> Result<(), usize> {
+    for i in 1..6 {
+        // 检查时间戳递增
+        if timestamps[i] <= timestamps[i - 1] {
+            return Err(i);
+        }
+
+        let interval = timestamps[i] - timestamps[i - 1];
+
+        // 检查间隔在合理范围内
+        if interval < min_interval || interval > max_interval {
+            return Err(i);
+        }
+    }
+    Ok(())
 }
 
 /// 判断体用卦
@@ -1071,5 +1247,182 @@ mod tests {
         let kan = SingleGua::from_num(6);
         let (fu_shang, _) = calc_fu_gua(&li, &kan);
         assert_eq!(fu_shang.bagua, Bagua::Kan);  // 离的伏卦是坎
+    }
+
+    // ==================== 公历起卦测试 ====================
+
+    #[test]
+    fn test_divine_by_gregorian_datetime() {
+        // 2024年12月24日 14时
+        // 年份后两位=24, 月=12, 日=24, 时=14
+        // 上卦 = (24+12+24) % 8 = 60 % 8 = 4 → 震
+        // 下卦 = (24+12+24+14) % 8 = 74 % 8 = 2 → 兑
+        // 动爻 = (24+12+24+14) % 6 = 74 % 6 = 2
+        let (shang, xia, dong) = divine_by_gregorian_datetime(2024, 12, 24, 14);
+
+        assert_eq!(shang, 4); // 震
+        assert_eq!(xia, 2);   // 兑
+        assert_eq!(dong, 2);
+    }
+
+    #[test]
+    fn test_divine_by_gregorian_datetime_zero_remainder() {
+        // 测试余数为0的情况
+        // 设计一个例子使余数为0
+        // 年=2000, 月=4, 日=4, 时=0
+        // 上卦 = (0+4+4) % 8 = 8 % 8 = 0 → 8(坤)
+        // 下卦 = (0+4+4+0) % 8 = 8 % 8 = 0 → 8(坤)
+        // 动爻 = (0+4+4+0) % 6 = 8 % 6 = 2
+        let (shang, xia, dong) = divine_by_gregorian_datetime(2000, 4, 4, 0);
+
+        assert_eq!(shang, 8); // 坤
+        assert_eq!(xia, 8);   // 坤
+        assert_eq!(dong, 2);
+    }
+
+    #[test]
+    fn test_timestamp_to_gregorian() {
+        // 2024-12-24 14:00:00 UTC 的时间戳
+        // Unix timestamp: 1735048800
+        let timestamp = 1735048800u64;
+        let (year, month, day, hour) = timestamp_to_gregorian(timestamp);
+
+        assert_eq!(year, 2024);
+        assert_eq!(month, 12);
+        assert_eq!(day, 24);
+        // UTC+8 时区，14:00 UTC = 22:00 北京时间
+        assert_eq!(hour, 22);
+    }
+
+    #[test]
+    fn test_timestamp_to_gregorian_epoch() {
+        // Unix 纪元：1970-01-01 00:00:00 UTC
+        let timestamp = 0u64;
+        let (year, month, day, hour) = timestamp_to_gregorian(timestamp);
+
+        assert_eq!(year, 1970);
+        assert_eq!(month, 1);
+        assert_eq!(day, 1);
+        assert_eq!(hour, 8); // UTC+8
+    }
+
+    // ==================== 链摇起卦测试 ====================
+
+    #[test]
+    fn test_divine_by_shake_qian_kun() {
+        // 6个阳爻 [1,1,1,1,1,1] = 乾为天
+        // 下卦 111 = 乾(1), 上卦 111 = 乾(1)
+        let yaos = [1, 1, 1, 1, 1, 1];
+        let (shang, xia, _dong) = divine_by_shake(&yaos, 1735000000000);
+
+        assert_eq!(shang, 1); // 乾
+        assert_eq!(xia, 1);   // 乾
+    }
+
+    #[test]
+    fn test_divine_by_shake_kun() {
+        // 6个阴爻 [0,0,0,0,0,0] = 坤为地
+        // 下卦 000 = 坤(8), 上卦 000 = 坤(8)
+        let yaos = [0, 0, 0, 0, 0, 0];
+        let (shang, xia, _dong) = divine_by_shake(&yaos, 1735000000000);
+
+        assert_eq!(shang, 8); // 坤
+        assert_eq!(xia, 8);   // 坤
+    }
+
+    #[test]
+    fn test_divine_by_shake_mixed() {
+        // [1,1,1,0,0,0] = 下卦乾(111)，上卦坤(000) = 天地否
+        let yaos = [1, 1, 1, 0, 0, 0];
+        let (shang, xia, _dong) = divine_by_shake(&yaos, 1735000000000);
+
+        assert_eq!(xia, 1);   // 乾
+        assert_eq!(shang, 8); // 坤
+    }
+
+    #[test]
+    fn test_divine_by_shake_kan_li() {
+        // 坎卦 010，离卦 101
+        // [0,1,0,1,0,1] = 下卦坎，上卦离 = 火水未济
+        let yaos = [0, 1, 0, 1, 0, 1];
+        let (shang, xia, _dong) = divine_by_shake(&yaos, 1735000000000);
+
+        assert_eq!(xia, 6);   // 坎
+        assert_eq!(shang, 3); // 离
+    }
+
+    #[test]
+    fn test_divine_by_shake_dong_yao() {
+        // 测试动爻计算
+        // 时间戳最后三位决定动爻
+        let yaos = [1, 1, 1, 1, 1, 1];
+
+        // 时间戳 xxx001 -> (1+1) % 6 = 2
+        let (_, _, dong1) = divine_by_shake(&yaos, 1735000000001);
+        assert_eq!(dong1, 2);
+
+        // 时间戳 xxx005 -> (5+1) % 6 = 0 -> 6
+        let (_, _, dong2) = divine_by_shake(&yaos, 1735000000005);
+        assert_eq!(dong2, 6);
+    }
+
+    #[test]
+    fn test_validate_shake_timestamps_valid() {
+        // 有效的时间戳序列
+        let timestamps = [
+            1735000000000,
+            1735000000500,  // +500ms
+            1735000001200,  // +700ms
+            1735000002000,  // +800ms
+            1735000003500,  // +1500ms
+            1735000005000,  // +1500ms
+        ];
+
+        assert!(validate_shake_timestamps(&timestamps, 300, 30_000).is_ok());
+    }
+
+    #[test]
+    fn test_validate_shake_timestamps_too_fast() {
+        // 间隔太短（小于300ms）
+        let timestamps = [
+            1735000000000,
+            1735000000100,  // +100ms，太快
+            1735000001000,
+            1735000002000,
+            1735000003000,
+            1735000004000,
+        ];
+
+        assert!(validate_shake_timestamps(&timestamps, 300, 30_000).is_err());
+    }
+
+    #[test]
+    fn test_validate_shake_timestamps_too_slow() {
+        // 间隔太长（超过30秒）
+        let timestamps = [
+            1735000000000,
+            1735000035000,  // +35秒，太慢
+            1735000036000,
+            1735000037000,
+            1735000038000,
+            1735000039000,
+        ];
+
+        assert!(validate_shake_timestamps(&timestamps, 300, 30_000).is_err());
+    }
+
+    #[test]
+    fn test_validate_shake_timestamps_not_increasing() {
+        // 时间戳不递增
+        let timestamps = [
+            1735000000000,
+            1735000001000,
+            1735000000500,  // 回退了
+            1735000002000,
+            1735000003000,
+            1735000004000,
+        ];
+
+        assert!(validate_shake_timestamps(&timestamps, 300, 30_000).is_err());
     }
 }

@@ -735,6 +735,24 @@ pub mod runtime {
 	// #[runtime::pallet_index(76)]
 	// pub type MeihuaNft = pallet_meihua_nft;
 
+	/// 函数级详细中文注释：统一隐私授权模块 (Divination Privacy Pallet)
+	///
+	/// 🆕 2025-12-24：为所有占卜系统提供统一的加密存储和多方授权功能
+	///
+	/// **核心功能**：
+	/// - ✅ 密钥管理：用户注册和更新 X25519 加密公钥
+	/// - ✅ 服务提供者管理：命理师、AI 服务、家族成员注册
+	/// - ✅ 加密数据存储：AES-256-GCM 加密的敏感数据存储
+	/// - ✅ 授权管理：多方授权、角色控制、范围控制
+	/// - ✅ 悬赏集成：与悬赏系统的授权集成
+	///
+	/// **设计理念**：
+	/// - 统一的隐私授权接口，供所有占卜 pallet 使用
+	/// - 支持多种服务提供者类型和授权角色
+	/// - 与悬赏市场深度集成
+	#[runtime::pallet_index(76)]
+	pub type DivinationPrivacy = pallet_divination_privacy;
+
 	/// 函数级详细中文注释：聊天权限系统 v4.0 (Chat Permission Pallet)
 	///
 	/// 🆕 2025-11-28：基于场景的多场景共存聊天权限控制系统

@@ -584,14 +584,21 @@ pub const fn get_year_days(year: u16) -> u16 {
 }
 
 /// 获取春节日期 (返回 (月, 日))
+///
+/// 春节日期范围：1月21日 - 2月20日
+/// 编码格式：0x20 + 日期
+/// - 日期 >= 20 表示 1 月
+/// - 日期 < 20 表示 2 月
 #[inline]
 pub const fn get_spring_festival(year: u16) -> (u8, u8) {
     if year < 1901 || year > 2100 {
         return (2, 1); // 默认值
     }
     let sf = SPRING_FESTIVAL[(year - 1901) as usize];
-    let month = if sf & 0x20 != 0 { 1 } else { 2 };
     let day = sf & 0x1F;
+    // 春节日期范围：1月21日 - 2月20日
+    // day >= 20 表示 1月，day < 20 表示 2月
+    let month = if day >= 20 { 1 } else { 2 };
     (month, day)
 }
 

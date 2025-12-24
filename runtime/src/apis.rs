@@ -25,6 +25,7 @@
 
 // External crates imports
 use alloc::vec::Vec;
+use alloc::string::String;  // ⭐ 添加 String 导入用于 Runtime API
 use frame_support::{
     genesis_builder_helper::{build_state, get_preset},
     weights::Weight,
@@ -396,17 +397,22 @@ impl_runtime_apis! {
         }
     }
 
-    // ========= 🆕 2025-12-10 Bazi Chart Runtime API (V4 合并版) =========
+    // ========= 🆕 2025-12-10 Bazi Chart Runtime API (V5 增强版) =========
     /// 函数级详细中文注释：八字解盘系统 Runtime API 实现
     ///
     /// ### 功能说明
     /// - 提供前端免费查询八字解盘的唯一接口
     /// - 返回完整解盘数据（核心指标 + 性格分析 + 扩展忌神）
+    /// - 🆕 V5: 新增完整命盘接口（主星、藏干、副星、星运、空亡、纳音、神煞）
     ///
     /// ### 接口列表
     /// - `get_interpretation`: 获取完整解盘（唯一接口）
+    /// - `get_full_bazi_chart`: 🆕 获取完整八字命盘（V5 新增）
     /// - `chart_exists`: 检查命盘是否存在
     /// - `get_chart_owner`: 获取命盘创建者
+    /// - `get_encrypted_chart_interpretation`: 获取加密命盘的解盘
+    /// - `encrypted_chart_exists`: 检查加密命盘是否存在
+    /// - `get_encrypted_chart_owner`: 获取加密命盘创建者
     ///
     /// ### 优势
     /// - 完全免费（无 Gas 费用）
@@ -415,10 +421,10 @@ impl_runtime_apis! {
     /// - 单一接口，前端按需使用 `.core` 或 `.xing_ge`
     ///
     /// ### 版本说明
-    /// V4 合并了 V2/V3 的所有功能：
-    /// - V2 SimplifiedInterpretation → 已合并到 FullInterpretation.core
-    /// - V3 CoreInterpretation → 已合并到 FullInterpretation.core
-    /// - V3 FullInterpretation → 现为唯一返回类型
+    /// V5 新增完整命盘接口：
+    /// - 新增 `get_full_bazi_chart` 接口
+    /// - 返回 `FullBaziChartForApi`，包含所有计算字段
+    /// - V4 原有功能保持不变
     impl pallet_bazi_chart::runtime_api::BaziChartApi<Block, AccountId> for Runtime {
         /// 获取完整解盘（唯一接口）
         ///
@@ -430,6 +436,37 @@ impl_runtime_apis! {
         /// 前端只需核心数据时，访问 `result.core` 即可
         fn get_interpretation(chart_id: u64) -> Option<pallet_bazi_chart::FullInterpretation> {
             pallet_bazi_chart::Pallet::<Runtime>::get_full_interpretation(chart_id)
+        }
+
+        /// 🆕 V5 新增：获取完整八字命盘
+        ///
+        /// 返回包含所有计算字段的完整命盘数据：
+        /// - **主星**: 天干十神 + 地支本气十神
+        /// - **藏干（副星）**: 藏干详细信息及十神关系
+        /// - **星运**: 四柱十二长生状态
+        /// - **空亡**: 旬空判断和标识
+        /// - **纳音**: 六十甲子纳音五行
+        /// - **神煞**: 吉凶神煞列表
+        ///
+        /// 参数:
+        /// - `chart_id`: 八字命盘 ID
+        ///
+        /// 返回:
+        /// - `Option<FullBaziChartForApi>`: 完整命盘数据，命盘不存在则返回 None
+        ///
+        /// 示例（前端调用）:
+        /// ```javascript
+        /// const fullChart = await api.call.baziChartApi.getFullBaziChart(chartId);
+        /// // 访问主星
+        /// console.log('年柱天干十神:', fullChart.sizhu.yearZhu.tianganShishen);
+        /// // 访问空亡
+        /// console.log('日柱落空亡:', fullChart.kongwang.dayIsKong);
+        /// // 访问神煞
+        /// fullChart.shenshaList.forEach(s => console.log(s.shensha, s.nature));
+        /// ```
+        fn get_full_bazi_chart(chart_id: u64) -> Option<String> {
+            let chart = pallet_bazi_chart::Pallet::<Runtime>::get_full_bazi_chart_for_api(chart_id)?;
+            Some(chart.to_debug_json())  // 🔥 方案1：返回调试友好的 JSON 字符串，包含枚举名称而非数字索引
         }
 
         /// 检查命盘是否存在
@@ -457,6 +494,187 @@ impl_runtime_apis! {
         /// 获取加密命盘创建者
         fn get_encrypted_chart_owner(chart_id: u64) -> Option<AccountId> {
             pallet_bazi_chart::Pallet::<Runtime>::get_encrypted_chart_owner(chart_id)
+        }
+
+        /// 临时排盘（不存储，免费）
+        ///
+        /// 根据出生时间计算八字命盘，但不存储到链上。
+        /// 适用于用户"试用"功能，决定是否保存后再调用交易接口。
+        ///
+        /// 参数:
+        /// - `year`: 公历年份 (1900-2100)
+        /// - `month`: 公历月份 (1-12)
+        /// - `day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `minute`: 分钟 (0-59)
+        /// - `gender`: 性别 (0=Male, 1=Female)
+        /// - `zishi_mode`: 子时模式 (0=Traditional, 1=Modern)
+        /// - `longitude`: 出生地经度（可选，用于真太阳时修正）
+        ///
+        /// 返回:
+        /// - `Some(String)`: JSON 格式的完整命盘数据
+        /// - `None`: 输入参数无效
+        ///
+        /// 特点:
+        /// - ✅ 完全免费（无 Gas 费用）
+        /// - ✅ 响应快速（< 100ms）
+        /// - ❌ 不存储（关闭页面后数据丢失）
+        fn calculate_bazi_temp(
+            year: u16,
+            month: u8,
+            day: u8,
+            hour: u8,
+            minute: u8,
+            gender: u8,
+            zishi_mode: u8,
+            longitude: Option<i32>,
+        ) -> Option<String> {
+            // 转换 gender 枚举
+            let gender_enum = match gender {
+                0 => pallet_bazi_chart::types::Gender::Male,
+                1 => pallet_bazi_chart::types::Gender::Female,
+                _ => return None,
+            };
+
+            // 转换 zishi_mode 枚举
+            let zishi_mode_enum = match zishi_mode {
+                0 => pallet_bazi_chart::types::ZiShiMode::Traditional,
+                1 => pallet_bazi_chart::types::ZiShiMode::Modern,
+                _ => return None,
+            };
+
+            // 调用 pallet 的临时排盘函数
+            let chart = pallet_bazi_chart::Pallet::<Runtime>::calculate_bazi_temp(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                gender_enum,
+                zishi_mode_enum,
+                longitude,
+            )?;
+
+            // 转换为调试友好的 JSON 字符串
+            Some(chart.to_debug_json())
+        }
+
+        /// 统一临时排盘接口（支持公历/农历/四柱直接输入）
+        ///
+        /// 参数:
+        /// - `input_type`: 输入类型 (0=Solar, 1=Lunar, 2=SiZhu)
+        /// - `params`: 参数数组
+        ///   - Solar: [year, month, day, hour, minute]
+        ///   - Lunar: [year, month, day, is_leap_month, hour, minute]
+        ///   - SiZhu: [year_gz, month_gz, day_gz, hour_gz, birth_year]
+        /// - `gender`: 性别 (0=Male, 1=Female)
+        /// - `zishi_mode`: 子时模式 (1=Traditional, 2=Modern)
+        ///
+        /// 返回:
+        /// - `Some(String)`: JSON 格式的完整命盘数据
+        /// - `None`: 输入参数无效
+        fn calculate_bazi_temp_unified(
+            input_type: u8,
+            params: alloc::vec::Vec<u16>,
+            gender: u8,
+            zishi_mode: u8,
+        ) -> Option<String> {
+            // 调用 pallet 的统一临时排盘函数
+            let chart = pallet_bazi_chart::Pallet::<Runtime>::calculate_bazi_temp_unified(
+                input_type,
+                params,
+                gender,
+                zishi_mode,
+            )?;
+
+            // 转换为调试友好的 JSON 字符串
+            Some(chart.to_debug_json())
+        }
+
+        // ================================
+        // V6 新增：多方授权加密系统 API
+        // ================================
+
+        /// 获取用户加密公钥
+        ///
+        /// 用于在授权前获取目标用户的 X25519 公钥
+        ///
+        /// 参数:
+        /// - `account`: 用户账户
+        ///
+        /// 返回:
+        /// - `Some([u8; 32])`: X25519 公钥
+        /// - `None`: 用户未注册加密公钥
+        fn get_user_encryption_key(account: AccountId) -> Option<[u8; 32]> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_user_encryption_key(&account)
+        }
+
+        /// 获取服务提供者信息
+        ///
+        /// 获取服务提供者的详细信息（类型、公钥、信誉分等）
+        ///
+        /// 参数:
+        /// - `account`: 服务提供者账户
+        ///
+        /// 返回:
+        /// - `Some(String)`: JSON 格式的服务提供者信息
+        /// - `None`: 未注册为服务提供者
+        fn get_service_provider(account: AccountId) -> Option<String> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_service_provider_json(&account)
+        }
+
+        /// 获取某类型的服务提供者列表
+        ///
+        /// 按服务类型获取所有激活的服务提供者账户
+        ///
+        /// 参数:
+        /// - `provider_type`: 服务类型（0=命理师, 1=AI服务, 2=家族成员, 3=研究机构）
+        ///
+        /// 返回:
+        /// - 服务提供者账户列表（只返回激活的）
+        fn get_providers_by_type(provider_type: u8) -> Vec<AccountId> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_providers_by_type_filtered(provider_type)
+        }
+
+        /// 获取被授权访问的命盘列表
+        ///
+        /// 服务提供者或用户查询自己被授权访问的所有命盘
+        ///
+        /// 参数:
+        /// - `account`: 账户
+        ///
+        /// 返回:
+        /// - 被授权访问的命盘 ID 列表
+        fn get_provider_grants(account: AccountId) -> Vec<u64> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_provider_grants_list(&account)
+        }
+
+        /// 获取多方授权加密命盘的基础信息
+        ///
+        /// 返回命盘的元数据，不包含加密数据和密钥
+        ///
+        /// 参数:
+        /// - `chart_id`: 命盘 ID
+        ///
+        /// 返回:
+        /// - `Some(String)`: JSON 格式的命盘基础信息
+        /// - `None`: 命盘不存在
+        fn get_multi_key_encrypted_chart_info(chart_id: u64) -> Option<String> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_multi_key_encrypted_chart_info_json(chart_id)
+        }
+
+        /// 获取多方授权加密命盘的解盘
+        ///
+        /// 基于四柱索引计算解盘，无需解密敏感数据
+        ///
+        /// 参数:
+        /// - `chart_id`: 多方授权加密命盘 ID
+        ///
+        /// 返回:
+        /// - `Some(FullInterpretation)`: 完整解盘结果
+        /// - `None`: 命盘不存在
+        fn get_multi_key_encrypted_chart_interpretation(chart_id: u64) -> Option<pallet_bazi_chart::FullInterpretation> {
+            pallet_bazi_chart::Pallet::<Runtime>::get_multi_key_encrypted_chart_interpretation(chart_id)
         }
     }
 

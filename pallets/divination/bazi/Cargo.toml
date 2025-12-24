@@ -32,6 +32,9 @@ libm = "0.2"
 # 玄学公共模块
 pallet-divination-common = { path = "../common", default-features = false }
 
+# 黄历模块（农历转换功能）
+pallet-almanac = { path = "../almanac", default-features = false }
+
 [dev-dependencies]
 sp-core = { workspace = true }
 sp-io = { workspace = true }
@@ -48,6 +51,7 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"pallet-divination-common/std",
+	"pallet-almanac/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

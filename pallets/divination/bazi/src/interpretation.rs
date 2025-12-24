@@ -1108,6 +1108,353 @@ fn analyze_xing_ge_from_index(sizhu_index: &SiZhuIndex) -> CompactXingGe {
 }
 
 // ================================
+// Runtime API 数据结构（V5 新增）
+// ================================
+
+/// 完整八字命盘（用于 Runtime API 返回）
+///
+/// 包含所有计算字段的完整命盘数据，用于 JSON 序列化
+#[derive(Clone, Debug)]
+pub struct FullBaziChartForApi {
+    /// 性别
+    pub gender: Gender,
+    /// 出生年份
+    pub birth_year: u16,
+    /// 输入日历类型（记录原始输入是公历还是农历）
+    /// 用于前端显示，不影响八字计算
+    pub input_calendar_type: crate::types::InputCalendarType,
+    /// 四柱干支
+    pub sizhu: SiZhuForApi,
+    /// 空亡信息
+    pub kongwang: KongWangInfo,
+    /// 星运信息（十二长生）
+    pub xingyun: XingYunInfo,
+    /// 神煞列表
+    pub shensha_list: sp_std::vec::Vec<ShenShaEntry>,
+    /// 五行强度
+    pub wuxing_strength: WuXingStrength,
+}
+
+/// 四柱信息（用于 API）
+#[derive(Clone, Debug)]
+pub struct SiZhuForApi {
+    /// 年柱
+    pub year_zhu: ZhuForApi,
+    /// 月柱
+    pub month_zhu: ZhuForApi,
+    /// 日柱
+    pub day_zhu: ZhuForApi,
+    /// 时柱
+    pub hour_zhu: ZhuForApi,
+    /// 日主
+    pub rizhu: TianGan,
+}
+
+/// 单柱信息（用于 API）
+#[derive(Clone, Debug)]
+pub struct ZhuForApi {
+    /// 干支组合
+    pub ganzhi: GanZhi,
+    /// 天干十神
+    pub tiangan_shishen: ShiShen,
+    /// 地支本气十神
+    pub dizhi_benqi_shishen: ShiShen,
+    /// 藏干列表
+    pub canggan_list: sp_std::vec::Vec<CangGanForApi>,
+    /// 纳音
+    pub nayin: NaYin,
+    /// 十二长生
+    pub changsheng: ShiErChangSheng,
+}
+
+/// 藏干信息（用于 API）
+#[derive(Clone, Debug)]
+pub struct CangGanForApi {
+    /// 藏干天干
+    pub gan: TianGan,
+    /// 与日主的十神关系
+    pub shishen: ShiShen,
+    /// 藏干类型
+    pub canggan_type: CangGanType,
+    /// 权重
+    pub weight: u16,
+}
+
+impl FullBaziChartForApi {
+    /// 转换为调试友好的 JSON 字符串
+    pub fn to_debug_json(&self) -> scale_info::prelude::string::String {
+        use scale_info::prelude::format;
+
+        // 手动构建 JSON 字符串
+        let mut json = scale_info::prelude::string::String::from("{");
+
+        // 基本信息
+        json.push_str(&format!("\"gender\":\"{:?}\",", self.gender));
+        json.push_str(&format!("\"birthYear\":{},", self.birth_year));
+
+        // 四柱
+        json.push_str("\"sizhu\":{");
+        json.push_str(&format!("\"yearZhu\":{},", self.sizhu.year_zhu.to_json()));
+        json.push_str(&format!("\"monthZhu\":{},", self.sizhu.month_zhu.to_json()));
+        json.push_str(&format!("\"dayZhu\":{},", self.sizhu.day_zhu.to_json()));
+        json.push_str(&format!("\"hourZhu\":{},", self.sizhu.hour_zhu.to_json()));
+        json.push_str(&format!("\"rizhu\":\"{}\"", self.sizhu.rizhu.name()));
+        json.push_str("},");
+
+        // 空亡
+        json.push_str(&format!(
+            "\"kongwang\":{{\"yearKong\":{},\"monthKong\":{},\"dayKong\":{},\"hourKong\":{}}},",
+            self.kongwang.year_is_kong,
+            self.kongwang.month_is_kong,
+            self.kongwang.day_is_kong,
+            self.kongwang.hour_is_kong
+        ));
+
+        // 星运
+        json.push_str(&format!(
+            "\"xingyun\":{{\"year\":\"{}\",\"month\":\"{}\",\"day\":\"{}\",\"hour\":\"{}\"}},",
+            self.xingyun.year_changsheng.name(),
+            self.xingyun.month_changsheng.name(),
+            self.xingyun.day_changsheng.name(),
+            self.xingyun.hour_changsheng.name()
+        ));
+
+        // 神煞列表
+        json.push_str("\"shenshaList\":[");
+        for (i, shensha) in self.shensha_list.iter().enumerate() {
+            if i > 0 { json.push_str(","); }
+            json.push_str(&format!(
+                "{{\"shensha\":\"{:?}\",\"position\":\"{}\",\"nature\":\"{:?}\"}}",
+                shensha.shensha,
+                shensha.position.name(),
+                shensha.nature
+            ));
+        }
+        json.push_str("],");
+
+        // 五行强度
+        json.push_str(&format!(
+            "\"wuxingStrength\":{{\"jin\":{},\"mu\":{},\"shui\":{},\"huo\":{},\"tu\":{}}}",
+            self.wuxing_strength.jin,
+            self.wuxing_strength.mu,
+            self.wuxing_strength.shui,
+            self.wuxing_strength.huo,
+            self.wuxing_strength.tu
+        ));
+
+        json.push_str("}");
+        json
+    }
+}
+
+impl ZhuForApi {
+    /// 转换为 JSON 字符串
+    fn to_json(&self) -> scale_info::prelude::string::String {
+        use scale_info::prelude::format;
+
+        let mut json = scale_info::prelude::string::String::from("{");
+        json.push_str(&format!("\"ganzhi\":\"{}{}\"", self.ganzhi.gan.name(), self.ganzhi.zhi.name()));
+        json.push_str(&format!(",\"tianganShishen\":\"{}\"", self.tiangan_shishen.name()));
+        json.push_str(&format!(",\"dizhiBenqiShishen\":\"{}\"", self.dizhi_benqi_shishen.name()));
+        json.push_str(&format!(",\"nayin\":\"{}\"", self.nayin.name()));
+        json.push_str(&format!(",\"changsheng\":\"{}\"", self.changsheng.name()));
+
+        // 藏干列表
+        json.push_str(",\"cangganList\":[");
+        for (i, cg) in self.canggan_list.iter().enumerate() {
+            if i > 0 { json.push_str(","); }
+            json.push_str(&format!(
+                "{{\"gan\":\"{}\",\"shishen\":\"{}\",\"type\":\"{:?}\",\"weight\":{}}}",
+                cg.gan.name(),
+                cg.shishen.name(),
+                cg.canggan_type,
+                cg.weight
+            ));
+        }
+        json.push_str("]");
+
+        json.push_str("}");
+        json
+    }
+}
+
+/// 构建完整命盘用于 API 返回（从已存储的 BaziChart）
+pub fn build_full_bazi_chart_for_api<T: crate::pallet::Config>(
+    chart: &BaziChart<T>,
+) -> FullBaziChartForApi {
+    use crate::calculations::{xingyun, kongwang, shensha};
+
+    let rizhu = chart.sizhu.rizhu;
+
+    // 计算空亡
+    let kongwang_info = kongwang::calculate_all_kongwang_temp(
+        &chart.sizhu.year_zhu.ganzhi,
+        &chart.sizhu.month_zhu.ganzhi,
+        &chart.sizhu.day_zhu.ganzhi,
+        &chart.sizhu.hour_zhu.ganzhi,
+    );
+
+    // 计算星运
+    let xingyun_info = xingyun::calculate_xingyun_temp(
+        rizhu,
+        &chart.sizhu.year_zhu.ganzhi.zhi,
+        &chart.sizhu.month_zhu.ganzhi.zhi,
+        &chart.sizhu.day_zhu.ganzhi.zhi,
+        &chart.sizhu.hour_zhu.ganzhi.zhi,
+    );
+
+    // 计算神煞
+    let shensha_list = shensha::calculate_shensha_list_temp(
+        &chart.sizhu.year_zhu.ganzhi,
+        &chart.sizhu.month_zhu.ganzhi,
+        &chart.sizhu.day_zhu.ganzhi,
+        &chart.sizhu.hour_zhu.ganzhi,
+    );
+
+    // 构建四柱信息
+    let sizhu_for_api = SiZhuForApi {
+        year_zhu: build_zhu_for_api(&chart.sizhu.year_zhu.ganzhi, rizhu, xingyun_info.year_changsheng),
+        month_zhu: build_zhu_for_api(&chart.sizhu.month_zhu.ganzhi, rizhu, xingyun_info.month_changsheng),
+        day_zhu: build_zhu_for_api(&chart.sizhu.day_zhu.ganzhi, rizhu, xingyun_info.day_changsheng),
+        hour_zhu: build_zhu_for_api(&chart.sizhu.hour_zhu.ganzhi, rizhu, xingyun_info.hour_changsheng),
+        rizhu,
+    };
+
+    FullBaziChartForApi {
+        gender: chart.gender,
+        birth_year: chart.birth_time.year,
+        input_calendar_type: chart.input_calendar_type,
+        sizhu: sizhu_for_api,
+        kongwang: kongwang_info,
+        xingyun: xingyun_info,
+        shensha_list,
+        wuxing_strength: chart.wuxing_strength,
+    }
+}
+
+/// 构建完整命盘用于 API 返回（从临时计算的四柱）
+///
+/// # 参数
+/// - `year_ganzhi`: 年柱干支
+/// - `month_ganzhi`: 月柱干支
+/// - `day_ganzhi`: 日柱干支
+/// - `hour_ganzhi`: 时柱干支
+/// - `gender`: 性别
+/// - `birth_year`: 出生年份
+/// - `input_calendar_type`: 输入日历类型（公历/农历/四柱）
+pub fn build_full_bazi_chart_for_api_temp(
+    year_ganzhi: GanZhi,
+    month_ganzhi: GanZhi,
+    day_ganzhi: GanZhi,
+    hour_ganzhi: GanZhi,
+    gender: Gender,
+    birth_year: u16,
+    input_calendar_type: crate::types::InputCalendarType,
+) -> FullBaziChartForApi {
+    use crate::calculations::{xingyun, kongwang, shensha, wuxing};
+
+    let rizhu = day_ganzhi.gan;
+
+    // 计算空亡
+    let kongwang_info = kongwang::calculate_all_kongwang_temp(
+        &year_ganzhi,
+        &month_ganzhi,
+        &day_ganzhi,
+        &hour_ganzhi,
+    );
+
+    // 计算星运
+    let xingyun_info = xingyun::calculate_xingyun_temp(
+        rizhu,
+        &year_ganzhi.zhi,
+        &month_ganzhi.zhi,
+        &day_ganzhi.zhi,
+        &hour_ganzhi.zhi,
+    );
+
+    // 计算神煞
+    let shensha_list = shensha::calculate_shensha_list_temp(
+        &year_ganzhi,
+        &month_ganzhi,
+        &day_ganzhi,
+        &hour_ganzhi,
+    );
+
+    // 计算五行强度
+    let wuxing_strength = wuxing::calculate_wuxing_strength(
+        &year_ganzhi,
+        &month_ganzhi,
+        &day_ganzhi,
+        &hour_ganzhi,
+    );
+
+    // 构建四柱信息
+    let sizhu_for_api = SiZhuForApi {
+        year_zhu: build_zhu_for_api(&year_ganzhi, rizhu, xingyun_info.year_changsheng),
+        month_zhu: build_zhu_for_api(&month_ganzhi, rizhu, xingyun_info.month_changsheng),
+        day_zhu: build_zhu_for_api(&day_ganzhi, rizhu, xingyun_info.day_changsheng),
+        hour_zhu: build_zhu_for_api(&hour_ganzhi, rizhu, xingyun_info.hour_changsheng),
+        rizhu,
+    };
+
+    FullBaziChartForApi {
+        gender,
+        birth_year,
+        input_calendar_type,
+        sizhu: sizhu_for_api,
+        kongwang: kongwang_info,
+        xingyun: xingyun_info,
+        shensha_list,
+        wuxing_strength,
+    }
+}
+
+/// 构建单柱信息
+fn build_zhu_for_api(
+    ganzhi: &GanZhi,
+    rizhu: TianGan,
+    changsheng: ShiErChangSheng,
+) -> ZhuForApi {
+    use crate::constants::{calculate_shishen, calculate_nayin, get_hidden_stems, is_valid_canggan};
+
+    // 计算天干十神
+    let tiangan_shishen = calculate_shishen(rizhu, ganzhi.gan);
+
+    // 获取藏干并计算本气十神
+    let hidden_stems = get_hidden_stems(ganzhi.zhi);
+    let dizhi_benqi_shishen = if is_valid_canggan(hidden_stems[0].0.0) {
+        calculate_shishen(rizhu, hidden_stems[0].0)
+    } else {
+        ShiShen::BiJian // 默认值
+    };
+
+    // 构建藏干列表
+    let mut canggan_list = sp_std::vec::Vec::new();
+    for (gan, canggan_type, weight) in hidden_stems.iter() {
+        if is_valid_canggan(gan.0) {
+            canggan_list.push(CangGanForApi {
+                gan: *gan,
+                shishen: calculate_shishen(rizhu, *gan),
+                canggan_type: *canggan_type,
+                weight: *weight,
+            });
+        }
+    }
+
+    // 计算纳音
+    let nayin = calculate_nayin(ganzhi);
+
+    ZhuForApi {
+        ganzhi: *ganzhi,
+        tiangan_shishen,
+        dizhi_benqi_shishen,
+        canggan_list,
+        nayin,
+        changsheng,
+    }
+}
+
+// ================================
 // 单元测试
 // ================================
 

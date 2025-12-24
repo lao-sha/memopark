@@ -8,11 +8,15 @@
 //! - 单卦结构 (SingleGua)
 //! - 六十四卦结构 (Hexagram)
 //! - 完整卦象 (FullDivination)
+//! - 加密隐私数据 (EncryptedPrivacyData) - 用于原子性隐私数据存储
 
 use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_std::prelude::*;
+
+// 重新导出 privacy pallet 的类型，供外部使用
+pub use pallet_divination_privacy::types::PrivacyMode;
 
 /// 八卦枚举 - 先天八卦数序
 ///
@@ -471,27 +475,36 @@ impl TiYongRelation {
 /// 梅花易数支持多种起卦方式，每种方式都有其独特的计算规则
 #[derive(Clone, Copy, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug, Default)]
 pub enum DivinationMethod {
-    /// 时间起卦 - 使用农历年月日时起卦
+    /// 农历时间起卦 - 使用农历年月日时起卦（传统方式）
     /// 上卦：(年支数+月数+日数) % 8
     /// 下卦：(年支数+月数+日数+时支数) % 8
     /// 动爻：(年支数+月数+日数+时支数) % 6
     #[default]
-    DateTime = 0,
+    LunarDateTime = 0,
+    /// 公历时间起卦 - 使用公历年月日时起卦（现代简化）
+    /// 上卦：(年份后两位+月+日) % 8
+    /// 下卦：(年份后两位+月+日+小时) % 8
+    /// 动爻：(年份后两位+月+日+小时) % 6
+    GregorianDateTime = 1,
     /// 双数起卦 - 使用两个数字起卦
     /// 上卦：第一个数 % 8
     /// 下卦：第二个数 % 8
     /// 动爻：(两数之和+时支数) % 6
-    TwoNumbers = 1,
+    TwoNumbers = 2,
     /// 随机起卦 - 使用链上随机数
-    Random = 2,
+    Random = 3,
     /// 手动指定 - 直接指定上卦、下卦、动爻
-    Manual = 3,
+    Manual = 4,
     /// 单数起卦 - 使用一个多位数字起卦
     /// 将数字拆分为前后两半
     /// 上卦：前半段数字之和 % 8
     /// 下卦：后半段数字之和 % 8
     /// 动爻：(前半+后半+时支数) % 6
-    SingleNumber = 4,
+    SingleNumber = 5,
+    /// 链摇起卦 - 用户交互式摇卦
+    /// 前端生成6个爻（阴/阳），链上验证并存储
+    /// 动爻：最后一次摇卦时间戳 % 6 + 1
+    ChainShake = 6,
 }
 
 /// 吉凶判断结果
@@ -616,6 +629,14 @@ pub struct Hexagram<AccountId, BlockNumber> {
     pub interpretation_cid: Option<BoundedVec<u8, ConstU32<64>>>,
     /// 是否公开（公开的卦象可被其他人查看）
     pub is_public: bool,
+
+    // ========== 占卜者基础信息（公开层） ==========
+    /// 性别（0: 未指定, 1: 男, 2: 女）
+    /// 用于解卦分析，某些流派需要根据性别判断体用
+    pub gender: u8,
+    /// 出生年份（可选）
+    /// 用于计算本命卦、生肖、应期推算等
+    pub birth_year: Option<u16>,
 }
 
 impl<AccountId, BlockNumber> Hexagram<AccountId, BlockNumber> {
@@ -919,6 +940,130 @@ pub struct FullDivinationDetail {
     pub fu_gua: HexagramDetail,
     /// 体用关系详细解读（新增）
     pub tiyong_interpretation: BoundedVec<u8, ConstU32<256>>,
+}
+
+// ============================================================================
+// 隐私数据结构
+// ============================================================================
+
+/// 加密隐私数据参数
+///
+/// 用于 `divine_with_privacy` 函数的原子性隐私数据存储。
+/// 前端负责加密数据，链上只存储加密后的数据。
+///
+/// ## 加密方案
+///
+/// ```text
+/// 加密流程：
+/// ┌──────────────┐    ┌─────────────────┐    ┌────────────────┐
+/// │ DivinerPriv- │───>│ JSON.stringify  │───>│ AES-256-GCM    │───> encrypted_data
+/// │ ateData      │    │                 │    │ (DataKey加密)   │
+/// └──────────────┘    └─────────────────┘    └────────────────┘
+///
+/// 密钥分发：
+/// ┌──────────┐    ┌─────────────────────┐    ┌─────────────────┐
+/// │ DataKey  │───>│ X25519 封装         │───>│ encrypted_key   │
+/// │ (随机)   │    │ (用接收者公钥加密)   │    │ (存入授权条目)   │
+/// └──────────┘    └─────────────────────┘    └─────────────────┘
+/// ```
+///
+/// ## 隐私数据内容（前端加密前的明文结构）
+///
+/// ```text
+/// {
+///   "name": "张三",           // 姓名
+///   "birthDate": "1990-06-15", // 完整出生日期
+///   "birthHour": 14,          // 出生时辰（0-23）
+///   "notes": "备注信息"        // 备注
+/// }
+/// ```
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, PartialEq, Eq, Debug)]
+pub struct EncryptedPrivacyData {
+    /// 隐私模式
+    /// - Public: 公开，所有人可见
+    /// - Private: 私密，仅所有者可见
+    /// - Authorized: 授权访问，被授权者可见
+    pub privacy_mode: PrivacyMode,
+
+    /// 加密的敏感数据（AES-256-GCM 加密后的密文）
+    ///
+    /// 前端使用随机生成的 DataKey 加密原始数据，
+    /// DataKey 再用接收者公钥加密后存储在 owner_encrypted_key 中。
+    pub encrypted_data: Vec<u8>,
+
+    /// 加密随机数（24 字节）
+    ///
+    /// AES-256-GCM 加密使用的 nonce，每次加密必须唯一。
+    /// 24 字节 = 192 位，足够安全。
+    pub nonce: [u8; 24],
+
+    /// 认证标签（16 字节）
+    ///
+    /// AES-GCM 的认证标签，用于验证密文完整性和真实性。
+    /// 解密时会验证此标签，防止篡改。
+    pub auth_tag: [u8; 16],
+
+    /// 数据哈希（32 字节）
+    ///
+    /// 原始明文数据的 Blake2-256 哈希。
+    /// 用于解密后验证数据完整性。
+    pub data_hash: [u8; 32],
+
+    /// 所有者的加密数据密钥
+    ///
+    /// DataKey 经过 X25519 密钥封装后的密文。
+    /// 格式：[临时公钥(32字节) | 加密的DataKey(32字节)]
+    ///
+    /// 解密流程：
+    /// 1. 提取临时公钥（前32字节）
+    /// 2. 使用自己的私钥和临时公钥进行 ECDH
+    /// 3. 用共享密钥解密 DataKey
+    /// 4. 用 DataKey 解密 encrypted_data
+    pub owner_encrypted_key: Vec<u8>,
+}
+
+impl EncryptedPrivacyData {
+    /// 创建新的加密隐私数据
+    ///
+    /// # 参数
+    /// - `privacy_mode`: 隐私模式
+    /// - `encrypted_data`: 加密后的数据
+    /// - `nonce`: 24字节加密随机数
+    /// - `auth_tag`: 16字节认证标签
+    /// - `data_hash`: 32字节数据哈希
+    /// - `owner_encrypted_key`: 所有者的加密密钥
+    pub fn new(
+        privacy_mode: PrivacyMode,
+        encrypted_data: Vec<u8>,
+        nonce: [u8; 24],
+        auth_tag: [u8; 16],
+        data_hash: [u8; 32],
+        owner_encrypted_key: Vec<u8>,
+    ) -> Self {
+        Self {
+            privacy_mode,
+            encrypted_data,
+            nonce,
+            auth_tag,
+            data_hash,
+            owner_encrypted_key,
+        }
+    }
+
+    /// 检查加密数据是否为空
+    pub fn is_empty(&self) -> bool {
+        self.encrypted_data.is_empty()
+    }
+
+    /// 获取加密数据长度
+    pub fn encrypted_data_len(&self) -> usize {
+        self.encrypted_data.len()
+    }
+
+    /// 获取加密密钥长度
+    pub fn encrypted_key_len(&self) -> usize {
+        self.owner_encrypted_key.len()
+    }
 }
 
 #[cfg(test)]

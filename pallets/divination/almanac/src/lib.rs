@@ -43,7 +43,7 @@ pub use lunar::{
     // 梅花易数专用类型
     MeihuaLunarDate, LunarConvertError,
     // 转换函数
-    solar_to_lunar, is_leap_year, julian_day, from_julian_day,
+    solar_to_lunar, lunar_to_solar, is_leap_year, julian_day, from_julian_day,
     timestamp_to_meihua_lunar, hour_to_dizhi_num, year_to_dizhi_num,
     // 干支计算
     year_ganzhi, month_ganzhi, day_ganzhi, hour_ganzhi, four_pillars,

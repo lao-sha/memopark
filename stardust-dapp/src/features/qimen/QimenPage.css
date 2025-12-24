@@ -27,6 +27,27 @@
   padding: 20px 16px 24px;
 }
 
+/* ==================== form-row 布局样式 ==================== */
+
+.qimen-page .form-row {
+  display: flex;
+  align-items: center;
+}
+
+.qimen-page .form-label {
+  color: #8B6914;
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 50px !important;
+  text-align: right;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.qimen-page .form-content {
+  flex: 1;
+}
+
 /* ==================== 页面标题 ==================== */
 
 .qimen-page .page-title {
@@ -54,12 +75,50 @@
   border: none;
 }
 
+/* ==================== 输入框样式 ==================== */
+
+.qimen-page .ant-input,
+.qimen-page .ant-select-selector {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+}
+
+.qimen-page .ant-input {
+  padding: 4px 8px !important;
+}
+
+.qimen-page .ant-select-single .ant-select-selector {
+  height: 32px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+}
+
+.qimen-page .ant-select-single .ant-select-selection-item,
+.qimen-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 30px !important;
+}
+
+.qimen-page .ant-input:hover,
+.qimen-page .ant-select-selector:hover {
+  border-color: #B2955D !important;
+}
+
+.qimen-page .ant-input:focus,
+.qimen-page .ant-select-focused .ant-select-selector {
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.2) !important;
+}
+
 /* ==================== 主按钮样式 ==================== */
 
 .qimen-page .ant-btn-primary {
   background: #000000 !important;
   border-color: #000000 !important;
   color: #F7D3A1 !important;
+  border-radius: 0 !important;
 }
 
 .qimen-page .ant-btn-primary span {
@@ -74,6 +133,43 @@
 
 .qimen-page .ant-btn-primary:hover:not(:disabled) span {
   color: #F7D3A1 !important;
+}
+
+/* ==================== Radio 按钮式单选框样式（参考紫微页面） ==================== */
+
+.qimen-page .ant-radio-button-wrapper {
+  border-color: #d9d9d9 !important;
+  color: #666 !important;
+  background: #fff !important;
+  border-radius: 0 !important;
+}
+
+.qimen-page .ant-radio-button-wrapper:first-child {
+  border-radius: 0 !important;
+}
+
+.qimen-page .ant-radio-button-wrapper:last-child {
+  border-radius: 0 !important;
+}
+
+.qimen-page .ant-radio-button-wrapper:hover {
+  color: #B2955D !important;
+}
+
+.qimen-page .ant-radio-button-wrapper-checked {
+  background: #B2955D !important;
+  border-color: #B2955D !important;
+  color: #fff !important;
+}
+
+.qimen-page .ant-radio-button-wrapper-checked:hover {
+  background: #9a7f4d !important;
+  border-color: #9a7f4d !important;
+  color: #fff !important;
+}
+
+.qimen-page .ant-radio-button-wrapper-checked::before {
+  background-color: #B2955D !important;
 }
 
 /* ==================== 底部导航（复刻八字页面风格） ==================== */
@@ -91,42 +187,6 @@
   width: 100%;
   max-width: 414px;
   margin: 0;
-}
-
-/* ==================== 表单输入样式优化 - 下划线风格 ==================== */
-
-.qimen-page .ant-picker {
-  border-radius: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding-left: 0 !important;
-}
-
-.qimen-page .ant-picker:hover,
-.qimen-page .ant-picker-focused {
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* ==================== 时辰选择按钮样式 ==================== */
-
-.qimen-page .ant-radio-button-wrapper-checked {
-  background: #B2955D !important;
-  border-color: #B2955D !important;
-  color: #FFFFFF !important;
-}
-
-.qimen-page .ant-radio-button-wrapper-checked:hover {
-  background: #B2955D !important;
-  border-color: #B2955D !important;
-  color: #FFFFFF !important;
-}
-
-/* ==================== Switch 开关样式 ==================== */
-
-.qimen-page .ant-switch-checked {
-  background: #B2955D !important;
 }
 
 /* ==================== 响应式调整 ==================== */

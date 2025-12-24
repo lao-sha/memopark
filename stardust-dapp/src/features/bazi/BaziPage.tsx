@@ -19,6 +19,7 @@ import {
   Button,
   DatePicker,
   Select,
+  Input,
   Typography,
   Space,
   Divider,
@@ -30,8 +31,8 @@ import {
   Radio,
   Modal,
   Spin,
-  Cascader,
 } from 'antd';
+import type { RadioChangeEvent } from 'antd';
 import {
   CalendarOutlined,
   UserOutlined,
@@ -86,31 +87,64 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
 /**
- * 将 china-division 的 pca.json 转换为 Cascader 需要的格式
+ * 二十四小时时辰选项（下拉框用，每小时一个选项）
  */
-interface CascaderOption {
-  value: string;
-  label: string;
-  children?: CascaderOption[];
+const SHICHEN_OPTIONS = [
+  { value: 0, label: '0-子' },
+  { value: 1, label: '1-丑' },
+  { value: 2, label: '2-丑' },
+  { value: 3, label: '3-寅' },
+  { value: 4, label: '4-寅' },
+  { value: 5, label: '5-卯' },
+  { value: 6, label: '6-卯' },
+  { value: 7, label: '7-辰' },
+  { value: 8, label: '8-辰' },
+  { value: 9, label: '9-巳' },
+  { value: 10, label: '10-巳' },
+  { value: 11, label: '11-午' },
+  { value: 12, label: '12-午' },
+  { value: 13, label: '13-未' },
+  { value: 14, label: '14-未' },
+  { value: 15, label: '15-申' },
+  { value: 16, label: '16-申' },
+  { value: 17, label: '17-酉' },
+  { value: 18, label: '18-酉' },
+  { value: 19, label: '19-戌' },
+  { value: 20, label: '20-戌' },
+  { value: 21, label: '21-亥' },
+  { value: 22, label: '22-亥' },
+  { value: 23, label: '23-子' },
+];
+
+/**
+ * 将 china-division 的 pca.json 转换为省市区数据
+ */
+interface ProvinceData {
+  province: string;
+  cities: {
+    city: string;
+    districts: string[];
+  }[];
 }
 
-const convertToCascaderOptions = (data: Record<string, Record<string, string[]>>): CascaderOption[] => {
+const convertToProvinceData = (data: Record<string, Record<string, string[]>>): ProvinceData[] => {
   return Object.entries(data).map(([province, cities]) => ({
-    value: province,
-    label: province,
-    children: Object.entries(cities).map(([city, districts]) => ({
-      value: city,
-      label: city,
-      children: districts.map(district => ({
-        value: district,
-        label: district,
-      })),
+    province,
+    cities: Object.entries(cities).map(([city, districts]) => ({
+      city,
+      districts,
     })),
   }));
 };
 
-// 预处理 Cascader 选项数据（只执行一次）
-const cascaderOptions = convertToCascaderOptions(pcaData as Record<string, Record<string, string[]>>);
+// 预处理省市区数据（只执行一次）
+const provinceData = convertToProvinceData(pcaData as Record<string, Record<string, string[]>>);
+
+// 省份选项
+const provinceOptions = provinceData.map(p => ({
+  value: p.province,
+  label: p.province,
+}));
 
 /**
  * 链上八字命盘数据（从 getBaziChart 返回）
@@ -134,58 +168,76 @@ interface ChainBaziChart {
 const BaziPage: React.FC = () => {
   // 输入状态
   const [name, setName] = useState<string>(''); // 姓名
-  const [birthDate, setBirthDate] = useState<dayjs.Dayjs | null>(null);
-  const [birthHour, setBirthHour] = useState<number>(12);
+  const [birthDate, setBirthDate] = useState<dayjs.Dayjs>(dayjs());
+  const [birthHour, setBirthHour] = useState<number>(new Date().getHours());
+  const [birthMinute, setBirthMinute] = useState<number>(new Date().getMinutes());
   const [gender, setGender] = useState<Gender>(Gender.Male);
-  const [calendarType, setCalendarType] = useState<'solar' | 'lunar'>('solar'); // 公历/农历
+  const [calendarType, setCalendarType] = useState<'solar' | 'lunar' | 'rizhu'>('solar'); // 公历/农历/日柱
+  const [useTrueSolarTime, setUseTrueSolarTime] = useState<boolean>(false); // 真太阳时
   const [location, setLocation] = useState<string>('未知地'); // 地点
   const [longitude, setLongitude] = useState<number>(116.416); // 经度（默认北京）
   const [latitude, setLatitude] = useState<number>(39.9288); // 纬度（默认北京）
-  const [selectedAddress, setSelectedAddress] = useState<string[]>([]); // Cascader 选中的地址
+
+  // 出生地点选择（三级联动）
+  const [selectedProvince, setSelectedProvince] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('');
+
+  // 根据选中的省份获取城市列表
+  const cityOptions = useMemo(() => {
+    if (!selectedProvince) return [];
+    const province = provinceData.find(p => p.province === selectedProvince);
+    return province?.cities.map(c => ({ value: c.city, label: c.city })) || [];
+  }, [selectedProvince]);
+
+  // 根据选中的城市获取区县列表
+  const districtOptions = useMemo(() => {
+    if (!selectedProvince || !selectedCity) return [];
+    const province = provinceData.find(p => p.province === selectedProvince);
+    const city = province?.cities.find(c => c.city === selectedCity);
+    return city?.districts.map(d => ({ value: d, label: d })) || [];
+  }, [selectedProvince, selectedCity]);
 
   /**
-   * 处理地址选择变化
+   * 处理省份选择变化
    */
-  const handleAddressChange = useCallback((value: (string | number)[]) => {
-    const stringValue = value.map(v => String(v));
-    setSelectedAddress(stringValue);
-
-    if (stringValue.length >= 2) {
-      // 获取城市名（第二级）
-      const cityName = stringValue[1];
-      const coord = getCityCoordinate(cityName);
-
-      if (coord) {
-        setLocation(cityName);
-        setLongitude(coord.longitude);
-        setLatitude(coord.latitude);
-      } else {
-        // 如果没有找到城市经纬度，使用省会
-        const provinceName = stringValue[0];
-        const provinceCoord = getCityCoordinate(provinceName.replace(/省|自治区|特别行政区/g, ''));
-        if (provinceCoord) {
-          setLocation(cityName);
-          setLongitude(provinceCoord.longitude);
-          setLatitude(provinceCoord.latitude);
-        } else {
-          // 使用默认（北京）
-          const defaultCoord = getDefaultCoordinate();
-          setLocation(cityName);
-          setLongitude(defaultCoord.longitude);
-          setLatitude(defaultCoord.latitude);
-        }
-      }
-    } else if (stringValue.length === 1) {
-      // 只选择了省份
-      const provinceName = stringValue[0];
-      setLocation(provinceName);
-      const coord = getCityCoordinate(provinceName);
-      if (coord) {
-        setLongitude(coord.longitude);
-        setLatitude(coord.latitude);
-      }
+  const handleProvinceChange = useCallback((value: string) => {
+    setSelectedProvince(value);
+    setSelectedCity('');
+    setSelectedDistrict('');
+    // 更新经纬度
+    const coord = getCityCoordinate(value.replace(/省|自治区|特别行政区/g, ''));
+    if (coord) {
+      setLocation(value);
+      setLongitude(coord.longitude);
+      setLatitude(coord.latitude);
     }
   }, []);
+
+  /**
+   * 处理城市选择变化
+   */
+  const handleCityChange = useCallback((value: string) => {
+    setSelectedCity(value);
+    setSelectedDistrict('');
+    // 更新经纬度
+    const coord = getCityCoordinate(value);
+    if (coord) {
+      setLocation(value);
+      setLongitude(coord.longitude);
+      setLatitude(coord.latitude);
+    } else {
+      setLocation(value);
+    }
+  }, []);
+
+  /**
+   * 处理区县选择变化
+   */
+  const handleDistrictChange = useCallback((value: string) => {
+    setSelectedDistrict(value);
+    setLocation(selectedCity ? `${selectedCity} ${value}` : value);
+  }, [selectedCity]);
 
   // 结果状态
   const [chartData, setChartData] = useState<ChainBaziChart | null>(null);
@@ -203,11 +255,6 @@ const BaziPage: React.FC = () => {
    * 执行排盘（提交到链端）
    */
   const handleCalculate = useCallback(async () => {
-    if (!birthDate) {
-      message.warning('请选择出生日期');
-      return;
-    }
-
     if (!isConnected || !selectedAccount) {
       message.warning('请先连接钱包');
       return;
@@ -264,15 +311,19 @@ const BaziPage: React.FC = () => {
     setChartData(null);
     setInterpretation(null);
     setName('');
-    setBirthDate(null);
-    setBirthHour(12);
+    setBirthDate(dayjs());
+    setBirthHour(new Date().getHours());
+    setBirthMinute(new Date().getMinutes());
     setGender(Gender.Male);
     setCalendarType('solar');
+    setUseTrueSolarTime(false);
     setSavedChartId(null);
     setLocation('未知地');
     setLongitude(116.416);
     setLatitude(39.9288);
-    setSelectedAddress([]);
+    setSelectedProvince('');
+    setSelectedCity('');
+    setSelectedDistrict('');
   }, []);
 
   /**
@@ -523,14 +574,17 @@ const BaziPage: React.FC = () => {
         justifyContent: 'space-between',
         padding: '0 20px'
       }}>
-          {/* 左边：五运六气 */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+          {/* 左边：我的命盘 */}
+          <div
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', cursor: 'pointer' }}
+            onClick={() => (window.location.hash = '#/bazi/list')}
+          >
             <BgColorsOutlined style={{ fontSize: '18px', color: '#999' }} />
-            <div style={{ fontSize: '10px', color: '#999' }}>五运六气</div>
+            <div style={{ fontSize: '10px', color: '#999' }}>我的命盘</div>
           </div>
 
-          {/* 中间：问真排盘 */}
-          <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>问真排盘</div>
+          {/* 中间：星尘玄鉴-八字排盘 */}
+          <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>星尘玄鉴-八字排盘</div>
 
           {/* 右边：生日 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
@@ -543,174 +597,192 @@ const BaziPage: React.FC = () => {
       <div style={{ height: '50px' }}></div>
 
       {/* 主卡片 */}
-      <Card className="input-card" style={{ position: 'relative' }}>
+      <Card className="divination-card input-card" style={{ margin: '12px', borderRadius: '8px', width: 'calc(100% + 10px)', marginLeft: '-5px' }}>
 
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
-        {/* 姓名输入框 - 下划线样式 */}
-        <div className="form-item">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="请输入姓名"
-            className="name-input"
-            style={{
-              width: '100%',
-              padding: '12px 0',
-              fontSize: '15px',
-              border: 'none',
-              borderBottom: '1px solid #e5e5e5',
-              borderRadius: '0',
-              outline: 'none',
-              backgroundColor: '#FFFFFF',
-              color: '#333',
-            }}
-          />
-        </div>
-
-        {/* 性别和日历类型按钮组 - 两组分别靠两边 */}
-        <div className="form-item" style={{ display: 'flex', gap: '16px', justifyContent: 'space-between' }}>
-          {/* 性别选择组 */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setGender(Gender.Male)}
-              style={{
-                padding: '8px 18px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: gender === Gender.Male ? '#B2955D' : 'transparent',
-                color: gender === Gender.Male ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
-            >
-              男
-            </button>
-            <button
-              onClick={() => setGender(Gender.Female)}
-              style={{
-                padding: '8px 18px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: gender === Gender.Female ? '#B2955D' : 'transparent',
-                color: gender === Gender.Female ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
-            >
-              女
-            </button>
+        {/* 命主姓名 + 性别 - form-row布局 */}
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+            命主姓名：
           </div>
-
-          {/* 日历类型选择组 */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setCalendarType('solar')}
-              style={{
-                padding: '8px 18px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: calendarType === 'solar' ? '#B2955D' : 'transparent',
-                color: calendarType === 'solar' ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
+          <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="求测者"
+              style={{ width: 80 }}
+            />
+            <span style={{ color: '#8B6914', fontSize: 14, whiteSpace: 'nowrap' }}>性别：</span>
+            <Radio.Group
+              value={gender}
+              onChange={(e: RadioChangeEvent) => setGender(e.target.value)}
+              optionType="button"
+              buttonStyle="solid"
             >
-              公历
-            </button>
-            <button
-              onClick={() => setCalendarType('lunar')}
-              style={{
-                padding: '8px 18px',
-                fontSize: '14px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: calendarType === 'lunar' ? '#B2955D' : 'transparent',
-                color: calendarType === 'lunar' ? '#FFFFFF' : '#929292',
-                cursor: 'pointer',
-                fontWeight: '400',
-              }}
-            >
-              农历
-            </button>
+              <Radio.Button value={Gender.Male}>男</Radio.Button>
+              <Radio.Button value={Gender.Female}>女</Radio.Button>
+            </Radio.Group>
           </div>
         </div>
-        {/* 出生日期 - 下划线样式显示 */}
-        <div className="form-item" style={{
-          borderBottom: '1px solid #e5e5e5',
-          paddingBottom: '8px',
-        }}>
-          <DatePicker
-            value={birthDate}
-            onChange={(date) => setBirthDate(date)}
-            placeholder="选择出生日期"
-            style={{ width: '100%' }}
-            size="middle"
-            bordered={false}
-            disabledDate={(current) => current && current > dayjs()}
-            format="YYYY年MM月DD日 HH:mm"
-            showTime={{ format: 'HH:mm' }}
-          />
-        </div>
 
-        {/* 地点选择 - 下划线样式 */}
-        <div className="form-item" style={{
-          borderBottom: '1px solid #e5e5e5',
-          paddingBottom: '4px',
-        }}>
-          <Cascader
-            options={cascaderOptions}
-            value={selectedAddress}
-            onChange={handleAddressChange}
-            placeholder="选择出生地（省/市/区）"
-            style={{ width: '100%' }}
-            size="small"
-            variant="borderless"
-            showSearch={{
-              filter: (inputValue, path) =>
-                path.some(option =>
-                  (option.label as string).toLowerCase().indexOf(inputValue.toLowerCase()) > -1
-                ),
-            }}
-            changeOnSelect
-            expandTrigger="hover"
-          />
-        </div>
-
-        {/* 经纬度和地点显示 - 下划线样式 */}
-        <div className="form-item" style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 0',
-          borderBottom: '1px solid #e5e5e5',
-          backgroundColor: '#FFFFFF',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <EnvironmentOutlined style={{ color: '#999' }} />
-            <Text style={{ color: '#333' }}>{location}</Text>
+        {/* 日期类型 - form-row布局 */}
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+            日期类型：
           </div>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            北纬{latitude.toFixed(4)} 东经{longitude.toFixed(3)}
-          </Text>
+          <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+            <Radio.Group
+              value={calendarType}
+              onChange={(e: RadioChangeEvent) => setCalendarType(e.target.value)}
+              optionType="button"
+              buttonStyle="solid"
+            >
+              <Radio.Button value="solar">公历</Radio.Button>
+              <Radio.Button value="lunar">农历</Radio.Button>
+              <Radio.Button value="rizhu">日柱</Radio.Button>
+            </Radio.Group>
+          </div>
+        </div>
+        {/* 出生日期 - form-row布局，参考紫微页面 */}
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+            出生日期：
+          </div>
+          <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <Select
+              value={birthDate.year()}
+              onChange={(v) => setBirthDate(birthDate.year(v))}
+              style={{ width: 90 }}
+              options={Array.from({ length: 100 }, (_, i) => ({
+                value: 1950 + i,
+                label: `${1950 + i}年`
+              }))}
+            />
+            <Select
+              value={birthDate.month() + 1}
+              onChange={(v) => setBirthDate(birthDate.month(v - 1))}
+              style={{ width: 70 }}
+              options={Array.from({ length: 12 }, (_, i) => ({
+                value: i + 1,
+                label: `${i + 1}月`
+              }))}
+            />
+            <Select
+              value={birthDate.date()}
+              onChange={(v) => setBirthDate(birthDate.date(v))}
+              style={{ width: 70 }}
+              options={Array.from({ length: 31 }, (_, i) => ({
+                value: i + 1,
+                label: `${i + 1}日`
+              }))}
+            />
+            <Select
+              value={birthHour}
+              onChange={setBirthHour}
+              style={{ width: 78 }}
+              options={SHICHEN_OPTIONS}
+            />
+            <span>时</span>
+            <Select
+              value={birthMinute}
+              onChange={setBirthMinute}
+              style={{ width: 58 }}
+              options={Array.from({ length: 60 }, (_, i) => ({
+                value: i,
+                label: `${i}`
+              }))}
+            />
+            <span>分</span>
+          </div>
         </div>
 
-        {/* 真太阳时显示 - 简洁样式 */}
-        {birthDate && (
-          <div className="form-item" style={{
-            padding: '8px 0',
-            backgroundColor: '#FFFFFF',
-          }}>
-            <Text style={{ fontSize: '13px', color: '#999' }}>
-              真太阳时：{birthDate.format('YYYY-MM-DD HH:mm')}
+        {/* 真太阳时 - form-row布局 */}
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+            真太阳时：
+          </div>
+          <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+            <Radio.Group
+              value={useTrueSolarTime}
+              onChange={(e: RadioChangeEvent) => setUseTrueSolarTime(e.target.value)}
+              optionType="button"
+              buttonStyle="solid"
+            >
+              <Radio.Button value={false}>不使用</Radio.Button>
+              <Radio.Button value={true}>使用</Radio.Button>
+            </Radio.Group>
+          </div>
+        </div>
+
+        {/* 出生地点 - 使用三个独立 Select（手机友好） */}
+        <div className="form-row" style={{ marginBottom: 8 }}>
+          <div className="form-label" style={{ width: 65, textAlign: 'right', paddingRight: 8 }}>
+            出生地点：
+          </div>
+          <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <Select
+              value={selectedProvince || undefined}
+              onChange={handleProvinceChange}
+              placeholder="省份"
+              style={{ width: 100 }}
+              options={provinceOptions}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+            <Select
+              value={selectedCity || undefined}
+              onChange={handleCityChange}
+              placeholder="城市"
+              style={{ width: 100 }}
+              options={cityOptions}
+              disabled={!selectedProvince}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+            <Select
+              value={selectedDistrict || undefined}
+              onChange={handleDistrictChange}
+              placeholder="区县"
+              style={{ width: 100 }}
+              options={districtOptions}
+              disabled={!selectedCity}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </div>
+        </div>
+
+        {/* 经纬度和地点显示 */}
+        <div className="form-row" style={{ marginBottom: 4 }}>
+          <div className="form-label" style={{ width: 65 }}></div>
+          <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <EnvironmentOutlined style={{ color: '#999', fontSize: 12 }} />
+              <Text style={{ color: '#333', fontSize: 12 }}>{location}</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              北纬{latitude.toFixed(4)} 东经{longitude.toFixed(3)}
             </Text>
           </div>
-        )}
+        </div>
 
-        {/* 删除原有的单独时辰选择和性别选择 */}
+        {/* 真太阳时显示 */}
+        {useTrueSolarTime && (
+          <div className="form-row" style={{ marginBottom: 4 }}>
+            <div className="form-label" style={{ width: 65 }}></div>
+            <div className="form-content" style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: '#999' }}>
+                真太阳时：{birthDate.year()}年{birthDate.month() + 1}月{birthDate.date()}日 {birthHour}时{birthMinute}分
+              </Text>
+            </div>
+          </div>
+        )}
 
         <Button
           type="primary"
@@ -718,14 +790,14 @@ const BaziPage: React.FC = () => {
           block
           onClick={handleCalculate}
           loading={loading}
-          disabled={!birthDate || !isConnected}
+          disabled={!isConnected}
           style={{
             background: '#000000',
             borderColor: '#000000',
-            borderRadius: '54px',
-            height: '54px',
-            fontSize: '19px',
-            fontWeight: '700',
+            borderRadius: '0',
+            height: '48px',
+            fontSize: '16px',
+            fontWeight: '500',
             color: '#F7D3A1',
           }}
         >

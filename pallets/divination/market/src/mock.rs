@@ -4,7 +4,7 @@ use crate as pallet_divination_market;
 use frame_support::{
     derive_impl,
     parameter_types,
-    traits::{ConstU32, ConstU64},
+    traits::{ConstU16, ConstU32, ConstU64},
 };
 use pallet_divination_common::{DivinationProvider, DivinationType, RarityInput};
 use sp_runtime::BuildStorage;
@@ -117,6 +117,7 @@ impl DivinationProvider<u64> for MockDivinationProvider {
 
 parameter_types! {
     pub PlatformAccount: u64 = 999;
+    pub TreasuryAccount: u64 = 888;
 }
 
 /// 模拟治理权限
@@ -130,6 +131,30 @@ impl<O: Into<Result<frame_system::RawOrigin<u64>, O>> + From<frame_system::RawOr
     fn try_origin(o: O) -> Result<Self::Success, O> {
         o.into().and_then(|o| match o {
             frame_system::RawOrigin::Root => Ok(()),
+            r => Err(O::from(r)),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(frame_system::RawOrigin::Root))
+    }
+}
+
+/// 模拟举报审核委员会权限（返回审核人 AccountId）
+pub struct MockReportReviewOrigin;
+
+impl<O: Into<Result<frame_system::RawOrigin<u64>, O>> + From<frame_system::RawOrigin<u64>>>
+    frame_support::traits::EnsureOrigin<O> for MockReportReviewOrigin
+{
+    type Success = u64; // 返回审核人账户
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().and_then(|o| match o {
+            // Root 权限下，模拟审核人为账户 100
+            frame_system::RawOrigin::Root => Ok(100u64),
+            // 签名账户直接返回账户 ID
+            frame_system::RawOrigin::Signed(who) => Ok(who),
             r => Err(O::from(r)),
         })
     }
@@ -157,6 +182,22 @@ impl pallet_divination_market::Config for Test {
     type MaxFollowUpsPerOrder = ConstU32<5>;
     type PlatformAccount = PlatformAccount;
     type GovernanceOrigin = MockGovernanceOrigin;
+
+    // ==================== 举报系统配置 ====================
+    /// 最小举报押金：1000 单位
+    type MinReportDeposit = ConstU64<1000>;
+    /// 举报处理超时：2000 区块（约 3.3 小时，用于测试）
+    type ReportTimeout = ConstU64<2000>;
+    /// 举报冷却期：100 区块（同一用户对同一大师的举报间隔）
+    type ReportCooldownPeriod = ConstU64<100>;
+    /// 撤回举报窗口期：50 区块
+    type ReportWithdrawWindow = ConstU64<50>;
+    /// 恶意举报信用扣分：50 分
+    type MaliciousReportPenalty = ConstU16<50>;
+    /// 举报审核委员会权限
+    type ReportReviewOrigin = MockReportReviewOrigin;
+    /// 国库账户
+    type TreasuryAccount = TreasuryAccount;
 }
 
 /// 构建测试外部状态
@@ -171,6 +212,8 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
             (2, 1_000_000),    // 客户2
             (10, 1_000_000),   // 提供者1
             (11, 1_000_000),   // 提供者2
+            (100, 1_000_000),  // 举报审核人（委员会成员）
+            (888, 10_000_000), // 国库账户
             (999, 10_000_000), // 平台账户
         ],
         dev_accounts: None,

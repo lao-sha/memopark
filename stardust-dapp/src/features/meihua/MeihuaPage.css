@@ -693,6 +693,118 @@
   margin: 0;
 }
 
+/* ==================== 表单输入框样式 ==================== */
+
+.meihua-page .form-row {
+  display: flex;
+  align-items: center;
+}
+
+.meihua-page .form-label {
+  color: #8B6914;
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 65px !important;
+  text-align: right;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.meihua-page .form-content {
+  flex: 1;
+}
+
+/* 输入框白色背景 + 直角 */
+.meihua-page .ant-input,
+.meihua-page .ant-input-number,
+.meihua-page .ant-input-number-input,
+.meihua-page .ant-select-selector {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+}
+
+.meihua-page .ant-input {
+  padding: 4px 8px !important;
+}
+
+.meihua-page .ant-select-single .ant-select-selector {
+  height: 32px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+}
+
+.meihua-page .ant-select-single .ant-select-selection-item,
+.meihua-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 30px !important;
+}
+
+/* 单选框样式 */
+.meihua-page .ant-radio-wrapper {
+  background-color: #FFFFFF;
+}
+
+/* 未选中的单选框内圈为白色 */
+.meihua-page .ant-radio-inner {
+  background-color: #FFFFFF !important;
+}
+
+/* 按钮式单选框样式 - 直角 */
+.meihua-page .ant-radio-button-wrapper {
+  border-color: #d9d9d9 !important;
+  color: #666 !important;
+  background: #fff !important;
+  border-radius: 0 !important;
+}
+
+.meihua-page .ant-radio-button-wrapper:first-child {
+  border-radius: 0 !important;
+}
+
+.meihua-page .ant-radio-button-wrapper:last-child {
+  border-radius: 0 !important;
+}
+
+.meihua-page .ant-radio-button-wrapper:hover {
+  color: #B2955D !important;
+}
+
+.meihua-page .ant-radio-button-wrapper-checked {
+  background: #B2955D !important;
+  border-color: #B2955D !important;
+  color: #fff !important;
+}
+
+.meihua-page .ant-radio-button-wrapper-checked:hover {
+  background: #9a7f4d !important;
+  border-color: #9a7f4d !important;
+  color: #fff !important;
+}
+
+.meihua-page .ant-radio-button-wrapper-checked::before {
+  background-color: #B2955D !important;
+}
+
+.meihua-page .ant-input:hover,
+.meihua-page .ant-input-number:hover,
+.meihua-page .ant-select-selector:hover {
+  border-color: #B2955D !important;
+}
+
+.meihua-page .ant-input:focus,
+.meihua-page .ant-input-number-focused,
+.meihua-page .ant-select-focused .ant-select-selector {
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.2) !important;
+}
+
+/* 所有按钮直角 */
+.meihua-page .ant-btn {
+  border-radius: 0 !important;
+}
+
 /* ==================== 响应式调整 ==================== */
 
 @media (max-width: 414px) {

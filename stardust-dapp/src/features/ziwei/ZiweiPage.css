@@ -93,34 +93,111 @@
   margin: 0;
 }
 
-/* ==================== 表单输入样式优化 - 下划线风格 ==================== */
+/* ==================== 表单样式 ==================== */
 
-.ziwei-page .ant-picker {
+.ziwei-page .form-row {
+  display: flex;
+  align-items: center;
+}
+
+.ziwei-page .form-label {
+  color: #8B6914;
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 65px !important;
+  text-align: right;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.ziwei-page .form-content {
+  flex: 1;
+}
+
+/* 输入框白色背景 + 直角 */
+.ziwei-page .ant-input,
+.ziwei-page .ant-input-number,
+.ziwei-page .ant-input-number-input,
+.ziwei-page .ant-select-selector {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
   border-radius: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding-left: 0 !important;
 }
 
-.ziwei-page .ant-picker:hover,
-.ziwei-page .ant-picker-focused {
-  border: none !important;
-  box-shadow: none !important;
+.ziwei-page .ant-input {
+  padding: 4px 8px !important;
 }
 
-/* ==================== 时辰选择按钮样式 ==================== */
+.ziwei-page .ant-select-single .ant-select-selector {
+  height: 32px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+}
+
+.ziwei-page .ant-select-single .ant-select-selection-item,
+.ziwei-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 30px !important;
+}
+
+/* 单选框样式 */
+.ziwei-page .ant-radio-wrapper {
+  background-color: #FFFFFF;
+}
+
+/* 未选中的单选框内圈为白色 */
+.ziwei-page .ant-radio-inner {
+  background-color: #FFFFFF !important;
+}
+
+/* 按钮式单选框样式 - 直角 */
+.ziwei-page .ant-radio-button-wrapper {
+  border-color: #d9d9d9 !important;
+  color: #666 !important;
+  background: #fff !important;
+  border-radius: 0 !important;
+}
+
+.ziwei-page .ant-radio-button-wrapper:first-child {
+  border-radius: 0 !important;
+}
+
+.ziwei-page .ant-radio-button-wrapper:last-child {
+  border-radius: 0 !important;
+}
+
+.ziwei-page .ant-radio-button-wrapper:hover {
+  color: #B2955D !important;
+}
 
 .ziwei-page .ant-radio-button-wrapper-checked {
   background: #B2955D !important;
   border-color: #B2955D !important;
-  color: #FFFFFF !important;
+  color: #fff !important;
 }
 
 .ziwei-page .ant-radio-button-wrapper-checked:hover {
-  background: #B2955D !important;
+  background: #9a7f4d !important;
+  border-color: #9a7f4d !important;
+  color: #fff !important;
+}
+
+.ziwei-page .ant-radio-button-wrapper-checked::before {
+  background-color: #B2955D !important;
+}
+
+.ziwei-page .ant-input:hover,
+.ziwei-page .ant-input-number:hover,
+.ziwei-page .ant-select-selector:hover {
   border-color: #B2955D !important;
-  color: #FFFFFF !important;
+}
+
+.ziwei-page .ant-input:focus,
+.ziwei-page .ant-input-number-focused,
+.ziwei-page .ant-select-focused .ant-select-selector {
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.2) !important;
 }
 
 /* ==================== Switch 开关样式 ==================== */
@@ -141,6 +218,11 @@
 
 .ziwei-page button:active {
   transform: scale(0.98);
+}
+
+/* 当前时间按钮直角 */
+.ziwei-page .ant-btn {
+  border-radius: 0 !important;
 }
 
 /* ==================== 响应式调整 ==================== */

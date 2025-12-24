@@ -107,6 +107,7 @@ pallet-meihua = { path = "../pallets/divination/meihua", default-features = fals
 
 # 通用占卜系统（支持多种玄学体系）
 pallet-divination-common = { path = "../pallets/divination/common", default-features = false }
+pallet-divination-privacy = { path = "../pallets/divination/privacy", default-features = false }
 pallet-divination-nft = { path = "../pallets/divination/nft", default-features = false }
 pallet-divination-ai = { path = "../pallets/divination/ai", default-features = false }
 pallet-divination-market = { path = "../pallets/divination/market", default-features = false }
@@ -231,6 +232,7 @@ std = [
 	# "pallet-meihua-nft/std",  # 卦象NFT
 	# 🆕 2025-11-29 通用占卜系统
 	"pallet-divination-common/std",  # 公共类型与trait
+	"pallet-divination-privacy/std",  # 统一隐私授权模块
 	"pallet-divination-nft/std",  # 通用占卜NFT
 	"pallet-divination-ai/std",  # 通用AI解读
 	"pallet-divination-market/std",  # 通用服务市场

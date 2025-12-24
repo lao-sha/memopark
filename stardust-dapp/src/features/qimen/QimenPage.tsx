@@ -7,7 +7,7 @@
  * - 八门、九星、八神分析
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Card,
   Button,
@@ -16,12 +16,14 @@ import {
   Divider,
   Tag,
   message,
-  DatePicker,
   Radio,
   Spin,
-  Switch,
   Modal,
+  Input,
+  Select,
+  InputNumber,
 } from 'antd';
+import type { RadioChangeEvent } from 'antd';
 import {
   CompassOutlined,
   HistoryOutlined,
@@ -69,23 +71,76 @@ import './QimenPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 
+/** 性别枚举 */
+enum Gender {
+  Male = 1,
+  Female = 0,
+}
+
+/** 选局方式 */
+type JuSelectMode = 'auto' | 'manual';
+
+/** 排法类型 */
+type PaiMethod = 'zhuanpan' | 'feigong';
+
 /**
- * 时辰选项
+ * 二十四小时时辰选项（下拉框用，每小时一个选项）
  */
-const HOUR_OPTIONS = [
-  { label: '子时', value: 0 },
-  { label: '丑时', value: 1 },
-  { label: '寅时', value: 2 },
-  { label: '卯时', value: 3 },
-  { label: '辰时', value: 4 },
-  { label: '巳时', value: 5 },
-  { label: '午时', value: 6 },
-  { label: '未时', value: 7 },
-  { label: '申时', value: 8 },
-  { label: '酉时', value: 9 },
-  { label: '戌时', value: 10 },
-  { label: '亥时', value: 11 },
+const SHICHEN_OPTIONS = [
+  { value: 0, label: '0-子' },
+  { value: 1, label: '1-丑' },
+  { value: 2, label: '2-丑' },
+  { value: 3, label: '3-寅' },
+  { value: 4, label: '4-寅' },
+  { value: 5, label: '5-卯' },
+  { value: 6, label: '6-卯' },
+  { value: 7, label: '7-辰' },
+  { value: 8, label: '8-辰' },
+  { value: 9, label: '9-巳' },
+  { value: 10, label: '10-巳' },
+  { value: 11, label: '11-午' },
+  { value: 12, label: '12-午' },
+  { value: 13, label: '13-未' },
+  { value: 14, label: '14-未' },
+  { value: 15, label: '15-申' },
+  { value: 16, label: '16-申' },
+  { value: 17, label: '17-酉' },
+  { value: 18, label: '18-酉' },
+  { value: 19, label: '19-戌' },
+  { value: 20, label: '20-戌' },
+  { value: 21, label: '21-亥' },
+  { value: 22, label: '22-亥' },
+  { value: 23, label: '23-子' },
 ];
+
+/**
+ * 局数选项（阳遁1-9局，阴遁1-9局）
+ */
+const JU_OPTIONS = [
+  { value: 'yang1', label: '阳一局' },
+  { value: 'yang2', label: '阳二局' },
+  { value: 'yang3', label: '阳三局' },
+  { value: 'yang4', label: '阳四局' },
+  { value: 'yang5', label: '阳五局' },
+  { value: 'yang6', label: '阳六局' },
+  { value: 'yang7', label: '阳七局' },
+  { value: 'yang8', label: '阳八局' },
+  { value: 'yang9', label: '阳九局' },
+  { value: 'yin1', label: '阴一局' },
+  { value: 'yin2', label: '阴二局' },
+  { value: 'yin3', label: '阴三局' },
+  { value: 'yin4', label: '阴四局' },
+  { value: 'yin5', label: '阴五局' },
+  { value: 'yin6', label: '阴六局' },
+  { value: 'yin7', label: '阴七局' },
+  { value: 'yin8', label: '阴八局' },
+  { value: 'yin9', label: '阴九局' },
+];
+
+/**
+ * 时辰名称（用于显示）
+ */
+const SHICHEN_NAMES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
 /**
  * 模拟生成奇门遁甲盘（实际应调用后端算法）
@@ -261,12 +316,27 @@ const GongWeiCard: React.FC<{
  * 奇门遁甲排盘页面
  */
 const QimenPage: React.FC = () => {
+  // 命主信息
+  const [name, setName] = useState('求测者');
+  const [gender, setGender] = useState<Gender>(Gender.Male);
+  const [birthYear, setBirthYear] = useState<number>(1985);
+  const [question, setQuestion] = useState('某事');
+
+  // 起盘时间
+  const [divinationDate, setDivinationDate] = useState<dayjs.Dayjs>(dayjs());
+  const [hour, setHour] = useState<number>(new Date().getHours());
+  const [minute, setMinute] = useState<number>(new Date().getMinutes());
+
+  // 选局方式
+  const [juSelectMode, setJuSelectMode] = useState<JuSelectMode>('auto');
+  const [manualJu, setManualJu] = useState<string>('yang1');
+
+  // 排法
+  const [paiMethod, setPaiMethod] = useState<PaiMethod>('zhuanpan');
+
   // 状态
-  const [selectedDate, setSelectedDate] = useState<Dayjs | null>(null);
-  const [selectedHour, setSelectedHour] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [pan, setPan] = useState<QimenPan | null>(null);
-  const [useChain, setUseChain] = useState(false); // 是否使用链端
   const [chainChartId, setChainChartId] = useState<number | null>(null);
 
   // 说明弹窗状态
@@ -287,20 +357,18 @@ const QimenPage: React.FC = () => {
    * 本地排盘
    */
   const handleLocalCalculate = useCallback(async () => {
-    if (!selectedDate) {
-      message.warning('请选择占测日期');
-      return;
-    }
+    // 将小时转换为时辰
+    const shiChen = Math.floor(((hour + 1) % 24) / 2);
 
     const result = generateMockQimenPan(
-      selectedDate.year(),
-      selectedDate.month() + 1,
-      selectedDate.date(),
-      selectedHour
+      divinationDate.year(),
+      divinationDate.month() + 1,
+      divinationDate.date(),
+      shiChen
     );
     setPan(result);
     message.success('奇门盘排列完成');
-  }, [selectedDate, selectedHour]);
+  }, [divinationDate, hour]);
 
   /**
    * 链端排盘
@@ -312,17 +380,13 @@ const QimenPage: React.FC = () => {
       message.success(`链端排盘成功，排盘ID: ${chartId}`);
 
       // 可选：加载链端排盘数据到本地显示
-      // 注意：完整解卦需要跳转到详情页查看（已修复数据解析问题）
       try {
         const chartData = await qimenService.getChart(chartId);
         if (chartData) {
-          // 转换链端数据为本地显示格式（简化版本，仅用于预览）
-          // 注意：完整的解卦数据需要跳转到详情页查看
           console.log('链端排盘数据:', chartData);
         }
       } catch (error) {
         console.warn('加载链端排盘数据失败:', error);
-        // 不影响主流程，用户仍可通过详情页查看
       }
     } catch (error: any) {
       console.error('链端排盘失败:', error);
@@ -336,25 +400,30 @@ const QimenPage: React.FC = () => {
   const handleCalculate = useCallback(async () => {
     setLoading(true);
     try {
-      if (useChain) {
-        await handleChainCalculate();
-      } else {
-        await handleLocalCalculate();
-      }
+      // 使用本地排盘
+      await handleLocalCalculate();
     } catch (error) {
       console.error('排盘失败:', error);
       message.error('排盘失败，请重试');
     } finally {
       setLoading(false);
     }
-  }, [useChain, handleChainCalculate, handleLocalCalculate]);
+  }, [handleLocalCalculate]);
 
   /**
    * 重置
    */
   const handleReset = useCallback(() => {
-    setSelectedDate(null);
-    setSelectedHour(0);
+    setName('求测者');
+    setGender(Gender.Male);
+    setBirthYear(1985);
+    setQuestion('某事');
+    setDivinationDate(dayjs());
+    setHour(new Date().getHours());
+    setMinute(new Date().getMinutes());
+    setJuSelectMode('auto');
+    setManualJu('yang1');
+    setPaiMethod('zhuanpan');
     setPan(null);
     setChainChartId(null);
   }, []);
@@ -461,92 +530,201 @@ const QimenPage: React.FC = () => {
    * 渲染输入表单
    */
   const renderInputForm = () => (
-    <Card className="input-card" style={{ position: 'relative' }}>
-      <Title level={4} className="page-title" style={{ marginBottom: 4, textAlign: 'center' }}>
-        起局
-      </Title>
-      <Text type="secondary" className="page-subtitle" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
-        帝王之学，运筹帷幄
-      </Text>
-
-      <Divider style={{ margin: '16px 0' }} />
-
-      {/* 链端/本地切换 */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Switch
-          checked={useChain}
-          onChange={setUseChain}
-          checkedChildren={<CloudOutlined />}
-          unCheckedChildren={<DesktopOutlined />}
-        />
-        <Text type="secondary">
-          {useChain ? '链端起局（结果上链存储）' : '本地起局（快速预览）'}
-        </Text>
+    <Card className="divination-card input-card" style={{ margin: '12px', borderRadius: '8px', width: 'calc(100% + 10px)', marginLeft: '-5px' }}>
+      {/* 姓名 + 性别 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          姓名：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="求测者"
+            style={{ width: 80 }}
+          />
+          <span style={{ color: '#8B6914', fontSize: 14, whiteSpace: 'nowrap' }}>性别：</span>
+          <Radio.Group
+            value={gender}
+            onChange={(e: RadioChangeEvent) => setGender(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value={Gender.Male}>男</Radio.Button>
+            <Radio.Button value={Gender.Female}>女</Radio.Button>
+          </Radio.Group>
+        </div>
       </div>
 
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        {/* 占测日期 */}
-        <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 8 }}>
-          <Text strong><CalendarOutlined /> 占测日期</Text>
-          <DatePicker
-            style={{ width: '100%', marginTop: 8 }}
-            placeholder="选择日期"
-            value={selectedDate}
-            onChange={setSelectedDate}
-            variant="borderless"
+      {/* 生年 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          生年：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+          <Select
+            value={birthYear}
+            onChange={setBirthYear}
+            style={{ width: 90 }}
+            options={Array.from({ length: 100 }, (_, i) => ({
+              value: 1950 + i,
+              label: `${1950 + i}`
+            }))}
           />
         </div>
+      </div>
 
-        {/* 占测时辰 */}
-        <div>
-          <Text strong><HistoryOutlined /> 占测时辰</Text>
-          <div style={{ marginTop: 8 }}>
-            <Radio.Group
-              value={selectedHour}
-              onChange={(e) => setSelectedHour(e.target.value)}
-              style={{ width: '100%' }}
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                {HOUR_OPTIONS.map((opt) => (
-                  <Radio.Button
-                    key={opt.value}
-                    value={opt.value}
-                    style={{ textAlign: 'center', fontSize: 12, padding: '0 8px' }}
-                  >
-                    {opt.label}
-                  </Radio.Button>
-                ))}
-              </div>
-            </Radio.Group>
-          </div>
+      {/* 占事 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          占事：
         </div>
+        <div className="form-content" style={{ flex: 1 }}>
+          <Input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="某事"
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
 
-        <Divider style={{ margin: '16px 0' }} />
+      {/* 时间：年月日 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          时间：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Select
+            value={divinationDate.year()}
+            onChange={(v) => setDivinationDate(divinationDate.year(v))}
+            style={{ width: 80 }}
+            options={Array.from({ length: 50 }, (_, i) => ({
+              value: 2000 + i,
+              label: `${2000 + i}`
+            }))}
+          />
+          <span>年</span>
+          <Select
+            value={divinationDate.month() + 1}
+            onChange={(v) => setDivinationDate(divinationDate.month(v - 1))}
+            style={{ width: 60 }}
+            options={Array.from({ length: 12 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}`
+            }))}
+          />
+          <span>月</span>
+          <Select
+            value={divinationDate.date()}
+            onChange={(v) => setDivinationDate(divinationDate.date(v))}
+            style={{ width: 60 }}
+            options={Array.from({ length: 31 }, (_, i) => ({
+              value: i + 1,
+              label: `${i + 1}`
+            }))}
+          />
+          <span>日</span>
+        </div>
+      </div>
 
-        {/* 操作按钮 */}
+      {/* 时辰：时 + 分 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          时辰：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Select
+            value={hour}
+            onChange={setHour}
+            style={{ width: 78 }}
+            options={SHICHEN_OPTIONS}
+          />
+          <span>时</span>
+          <Select
+            value={minute}
+            onChange={setMinute}
+            style={{ width: 60 }}
+            options={Array.from({ length: 60 }, (_, i) => ({
+              value: i,
+              label: `${i}`
+            }))}
+          />
+          <span>分</span>
+        </div>
+      </div>
+
+      {/* 选局：手动/自动 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          选局：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Radio.Group
+            value={juSelectMode}
+            onChange={(e: RadioChangeEvent) => setJuSelectMode(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="manual">手动</Radio.Button>
+          </Radio.Group>
+          <Select
+            value={manualJu}
+            onChange={setManualJu}
+            style={{ width: 100 }}
+            options={JU_OPTIONS}
+            disabled={juSelectMode === 'auto'}
+          />
+          <Radio.Group
+            value={juSelectMode}
+            onChange={(e: RadioChangeEvent) => setJuSelectMode(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="auto">自动</Radio.Button>
+          </Radio.Group>
+        </div>
+      </div>
+
+      {/* 排法：转盘/飞宫 */}
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
+          排法：
+        </div>
+        <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+          <Radio.Group
+            value={paiMethod}
+            onChange={(e: RadioChangeEvent) => setPaiMethod(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="zhuanpan">转盘</Radio.Button>
+            <Radio.Button value="feigong">飞宫</Radio.Button>
+          </Radio.Group>
+        </div>
+      </div>
+
+      {/* 排盘按钮 */}
+      <div style={{ marginTop: 24 }}>
         <Button
           type="primary"
           size="large"
-          block
           onClick={handleCalculate}
           loading={loading}
-          icon={<CompassOutlined />}
+          block
           style={{
             background: '#000000',
-            borderColor: '#000000',
-            borderRadius: '54px',
-            height: '54px',
-            fontSize: '19px',
-            fontWeight: '700',
-            color: '#F7D3A1',
+            border: 'none',
+            height: 48,
+            fontSize: 16,
+            fontWeight: 500,
+            borderRadius: 0,
+            color: '#F7D3A1'
           }}
         >
-          排盘
+          开始排盘
         </Button>
-        <Button block onClick={handleReset} icon={<ReloadOutlined />} style={{ borderRadius: '27px', height: '44px' }}>
-          重置
-        </Button>
-      </Space>
+      </div>
     </Card>
   );
 
@@ -665,7 +843,7 @@ const QimenPage: React.FC = () => {
         </Title>
         <div style={{ marginBottom: 8 }}>
           <Text type="secondary">
-            {pan.year}年{pan.month}月{pan.day}日 {HOUR_OPTIONS[pan.hour]?.label} |
+            {pan.year}年{pan.month}月{pan.day}日 {SHICHEN_NAMES[pan.hour]}时 |
             节气：{pan.jieQi}
           </Text>
         </div>
@@ -774,7 +952,7 @@ const QimenPage: React.FC = () => {
         </div>
 
         {/* 中间：奇门遁甲 */}
-        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>奇门遁甲</div>
+        <div style={{ fontSize: '18px', color: '#333', fontWeight: '500', whiteSpace: 'nowrap' }}>星尘玄鉴-奇门遁甲排盘</div>
 
         {/* 右边：使用说明 */}
         <div

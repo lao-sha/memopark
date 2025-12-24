@@ -33,6 +33,10 @@ import {
   InfoCircleOutlined,
   DeleteOutlined,
   GiftOutlined,
+  LockOutlined,
+  UnlockOutlined,
+  SafetyOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import {
   getHexagram,
@@ -62,6 +66,12 @@ import {
 } from '../../types/meihua';
 import { CreateBountyModal } from '../bounty/components/CreateBountyModal';
 import { DivinationType } from '../../types/divination';
+import {
+  PrivacyMode,
+  getEncryptedRecord,
+  type EncryptedRecordInfo,
+} from '../../services/meihuaPrivacyService';
+import PrivacyAuthorizationManager from './components/PrivacyAuthorizationManager';
 import './MeihuaPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -545,6 +555,10 @@ const HexagramDetailPage: React.FC = () => {
   const [bountyModalVisible, setBountyModalVisible] = useState(false);
   const [userAccount, setUserAccount] = useState<string>(''); // TODO: 从钱包获取当前用户账户
 
+  // 隐私数据相关状态
+  const [privacyRecord, setPrivacyRecord] = useState<EncryptedRecordInfo | null>(null);
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+
   /**
    * 加载卦象数据
    */
@@ -571,6 +585,15 @@ const HexagramDetailPage: React.FC = () => {
       // 加载 AI 解读结果（如果有）
       const aiResult = await getAiInterpretationResult(hexagramId);
       setAiInterpretation(aiResult);
+
+      // 加载隐私数据记录（如果有）
+      try {
+        const encryptedRecord = await getEncryptedRecord(hexagramId);
+        setPrivacyRecord(encryptedRecord);
+      } catch (privacyError) {
+        console.warn('[HexagramDetailPage] 加载隐私数据失败:', privacyError);
+        // 隐私数据加载失败不影响主流程
+      }
 
       // TODO: 加载已有的解读结果
     } catch (error) {
@@ -663,9 +686,23 @@ const HexagramDetailPage: React.FC = () => {
           <Title level={4}>
             {getHexagramName(hexagram.upperTrigram, hexagram.lowerTrigram)}
           </Title>
-          <Tag color={hexagram.status === HexagramStatus.Active ? 'green' : 'default'}>
-            {STATUS_NAMES[hexagram.status]}
-          </Tag>
+          <Space size="small">
+            <Tag color={hexagram.status === HexagramStatus.Active ? 'green' : 'default'}>
+              {STATUS_NAMES[hexagram.status]}
+            </Tag>
+            {/* 隐私状态标签 */}
+            {privacyRecord && (
+              <Tag
+                color={privacyRecord.privacyMode === PrivacyMode.Public ? 'green' :
+                       privacyRecord.privacyMode === PrivacyMode.Private ? 'red' : 'blue'}
+                icon={privacyRecord.privacyMode === PrivacyMode.Public ? <UnlockOutlined /> :
+                      privacyRecord.privacyMode === PrivacyMode.Private ? <LockOutlined /> : <SafetyOutlined />}
+              >
+                {privacyRecord.privacyMode === PrivacyMode.Public ? '公开' :
+                 privacyRecord.privacyMode === PrivacyMode.Private ? '私密' : '授权访问'}
+              </Tag>
+            )}
+          </Space>
         </div>
         <Space size="small" wrap>
           <Tag icon={<CalendarOutlined />}>
@@ -1158,6 +1195,26 @@ const HexagramDetailPage: React.FC = () => {
           <Text type="secondary" className="service-hint">
             设置悬赏金额，邀请多位大师解读，投票选出最佳答案
           </Text>
+
+          {/* 隐私数据管理（仅当有隐私数据时显示） */}
+          {privacyRecord && privacyRecord.privacyMode !== PrivacyMode.Public && (
+            <>
+              <Divider />
+
+              <Button
+                icon={<TeamOutlined />}
+                size="large"
+                block
+                onClick={() => setPrivacyModalVisible(true)}
+                style={{ borderColor: '#B2955D', color: '#B2955D' }}
+              >
+                隐私数据管理
+              </Button>
+              <Text type="secondary" className="service-hint">
+                查看和管理隐私数据的访问授权
+              </Text>
+            </>
+          )}
         </Space>
       </Card>
 
@@ -1207,6 +1264,17 @@ const HexagramDetailPage: React.FC = () => {
             // 跳转到悬赏详情页
             window.location.hash = `#/bounty/${bountyId}`;
           }}
+        />
+      )}
+
+      {/* 隐私数据授权管理弹窗 */}
+      {hexagram && (
+        <PrivacyAuthorizationManager
+          hexagramId={hexagram.id}
+          currentAddress={userAccount}
+          isOwner={hexagram.creator === userAccount}
+          visible={privacyModalVisible}
+          onClose={() => setPrivacyModalVisible(false)}
         />
       )}
     </div>

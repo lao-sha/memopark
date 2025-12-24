@@ -99,6 +99,7 @@ members = [
     "pallets/divination/daliuren",     # 大六壬式盘链上排盘
     "pallets/divination/xiaoliuren",   # 小六壬掐指速算链上排盘
     "pallets/divination/almanac",      # 🆕 2025-12-15: 黄历模块 - OCW 获取黄历数据
+    "pallets/divination/privacy",      # 🆕 2025-12-24: 统一隐私授权模块 - 加密存储和多方授权
 
     "runtime",
 

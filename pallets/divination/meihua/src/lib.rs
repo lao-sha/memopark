@@ -63,14 +63,20 @@ pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Randomness},
+        transactional,
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
+    use pallet_divination_common::DivinationType;
     use sp_std::prelude::*;
 
     /// Pallet 配置 trait
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_timestamp::Config {
+    pub trait Config:
+        frame_system::Config
+        + pallet_timestamp::Config
+        + pallet_divination_privacy::Config  // 新增：依赖 privacy pallet
+    {
         /// 货币类型
         type Currency: Currency<Self::AccountId>;
 
@@ -249,6 +255,14 @@ pub mod pallet {
         InterpretationUpdated {
             hexagram_id: u64,
         },
+
+        /// 带隐私数据的卦象创建成功
+        /// [卦象ID, 占卜者, 是否包含加密数据]
+        HexagramCreatedWithPrivacy {
+            hexagram_id: u64,
+            diviner: T::AccountId,
+            has_encrypted_data: bool,
+        },
     }
 
     // ==================== 错误 ====================
@@ -295,13 +309,25 @@ pub mod pallet {
         InvalidCategory,
         /// 无效的性别
         InvalidGender,
+        /// 无效的爻值（应为 0 或 1）
+        InvalidYaoValue,
+        /// 摇卦时间间隔不合理（防作弊）
+        InvalidShakeInterval,
+        /// 加密数据过长
+        EncryptedDataTooLong,
+        /// 加密密钥过长
+        EncryptedKeyTooLong,
+        /// 创建加密记录失败
+        PrivacyRecordCreationFailed,
+        /// 无效的起卦方式（不支持该方式带隐私数据起卦）
+        InvalidMethod,
     }
 
     // ==================== 可调用函数 ====================
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// 时间起卦
+        /// 农历时间起卦
         ///
         /// 使用当前区块时间戳转换为农历，按照梅花易数传统公式计算卦象。
         ///
@@ -338,16 +364,17 @@ pub mod pallet {
             // 使用农历日期计算卦数
             let (shang_gua_num, xia_gua_num, dong_yao) = algorithm::divine_by_datetime(&lunar_date);
 
-            // 创建卦象
+            // 创建卦象（普通起卦默认不传 birth_year）
             Self::create_hexagram(
                 who,
                 shang_gua_num,
                 xia_gua_num,
                 dong_yao,
-                DivinationMethod::DateTime,
+                DivinationMethod::LunarDateTime,
                 question_hash,
                 is_public,
                 gender,
+                None, // birth_year: 普通起卦不传，可通过 divine_with_privacy 传递
                 category,
             )
         }
@@ -400,6 +427,7 @@ pub mod pallet {
                 question_hash,
                 is_public,
                 gender,
+                None, // birth_year
                 category,
             )
         }
@@ -449,6 +477,7 @@ pub mod pallet {
                 question_hash,
                 is_public,
                 gender,
+                None, // birth_year
                 category,
             )
         }
@@ -503,6 +532,7 @@ pub mod pallet {
                 question_hash,
                 is_public,
                 gender,
+                None, // birth_year
                 category,
             )
         }
@@ -564,6 +594,130 @@ pub mod pallet {
                 question_hash,
                 is_public,
                 gender,
+                None, // birth_year
+                category,
+            )
+        }
+
+        /// 公历时间起卦
+        ///
+        /// 使用当前区块时间戳的公历日期进行起卦（现代简化方式）。
+        /// 与传统农历起卦相比，计算更简单，无需农历转换。
+        ///
+        /// # 算法
+        /// - 上卦 = (年份后两位 + 月 + 日) % 8
+        /// - 下卦 = (年份后两位 + 月 + 日 + 小时) % 8
+        /// - 动爻 = (年份后两位 + 月 + 日 + 小时) % 6
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(40_000_000, 0))]
+        pub fn divine_by_gregorian_time(
+            origin: OriginFor<T>,
+            question_hash: [u8; 32],
+            is_public: bool,
+            gender: u8,
+            category: u8,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
+
+            // 获取当前时间戳并转换为公历
+            let timestamp = Self::get_timestamp_secs();
+            let (year, month, day, hour) = algorithm::timestamp_to_gregorian(timestamp);
+
+            // 使用公历日期计算卦数
+            let (shang_gua_num, xia_gua_num, dong_yao) =
+                algorithm::divine_by_gregorian_datetime(year, month, day, hour);
+
+            Self::create_hexagram(
+                who,
+                shang_gua_num,
+                xia_gua_num,
+                dong_yao,
+                DivinationMethod::GregorianDateTime,
+                question_hash,
+                is_public,
+                gender,
+                None, // birth_year
+                category,
+            )
+        }
+
+        /// 链摇起卦
+        ///
+        /// 用户交互式摇卦，前端生成6个爻后提交到链上。
+        /// 每个爻由用户点击摇卦按钮时生成，增强用户参与感。
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `yaos`: 6个爻的值（0=阴爻，1=阳爻），按顺序为初爻到上爻
+        /// - `shake_timestamps`: 6次摇卦的时间戳（毫秒），用于防作弊验证
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `category`: 占卜类别
+        ///
+        /// # 爻位说明
+        /// ```text
+        /// yaos[5] - 上爻（第6爻）  ─┐
+        /// yaos[4] - 五爻（第5爻）   │ 上卦
+        /// yaos[3] - 四爻（第4爻）  ─┘
+        /// yaos[2] - 三爻（第3爻）  ─┐
+        /// yaos[1] - 二爻（第2爻）   │ 下卦
+        /// yaos[0] - 初爻（第1爻）  ─┘
+        /// ```
+        #[pallet::call_index(9)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn divine_by_shake(
+            origin: OriginFor<T>,
+            yaos: [u8; 6],
+            shake_timestamps: [u64; 6],
+            question_hash: [u8; 32],
+            is_public: bool,
+            gender: u8,
+            category: u8,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
+
+            // 验证爻值合法性（必须为0或1）
+            for yao in yaos.iter() {
+                ensure!(*yao <= 1, Error::<T>::InvalidYaoValue);
+            }
+
+            // 验证摇卦时间戳合理性（防作弊）
+            // 最小间隔300ms，最大间隔30秒
+            algorithm::validate_shake_timestamps(&shake_timestamps, 300, 30_000)
+                .map_err(|_| Error::<T>::InvalidShakeInterval)?;
+
+            // 使用链摇起卦算法计算卦数
+            let (shang_gua_num, xia_gua_num, dong_yao) =
+                algorithm::divine_by_shake(&yaos, shake_timestamps[5]);
+
+            Self::create_hexagram(
+                who,
+                shang_gua_num,
+                xia_gua_num,
+                dong_yao,
+                DivinationMethod::ChainShake,
+                question_hash,
+                is_public,
+                gender,
+                None, // birth_year
                 category,
             )
         }
@@ -723,6 +877,133 @@ pub mod pallet {
 
             Ok(())
         }
+
+        // ====================================================================
+        // 带隐私数据的起卦函数
+        // ====================================================================
+
+        /// 带隐私数据的起卦（原子性操作）
+        ///
+        /// 在单个交易中同时创建卦象和加密记录，确保数据一致性。
+        /// 使用 `#[transactional]` 宏，任一步骤失败则整个交易回滚。
+        ///
+        /// ## 数据分层
+        ///
+        /// | 层级 | 存储位置 | 内容 | 可见性 |
+        /// |------|----------|------|--------|
+        /// | **公开层** | meihua::Hexagram | gender, birth_year, is_public | 根据 is_public 设置 |
+        /// | **加密层** | privacy::EncryptedRecord | 姓名、完整生日等敏感信息 | 仅授权方可解密 |
+        ///
+        /// ## 原子性保证
+        ///
+        /// - 如果卦象创建成功但加密记录创建失败，整个交易回滚
+        /// - 用户不会出现"卦象存在但隐私数据丢失"的情况
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开卦象
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `birth_year`: 出生年份（可选，用于本命卦、应期推算）
+        /// - `category`: 占卜类别
+        /// - `method`: 起卦方式（仅支持 LunarDateTime、GregorianDateTime、Random）
+        /// - `encrypted_privacy`: 可选的加密隐私数据
+        ///
+        /// # 错误
+        /// - `InvalidGender`: 性别参数无效
+        /// - `InvalidCategory`: 类别参数无效
+        /// - `InvalidMethod`: 不支持的起卦方式
+        /// - `EncryptedDataTooLong`: 加密数据超过最大长度
+        /// - `EncryptedKeyTooLong`: 加密密钥超过最大长度
+        /// - `PrivacyRecordCreationFailed`: privacy pallet 创建加密记录失败
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_parts(100_000_000, 0))]
+        #[transactional]
+        pub fn divine_with_privacy(
+            origin: OriginFor<T>,
+            question_hash: [u8; 32],
+            is_public: bool,
+            gender: u8,
+            birth_year: Option<u16>,
+            category: u8,
+            method: DivinationMethod,
+            // 可选的加密隐私数据
+            encrypted_privacy: Option<EncryptedPrivacyData>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证参数
+            ensure!(gender <= 2, Error::<T>::InvalidGender);
+            ensure!(category <= 6, Error::<T>::InvalidCategory);
+
+            // 1. 根据起卦方式计算卦数
+            let (shang_gua_num, xia_gua_num, dong_yao) = match method {
+                DivinationMethod::LunarDateTime => {
+                    let timestamp = Self::get_timestamp_secs();
+                    let lunar_date = Self::convert_timestamp_to_lunar(timestamp)?;
+                    algorithm::divine_by_datetime(&lunar_date)
+                }
+                DivinationMethod::GregorianDateTime => {
+                    let timestamp = Self::get_timestamp_secs();
+                    let (year, month, day, hour) = algorithm::timestamp_to_gregorian(timestamp);
+                    algorithm::divine_by_gregorian_datetime(year, month, day, hour)
+                }
+                DivinationMethod::Random => {
+                    let random_seed = T::Randomness::random(&b"meihua_privacy"[..]).0;
+                    let random_bytes: [u8; 32] = random_seed
+                        .as_ref()
+                        .try_into()
+                        .unwrap_or([0u8; 32]);
+                    algorithm::divine_by_random(&random_bytes)
+                }
+                // 其他方式暂不支持原子性隐私数据起卦
+                _ => return Err(Error::<T>::InvalidMethod.into()),
+            };
+
+            // 2. 创建卦象（使用内部函数返回 hexagram_id）
+            let hexagram_id = Self::do_create_hexagram(
+                who.clone(),
+                shang_gua_num,
+                xia_gua_num,
+                dong_yao,
+                method.clone(),
+                question_hash,
+                is_public,
+                gender,
+                birth_year,
+                category,
+            )?;
+
+            // 3. 如果有加密数据，创建加密记录
+            let has_encrypted_data = if let Some(privacy_data) = encrypted_privacy {
+                // 调用 privacy pallet 的内部函数
+                pallet_divination_privacy::Pallet::<T>::do_create_encrypted_record(
+                    &who,
+                    DivinationType::Meihua,
+                    hexagram_id,
+                    privacy_data.privacy_mode,
+                    privacy_data.encrypted_data,
+                    privacy_data.nonce,
+                    privacy_data.auth_tag,
+                    privacy_data.data_hash,
+                    privacy_data.owner_encrypted_key,
+                ).map_err(|_| Error::<T>::PrivacyRecordCreationFailed)?;
+                // 如果这里失败，整个交易回滚，卦象也不会创建
+                true
+            } else {
+                false
+            };
+
+            // 4. 触发事件
+            Self::deposit_event(Event::HexagramCreatedWithPrivacy {
+                hexagram_id,
+                diviner: who,
+                has_encrypted_data,
+            });
+
+            Ok(())
+        }
     }
 
     // ==================== 内部辅助函数 ====================
@@ -826,7 +1107,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 创建完整卦象并存储
+        /// 创建完整卦象并存储（包装函数）
+        ///
+        /// 调用内部函数 `do_create_hexagram` 并发送事件。
+        /// 用于普通起卦函数（divine_by_time、divine_by_numbers 等）。
         fn create_hexagram(
             diviner: T::AccountId,
             shang_gua_num: u8,
@@ -836,8 +1120,64 @@ pub mod pallet {
             question_hash: [u8; 32],
             is_public: bool,
             gender: u8,
+            birth_year: Option<u16>,
             category: u8,
         ) -> DispatchResult {
+            let hexagram_id = Self::do_create_hexagram(
+                diviner.clone(),
+                shang_gua_num,
+                xia_gua_num,
+                dong_yao,
+                method.clone(),
+                question_hash,
+                is_public,
+                gender,
+                birth_year,
+                category,
+            )?;
+
+            // 发送事件
+            Self::deposit_event(Event::HexagramCreated {
+                hexagram_id,
+                diviner,
+                method,
+            });
+
+            Ok(())
+        }
+
+        /// 创建完整卦象并存储（内部函数）
+        ///
+        /// 供 `create_hexagram` 和 `divine_with_privacy` 原子性调用。
+        /// 不发送事件，由调用方统一处理。
+        ///
+        /// # 参数
+        /// - `diviner`: 占卜者账户
+        /// - `shang_gua_num`: 上卦数（1-8）
+        /// - `xia_gua_num`: 下卦数（1-8）
+        /// - `dong_yao`: 动爻（1-6）
+        /// - `method`: 起卦方式
+        /// - `question_hash`: 问题哈希
+        /// - `is_public`: 是否公开
+        /// - `gender`: 性别（0: 未指定, 1: 男, 2: 女）
+        /// - `birth_year`: 出生年份（可选，用于本命卦、应期推算）
+        /// - `category`: 占卜类别
+        ///
+        /// # 返回
+        /// - `Ok(hexagram_id)`: 创建成功，返回卦象 ID
+        /// - `Err(DispatchError)`: 创建失败
+        fn do_create_hexagram(
+            diviner: T::AccountId,
+            shang_gua_num: u8,
+            xia_gua_num: u8,
+            dong_yao: u8,
+            method: DivinationMethod,
+            question_hash: [u8; 32],
+            is_public: bool,
+            gender: u8,
+            birth_year: Option<u16>,
+            category: u8,
+        ) -> Result<u64, DispatchError> {
             // 获取新的卦象 ID
             let hexagram_id = NextHexagramId::<T>::get();
             NextHexagramId::<T>::put(hexagram_id.saturating_add(1));
@@ -867,6 +1207,8 @@ pub mod pallet {
                 timestamp,
                 interpretation_cid: None,
                 is_public,
+                gender,
+                birth_year,
             };
 
             // 创建完整卦象（自动计算变卦、互卦、体用关系、吉凶）
@@ -880,7 +1222,7 @@ pub mod pallet {
                 hexagram_id,
                 &full_divination,
                 timestamp,
-                method.clone(),
+                method,
                 gender,
                 category,
             )?;
@@ -899,14 +1241,7 @@ pub mod pallet {
                 })?;
             }
 
-            // 发送事件
-            Self::deposit_event(Event::HexagramCreated {
-                hexagram_id,
-                diviner,
-                method,
-            });
-
-            Ok(())
+            Ok(hexagram_id)
         }
 
         /// 获取卦象详细信息（公共查询 API）

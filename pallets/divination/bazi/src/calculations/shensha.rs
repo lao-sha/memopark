@@ -668,6 +668,225 @@ pub fn calculate_sizhu_shensha(
     }
 }
 
+/// 计算四柱的神煞列表（Runtime API 专用）
+///
+/// # 参数
+///
+/// - `sizhu`: 四柱信息
+///
+/// # 返回
+///
+/// 神煞条目列表，包含神煞类型、位置、吉凶属性
+///
+/// # 示例
+///
+/// ```ignore
+/// let shensha_list = calculate_shensha_list(&sizhu);
+/// for entry in shensha_list {
+///     println!("{:?}出现在{:?}，属性：{:?}",
+///         entry.shensha.name(),
+///         entry.position.name(),
+///         entry.nature.name()
+///     );
+/// }
+/// ```
+pub fn calculate_shensha_list<T: crate::pallet::Config>(
+    sizhu: &crate::types::SiZhu<T>,
+) -> sp_std::vec::Vec<crate::types::ShenShaEntry> {
+    use crate::types::{ShenShaEntry, ShenShaNature, SiZhuPosition};
+
+    let year_ganzhi = &sizhu.year_zhu.ganzhi;
+    let month_ganzhi = &sizhu.month_zhu.ganzhi;
+    let day_ganzhi = &sizhu.day_zhu.ganzhi;
+    let hour_ganzhi = &sizhu.hour_zhu.ganzhi;
+
+    // 计算四柱神煞
+    let sizhu_shensha = calculate_sizhu_shensha(
+        year_ganzhi,
+        month_ganzhi,
+        day_ganzhi,
+        hour_ganzhi,
+    );
+
+    let mut result = sp_std::vec::Vec::new();
+
+    // 年柱神煞
+    for shensha in sizhu_shensha.year_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Year,
+            nature,
+        });
+    }
+
+    // 月柱神煞
+    for shensha in sizhu_shensha.month_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Month,
+            nature,
+        });
+    }
+
+    // 日柱神煞
+    for shensha in sizhu_shensha.day_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Day,
+            nature,
+        });
+    }
+
+    // 时柱神煞
+    for shensha in sizhu_shensha.hour_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Hour,
+            nature,
+        });
+    }
+
+    result
+}
+
+/// 计算临时四柱的神煞列表（不使用泛型）
+///
+/// # 参数
+///
+/// - `year_ganzhi`: 年柱干支
+/// - `month_ganzhi`: 月柱干支
+/// - `day_ganzhi`: 日柱干支
+/// - `hour_ganzhi`: 时柱干支
+///
+/// # 返回
+///
+/// 神煞条目列表
+///
+/// # 用途
+///
+/// 供临时排盘接口使用，避免泛型依赖
+pub fn calculate_shensha_list_temp(
+    year_ganzhi: &crate::types::GanZhi,
+    month_ganzhi: &crate::types::GanZhi,
+    day_ganzhi: &crate::types::GanZhi,
+    hour_ganzhi: &crate::types::GanZhi,
+) -> sp_std::vec::Vec<crate::types::ShenShaEntry> {
+    use crate::types::{ShenShaEntry, ShenShaNature, SiZhuPosition};
+
+    // 计算四柱神煞
+    let sizhu_shensha = calculate_sizhu_shensha(
+        year_ganzhi,
+        month_ganzhi,
+        day_ganzhi,
+        hour_ganzhi,
+    );
+
+    let mut result = sp_std::vec::Vec::new();
+
+    // 年柱神煞
+    for shensha in sizhu_shensha.year_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Year,
+            nature,
+        });
+    }
+
+    // 月柱神煞
+    for shensha in sizhu_shensha.month_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Month,
+            nature,
+        });
+    }
+
+    // 日柱神煞
+    for shensha in sizhu_shensha.day_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Day,
+            nature,
+        });
+    }
+
+    // 时柱神煞
+    for shensha in sizhu_shensha.hour_shensha.shensha_list.iter() {
+        let nature = if shensha.is_auspicious() {
+            ShenShaNature::JiShen
+        } else if shensha.is_inauspicious() {
+            ShenShaNature::XiongShen
+        } else {
+            ShenShaNature::Neutral
+        };
+
+        result.push(ShenShaEntry {
+            shensha: *shensha,
+            position: SiZhuPosition::Hour,
+            nature,
+        });
+    }
+
+    result
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

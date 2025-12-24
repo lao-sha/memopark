@@ -625,3 +625,342 @@ fn tiyong_interpretation_works() {
         );
     });
 }
+
+// ============================================================================
+// divine_with_privacy 测试
+// ============================================================================
+
+use crate::types::{EncryptedPrivacyData, PrivacyMode};
+use pallet_divination_common::DivinationType;
+
+/// 测试带隐私数据的起卦 - 不带加密数据
+#[test]
+fn divine_with_privacy_without_encrypted_data() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [0u8; 32];
+
+        // 使用农历时间起卦，不带加密数据
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(1),
+            question_hash,
+            false,
+            1,                                  // 男
+            Some(1990),                         // 出生年份
+            1,                                  // 事业
+            DivinationMethod::LunarDateTime,
+            None,                               // 无加密数据
+        ));
+
+        // 验证卦象创建
+        assert_eq!(Meihua::next_hexagram_id(), 1);
+
+        // 验证卦象存储
+        let hexagram = Meihua::hexagrams(0).expect("Hexagram should exist");
+        assert_eq!(hexagram.ben_gua.id, 0);
+        assert_eq!(hexagram.ben_gua.diviner, 1);
+        assert_eq!(hexagram.ben_gua.gender, 1);
+        assert_eq!(hexagram.ben_gua.birth_year, Some(1990));
+        assert!(!hexagram.ben_gua.is_public);
+
+        // 验证事件触发
+        System::assert_has_event(
+            Event::<Test>::HexagramCreatedWithPrivacy {
+                hexagram_id: 0,
+                diviner: 1,
+                has_encrypted_data: false,
+            }
+            .into(),
+        );
+
+        // 验证隐私模块中没有加密记录
+        assert!(!Privacy::encrypted_records(DivinationType::Meihua, 0).is_some());
+    });
+}
+
+/// 测试带隐私数据的起卦 - 带加密数据
+#[test]
+fn divine_with_privacy_with_encrypted_data() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [1u8; 32];
+
+        // 模拟加密数据
+        let encrypted_privacy = EncryptedPrivacyData {
+            privacy_mode: PrivacyMode::Authorized,
+            encrypted_data: vec![1, 2, 3, 4, 5, 6, 7, 8],  // 模拟加密数据
+            nonce: [0u8; 24],
+            auth_tag: [0u8; 16],
+            data_hash: [2u8; 32],
+            owner_encrypted_key: vec![9, 10, 11, 12],      // 模拟加密密钥
+        };
+
+        // 使用公历时间起卦，带加密数据
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(1),
+            question_hash,
+            true,                                   // 公开
+            2,                                      // 女
+            Some(1985),                             // 出生年份
+            2,                                      // 财运
+            DivinationMethod::GregorianDateTime,
+            Some(encrypted_privacy),
+        ));
+
+        // 验证卦象创建
+        let hexagram = Meihua::hexagrams(0).expect("Hexagram should exist");
+        assert_eq!(hexagram.ben_gua.gender, 2);
+        assert_eq!(hexagram.ben_gua.birth_year, Some(1985));
+        assert!(hexagram.ben_gua.is_public);
+        assert_eq!(hexagram.ben_gua.method, DivinationMethod::GregorianDateTime);
+
+        // 验证事件触发
+        System::assert_has_event(
+            Event::<Test>::HexagramCreatedWithPrivacy {
+                hexagram_id: 0,
+                diviner: 1,
+                has_encrypted_data: true,
+            }
+            .into(),
+        );
+
+        // 验证隐私模块中有加密记录
+        let encrypted_record = Privacy::encrypted_records(DivinationType::Meihua, 0);
+        assert!(encrypted_record.is_some());
+        let record = encrypted_record.unwrap();
+        assert_eq!(record.privacy_mode, PrivacyMode::Authorized);
+        assert_eq!(record.owner, 1);
+    });
+}
+
+/// 测试带隐私数据的随机起卦
+#[test]
+fn divine_with_privacy_random_method() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [3u8; 32];
+
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(2),
+            question_hash,
+            false,
+            0,                              // 未指定性别
+            None,                           // 无出生年份
+            0,                              // 未指定类别
+            DivinationMethod::Random,
+            None,
+        ));
+
+        // 验证卦象
+        let hexagram = Meihua::hexagrams(0).unwrap();
+        assert_eq!(hexagram.ben_gua.diviner, 2);
+        assert_eq!(hexagram.ben_gua.gender, 0);
+        assert_eq!(hexagram.ben_gua.birth_year, None);
+        assert_eq!(hexagram.ben_gua.method, DivinationMethod::Random);
+    });
+}
+
+/// 测试带隐私数据的起卦 - 无效方法
+#[test]
+fn divine_with_privacy_invalid_method() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [4u8; 32];
+
+        // TwoNumbers 方法不支持原子性隐私数据起卦
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                1,
+                Some(1990),
+                1,
+                DivinationMethod::TwoNumbers,
+                None,
+            ),
+            Error::<Test>::InvalidMethod
+        );
+
+        // Manual 方法也不支持
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                1,
+                Some(1990),
+                1,
+                DivinationMethod::Manual,
+                None,
+            ),
+            Error::<Test>::InvalidMethod
+        );
+
+        // SingleNumber 方法也不支持
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                1,
+                Some(1990),
+                1,
+                DivinationMethod::SingleNumber,
+                None,
+            ),
+            Error::<Test>::InvalidMethod
+        );
+    });
+}
+
+/// 测试带隐私数据的起卦 - 每日限制
+#[test]
+fn divine_with_privacy_daily_limit() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [5u8; 32];
+
+        // 先消耗每日限制
+        for _ in 0..50 {
+            assert_ok!(Meihua::divine_random(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                0,
+                0
+            ));
+        }
+
+        // divine_with_privacy 也应受每日限制
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                1,
+                Some(1990),
+                1,
+                DivinationMethod::LunarDateTime,
+                None,
+            ),
+            Error::<Test>::DailyLimitExceeded
+        );
+    });
+}
+
+/// 测试带隐私数据的起卦 - 无效性别参数
+#[test]
+fn divine_with_privacy_invalid_gender() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [6u8; 32];
+
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                5,   // 无效性别（应为 0-2）
+                Some(1990),
+                1,
+                DivinationMethod::LunarDateTime,
+                None,
+            ),
+            Error::<Test>::InvalidGender
+        );
+    });
+}
+
+/// 测试带隐私数据的起卦 - 无效类别参数
+#[test]
+fn divine_with_privacy_invalid_category() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [7u8; 32];
+
+        assert_noop!(
+            Meihua::divine_with_privacy(
+                RuntimeOrigin::signed(1),
+                question_hash,
+                false,
+                1,
+                Some(1990),
+                10,  // 无效类别（应为 0-6）
+                DivinationMethod::LunarDateTime,
+                None,
+            ),
+            Error::<Test>::InvalidCategory
+        );
+    });
+}
+
+/// 测试带隐私数据的起卦 - 解卦数据创建
+#[test]
+fn divine_with_privacy_creates_interpretation() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [8u8; 32];
+
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(1),
+            question_hash,
+            false,
+            1,
+            Some(1988),
+            3,  // 感情
+            DivinationMethod::LunarDateTime,
+            None,
+        ));
+
+        // 验证解卦数据已创建
+        let interpretation = Meihua::get_interpretation_data(0).expect("Interpretation should exist");
+        assert_eq!(interpretation.basic_info.gender, 1);
+        assert_eq!(interpretation.basic_info.category, 3);
+    });
+}
+
+/// 测试带隐私数据的起卦 - 原子性（事务回滚）
+#[test]
+fn divine_with_privacy_atomicity() {
+    new_test_ext().execute_with(|| {
+        let question_hash = [9u8; 32];
+
+        // 先创建一个卦象
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(1),
+            question_hash,
+            false,
+            1,
+            Some(1990),
+            1,
+            DivinationMethod::LunarDateTime,
+            None,
+        ));
+
+        let first_hexagram_id = Meihua::next_hexagram_id();
+        assert_eq!(first_hexagram_id, 1);
+
+        // 创建第二个带加密数据的卦象
+        let encrypted_privacy = EncryptedPrivacyData {
+            privacy_mode: PrivacyMode::Private,
+            encrypted_data: vec![1, 2, 3],
+            nonce: [0u8; 24],
+            auth_tag: [0u8; 16],
+            data_hash: [0u8; 32],
+            owner_encrypted_key: vec![4, 5, 6],
+        };
+
+        assert_ok!(Meihua::divine_with_privacy(
+            RuntimeOrigin::signed(1),
+            question_hash,
+            false,
+            2,
+            Some(1995),
+            2,
+            DivinationMethod::Random,
+            Some(encrypted_privacy),
+        ));
+
+        // 验证两个卦象都创建成功
+        assert_eq!(Meihua::next_hexagram_id(), 2);
+        assert!(Meihua::hexagrams(0).is_some());
+        assert!(Meihua::hexagrams(1).is_some());
+
+        // 验证第二个卦象的隐私记录
+        let record = Privacy::encrypted_records(DivinationType::Meihua, 1);
+        assert!(record.is_some());
+    });
+}

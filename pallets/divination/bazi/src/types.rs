@@ -443,6 +443,31 @@ pub enum ZiShiMode {
 	Modern = 2,
 }
 
+/// 输入日历类型（记录原始输入是公历还是农历）
+///
+/// 用于前端显示和数据分析，不影响八字计算。
+/// 所有输入最终都会转换为公历进行计算，但需要记录原始输入类型以便前端正确显示。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub enum InputCalendarType {
+	/// 公历输入
+	Solar = 0,
+	/// 农历输入
+	Lunar = 1,
+	/// 四柱直接输入（无具体日期）
+	SiZhu = 2,
+}
+
+impl InputCalendarType {
+	/// 获取显示名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			InputCalendarType::Solar => "公历",
+			InputCalendarType::Lunar => "农历",
+			InputCalendarType::SiZhu => "四柱",
+		}
+	}
+}
+
 /// 节气枚举 (24节气中的12个节)
 ///
 /// 注：八字月份以节气为界，这里只列出12个"节"（不含"气"）
@@ -658,12 +683,20 @@ impl WuXingStrength {
 pub struct BaziChart<T: crate::pallet::Config> {
 	/// 所有者账户
 	pub owner: T::AccountId,
+	/// 命盘名称（可选，最大32字节UTF-8，如"张三"、"父亲命盘"等）
+	pub name: BoundedVec<u8, ConstU32<32>>,
 	/// 出生时间
 	pub birth_time: BirthTime,
+	/// 输入日历类型（记录原始输入是公历还是农历）
+	/// 用于前端显示，不影响八字计算
+	pub input_calendar_type: InputCalendarType,
 	/// 性别
 	pub gender: Gender,
 	/// 子时模式
 	pub zishi_mode: ZiShiMode,
+	/// 出生地经度（可选，1/100000 度，如 116.40000° → 11640000）
+	/// 当有值时，使用真太阳时修正时辰；为 None 时，不使用真太阳时
+	pub longitude: Option<i32>,
 	/// 四柱
 	pub sizhu: SiZhu<T>,
 	/// 大运
@@ -679,9 +712,12 @@ pub struct BaziChart<T: crate::pallet::Config> {
 impl<T: crate::pallet::Config> PartialEq for BaziChart<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.owner == other.owner &&
+		self.name == other.name &&
 		self.birth_time == other.birth_time &&
+		self.input_calendar_type == other.input_calendar_type &&
 		self.gender == other.gender &&
 		self.zishi_mode == other.zishi_mode &&
+		self.longitude == other.longitude &&
 		self.sizhu == other.sizhu &&
 		self.dayun == other.dayun &&
 		self.wuxing_strength == other.wuxing_strength &&
@@ -833,3 +869,648 @@ impl<T: crate::pallet::Config> PartialEq for EncryptedBaziChart<T> {
 }
 
 impl<T: crate::pallet::Config> Eq for EncryptedBaziChart<T> {}
+
+// ================================
+// 统一输入类型定义
+// ================================
+
+/// 八字创建输入类型（统一接口）
+///
+/// 支持三种输入方式，最终都会转换为四柱进行计算：
+/// - Solar: 公历日期输入（最常用）
+/// - Lunar: 农历日期输入（适合传统用户）
+/// - SiZhu: 四柱直接输入（适合专业用户）
+///
+/// # 使用示例
+///
+/// ```ignore
+/// // 公历输入
+/// let input = BaziInputType::Solar {
+///     year: 1990, month: 5, day: 15,
+///     hour: 14, minute: 30,
+/// };
+///
+/// // 农历输入
+/// let input = BaziInputType::Lunar {
+///     year: 2024, month: 1, day: 1,
+///     is_leap_month: false,
+///     hour: 12, minute: 0,
+/// };
+///
+/// // 四柱直接输入
+/// let input = BaziInputType::SiZhu {
+///     year_gz: 0,   // 甲子
+///     month_gz: 2,  // 丙寅
+///     day_gz: 4,    // 戊辰
+///     hour_gz: 0,   // 甲子
+///     birth_year: 1984,  // 用于大运起运年份
+/// };
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub enum BaziInputType {
+	/// 公历日期输入
+	///
+	/// 最常用的输入方式，系统内部按节气划分月份
+	Solar {
+		/// 公历年份 (1900-2100)
+		year: u16,
+		/// 公历月份 (1-12)
+		month: u8,
+		/// 公历日期 (1-31)
+		day: u8,
+		/// 小时 (0-23)
+		hour: u8,
+		/// 分钟 (0-59)
+		minute: u8,
+	},
+
+	/// 农历日期输入
+	///
+	/// 适合习惯使用农历的传统用户
+	/// 系统会自动转换为公历，然后按节气计算
+	Lunar {
+		/// 农历年份 (1901-2100)
+		year: u16,
+		/// 农历月份 (1-12)
+		month: u8,
+		/// 农历日期 (1-30)
+		day: u8,
+		/// 是否闰月
+		is_leap_month: bool,
+		/// 小时 (0-23)
+		hour: u8,
+		/// 分钟 (0-59)
+		minute: u8,
+	},
+
+	/// 四柱直接输入
+	///
+	/// 适合专业用户直接输入四柱干支
+	/// 跳过日期验证，直接使用提供的干支组合
+	SiZhu {
+		/// 年柱干支索引 (0-59)
+		year_gz: u8,
+		/// 月柱干支索引 (0-59)
+		month_gz: u8,
+		/// 日柱干支索引 (0-59)
+		day_gz: u8,
+		/// 时柱干支索引 (0-59)
+		hour_gz: u8,
+		/// 出生年份（用于计算大运起运年份）
+		birth_year: u16,
+	},
+}
+
+impl BaziInputType {
+	/// 验证输入有效性
+	pub fn is_valid(&self) -> bool {
+		match self {
+			BaziInputType::Solar { year, month, day, hour, minute } => {
+				*year >= 1900 && *year <= 2100 &&
+				*month >= 1 && *month <= 12 &&
+				*day >= 1 && *day <= 31 &&
+				*hour < 24 &&
+				*minute < 60
+			}
+			BaziInputType::Lunar { year, month, day, is_leap_month: _, hour, minute } => {
+				*year >= 1901 && *year <= 2100 &&
+				*month >= 1 && *month <= 12 &&
+				*day >= 1 && *day <= 30 &&
+				*hour < 24 &&
+				*minute < 60
+			}
+			BaziInputType::SiZhu { year_gz, month_gz, day_gz, hour_gz, birth_year } => {
+				*year_gz < 60 && *month_gz < 60 && *day_gz < 60 && *hour_gz < 60 &&
+				*birth_year >= 1900 && *birth_year <= 2100
+			}
+		}
+	}
+
+	/// 获取出生年份（用于大运计算）
+	pub fn get_birth_year(&self) -> u16 {
+		match self {
+			BaziInputType::Solar { year, .. } => *year,
+			BaziInputType::Lunar { year, .. } => *year,
+			BaziInputType::SiZhu { birth_year, .. } => *birth_year,
+		}
+	}
+}
+
+/// 四柱直接输入结构（用于测试和内部使用）
+///
+/// 与 BaziInputType::SiZhu 功能相同，但作为独立结构便于测试
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub struct SiZhuDirectInput {
+	/// 年柱干支索引 (0-59)
+	pub year_gz: u8,
+	/// 月柱干支索引 (0-59)
+	pub month_gz: u8,
+	/// 日柱干支索引 (0-59)
+	pub day_gz: u8,
+	/// 时柱干支索引 (0-59)
+	pub hour_gz: u8,
+}
+
+impl SiZhuDirectInput {
+	/// 创建四柱直接输入
+	pub fn new(year_gz: u8, month_gz: u8, day_gz: u8, hour_gz: u8) -> Self {
+		Self { year_gz, month_gz, day_gz, hour_gz }
+	}
+
+	/// 验证有效性
+	pub fn is_valid(&self) -> bool {
+		self.year_gz < 60 && self.month_gz < 60 && self.day_gz < 60 && self.hour_gz < 60
+	}
+
+	/// 转换为 BaziInputType
+	pub fn to_input_type(self, birth_year: u16) -> BaziInputType {
+		BaziInputType::SiZhu {
+			year_gz: self.year_gz,
+			month_gz: self.month_gz,
+			day_gz: self.day_gz,
+			hour_gz: self.hour_gz,
+			birth_year,
+		}
+	}
+}
+
+// ================================
+// 空亡信息类型定义
+// ================================
+
+/// 空亡信息
+///
+/// 包含四柱各自的旬空地支和是否落空亡的判断
+///
+/// # 空亡规则
+///
+/// 六十甲子每十个为一旬，每旬有两个地支空缺：
+/// - 甲子旬（甲子到癸酉）: 戌亥空
+/// - 甲戌旬（甲戌到癸未）: 申酉空
+/// - 甲申旬（甲申到癸巳）: 午未空
+/// - 甲午旬（甲午到癸卯）: 辰巳空
+/// - 甲辰旬（甲辰到癸丑）: 寅卯空
+/// - 甲寅旬（甲寅到癸亥）: 子丑空
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub struct KongWangInfo {
+	/// 年柱的旬空地支对
+	pub year_kongwang: (DiZhi, DiZhi),
+	/// 月柱的旬空地支对
+	pub month_kongwang: (DiZhi, DiZhi),
+	/// 日柱的旬空地支对（最重要）
+	pub day_kongwang: (DiZhi, DiZhi),
+	/// 时柱的旬空地支对
+	pub hour_kongwang: (DiZhi, DiZhi),
+	/// 年柱地支是否落空亡
+	pub year_is_kong: bool,
+	/// 月柱地支是否落空亡
+	pub month_is_kong: bool,
+	/// 日柱地支是否落空亡
+	pub day_is_kong: bool,
+	/// 时柱地支是否落空亡
+	pub hour_is_kong: bool,
+}
+
+// ================================
+// 星运信息类型定义
+// ================================
+
+/// 星运信息（十二长生）
+///
+/// 包含日主在四柱各支的十二长生状态
+///
+/// # 十二长生
+///
+/// 表示天干在地支中的生旺死绝状态：
+/// - 旺相: 长生、冠带、临官、帝旺
+/// - 衰败: 衰、病、死、墓、绝
+/// - 中性: 沐浴、胎、养
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub struct XingYunInfo {
+	/// 日主在年支的十二长生
+	pub year_changsheng: ShiErChangSheng,
+	/// 日主在月支的十二长生（最重要，月令）
+	pub month_changsheng: ShiErChangSheng,
+	/// 日主在日支的十二长生（坐支）
+	pub day_changsheng: ShiErChangSheng,
+	/// 日主在时支的十二长生
+	pub hour_changsheng: ShiErChangSheng,
+}
+
+// ================================
+// 神煞相关类型定义
+// ================================
+
+/// 四柱位置枚举
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum SiZhuPosition {
+	/// 年柱
+	Year = 0,
+	/// 月柱
+	Month = 1,
+	/// 日柱
+	Day = 2,
+	/// 时柱
+	Hour = 3,
+}
+
+impl SiZhuPosition {
+	/// 获取位置名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			SiZhuPosition::Year => "年柱",
+			SiZhuPosition::Month => "月柱",
+			SiZhuPosition::Day => "日柱",
+			SiZhuPosition::Hour => "时柱",
+		}
+	}
+}
+
+/// 神煞吉凶性质
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum ShenShaNature {
+	/// 吉神
+	JiShen = 0,
+	/// 凶神
+	XiongShen = 1,
+	/// 中性（吉凶参半或视情况而定）
+	Neutral = 2,
+}
+
+impl ShenShaNature {
+	/// 获取性质名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			ShenShaNature::JiShen => "吉神",
+			ShenShaNature::XiongShen => "凶神",
+			ShenShaNature::Neutral => "中性",
+		}
+	}
+}
+
+/// 神煞条目
+///
+/// 包含神煞类型、出现位置、吉凶属性
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub struct ShenShaEntry {
+	/// 神煞类型
+	pub shensha: crate::calculations::shensha::ShenSha,
+	/// 出现位置（年/月/日/时柱）
+	pub position: SiZhuPosition,
+	/// 吉凶属性
+	pub nature: ShenShaNature,
+}
+
+// ================================
+// 多方授权加密存储类型定义
+// ================================
+
+/// 访问授权角色类型
+///
+/// 定义不同类型的访问者及其权限级别
+/// - Owner: 所有者，不可撤销，拥有完全控制权
+/// - Master: 命理师，可撤销，用于专业解读
+/// - Family: 家族成员，可撤销，用于家庭内部共享
+/// - AiService: AI服务，可撤销，用于智能解读
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub enum AccessRole {
+	/// 所有者（不可撤销）
+	Owner = 0,
+	/// 命理师（可撤销）
+	Master = 1,
+	/// 家族成员（可撤销）
+	Family = 2,
+	/// AI 服务（可撤销）
+	AiService = 3,
+}
+
+impl AccessRole {
+	/// 获取角色名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			AccessRole::Owner => "所有者",
+			AccessRole::Master => "命理师",
+			AccessRole::Family => "家族成员",
+			AccessRole::AiService => "AI服务",
+		}
+	}
+
+	/// 判断是否可撤销
+	pub fn is_revocable(&self) -> bool {
+		!matches!(self, AccessRole::Owner)
+	}
+}
+
+/// 访问范围
+///
+/// 定义被授权者可以执行的操作范围
+/// - ReadOnly: 只读权限，仅可查看命盘
+/// - CanComment: 可评论权限，可查看并添加解读评论
+/// - FullAccess: 完全访问权限，包含所有元数据
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub enum AccessScope {
+	/// 只读（仅查看命盘）
+	ReadOnly = 0,
+	/// 可评论/解读
+	CanComment = 1,
+	/// 完全访问（含元数据）
+	FullAccess = 2,
+}
+
+impl AccessScope {
+	/// 获取范围名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			AccessScope::ReadOnly => "只读",
+			AccessScope::CanComment => "可评论",
+			AccessScope::FullAccess => "完全访问",
+		}
+	}
+}
+
+/// 加密密钥条目（链上存储）
+///
+/// 每个授权方都有一个对应的加密密钥条目
+/// DataKey 使用该授权方的 X25519 公钥加密后存储
+///
+/// # 存储格式
+/// - encrypted_key: nonce(24 bytes) + sealed(48 bytes) = 72 bytes max
+/// - 使用 NaCl sealed box 格式
+///
+/// # 安全特性
+/// - 只有持有对应 X25519 私钥的账户才能解密 DataKey
+/// - 撤销授权后，该条目被删除，无法再访问
+#[derive(Clone, Debug, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub struct EncryptedKeyEntry<AccountId: Clone + PartialEq + Eq + core::fmt::Debug> {
+	/// 授权账户
+	pub account: AccountId,
+	/// 用该账户 X25519 公钥加密的 DataKey
+	/// 格式：nonce(24 bytes) + sealed(32 + 16 MAC bytes)
+	pub encrypted_key: BoundedVec<u8, ConstU32<72>>,
+	/// 授权角色
+	pub role: AccessRole,
+	/// 访问范围
+	pub scope: AccessScope,
+	/// 授权开始时间（区块号）
+	pub granted_at: u32,
+	/// 授权结束时间（区块号，0 = 永久有效）
+	pub expires_at: u32,
+}
+
+impl<AccountId: Clone + PartialEq + Eq + core::fmt::Debug> EncryptedKeyEntry<AccountId> {
+	/// 检查授权是否已过期
+	///
+	/// # 参数
+	/// - current_block: 当前区块号
+	///
+	/// # 返回
+	/// - true: 已过期或设置了过期时间且已超过
+	/// - false: 未过期或永久有效（expires_at = 0）
+	pub fn is_expired(&self, current_block: u32) -> bool {
+		self.expires_at > 0 && current_block > self.expires_at
+	}
+
+	/// 检查授权是否有效
+	///
+	/// # 参数
+	/// - current_block: 当前区块号
+	///
+	/// # 返回
+	/// - true: 授权有效（未过期）
+	/// - false: 授权已过期
+	pub fn is_valid(&self, current_block: u32) -> bool {
+		!self.is_expired(current_block)
+	}
+
+	/// 检查是否为永久授权
+	pub fn is_permanent(&self) -> bool {
+		self.expires_at == 0
+	}
+}
+
+impl<AccountId: Clone + PartialEq + Eq + core::fmt::Debug> PartialEq for EncryptedKeyEntry<AccountId> {
+	fn eq(&self, other: &Self) -> bool {
+		self.account == other.account &&
+		self.encrypted_key == other.encrypted_key &&
+		self.role == other.role &&
+		self.scope == other.scope &&
+		self.granted_at == other.granted_at &&
+		self.expires_at == other.expires_at
+	}
+}
+
+impl<AccountId: Clone + PartialEq + Eq + core::fmt::Debug> Eq for EncryptedKeyEntry<AccountId> {}
+
+/// 支持多方授权的加密八字命盘
+///
+/// # 设计思想
+///
+/// 1. **隐私与可用性平衡**：
+///    - 四柱索引和性别明文存储，支持免费 Runtime API 计算
+///    - 出生时间等敏感数据加密存储，需要授权才能解密
+///
+/// 2. **多方授权机制**：
+///    - 每个授权方有独立的加密 DataKey
+///    - 撤销授权只需删除对应的密钥条目
+///    - 最多支持 10 个授权（包含 Owner）
+///
+/// 3. **密钥架构**：
+///    - DataKey: 随机生成，用于 AES-256-GCM 加密敏感数据
+///    - 每个授权方的 X25519 公钥加密 DataKey
+///    - 解密需要：加密的 DataKey + 授权方的 X25519 私钥 + 所有者的 X25519 公钥
+///
+/// # 存储大小估算
+/// - 基础字段：~100 bytes
+/// - encrypted_data：最大 256 bytes
+/// - 每个 EncryptedKeyEntry：~120 bytes
+/// - 10 个授权：~1300 bytes 总计
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct MultiKeyEncryptedBaziChart<T: crate::pallet::Config> {
+	// === 基础信息（明文） ===
+	/// 所有者账户
+	pub owner: T::AccountId,
+	/// 四柱干支索引（明文，用于免费计算解盘）
+	pub sizhu_index: SiZhuIndex,
+	/// 性别（明文，用于大运计算）
+	pub gender: Gender,
+
+	// === 加密数据 ===
+	/// AES-256-GCM 加密的敏感数据
+	/// 内容：出生时间、子时模式、经度、命盘名称、备注等
+	pub encrypted_data: BoundedVec<u8, ConstU32<256>>,
+	/// 加密使用的 nonce（12 bytes，AES-GCM 标准）
+	pub nonce: [u8; 12],
+	/// 认证标签（16 bytes，AES-GCM 标准）
+	pub auth_tag: [u8; 16],
+
+	// === 密钥分发 ===
+	/// 多个加密的 DataKey（最多 10 个授权）
+	/// 每个条目包含：账户、加密密钥、角色、范围、有效期
+	pub encrypted_keys: BoundedVec<EncryptedKeyEntry<T::AccountId>, ConstU32<10>>,
+
+	// === 验证与元数据 ===
+	/// 原始敏感数据的 Blake2-256 哈希（用于验证解密正确性）
+	pub data_hash: [u8; 32],
+	/// 创建时间（区块号）
+	pub created_at: u32,
+}
+
+impl<T: crate::pallet::Config> MultiKeyEncryptedBaziChart<T> {
+	/// 获取所有者的密钥条目
+	pub fn get_owner_key(&self) -> Option<&EncryptedKeyEntry<T::AccountId>> {
+		self.encrypted_keys.iter().find(|k| k.role == AccessRole::Owner)
+	}
+
+	/// 获取指定账户的密钥条目
+	pub fn get_key_entry(&self, account: &T::AccountId) -> Option<&EncryptedKeyEntry<T::AccountId>> {
+		self.encrypted_keys.iter().find(|k| &k.account == account)
+	}
+
+	/// 检查账户是否有访问权限
+	pub fn has_access(&self, account: &T::AccountId, current_block: u32) -> bool {
+		self.get_key_entry(account)
+			.map(|entry| entry.is_valid(current_block))
+			.unwrap_or(false)
+	}
+
+	/// 获取当前有效的授权数量（不含过期的）
+	pub fn active_grants_count(&self, current_block: u32) -> usize {
+		self.encrypted_keys.iter()
+			.filter(|k| k.is_valid(current_block))
+			.count()
+	}
+
+	/// 获取非 Owner 的授权数量
+	pub fn non_owner_grants_count(&self) -> usize {
+		self.encrypted_keys.iter()
+			.filter(|k| k.role != AccessRole::Owner)
+			.count()
+	}
+}
+
+impl<T: crate::pallet::Config> PartialEq for MultiKeyEncryptedBaziChart<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.owner == other.owner &&
+		self.sizhu_index == other.sizhu_index &&
+		self.gender == other.gender &&
+		self.encrypted_data == other.encrypted_data &&
+		self.nonce == other.nonce &&
+		self.auth_tag == other.auth_tag &&
+		self.encrypted_keys.len() == other.encrypted_keys.len() &&
+		self.encrypted_keys.iter().zip(other.encrypted_keys.iter()).all(|(a, b)| a == b) &&
+		self.data_hash == other.data_hash &&
+		self.created_at == other.created_at
+	}
+}
+
+impl<T: crate::pallet::Config> Eq for MultiKeyEncryptedBaziChart<T> {}
+
+/// 服务提供者类型
+///
+/// 定义不同类型的服务提供者，用于分类管理
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+pub enum ServiceProviderType {
+	/// 命理师（人工解读）
+	MingLiShi = 0,
+	/// AI 解读服务
+	AiService = 1,
+	/// 家族成员（非商业）
+	FamilyMember = 2,
+	/// 研究机构
+	Research = 3,
+}
+
+impl ServiceProviderType {
+	/// 获取类型名称
+	pub fn name(&self) -> &'static str {
+		match self {
+			ServiceProviderType::MingLiShi => "命理师",
+			ServiceProviderType::AiService => "AI服务",
+			ServiceProviderType::FamilyMember => "家族成员",
+			ServiceProviderType::Research => "研究机构",
+		}
+	}
+
+	/// 是否需要专业认证
+	pub fn requires_certification(&self) -> bool {
+		matches!(self, ServiceProviderType::MingLiShi | ServiceProviderType::Research)
+	}
+}
+
+/// 服务提供者信息
+///
+/// 服务提供者需要注册 X25519 公钥才能接收加密的 DataKey
+///
+/// # 注册流程
+/// 1. 调用 register_provider 提交公钥和服务类型
+/// 2. 系统存储公钥，初始信誉分为 50
+/// 3. 用户授权时，从此处获取提供者的公钥
+///
+/// # 信誉系统
+/// - 初始信誉分：50
+/// - 范围：0-100
+/// - 用于用户筛选和排序
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(T))]
+pub struct ServiceProvider<T: crate::pallet::Config> {
+	/// 提供者账户
+	pub account: T::AccountId,
+	/// 服务类型
+	pub provider_type: ServiceProviderType,
+	/// X25519 公钥（32 bytes，用于接收加密的 DataKey）
+	pub public_key: [u8; 32],
+	/// 信誉分（0-100）
+	pub reputation: u8,
+	/// 注册时间（区块号）
+	pub registered_at: u32,
+	/// 是否激活（可用于临时禁用）
+	pub is_active: bool,
+}
+
+impl<T: crate::pallet::Config> ServiceProvider<T> {
+	/// 创建新的服务提供者
+	pub fn new(
+		account: T::AccountId,
+		provider_type: ServiceProviderType,
+		public_key: [u8; 32],
+		registered_at: u32,
+	) -> Self {
+		Self {
+			account,
+			provider_type,
+			public_key,
+			reputation: 50, // 初始信誉分
+			registered_at,
+			is_active: true,
+		}
+	}
+
+	/// 更新公钥
+	pub fn update_public_key(&mut self, new_public_key: [u8; 32]) {
+		self.public_key = new_public_key;
+	}
+
+	/// 设置激活状态
+	pub fn set_active(&mut self, active: bool) {
+		self.is_active = active;
+	}
+
+	/// 更新信誉分（限制在 0-100 范围内）
+	pub fn update_reputation(&mut self, new_reputation: u8) {
+		self.reputation = new_reputation.min(100);
+	}
+}
+
+impl<T: crate::pallet::Config> PartialEq for ServiceProvider<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.account == other.account &&
+		self.provider_type == other.provider_type &&
+		self.public_key == other.public_key &&
+		self.reputation == other.reputation &&
+		self.registered_at == other.registered_at &&
+		self.is_active == other.is_active
+	}
+}
+
+impl<T: crate::pallet::Config> Eq for ServiceProvider<T> {}

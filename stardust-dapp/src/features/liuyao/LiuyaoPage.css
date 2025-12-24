@@ -1,7 +1,7 @@
 /**
  * 六爻占卜页面样式
  * 主题色：金棕色 #B2955D（统一风格）
- * 复刻目标：参考八字页面 BaziPage
+ * 复刻目标：参考卜易居六爻页面
  */
 
 @import '../divination/divination-common.css';
@@ -27,6 +27,27 @@
   padding: 20px 16px 24px;
 }
 
+/* ==================== form-row 布局样式 ==================== */
+
+.liuyao-page .form-row {
+  display: flex;
+  align-items: center;
+}
+
+.liuyao-page .form-label {
+  color: #8B6914;
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 65px !important;
+  text-align: right;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.liuyao-page .form-content {
+  flex: 1;
+}
+
 /* ==================== 页面标题 ==================== */
 
 .liuyao-page .page-title {
@@ -45,26 +66,87 @@
   font-size: 14px;
 }
 
-/* ==================== 起卦方式按钮 ==================== */
+/* ==================== 输入框样式 ==================== */
+
+.liuyao-page .ant-input,
+.liuyao-page .ant-select-selector {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+}
+
+.liuyao-page .ant-input {
+  padding: 4px 8px !important;
+}
+
+.liuyao-page .ant-select-single .ant-select-selector {
+  height: 32px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+}
+
+.liuyao-page .ant-select-single .ant-select-selection-item,
+.liuyao-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 30px !important;
+}
+
+.liuyao-page .ant-input:hover,
+.liuyao-page .ant-select-selector:hover {
+  border-color: #B2955D !important;
+}
+
+.liuyao-page .ant-input:focus,
+.liuyao-page .ant-select-focused .ant-select-selector {
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.2) !important;
+}
+
+/* ==================== 主按钮样式（橙色风格，参考卜易居） ==================== */
 
 .liuyao-page .ant-btn-primary {
-  background: #000000 !important;
-  border-color: #000000 !important;
-  color: #F7D3A1 !important;
+  background: #E8A849 !important;
+  border-color: #E8A849 !important;
+  color: #FFFFFF !important;
+  border-radius: 8px !important;
 }
 
 .liuyao-page .ant-btn-primary span {
-  color: #F7D3A1 !important;
+  color: #FFFFFF !important;
 }
 
 .liuyao-page .ant-btn-primary:hover:not(:disabled) {
-  background: #1a1a1a !important;
-  border-color: #1a1a1a !important;
-  color: #F7D3A1 !important;
+  background: #D69A3E !important;
+  border-color: #D69A3E !important;
+  color: #FFFFFF !important;
 }
 
 .liuyao-page .ant-btn-primary:hover:not(:disabled) span {
-  color: #F7D3A1 !important;
+  color: #FFFFFF !important;
+}
+
+/* ==================== Radio 样式（圆形单选，参考卜易居） ==================== */
+
+.liuyao-page .ant-radio-wrapper {
+  color: #333 !important;
+}
+
+.liuyao-page .ant-radio-inner {
+  border-color: #d9d9d9 !important;
+}
+
+.liuyao-page .ant-radio-checked .ant-radio-inner {
+  border-color: #E8A849 !important;
+  background-color: #E8A849 !important;
+}
+
+.liuyao-page .ant-radio-checked .ant-radio-inner::after {
+  background-color: #FFFFFF !important;
+}
+
+.liuyao-page .ant-radio:hover .ant-radio-inner {
+  border-color: #E8A849 !important;
 }
 
 /* ==================== 底部导航（复刻八字页面风格） ==================== */
@@ -84,22 +166,193 @@
   margin: 0;
 }
 
-/* ==================== 表单输入样式优化 - 下划线风格 ==================== */
+/* ==================== 铜板摇卦动画样式 ==================== */
 
-.liuyao-page input[type="date"],
-.liuyao-page select {
+/** 铜板容器 */
+.coin-container {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 50%, #2c1810 100%);
+  border-radius: 12px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/** 单个铜板 */
+.coin {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
   transition: all 0.3s ease;
+  position: relative;
+  cursor: default;
 }
 
-.liuyao-page input[type="date"]:hover,
-.liuyao-page select:hover {
-  border-color: #B2955D !important;
+/** 铜板待摇状态（灰色） */
+.coin.pending {
+  background: linear-gradient(145deg, #888888, #666666);
+  border: 3px solid #555555;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.1);
+  color: #aaa;
 }
 
-.liuyao-page input[type="date"]:focus,
-.liuyao-page select:focus {
-  border-color: #B2955D !important;
-  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.1);
+/** 铜板正面（字面 - 金色） */
+.coin.heads {
+  background: linear-gradient(145deg, #E8A849, #B8860B);
+  border: 3px solid #DAA520;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.4),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    0 0 12px rgba(232, 168, 73, 0.4);
+  color: #4a2c1a;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+/** 铜板反面（背面 - 青铜色） */
+.coin.tails {
+  background: linear-gradient(145deg, #6B8E23, #556B2F);
+  border: 3px solid #556B2F;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.4),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2),
+    0 0 12px rgba(107, 142, 35, 0.3);
+  color: #f0f0e0;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/** 铜板摇动动画 */
+.coin.shaking {
+  animation: coinShake 0.15s ease-in-out infinite;
+}
+
+@keyframes coinShake {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateX(-3px) rotate(-5deg);
+  }
+  50% {
+    transform: translateX(3px) rotate(5deg);
+  }
+  75% {
+    transform: translateX(-2px) rotate(-3deg);
+  }
+}
+
+/** 铜板翻转动画 */
+.coin.flipping {
+  animation: coinFlip 0.5s ease-out;
+}
+
+@keyframes coinFlip {
+  0% {
+    transform: rotateY(0deg) scale(1);
+  }
+  25% {
+    transform: rotateY(90deg) scale(0.9);
+  }
+  50% {
+    transform: rotateY(180deg) scale(1);
+  }
+  75% {
+    transform: rotateY(270deg) scale(0.9);
+  }
+  100% {
+    transform: rotateY(360deg) scale(1);
+  }
+}
+
+/** 铜板内文字 */
+.coin-text {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/** 铜板结果显示 */
+.coin-result {
+  text-align: center;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: rgba(232, 168, 73, 0.15);
+  border-radius: 8px;
+  border: 1px solid rgba(232, 168, 73, 0.3);
+}
+
+.coin-result-text {
+  font-size: 14px;
+  color: #8B6914;
+  font-weight: 500;
+}
+
+.coin-result-yao {
+  font-size: 16px;
+  color: #E8A849;
+  font-weight: bold;
+  margin-left: 8px;
+}
+
+/** 摇卦历史记录 */
+.shake-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.shake-history-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.shake-history-item .yao-name {
+  color: #666;
+}
+
+.shake-history-item .yao-result {
+  font-weight: 500;
+  color: #E8A849;
+}
+
+.shake-history-item .mini-coins {
+  display: flex;
+  gap: 2px;
+}
+
+.shake-history-item .mini-coin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: bold;
+}
+
+.shake-history-item .mini-coin.heads {
+  background: #E8A849;
+  color: #4a2c1a;
+}
+
+.shake-history-item .mini-coin.tails {
+  background: #6B8E23;
+  color: #fff;
 }
 
 /* ==================== 响应式调整 ==================== */
@@ -107,5 +360,19 @@
 @media (max-width: 414px) {
   .liuyao-page {
     padding: 12px;
+  }
+
+  .coin-container {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .coin {
+    width: 50px;
+    height: 50px;
+  }
+
+  .coin-text {
+    font-size: 12px;
   }
 }

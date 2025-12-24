@@ -126,6 +126,35 @@ pub mod pallet {
 
         /// 治理权限来源
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        // ==================== 举报系统配置 ====================
+
+        /// 最小举报押金
+        #[pallet::constant]
+        type MinReportDeposit: Get<BalanceOf<Self>>;
+
+        /// 举报处理超时时间（区块数，超时后举报者可取回押金）
+        #[pallet::constant]
+        type ReportTimeout: Get<BlockNumberFor<Self>>;
+
+        /// 举报冷却期（同一用户对同一大师的举报间隔）
+        #[pallet::constant]
+        type ReportCooldownPeriod: Get<BlockNumberFor<Self>>;
+
+        /// 撤回举报的时间窗口（仅在此期间内可撤回）
+        #[pallet::constant]
+        type ReportWithdrawWindow: Get<BlockNumberFor<Self>>;
+
+        /// 恶意举报的信用扣分
+        #[pallet::constant]
+        type MaliciousReportPenalty: Get<u16>;
+
+        /// 举报审核委员会权限来源
+        type ReportReviewOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
+
+        /// 国库账户（罚金剩余部分归国库）
+        #[pallet::constant]
+        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     /// 货币余额类型别名
@@ -230,6 +259,20 @@ pub mod pallet {
 
     /// 信用修复任务类型别名
     pub type CreditRepairTaskOf<T> = CreditRepairTask<BlockNumberFor<T>>;
+
+    // ==================== 举报系统类型别名 ====================
+
+    /// 举报记录类型别名
+    pub type ReportOf<T> = Report<
+        <T as frame_system::Config>::AccountId,
+        BalanceOf<T>,
+        BlockNumberFor<T>,
+        <T as Config>::MaxCidLength,
+        <T as Config>::MaxDescriptionLength,
+    >;
+
+    /// 大师举报档案类型别名
+    pub type ProviderReportProfileOf<T> = ProviderReportProfile<BlockNumberFor<T>>;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -522,6 +565,78 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn credit_stats)]
     pub type CreditStatistics<T: Config> = StorageValue<_, GlobalCreditStats, ValueQuery>;
+
+    // ==================== 举报系统存储项 ====================
+
+    /// 下一个举报 ID
+    #[pallet::storage]
+    #[pallet::getter(fn next_report_id)]
+    pub type NextReportId<T> = StorageValue<_, u64, ValueQuery>;
+
+    /// 举报记录存储
+    #[pallet::storage]
+    #[pallet::getter(fn reports)]
+    pub type Reports<T: Config> = StorageMap<_, Blake2_128Concat, u64, ReportOf<T>>;
+
+    /// 大师收到的举报索引（provider -> report_ids）
+    #[pallet::storage]
+    #[pallet::getter(fn provider_reports)]
+    pub type ProviderReports<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u64, ConstU32<500>>,
+        ValueQuery,
+    >;
+
+    /// 用户提交的举报索引（reporter -> report_ids）
+    #[pallet::storage]
+    #[pallet::getter(fn user_reports)]
+    pub type UserReports<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u64, ConstU32<100>>,
+        ValueQuery,
+    >;
+
+    /// 大师举报档案
+    #[pallet::storage]
+    #[pallet::getter(fn provider_report_profiles)]
+    pub type ProviderReportProfiles<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        ProviderReportProfileOf<T>,
+        ValueQuery,
+    >;
+
+    /// 待处理举报队列（按时间排序）
+    #[pallet::storage]
+    #[pallet::getter(fn pending_reports)]
+    pub type PendingReports<T: Config> = StorageValue<
+        _,
+        BoundedVec<u64, ConstU32<1000>>,
+        ValueQuery,
+    >;
+
+    /// 举报统计
+    #[pallet::storage]
+    #[pallet::getter(fn report_stats)]
+    pub type ReportStatistics<T: Config> = StorageValue<_, ReportStats<BalanceOf<T>>, ValueQuery>;
+
+    /// 举报冷却期（防止同一用户短时间内重复举报同一大师）
+    /// (reporter, provider) -> last_report_block
+    #[pallet::storage]
+    #[pallet::getter(fn report_cooldown)]
+    pub type ReportCooldown<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
+        BlockNumberFor<T>,
+    >;
 
     // ==================== 事件 ====================
 
@@ -824,6 +939,65 @@ pub mod pallet {
 
         /// 加入信用黑名单
         AddedToBlacklist { provider: T::AccountId },
+
+        // ==================== 举报系统事件 ====================
+
+        /// 举报已提交
+        ReportSubmitted {
+            report_id: u64,
+            reporter: Option<T::AccountId>, // 匿名时为 None
+            provider: T::AccountId,
+            report_type: ReportType,
+            deposit: BalanceOf<T>,
+        },
+
+        /// 举报已撤回
+        ReportWithdrawn { report_id: u64 },
+
+        /// 举报审核完成
+        ReportResolved {
+            report_id: u64,
+            result: ReportStatus,
+            resolver: T::AccountId,
+        },
+
+        /// 举报成立
+        ReportUpheld {
+            report_id: u64,
+            provider: T::AccountId,
+            penalty_amount: BalanceOf<T>,
+            reporter_reward: BalanceOf<T>,
+            is_banned: bool,
+        },
+
+        /// 举报驳回
+        ReportRejected {
+            report_id: u64,
+            reporter: T::AccountId,
+            deposit_refunded: BalanceOf<T>,
+        },
+
+        /// 恶意举报被处罚
+        MaliciousReportPenalized {
+            report_id: u64,
+            reporter: T::AccountId,
+            deposit_confiscated: BalanceOf<T>,
+        },
+
+        /// 举报已过期
+        ReportExpired { report_id: u64 },
+
+        /// 大师被封禁
+        ProviderBanned {
+            provider: T::AccountId,
+            reason: ReportType,
+        },
+
+        /// 大师进入观察期
+        ProviderUnderWatch {
+            provider: T::AccountId,
+            watch_end: BlockNumberFor<T>,
+        },
     }
 
     // ==================== 错误 ====================
@@ -985,6 +1159,33 @@ pub mod pallet {
         InBlacklist,
         /// 信用等级不足
         InsufficientCreditLevel,
+
+        // ==================== 举报系统错误 ====================
+
+        /// 不能举报自己
+        CannotReportSelf,
+        /// 举报冷却期中
+        ReportCooldownActive,
+        /// 举报不存在
+        ReportNotFound,
+        /// 不是举报者
+        NotReporter,
+        /// 举报非待处理状态
+        ReportNotPending,
+        /// 撤回窗口已过期
+        WithdrawWindowExpired,
+        /// 举报已处理
+        ReportAlreadyResolved,
+        /// 无效的审核结果
+        InvalidReportResult,
+        /// 举报未过期
+        ReportNotExpired,
+        /// 举报过多
+        TooManyReports,
+        /// 待处理举报过多
+        TooManyPendingReports,
+        /// 大师已被封禁（举报相关）
+        ProviderAlreadyBanned,
     }
 
     // ==================== 可调用函数 ====================
@@ -3398,6 +3599,340 @@ pub mod pallet {
                 task_type,
                 target_value,
             });
+
+            Ok(())
+        }
+
+        // ==================== 举报系统可调用函数 ====================
+
+        /// 提交举报
+        ///
+        /// 任何用户都可以举报大师的违规行为。举报者需要缴纳押金以防止恶意举报。
+        ///
+        /// # 参数
+        /// - `provider`: 被举报的大师账户
+        /// - `report_type`: 举报类型
+        /// - `evidence_cid`: 证据 IPFS CID
+        /// - `description`: 举报描述
+        /// - `related_order_id`: 关联订单 ID（可选）
+        /// - `related_bounty_id`: 关联悬赏 ID（可选）
+        /// - `related_answer_id`: 关联回答 ID（可选）
+        /// - `is_anonymous`: 是否匿名举报
+        ///
+        /// # 逻辑
+        /// 1. 验证被举报者是已注册的大师
+        /// 2. 验证举报冷却期
+        /// 3. 计算并收取举报押金
+        /// 4. 创建举报记录
+        /// 5. 加入待处理队列
+        #[pallet::call_index(40)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn submit_report(
+            origin: OriginFor<T>,
+            provider: T::AccountId,
+            report_type: ReportType,
+            evidence_cid: Vec<u8>,
+            description: Vec<u8>,
+            related_order_id: Option<u64>,
+            related_bounty_id: Option<u64>,
+            related_answer_id: Option<u64>,
+            is_anonymous: bool,
+        ) -> DispatchResult {
+            let reporter = ensure_signed(origin)?;
+
+            // 1. 基础验证：不能举报自己
+            ensure!(reporter != provider, Error::<T>::CannotReportSelf);
+
+            // 2. 验证大师存在且未被封禁
+            ensure!(
+                Providers::<T>::contains_key(&provider),
+                Error::<T>::ProviderNotFound
+            );
+            ensure!(
+                !CreditBlacklist::<T>::contains_key(&provider),
+                Error::<T>::ProviderAlreadyBanned
+            );
+
+            // 3. 验证冷却期
+            Self::check_report_cooldown(&reporter, &provider)?;
+
+            // 4. 计算并收取举报押金
+            let required_deposit = Self::calculate_report_deposit(report_type);
+            T::Currency::transfer(
+                &reporter,
+                &Self::platform_account(),
+                required_deposit,
+                ExistenceRequirement::KeepAlive,
+            )?;
+
+            // 5. 构建举报记录
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let report_id = NextReportId::<T>::get();
+            NextReportId::<T>::put(report_id.saturating_add(1));
+
+            let evidence_bounded: BoundedVec<u8, T::MaxCidLength> = evidence_cid
+                .try_into()
+                .map_err(|_| Error::<T>::CidTooLong)?;
+            let description_bounded: BoundedVec<u8, T::MaxDescriptionLength> = description
+                .try_into()
+                .map_err(|_| Error::<T>::DescriptionTooLong)?;
+
+            let report = Report {
+                id: report_id,
+                reporter: reporter.clone(),
+                provider: provider.clone(),
+                report_type,
+                evidence_cid: evidence_bounded,
+                description: description_bounded,
+                related_order_id,
+                related_bounty_id,
+                related_answer_id,
+                reporter_deposit: required_deposit,
+                status: ReportStatus::Pending,
+                created_at: current_block,
+                resolved_at: None,
+                resolution_cid: None,
+                resolved_by: None,
+                provider_penalty: Zero::zero(),
+                reporter_reward: Zero::zero(),
+                is_anonymous,
+            };
+
+            // 6. 存储举报
+            Reports::<T>::insert(report_id, report);
+
+            // 7. 更新索引
+            ProviderReports::<T>::try_mutate(&provider, |list| {
+                list.try_push(report_id)
+                    .map_err(|_| Error::<T>::TooManyReports)
+            })?;
+            UserReports::<T>::try_mutate(&reporter, |list| {
+                list.try_push(report_id)
+                    .map_err(|_| Error::<T>::TooManyReports)
+            })?;
+            PendingReports::<T>::try_mutate(|list| {
+                list.try_push(report_id)
+                    .map_err(|_| Error::<T>::TooManyPendingReports)
+            })?;
+
+            // 8. 更新冷却期
+            ReportCooldown::<T>::insert(&reporter, &provider, current_block);
+
+            // 9. 更新统计
+            ReportStatistics::<T>::mutate(|stats| {
+                stats.total_reports += 1;
+                stats.pending_reports += 1;
+            });
+
+            // 10. 更新大师举报档案
+            ProviderReportProfiles::<T>::mutate(&provider, |profile| {
+                profile.total_reported += 1;
+                profile.last_reported_at = current_block;
+            });
+
+            // 11. 发送事件
+            Self::deposit_event(Event::ReportSubmitted {
+                report_id,
+                reporter: if is_anonymous { None } else { Some(reporter) },
+                provider,
+                report_type,
+                deposit: required_deposit,
+            });
+
+            Ok(())
+        }
+
+        /// 撤回举报
+        ///
+        /// 仅在窗口期内且状态为 Pending 时可撤回。
+        /// 撤回后退还 80% 押金（20% 作为滥用费用）。
+        ///
+        /// # 参数
+        /// - `report_id`: 举报 ID
+        #[pallet::call_index(41)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn withdraw_report(origin: OriginFor<T>, report_id: u64) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            Reports::<T>::try_mutate(report_id, |maybe_report| {
+                let report = maybe_report.as_mut().ok_or(Error::<T>::ReportNotFound)?;
+
+                // 验证是举报者
+                ensure!(report.reporter == who, Error::<T>::NotReporter);
+
+                // 验证状态为待处理
+                ensure!(
+                    report.status == ReportStatus::Pending,
+                    Error::<T>::ReportNotPending
+                );
+
+                // 验证在撤回窗口期内
+                let current_block = <frame_system::Pallet<T>>::block_number();
+                ensure!(
+                    current_block
+                        <= report.created_at.saturating_add(T::ReportWithdrawWindow::get()),
+                    Error::<T>::WithdrawWindowExpired
+                );
+
+                // 退还 80% 押金
+                let refund =
+                    report.reporter_deposit.saturating_mul(80u32.into()) / 100u32.into();
+                T::Currency::transfer(
+                    &Self::platform_account(),
+                    &who,
+                    refund,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+
+                // 更新状态
+                report.status = ReportStatus::Withdrawn;
+                report.resolved_at = Some(current_block);
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            // 从待处理队列移除
+            Self::remove_from_pending(report_id);
+
+            // 更新统计
+            ReportStatistics::<T>::mutate(|stats| {
+                stats.pending_reports = stats.pending_reports.saturating_sub(1);
+            });
+
+            Self::deposit_event(Event::ReportWithdrawn { report_id });
+
+            Ok(())
+        }
+
+        /// 审核举报（委员会专用）
+        ///
+        /// 仅委员会/治理权限可调用。
+        ///
+        /// # 参数
+        /// - `report_id`: 举报 ID
+        /// - `result`: 审核结果（Upheld/Rejected/Malicious）
+        /// - `resolution_cid`: 处理说明 IPFS CID（可选）
+        /// - `custom_penalty_rate`: 自定义惩罚比例（可选，覆盖默认值）
+        #[pallet::call_index(42)]
+        #[pallet::weight(Weight::from_parts(80_000_000, 0))]
+        pub fn resolve_report(
+            origin: OriginFor<T>,
+            report_id: u64,
+            result: ReportStatus,
+            resolution_cid: Option<Vec<u8>>,
+            custom_penalty_rate: Option<u16>,
+        ) -> DispatchResult {
+            // 验证委员会权限
+            let resolver = T::ReportReviewOrigin::ensure_origin(origin)?;
+
+            // 验证结果有效性
+            ensure!(
+                matches!(
+                    result,
+                    ReportStatus::Upheld | ReportStatus::Rejected | ReportStatus::Malicious
+                ),
+                Error::<T>::InvalidReportResult
+            );
+
+            // 获取举报记录
+            let report = Reports::<T>::get(report_id).ok_or(Error::<T>::ReportNotFound)?;
+            ensure!(
+                report.status == ReportStatus::Pending
+                    || report.status == ReportStatus::UnderReview,
+                Error::<T>::ReportAlreadyResolved
+            );
+
+            // 处理不同结果
+            match result {
+                ReportStatus::Upheld => {
+                    Self::handle_upheld_report(report_id, &report, custom_penalty_rate)?;
+                }
+                ReportStatus::Rejected => {
+                    Self::handle_rejected_report(report_id, &report)?;
+                }
+                ReportStatus::Malicious => {
+                    Self::handle_malicious_report(report_id, &report)?;
+                }
+                _ => return Err(Error::<T>::InvalidReportResult.into()),
+            }
+
+            // 更新举报记录
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let resolution_bounded: Option<BoundedVec<u8, T::MaxCidLength>> = resolution_cid
+                .map(|cid| cid.try_into().map_err(|_| Error::<T>::CidTooLong))
+                .transpose()?;
+
+            Reports::<T>::mutate(report_id, |maybe_report| {
+                if let Some(r) = maybe_report {
+                    r.status = result;
+                    r.resolved_at = Some(current_block);
+                    r.resolution_cid = resolution_bounded;
+                    r.resolved_by = Some(resolver.clone());
+                }
+            });
+
+            // 从待处理队列移除
+            Self::remove_from_pending(report_id);
+
+            // 更新统计
+            Self::update_report_stats_on_resolve(result);
+
+            Self::deposit_event(Event::ReportResolved {
+                report_id,
+                result,
+                resolver,
+            });
+
+            Ok(())
+        }
+
+        /// 处理超时举报
+        ///
+        /// 任何人可调用，超时后举报者可取回全额押金。
+        ///
+        /// # 参数
+        /// - `report_id`: 举报 ID
+        #[pallet::call_index(43)]
+        #[pallet::weight(Weight::from_parts(40_000_000, 0))]
+        pub fn expire_report(origin: OriginFor<T>, report_id: u64) -> DispatchResult {
+            ensure_signed(origin)?;
+
+            let report = Reports::<T>::get(report_id).ok_or(Error::<T>::ReportNotFound)?;
+            ensure!(
+                report.status == ReportStatus::Pending,
+                Error::<T>::ReportNotPending
+            );
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            ensure!(
+                current_block > report.created_at.saturating_add(T::ReportTimeout::get()),
+                Error::<T>::ReportNotExpired
+            );
+
+            // 全额退还举报押金
+            T::Currency::transfer(
+                &Self::platform_account(),
+                &report.reporter,
+                report.reporter_deposit,
+                ExistenceRequirement::KeepAlive,
+            )?;
+
+            // 更新状态
+            Reports::<T>::mutate(report_id, |maybe_report| {
+                if let Some(r) = maybe_report {
+                    r.status = ReportStatus::Expired;
+                    r.resolved_at = Some(current_block);
+                }
+            });
+
+            // 从待处理队列移除
+            Self::remove_from_pending(report_id);
+
+            ReportStatistics::<T>::mutate(|stats| {
+                stats.pending_reports = stats.pending_reports.saturating_sub(1);
+            });
+
+            Self::deposit_event(Event::ReportExpired { report_id });
 
             Ok(())
         }

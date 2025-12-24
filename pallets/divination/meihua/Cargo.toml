@@ -28,6 +28,12 @@ pallet-timestamp = { workspace = true, default-features = false }
 # 黄历模块 - 统一农历转换
 pallet-almanac = { path = "../almanac", default-features = false }
 
+# 隐私授权模块 - 加密数据存储和多方授权
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
+# 占卜通用模块 - DivinationType 枚举等
+pallet-divination-common = { path = "../common", default-features = false }
+
 [dev-dependencies]
 sp-io = { workspace = true, features = ["std"] }
 pallet-balances = { workspace = true, features = ["std"] }
@@ -48,6 +54,8 @@ std = [
   "log/std",
   "pallet-timestamp/std",
   "pallet-almanac/std",
+  "pallet-divination-privacy/std",
+  "pallet-divination-common/std",
 ]
 runtime-benchmarks = [
   "frame-support/runtime-benchmarks",

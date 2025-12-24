@@ -333,8 +333,8 @@ export interface LiuNian {
  * 性别
  */
 export enum Gender {
-  Male = 0,   // 男
-  Female = 1, // 女
+  Male = 1,   // 男（与链上定义一致）
+  Female = 0, // 女
 }
 
 /** 性别名称 */
@@ -342,6 +342,147 @@ export const GENDER_NAMES: Record<Gender, string> = {
   [Gender.Male]: '男',
   [Gender.Female]: '女',
 };
+
+/**
+ * 子时归属模式
+ *
+ * 传统派：23:00-23:59 属于次日（早子时）
+ * 现代派：23:00-23:59 属于当日（晚子时）
+ */
+export enum ZiShiMode {
+  Traditional = 1, // 传统派
+  Modern = 2,      // 现代派
+}
+
+/** 子时模式名称 */
+export const ZI_SHI_MODE_NAMES: Record<ZiShiMode, string> = {
+  [ZiShiMode.Traditional]: '传统派',
+  [ZiShiMode.Modern]: '现代派',
+};
+
+/**
+ * 日期输入类型
+ *
+ * 支持多种日期输入方式
+ */
+export enum DateInputType {
+  Solar = 0,      // 公历输入（默认）
+  Lunar = 1,      // 农历输入
+  SiZhuDirect = 2, // 四柱直接输入
+}
+
+/** 日期输入类型名称 */
+export const DATE_INPUT_TYPE_NAMES: Record<DateInputType, string> = {
+  [DateInputType.Solar]: '公历',
+  [DateInputType.Lunar]: '农历',
+  [DateInputType.SiZhuDirect]: '直接输入四柱',
+};
+
+/**
+ * 农历日期输入
+ *
+ * 用于农历输入模式，包含农历年月日和闰月标记
+ */
+export interface LunarDateInput {
+  /** 农历年份（1901-2100） */
+  year: number;
+  /** 农历月份（1-12） */
+  month: number;
+  /** 农历日期（1-30） */
+  day: number;
+  /** 是否为闰月 */
+  isLeapMonth: boolean;
+}
+
+/**
+ * 四柱直接输入
+ *
+ * 用于直接输入四柱干支，跳过日期计算
+ * 适用于已知四柱或特殊测算场景
+ */
+export interface SiZhuDirectInput {
+  /** 年柱干支索引（0-59，六十甲子） */
+  yearGanZhi: number;
+  /** 月柱干支索引（0-59） */
+  monthGanZhi: number;
+  /** 日柱干支索引（0-59） */
+  dayGanZhi: number;
+  /** 时柱干支索引（0-59） */
+  hourGanZhi: number;
+}
+
+/**
+ * 验证四柱直接输入有效性
+ */
+export function isSiZhuDirectInputValid(input: SiZhuDirectInput): boolean {
+  return (
+    input.yearGanZhi >= 0 && input.yearGanZhi < 60 &&
+    input.monthGanZhi >= 0 && input.monthGanZhi < 60 &&
+    input.dayGanZhi >= 0 && input.dayGanZhi < 60 &&
+    input.hourGanZhi >= 0 && input.hourGanZhi < 60
+  );
+}
+
+/**
+ * 从干支索引获取干支组合
+ */
+export function ganZhiFromIndex(index: number): GanZhi | null {
+  if (index < 0 || index >= 60) return null;
+  return {
+    tianGan: (index % 10) as TianGan,
+    diZhi: (index % 12) as DiZhi,
+  };
+}
+
+/**
+ * 出生地点信息
+ *
+ * 用于真太阳时计算，提供经度修正时差
+ */
+export interface BirthPlace {
+  /** 经度（单位：1/100000 度，正数为东经，负数为西经） */
+  longitude?: number;
+  /** 纬度（单位：1/100000 度，正数为北纬，负数为南纬） */
+  latitude?: number;
+  /** 时区偏移（单位：分钟，相对 UTC，如北京时间 UTC+8 = 480） */
+  timezoneOffset?: number;
+}
+
+/** 中国主要城市经度常量（单位：1/100000 度） */
+export const CHINESE_CITIES: Record<string, number> = {
+  BEIJING: 11640000,    // 北京 (东经 116.40°)
+  SHANGHAI: 12147000,   // 上海 (东经 121.47°)
+  GUANGZHOU: 11326000,  // 广州 (东经 113.26°)
+  SHENZHEN: 11406000,   // 深圳 (东经 114.06°)
+  CHENGDU: 10407000,    // 成都 (东经 104.07°)
+  CHONGQING: 10655000,  // 重庆 (东经 106.55°)
+  XIAN: 10894000,       // 西安 (东经 108.94°)
+  WUHAN: 11430000,      // 武汉 (东经 114.30°)
+  HANGZHOU: 12016000,   // 杭州 (东经 120.16°)
+  NANJING: 11878000,    // 南京 (东经 118.78°)
+  URUMQI: 8762000,      // 乌鲁木齐 (东经 87.62°)
+  LHASA: 9114000,       // 拉萨 (东经 91.14°)
+  HARBIN: 12653000,     // 哈尔滨 (东经 126.53°)
+  SHENYANG: 12343000,   // 沈阳 (东经 123.43°)
+  TAIPEI: 12156000,     // 台北 (东经 121.56°)
+  HONGKONG: 11417000,   // 香港 (东经 114.17°)
+};
+
+/**
+ * 计算经度修正时差（分钟）
+ *
+ * 公式：修正分钟 = (经度 - 标准子午线经度) × 4
+ * 北京时间标准子午线为 120°
+ */
+export function calculateLongitudeTimeCorrection(
+  longitude: number,
+  timezoneOffset: number = 480
+): number {
+  // 标准子午线经度 = 时区偏移 × 15° / 60分钟 × 100000
+  const standardMeridian = (timezoneOffset * 15 * 100000) / 60;
+  // 修正分钟 = (经度 - 标准子午线) × 4 / 100000
+  return Math.round(((longitude - standardMeridian) * 4) / 100000);
+}
 
 /**
  * 八字排盘输入
@@ -1111,4 +1252,593 @@ export interface BaziResultExtended extends BaziResult {
   guanXi?: SiZhuGuanXi;
   /** 解盘结果 */
   jiePan?: JiePanResult;
+}
+
+// ==================== V5 完整命盘类型 ====================
+
+/**
+ * 十二长生枚举
+ *
+ * 表示天干在地支中的生旺死绝状态
+ * 用于判断日主在四柱各支的旺衰程度
+ */
+export enum ShiErChangSheng {
+  ChangSheng = 0,  // 长生 - 如人之初生
+  MuYu = 1,        // 沐浴 - 如婴儿沐浴，脆弱之时
+  GuanDai = 2,     // 冠带 - 如人戴冠束带
+  LinGuan = 3,     // 临官 - 如人临官任职（建禄）
+  DiWang = 4,      // 帝旺 - 如帝王当朝，最旺盛
+  Shuai = 5,       // 衰 - 如人年老体衰
+  Bing = 6,        // 病 - 如人疾病缠身
+  Si = 7,          // 死 - 如人气绝身亡
+  Mu = 8,          // 墓 - 如人入墓归土（库）
+  Jue = 9,         // 绝 - 如人形骸俱灭
+  Tai = 10,        // 胎 - 如人受胎于母腹
+  Yang = 11,       // 养 - 如人在母腹中成形
+}
+
+/** 十二长生中文名称 */
+export const SHI_ER_CHANG_SHENG_NAMES: Record<ShiErChangSheng, string> = {
+  [ShiErChangSheng.ChangSheng]: '长生',
+  [ShiErChangSheng.MuYu]: '沐浴',
+  [ShiErChangSheng.GuanDai]: '冠带',
+  [ShiErChangSheng.LinGuan]: '临官',
+  [ShiErChangSheng.DiWang]: '帝旺',
+  [ShiErChangSheng.Shuai]: '衰',
+  [ShiErChangSheng.Bing]: '病',
+  [ShiErChangSheng.Si]: '死',
+  [ShiErChangSheng.Mu]: '墓',
+  [ShiErChangSheng.Jue]: '绝',
+  [ShiErChangSheng.Tai]: '胎',
+  [ShiErChangSheng.Yang]: '养',
+};
+
+/**
+ * 判断是否为旺相状态
+ */
+export function isProsperous(changsheng: ShiErChangSheng): boolean {
+  return [
+    ShiErChangSheng.ChangSheng,
+    ShiErChangSheng.GuanDai,
+    ShiErChangSheng.LinGuan,
+    ShiErChangSheng.DiWang,
+  ].includes(changsheng);
+}
+
+/**
+ * 判断是否为衰败状态
+ */
+export function isDeclining(changsheng: ShiErChangSheng): boolean {
+  return [
+    ShiErChangSheng.Shuai,
+    ShiErChangSheng.Bing,
+    ShiErChangSheng.Si,
+    ShiErChangSheng.Mu,
+    ShiErChangSheng.Jue,
+  ].includes(changsheng);
+}
+
+/**
+ * 藏干类型
+ */
+export enum CangGanType {
+  ZhuQi = 0,   // 主气（权重最高）
+  ZhongQi = 1, // 中气（权重中等）
+  YuQi = 2,    // 余气（权重最低）
+}
+
+/** 藏干类型名称 */
+export const CANG_GAN_TYPE_NAMES: Record<CangGanType, string> = {
+  [CangGanType.ZhuQi]: '主气',
+  [CangGanType.ZhongQi]: '中气',
+  [CangGanType.YuQi]: '余气',
+};
+
+/**
+ * 藏干详细信息
+ */
+export interface CangGanDetail {
+  /** 藏干天干 */
+  gan: TianGan;
+  /** 与日主的十神关系 */
+  shiShen: ShiShen;
+  /** 藏干类型（主气/中气/余气） */
+  cangGanType: CangGanType;
+  /** 权重（用于五行强度计算） */
+  weight: number;
+}
+
+/**
+ * 纳音枚举（30种）
+ */
+export enum NaYinType {
+  HaiZhongJin = 0,     // 海中金
+  LuZhongHuo = 1,      // 炉中火
+  DaLinMu = 2,         // 大林木
+  LuPangTu = 3,        // 路旁土
+  JianFengJin = 4,     // 剑锋金
+  ShanTouHuo = 5,      // 山头火
+  JianXiaShui = 6,     // 涧下水
+  ChengTouTu = 7,      // 城头土
+  BaiLaJin = 8,        // 白蜡金
+  YangLiuMu = 9,       // 杨柳木
+  QuanZhongShui = 10,  // 泉中水
+  WuShangTu = 11,      // 屋上土
+  PiLiHuo = 12,        // 霹雳火
+  SongBaiMu = 13,      // 松柏木
+  ChangLiuShui = 14,   // 长流水
+  ShaZhongJin = 15,    // 沙中金
+  ShanXiaHuo = 16,     // 山下火
+  PingDiMu = 17,       // 平地木
+  BiShangTu = 18,      // 壁上土
+  JinBoJin = 19,       // 金箔金
+  FuDengHuo = 20,      // 覆灯火
+  TianHeShui = 21,     // 天河水
+  DaYiTu = 22,         // 大驿土
+  ChaiChuanJin = 23,   // 钗钏金
+  SangTuoMu = 24,      // 桑柘木
+  DaXiShui = 25,       // 大溪水
+  ShaZhongTu = 26,     // 沙中土
+  TianShangHuo = 27,   // 天上火
+  ShiLiuMu = 28,       // 石榴木
+  DaHaiShui = 29,      // 大海水
+}
+
+/** 纳音名称 */
+export const NA_YIN_TYPE_NAMES: Record<NaYinType, string> = {
+  [NaYinType.HaiZhongJin]: '海中金',
+  [NaYinType.LuZhongHuo]: '炉中火',
+  [NaYinType.DaLinMu]: '大林木',
+  [NaYinType.LuPangTu]: '路旁土',
+  [NaYinType.JianFengJin]: '剑锋金',
+  [NaYinType.ShanTouHuo]: '山头火',
+  [NaYinType.JianXiaShui]: '涧下水',
+  [NaYinType.ChengTouTu]: '城头土',
+  [NaYinType.BaiLaJin]: '白蜡金',
+  [NaYinType.YangLiuMu]: '杨柳木',
+  [NaYinType.QuanZhongShui]: '泉中水',
+  [NaYinType.WuShangTu]: '屋上土',
+  [NaYinType.PiLiHuo]: '霹雳火',
+  [NaYinType.SongBaiMu]: '松柏木',
+  [NaYinType.ChangLiuShui]: '长流水',
+  [NaYinType.ShaZhongJin]: '沙中金',
+  [NaYinType.ShanXiaHuo]: '山下火',
+  [NaYinType.PingDiMu]: '平地木',
+  [NaYinType.BiShangTu]: '壁上土',
+  [NaYinType.JinBoJin]: '金箔金',
+  [NaYinType.FuDengHuo]: '覆灯火',
+  [NaYinType.TianHeShui]: '天河水',
+  [NaYinType.DaYiTu]: '大驿土',
+  [NaYinType.ChaiChuanJin]: '钗钏金',
+  [NaYinType.SangTuoMu]: '桑柘木',
+  [NaYinType.DaXiShui]: '大溪水',
+  [NaYinType.ShaZhongTu]: '沙中土',
+  [NaYinType.TianShangHuo]: '天上火',
+  [NaYinType.ShiLiuMu]: '石榴木',
+  [NaYinType.DaHaiShui]: '大海水',
+};
+
+/**
+ * 四柱位置
+ */
+export enum SiZhuPosition {
+  Year = 0,  // 年柱
+  Month = 1, // 月柱
+  Day = 2,   // 日柱
+  Hour = 3,  // 时柱
+}
+
+/** 四柱位置名称 */
+export const SI_ZHU_POSITION_NAMES: Record<SiZhuPosition, string> = {
+  [SiZhuPosition.Year]: '年柱',
+  [SiZhuPosition.Month]: '月柱',
+  [SiZhuPosition.Day]: '日柱',
+  [SiZhuPosition.Hour]: '时柱',
+};
+
+/**
+ * 神煞吉凶属性
+ */
+export enum ShenShaNature {
+  JiShen = 0,    // 吉神
+  XiongShen = 1, // 凶神
+  Neutral = 2,   // 中性
+}
+
+/** 神煞吉凶名称 */
+export const SHEN_SHA_NATURE_NAMES: Record<ShenShaNature, string> = {
+  [ShenShaNature.JiShen]: '吉神',
+  [ShenShaNature.XiongShen]: '凶神',
+  [ShenShaNature.Neutral]: '中性',
+};
+
+/**
+ * 神煞条目（V5 版本）
+ */
+export interface ShenShaEntryV5 {
+  /** 神煞类型 */
+  shenSha: ShenSha;
+  /** 出现的位置（年/月/日/时） */
+  position: SiZhuPosition;
+  /** 吉凶属性 */
+  nature: ShenShaNature;
+}
+
+/**
+ * 空亡信息
+ */
+export interface KongWangInfo {
+  /** 年柱旬空（两个地支索引） */
+  yearKongWang: [DiZhi, DiZhi];
+  /** 月柱旬空 */
+  monthKongWang: [DiZhi, DiZhi];
+  /** 日柱旬空（最重要） */
+  dayKongWang: [DiZhi, DiZhi];
+  /** 时柱旬空 */
+  hourKongWang: [DiZhi, DiZhi];
+  /** 年柱地支是否落空亡 */
+  yearIsKong: boolean;
+  /** 月柱地支是否落空亡 */
+  monthIsKong: boolean;
+  /** 日柱地支是否落空亡 */
+  dayIsKong: boolean;
+  /** 时柱地支是否落空亡 */
+  hourIsKong: boolean;
+}
+
+/**
+ * 星运信息（日主在四柱各支的十二长生状态）
+ */
+export interface XingYunInfo {
+  /** 日主在年支的十二长生 */
+  yearChangSheng: ShiErChangSheng;
+  /** 日主在月支的十二长生 */
+  monthChangSheng: ShiErChangSheng;
+  /** 日主在日支的十二长生 */
+  dayChangSheng: ShiErChangSheng;
+  /** 日主在时支的十二长生 */
+  hourChangSheng: ShiErChangSheng;
+}
+
+/**
+ * 增强单柱详情（V5 版本）
+ *
+ * 包含主星、藏干（副星）、纳音、星运
+ */
+export interface EnhancedZhu {
+  /** 干支组合 */
+  ganZhi: GanZhi;
+  /** 天干十神（主星） */
+  tianGanShiShen: ShiShen;
+  /** 地支本气十神（主星） */
+  diZhiBenQiShiShen: ShiShen;
+  /** 藏干详细信息（包含副星十神） */
+  cangGanList: CangGanDetail[];
+  /** 纳音五行 */
+  naYin: NaYinType;
+  /** 日主在该地支的十二长生状态 */
+  changSheng: ShiErChangSheng;
+}
+
+/**
+ * 增强四柱（V5 版本）
+ */
+export interface EnhancedSiZhu {
+  /** 年柱详情 */
+  yearZhu: EnhancedZhu;
+  /** 月柱详情 */
+  monthZhu: EnhancedZhu;
+  /** 日柱详情 */
+  dayZhu: EnhancedZhu;
+  /** 时柱详情 */
+  hourZhu: EnhancedZhu;
+  /** 日主天干 */
+  riZhu: TianGan;
+}
+
+/**
+ * 大运步骤（V5 版本）
+ */
+export interface DaYunStepV5 {
+  /** 大运干支 */
+  ganZhi: GanZhi;
+  /** 起始年龄 */
+  startAge: number;
+  /** 结束年龄 */
+  endAge: number;
+  /** 起始年份 */
+  startYear: number;
+  /** 结束年份 */
+  endYear: number;
+  /** 天干十神 */
+  tianGanShiShen: ShiShen;
+  /** 藏干十神列表 */
+  cangGanShiShen: ShiShen[];
+}
+
+/**
+ * 大运信息（V5 版本）
+ */
+export interface DaYunInfoV5 {
+  /** 起运年龄 */
+  qiYunAge: number;
+  /** 起运年份 */
+  qiYunYear: number;
+  /** 是否顺排（true=顺，false=逆） */
+  isShun: boolean;
+  /** 大运列表 */
+  daYunList: DaYunStepV5[];
+}
+
+/**
+ * 自坐信息
+ *
+ * 自坐是八字命理中最重要的关系之一，专指日主（日柱天干）与日柱地支的十神关系。
+ *
+ * @description 命理意义
+ *
+ * 自坐关系直接影响命主的：
+ * - **性格特质**: 如自坐比肩者独立自主、自坐食神者有创造力
+ * - **能力倾向**: 如自坐正财者善经营、自坐正官者重规矩
+ * - **六亲关系**: 如自坐正财利妻、自坐正官利子女
+ *
+ * @example
+ * 日柱为"甲寅"：
+ * - 日主：甲木
+ * - 自坐地支：寅木
+ * - 本气十神：比肩（甲木见甲木）
+ * - 藏干十神：[比肩（甲）、食神（丙）、偏财（戊）]
+ *
+ * 命理含义：自坐比肩，性格独立自主，有主见；坐下藏食神和偏财，有创造力和经营能力。
+ */
+export interface ZiZuoInfo {
+  /** 日柱地支（日主所坐的地支） */
+  diZhi: DiZhi;
+  /** 本气十神（最重要，主导性格特质）
+   *
+   * 地支本气是该地支最主要的藏干，权重最高，对命主性格影响最大
+   */
+  benQiShiShen: ShiShen;
+  /** 藏干十神列表（辅助性格、能力）
+   *
+   * 按权重排序：主气 > 中气 > 余气
+   * 辅助分析命主的多面性格和潜在能力
+   */
+  cangGanShiShenList: ShiShen[];
+}
+
+/**
+ * 完整八字命盘（V5 版本）
+ *
+ * 包含所有计算字段：主星、藏干、副星、星运、空亡、纳音、神煞、自坐
+ */
+export interface FullBaziChartV5 {
+  /** 命盘ID */
+  chartId: number;
+  /** 所有者地址 */
+  owner: string;
+  /** 出生时间 */
+  birthTime: {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+  };
+  /** 出生地点（可选，用于真太阳时计算） */
+  birthPlace?: BirthPlace;
+  /** 性别 */
+  gender: Gender;
+  /** 子时模式 (1=传统派, 2=现代派) */
+  ziShiMode: ZiShiMode;
+  /** 增强四柱信息（包含主星、藏干、纳音、星运） */
+  siZhu: EnhancedSiZhu;
+  /** 大运信息 */
+  daYun: DaYunInfoV5;
+  /** 空亡信息 */
+  kongWang: KongWangInfo;
+  /** 神煞列表（最多32个） */
+  shenShaList: ShenShaEntryV5[];
+  /** 星运（十二长生） */
+  xingYun: XingYunInfo;
+  /** 自坐信息（日主坐下地支的十神关系）⭐ 核心字段
+   *
+   * 自坐是八字命理中最重要的关系之一，直接体现命主的性格特质、能力倾向和六亲关系。
+   * 前端可以直接使用此字段进行自坐分析，无需再从 day_zhu 中提取。
+   */
+  ziZuo: ZiZuoInfo;
+  /** 五行强度 */
+  wuXingStrength: WuXingStrength;
+  /** 喜用神 */
+  xiYongShen: WuXing | null;
+  /** 创建时间戳（区块号） */
+  timestamp: number;
+}
+
+// ==================== 加密存储类型 ====================
+
+/**
+ * 四柱干支索引（8 bytes）
+ *
+ * 仅保存四柱的干支索引，不包含任何敏感信息（如出生时间）
+ * 这个索引足以进行命理计算，但无法反推出具体出生时间
+ */
+export interface SiZhuIndex {
+  /** 年柱天干索引 (0-9) */
+  yearGan: number;
+  /** 年柱地支索引 (0-11) */
+  yearZhi: number;
+  /** 月柱天干索引 (0-9) */
+  monthGan: number;
+  /** 月柱地支索引 (0-11) */
+  monthZhi: number;
+  /** 日柱天干索引 (0-9) */
+  dayGan: number;
+  /** 日柱地支索引 (0-11) */
+  dayZhi: number;
+  /** 时柱天干索引 (0-9) */
+  hourGan: number;
+  /** 时柱地支索引 (0-11) */
+  hourZhi: number;
+}
+
+/**
+ * 验证四柱索引有效性
+ */
+export function isSiZhuIndexValid(index: SiZhuIndex): boolean {
+  return (
+    index.yearGan >= 0 && index.yearGan < 10 &&
+    index.yearZhi >= 0 && index.yearZhi < 12 &&
+    index.monthGan >= 0 && index.monthGan < 10 &&
+    index.monthZhi >= 0 && index.monthZhi < 12 &&
+    index.dayGan >= 0 && index.dayGan < 10 &&
+    index.dayZhi >= 0 && index.dayZhi < 12 &&
+    index.hourGan >= 0 && index.hourGan < 10 &&
+    index.hourZhi >= 0 && index.hourZhi < 12
+  );
+}
+
+/**
+ * 从四柱索引获取干支组合
+ */
+export function ganZhiFromSiZhuIndex(index: SiZhuIndex, position: SiZhuPosition): GanZhi {
+  switch (position) {
+    case SiZhuPosition.Year:
+      return { tianGan: index.yearGan as TianGan, diZhi: index.yearZhi as DiZhi };
+    case SiZhuPosition.Month:
+      return { tianGan: index.monthGan as TianGan, diZhi: index.monthZhi as DiZhi };
+    case SiZhuPosition.Day:
+      return { tianGan: index.dayGan as TianGan, diZhi: index.dayZhi as DiZhi };
+    case SiZhuPosition.Hour:
+      return { tianGan: index.hourGan as TianGan, diZhi: index.hourZhi as DiZhi };
+  }
+}
+
+/**
+ * 加密的八字命盘
+ *
+ * 隐私保护版本的八字存储：
+ * - 敏感数据（出生时间等）在前端加密后存储
+ * - 四柱索引明文存储，支持 Runtime API 免费计算
+ * - 用户通过钱包签名派生密钥进行加解密
+ */
+export interface EncryptedBaziChart {
+  /** 命盘ID */
+  chartId: number;
+  /** 所有者地址 */
+  owner: string;
+  /** 四柱干支索引（明文，用于计算） */
+  siZhuIndex: SiZhuIndex;
+  /** 性别（明文，用于大运计算） */
+  gender: Gender;
+  /** 加密的敏感数据（AES-256-GCM 加密，Base64编码） */
+  encryptedData: string;
+  /** 加密的姓名数据（可选，AES-256-GCM 加密，Base64编码） */
+  encryptedName?: string;
+  /** 原始数据的 Blake2-256 哈希（用于验证解密正确性） */
+  dataHash: string;
+  /** 创建时间戳（区块号） */
+  createdAt: number;
+}
+
+/**
+ * 加密前的敏感数据结构
+ *
+ * 这些数据会被加密后存储在 encryptedData 字段中
+ */
+export interface BaziSensitiveData {
+  /** 出生年份 */
+  year: number;
+  /** 出生月份 */
+  month: number;
+  /** 出生日期 */
+  day: number;
+  /** 出生小时 */
+  hour: number;
+  /** 出生分钟 */
+  minute: number;
+  /** 子时模式 */
+  ziShiMode: ZiShiMode;
+  /** 出生地点（可选） */
+  birthPlace?: BirthPlace;
+}
+
+// ==================== 创建八字参数类型 ====================
+
+/**
+ * 创建八字命盘参数（公历输入）
+ */
+export interface CreateBaziChartParams {
+  /** 公历年份 (1900-2100) */
+  year: number;
+  /** 公历月份 (1-12) */
+  month: number;
+  /** 公历日期 (1-31) */
+  day: number;
+  /** 小时 (0-23) */
+  hour: number;
+  /** 分钟 (0-59) */
+  minute: number;
+  /** 性别 */
+  gender: Gender;
+  /** 子时归属模式 */
+  ziShiMode: ZiShiMode;
+  /** 出生地经度（可选，单位：1/100000 度） */
+  longitude?: number;
+  /** 出生地纬度（可选，单位：1/100000 度） */
+  latitude?: number;
+}
+
+/**
+ * 从农历创建八字命盘参数
+ */
+export interface CreateBaziChartFromLunarParams {
+  /** 农历年份 (1901-2100) */
+  lunarYear: number;
+  /** 农历月份 (1-12) */
+  lunarMonth: number;
+  /** 农历日期 (1-30) */
+  lunarDay: number;
+  /** 是否为闰月 */
+  isLeapMonth: boolean;
+  /** 小时 (0-23) */
+  hour: number;
+  /** 分钟 (0-59) */
+  minute: number;
+  /** 性别 */
+  gender: Gender;
+  /** 子时归属模式 */
+  ziShiMode: ZiShiMode;
+  /** 出生地经度（可选） */
+  longitude?: number;
+  /** 出生地纬度（可选） */
+  latitude?: number;
+}
+
+/**
+ * 从四柱直接创建八字命盘参数
+ */
+export interface CreateBaziChartFromSiZhuParams {
+  /** 四柱干支输入 */
+  siZhuInput: SiZhuDirectInput;
+  /** 性别 */
+  gender: Gender;
+  /** 出生年份（用于大运计算，0表示未知） */
+  birthYear: number;
+}
+
+/**
+ * 创建加密八字命盘参数
+ */
+export interface CreateEncryptedChartParams {
+  /** 四柱干支索引 */
+  siZhuIndex: SiZhuIndex;
+  /** 性别 */
+  gender: Gender;
+  /** 加密的敏感数据（AES-256-GCM 加密后的字节数组） */
+  encryptedData: Uint8Array;
+  /** 加密的姓名数据（可选） */
+  encryptedName?: Uint8Array;
+  /** 原始数据的 Blake2-256 哈希 */
+  dataHash: Uint8Array;
 }

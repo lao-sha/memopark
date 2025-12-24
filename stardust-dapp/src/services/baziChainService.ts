@@ -8,7 +8,32 @@
  */
 
 import { getApi, getSignedApi } from '../lib/polkadot';
-import type { BaziResult, SiZhu, Gender } from '../types/bazi';
+import type {
+  BaziResult,
+  SiZhu,
+  Gender,
+  FullBaziChartV5,
+  EnhancedSiZhu,
+  EnhancedZhu,
+  DaYunInfoV5,
+  DaYunStepV5,
+  KongWangInfo,
+  XingYunInfo,
+  ShenShaEntryV5,
+  CangGanDetail,
+  ShiErChangSheng,
+  CangGanType,
+  NaYinType,
+  SiZhuPosition,
+  ShenShaNature,
+  WuXingStrength,
+  WuXing,
+  TianGan,
+  DiZhi,
+  ShiShen,
+  ShenSha,
+  ZiZuoInfo,  // ⭐ 新增
+} from '../types/bazi';
 import { DivinationType } from '../types/divination';
 
 // ==================== 类型定义 ====================
@@ -80,9 +105,11 @@ export async function saveBaziToChain(params: SaveBaziParams): Promise<number> {
   const { year, month, day, hour, gender } = params;
 
   // 构建交易
-  // 注意：实际 pallet 签名是 create_bazi_chart(year, month, day, hour, minute, gender, zishi_mode)
+  // 注意：实际 pallet 签名是 create_bazi_chart(year, month, day, hour, minute, gender, zishi_mode, longitude, latitude)
   const minute = 0; // 默认分钟为0
-  const zishiMode = 1; // 0=传统派, 1=现代派（默认使用现代派）
+  const zishiMode = 1; // 1=现代派, 2=传统派（默认使用现代派）
+  const longitude = null; // 经度（可选，用于真太阳时计算）
+  const latitude = null;  // 纬度（可选，用于真太阳时计算）
 
   const tx = api.tx.baziChart.createBaziChart(
     year,
@@ -91,7 +118,9 @@ export async function saveBaziToChain(params: SaveBaziParams): Promise<number> {
     hour,
     minute,
     gender,
-    zishiMode
+    zishiMode,
+    longitude,  // ⭐ 新增
+    latitude    // ⭐ 新增
   );
 
   return new Promise((resolve, reject) => {
@@ -192,6 +221,180 @@ export async function getBaziChart(chartId: number): Promise<OnChainBaziChart | 
     };
   } catch (error) {
     console.error('[BaziChainService] 解析失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 藏干详情（链上数据解析）
+ */
+export interface CangGanInfo {
+  /** 藏干天干索引 (0-9) */
+  gan: number;
+  /** 十神类型 */
+  shiShen: string;
+  /** 藏干类型: ZhuQi=主气, ZhongQi=中气, YuQi=余气 */
+  cangGanType: string;
+  /** 权重 */
+  weight: number;
+}
+
+/**
+ * 单柱完整数据结构
+ */
+export interface ZhuFullData {
+  /** 天干索引 (0-9) */
+  gan: number;
+  /** 地支索引 (0-11) */
+  zhi: number;
+  /** 藏干信息数组 */
+  cangGan: CangGanInfo[];
+  /** 纳音类型 */
+  naYin: string;
+}
+
+/**
+ * 四柱数据结构（包含天干地支索引）
+ */
+export interface SiZhuData {
+  /** 年柱天干索引 (0-9) */
+  yearGan: number;
+  /** 年柱地支索引 (0-11) */
+  yearZhi: number;
+  /** 月柱天干索引 (0-9) */
+  monthGan: number;
+  /** 月柱地支索引 (0-11) */
+  monthZhi: number;
+  /** 日柱天干索引 (0-9) */
+  dayGan: number;
+  /** 日柱地支索引 (0-11) */
+  dayZhi: number;
+  /** 时柱天干索引 (0-9) */
+  hourGan: number;
+  /** 时柱地支索引 (0-11) */
+  hourZhi: number;
+  /** 年柱完整数据 */
+  yearZhu?: ZhuFullData;
+  /** 月柱完整数据 */
+  monthZhu?: ZhuFullData;
+  /** 日柱完整数据 */
+  dayZhu?: ZhuFullData;
+  /** 时柱完整数据 */
+  hourZhu?: ZhuFullData;
+  /** 日主天干索引 */
+  riZhu?: number;
+}
+
+/**
+ * 完整八字命盘数据（包含四柱）
+ */
+export interface FullBaziChart extends OnChainBaziChart {
+  /** 四柱数据 */
+  siZhu: SiZhuData;
+}
+
+/**
+ * 解析单柱完整数据
+ * @param zhuData 链上单柱数据
+ * @returns 单柱完整数据
+ */
+function parseZhuFullData(zhuData: any): ZhuFullData {
+  // 解析藏干数组
+  const cangGan: CangGanInfo[] = (zhuData.canggan || []).map((cg: any) => {
+    // 解析数字字符串中的逗号，如 "1,000" -> 1000
+    const parseNumericString = (val: any): number => {
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') return parseInt(val.replace(/,/g, ''), 10) || 0;
+      return 0;
+    };
+
+    return {
+      gan: parseInt(cg.gan?.toString() || '0'),
+      shiShen: cg.shishen?.toString() || '',
+      cangGanType: cg.cangganType?.toString() || '',
+      weight: parseNumericString(cg.weight),
+    };
+  });
+
+  return {
+    gan: parseInt(zhuData.ganzhi?.gan?.toString() || '0'),
+    zhi: parseInt(zhuData.ganzhi?.zhi?.toString() || '0'),
+    cangGan,
+    naYin: zhuData.nayin?.toString() || '',
+  };
+}
+
+/**
+ * 获取完整八字命盘数据（包括四柱）
+ *
+ * @param chartId 命盘ID
+ * @returns 完整命盘数据或null
+ */
+export async function getFullBaziChart(chartId: number): Promise<FullBaziChart | null> {
+  const api = await getApi();
+
+  if (!api.query.baziChart || !api.query.baziChart.chartById) {
+    console.error('[BaziChainService] baziChart pallet 不存在');
+    return null;
+  }
+
+  console.log('[BaziChainService] 查询完整命盘 ID:', chartId);
+  const result = await api.query.baziChart.chartById(chartId);
+
+  if (result.isNone) {
+    console.log('[BaziChainService] 命盘不存在');
+    return null;
+  }
+
+  try {
+    const data = result.unwrap();
+    const humanData = data.toHuman();
+    console.log('[BaziChainService] 完整原始数据:', JSON.stringify(humanData));
+
+    // 解析四柱数据
+    // 链上数据结构: sizhu.yearZhu.ganzhi.{gan, zhi}
+    const sizhuData = data.sizhu;
+
+    // 解析各柱完整数据
+    const yearZhu = parseZhuFullData(humanData.sizhu?.yearZhu || sizhuData.yearZhu);
+    const monthZhu = parseZhuFullData(humanData.sizhu?.monthZhu || sizhuData.monthZhu);
+    const dayZhu = parseZhuFullData(humanData.sizhu?.dayZhu || sizhuData.dayZhu);
+    const hourZhu = parseZhuFullData(humanData.sizhu?.hourZhu || sizhuData.hourZhu);
+
+    const siZhu: SiZhuData = {
+      yearGan: parseInt(sizhuData.yearZhu.ganzhi.gan.toString()),
+      yearZhi: parseInt(sizhuData.yearZhu.ganzhi.zhi.toString()),
+      monthGan: parseInt(sizhuData.monthZhu.ganzhi.gan.toString()),
+      monthZhi: parseInt(sizhuData.monthZhu.ganzhi.zhi.toString()),
+      dayGan: parseInt(sizhuData.dayZhu.ganzhi.gan.toString()),
+      dayZhi: parseInt(sizhuData.dayZhu.ganzhi.zhi.toString()),
+      hourGan: parseInt(sizhuData.hourZhu.ganzhi.gan.toString()),
+      hourZhi: parseInt(sizhuData.hourZhu.ganzhi.zhi.toString()),
+      // 完整单柱数据
+      yearZhu,
+      monthZhu,
+      dayZhu,
+      hourZhu,
+      // 日主
+      riZhu: parseInt(sizhuData.rizhu?.toString() || sizhuData.dayZhu.ganzhi.gan.toString()),
+    };
+
+    return {
+      id: chartId,
+      creator: data.owner.toString(),
+      birthYear: data.birthTime.year.toNumber(),
+      birthMonth: data.birthTime.month.toNumber(),
+      birthDay: data.birthTime.day.toNumber(),
+      birthHour: data.birthTime.hour.toNumber(),
+      gender: data.gender.isMan ? 0 : 1,
+      isPublic: true,
+      dataCid: undefined,
+      createdAt: data.timestamp.toNumber(),
+      status: 0,
+      siZhu,
+    };
+  } catch (error) {
+    console.error('[BaziChainService] 解析完整命盘失败:', error);
     return null;
   }
 }
@@ -1771,3 +1974,1188 @@ export async function isEncryptedChartOwner(
   const chart = await getEncryptedBaziChart(chartId);
   return chart !== null && chart.owner === userAddress;
 }
+
+// ==================== V5 完整命盘功能 ====================
+
+/**
+ * 获取完整八字命盘（V5 新增）
+ *
+ * 通过 Runtime API 实时计算，返回包含所有计算字段的完整命盘数据：
+ * - **主星**: 天干十神 + 地支本气十神
+ * - **藏干（副星）**: 藏干详细信息及十神关系
+ * - **星运**: 四柱十二长生状态
+ * - **空亡**: 旬空判断和标识
+ * - **纳音**: 六十甲子纳音五行
+ * - **神煞**: 吉凶神煞列表
+ *
+ * @param chartId 命盘ID
+ * @returns 完整命盘数据或 null
+ *
+ * @example
+ * ```typescript
+ * const fullChart = await getFullBaziChartV5(chartId);
+ * if (fullChart) {
+ *   // 访问主星
+ *   console.log('年柱天干十神:', fullChart.siZhu.yearZhu.tianGanShiShen);
+ *   // 访问空亡
+ *   if (fullChart.kongWang.dayIsKong) {
+ *     console.log('日柱落空亡');
+ *   }
+ *   // 访问神煞
+ *   fullChart.shenShaList.forEach(s => console.log(s.shenSha, s.nature));
+ * }
+ * ```
+ */
+export async function getFullBaziChartV5(
+  chartId: number
+): Promise<FullBaziChartV5 | null> {
+  const api = await getApi();
+
+  try {
+    console.log(`[BaziChainService] 调用 Runtime API 获取完整命盘 V5: chartId=${chartId}`);
+
+    // 检查 Runtime API 是否可用
+    if (!api.call?.baziChartApi?.getFullBaziChart) {
+      console.log('[BaziChainService] getFullBaziChart Runtime API 不可用');
+      return null;
+    }
+
+    // 调用 Runtime API（方案1：现在返回 JSON 字符串）
+    const result = await api.call.baziChartApi.getFullBaziChart(chartId);
+
+    if (!result || result.isNone) {
+      console.log('[BaziChainService] Runtime API 返回空结果（命盘可能不存在）');
+      return null;
+    }
+
+    // 🔥 方案1适配：后端返回的是 JSON 字符串，包含可读的枚举名称
+    const jsonString = result.unwrap().toString();
+    console.log('[BaziChainService] V5 完整命盘 JSON 字符串（前100字符）:', jsonString.substring(0, 100));
+
+    // 解析 JSON 字符串为对象
+    const jsonData = JSON.parse(jsonString);
+    console.log('[BaziChainService] V5 解析后的 JSON 数据:', jsonData);
+
+    return parseFullBaziChartV5Adapted(jsonData);
+  } catch (error) {
+    console.error('[BaziChainService] 获取完整命盘 V5 失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析完整命盘 V5 数据（方案1适配版）
+ *
+ * 此函数处理后端方案1返回的 JSON 数据，其中枚举已经是可读的名称字符串。
+ * 例如：gender: "Male"（不是 0），shensha: "TianYiGuiRen"（不是 0）
+ *
+ * @param jsonData 已解析的 JSON 对象（包含枚举名称字符串）
+ * @returns 解析后的完整命盘数据
+ */
+function parseFullBaziChartV5Adapted(jsonData: any): FullBaziChartV5 | null {
+  try {
+    console.log('[parseFullBaziChartV5Adapted] 开始解析方案1数据');
+
+    // 解析出生时间（直接使用）
+    const birthTime = {
+      year: jsonData.birthTime?.year ?? 0,
+      month: jsonData.birthTime?.month ?? 0,
+      day: jsonData.birthTime?.day ?? 0,
+      hour: jsonData.birthTime?.hour ?? 0,
+      minute: jsonData.birthTime?.minute ?? 0,
+    };
+
+    // 解析性别（现在是字符串名称，需要映射回索引）
+    const genderMap: Record<string, Gender> = {
+      'Male': Gender.Male,
+      'Female': Gender.Female,
+      'Man': Gender.Male,
+      'Woman': Gender.Female,
+    };
+    const gender = genderMap[jsonData.gender] ?? Gender.Male;
+
+    // 解析子时模式
+    const ziShiModeMap: Record<string, number> = {
+      'Traditional': 1,
+      'Modern': 2,
+    };
+    const ziShiMode = ziShiModeMap[jsonData.ziShiMode] ?? 1;
+
+    // 解析增强四柱（使用 parseEnumValue 处理枚举名称字符串）
+    const siZhu = parseEnhancedSiZhuAdapted(jsonData.sizhu);
+
+    // 解析大运信息
+    const daYun = parseDaYunInfoV5Adapted(jsonData.dayun);
+
+    // 解析空亡信息
+    const kongWang = parseKongWangInfoAdapted(jsonData.kongwang);
+
+    // 解析星运信息
+    const xingYun = parseXingYunInfoAdapted(jsonData.xingyun);
+
+    // 解析神煞列表
+    console.log('[parseFullBaziChartV5Adapted] shenshaList 原始数据:', jsonData.shenshaList);
+    const shenShaList = parseShenShaListAdapted(jsonData.shenshaList || []);
+
+    // 解析五行强度（直接使用数字）
+    const wuXingStrength = parseWuXingStrength(jsonData.wuxingStrength);
+
+    // 解析自坐信息
+    const ziZuo = parseZiZuoInfoAdapted(jsonData.ziZuo);
+
+    // 解析喜用神（枚举名称字符串映射回索引）
+    const xiYongShen = jsonData.xiyongShen !== null && jsonData.xiyongShen !== 'null'
+      ? parseEnumValue(jsonData.xiyongShen) as WuXing
+      : null;
+
+    // 解析 owner 地址
+    const owner = jsonData.owner || '';
+
+    return {
+      chartId: jsonData.chartId ?? 0,
+      owner,
+      birthTime,
+      gender,
+      ziShiMode,
+      siZhu,
+      daYun,
+      kongWang,
+      shenShaList,
+      xingYun,
+      ziZuo,
+      wuXingStrength,
+      xiYongShen,
+      timestamp: jsonData.timestamp ?? 0,
+    };
+  } catch (error) {
+    console.error('[parseFullBaziChartV5Adapted] 解析失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析增强四柱（方案1适配版）
+ */
+function parseEnhancedSiZhuAdapted(data: any): EnhancedSiZhu {
+  return {
+    yearZhu: parseEnhancedZhuAdapted(data?.yearZhu),
+    monthZhu: parseEnhancedZhuAdapted(data?.monthZhu),
+    dayZhu: parseEnhancedZhuAdapted(data?.dayZhu),
+    hourZhu: parseEnhancedZhuAdapted(data?.hourZhu),
+    riZhu: parseEnumValue(data?.rizhu) as TianGan,
+  };
+}
+
+/**
+ * 解析增强单柱（方案1适配版）
+ */
+function parseEnhancedZhuAdapted(data: any): EnhancedZhu {
+  if (!data) {
+    return {
+      ganZhi: { tianGan: 0 as TianGan, diZhi: 0 as DiZhi },
+      tianGanShiShen: 0 as ShiShen,
+      diZhiBenQiShiShen: 0 as ShiShen,
+      cangGanList: [],
+      naYin: 0 as NaYinType,
+      changSheng: 0 as ShiErChangSheng,
+    };
+  }
+
+  // 解析干支（后端返回的是枚举名称字符串）
+  const ganZhi = {
+    tianGan: parseEnumValue(data.ganzhi?.gan) as TianGan,
+    diZhi: parseEnumValue(data.ganzhi?.zhi) as DiZhi,
+  };
+
+  // 解析藏干列表
+  const cangGanList: CangGanDetail[] = (data.cangganList || []).map((cg: any) => ({
+    gan: parseEnumValue(cg.gan) as TianGan,
+    shiShen: parseEnumValue(cg.shishen) as ShiShen,
+    cangGanType: parseEnumValue(cg.cangganType) as CangGanType,
+    weight: cg.weight ?? 0,
+  }));
+
+  return {
+    ganZhi,
+    tianGanShiShen: parseEnumValue(data.tianganShishen) as ShiShen,
+    diZhiBenQiShiShen: parseEnumValue(data.dizhiBenqiShishen) as ShiShen,
+    cangGanList,
+    naYin: parseEnumValue(data.nayin) as NaYinType,
+    changSheng: parseEnumValue(data.changsheng) as ShiErChangSheng,
+  };
+}
+
+/**
+ * 解析大运信息（方案1适配版）
+ */
+function parseDaYunInfoV5Adapted(data: any): DaYunInfoV5 {
+  if (!data) {
+    return {
+      qiYunAge: 0,
+      qiYunYear: 0,
+      isShun: true,
+      daYunList: [],
+    };
+  }
+
+  const daYunList: DaYunStepV5[] = (data.dayunList || []).map((step: any) => ({
+    ganZhi: {
+      tianGan: parseEnumValue(step.ganzhi?.gan) as TianGan,
+      diZhi: parseEnumValue(step.ganzhi?.zhi) as DiZhi,
+    },
+    startAge: step.startAge ?? 0,
+    endAge: step.endAge ?? 0,
+    startYear: step.startYear ?? 0,
+    endYear: step.endYear ?? 0,
+    tianGanShiShen: parseEnumValue(step.tianganShishen) as ShiShen,
+    cangGanShiShen: (step.cangganShishen || []).map((s: any) => parseEnumValue(s) as ShiShen),
+  }));
+
+  return {
+    qiYunAge: data.qiyunAge ?? 0,
+    qiYunYear: data.qiyunYear ?? 0,
+    isShun: data.isShun ?? true,
+    daYunList,
+  };
+}
+
+/**
+ * 解析空亡信息（方案1适配版）
+ */
+function parseKongWangInfoAdapted(data: any): KongWangInfo {
+  if (!data) {
+    return {
+      yearKongWang: [0 as DiZhi, 0 as DiZhi],
+      monthKongWang: [0 as DiZhi, 0 as DiZhi],
+      dayKongWang: [0 as DiZhi, 0 as DiZhi],
+      hourKongWang: [0 as DiZhi, 0 as DiZhi],
+      yearIsKong: false,
+      monthIsKong: false,
+      dayIsKong: false,
+      hourIsKong: false,
+    };
+  }
+
+  const parseKongWangPair = (pair: any): [DiZhi, DiZhi] => {
+    if (Array.isArray(pair) && pair.length >= 2) {
+      return [parseEnumValue(pair[0]) as DiZhi, parseEnumValue(pair[1]) as DiZhi];
+    }
+    return [0 as DiZhi, 0 as DiZhi];
+  };
+
+  return {
+    yearKongWang: parseKongWangPair(data.yearKongwang),
+    monthKongWang: parseKongWangPair(data.monthKongwang),
+    dayKongWang: parseKongWangPair(data.dayKongwang),
+    hourKongWang: parseKongWangPair(data.hourKongwang),
+    yearIsKong: data.yearIsKong ?? false,
+    monthIsKong: data.monthIsKong ?? false,
+    dayIsKong: data.dayIsKong ?? false,
+    hourIsKong: data.hourIsKong ?? false,
+  };
+}
+
+/**
+ * 解析星运信息（方案1适配版）
+ */
+function parseXingYunInfoAdapted(data: any): XingYunInfo {
+  if (!data) {
+    return {
+      yearChangSheng: 0 as ShiErChangSheng,
+      monthChangSheng: 0 as ShiErChangSheng,
+      dayChangSheng: 0 as ShiErChangSheng,
+      hourChangSheng: 0 as ShiErChangSheng,
+    };
+  }
+
+  return {
+    yearChangSheng: parseEnumValue(data.yearChangsheng) as ShiErChangSheng,
+    monthChangSheng: parseEnumValue(data.monthChangsheng) as ShiErChangSheng,
+    dayChangSheng: parseEnumValue(data.dayChangsheng) as ShiErChangSheng,
+    hourChangSheng: parseEnumValue(data.hourChangsheng) as ShiErChangSheng,
+  };
+}
+
+/**
+ * 解析神煞列表（方案1适配版）
+ */
+function parseShenShaListAdapted(data: any[]): ShenShaEntryV5[] {
+  console.log('[parseShenShaListAdapted] 原始神煞数据:', JSON.stringify(data));
+  return data.map((item: any, index: number) => {
+    const parsed = {
+      shenSha: parseEnumValue(item.shenSha || item.shensha) as ShenSha,
+      position: parseEnumValue(item.position) as SiZhuPosition,
+      nature: parseEnumValue(item.nature) as ShenShaNature,
+    };
+    console.log(`[parseShenShaListAdapted] 第${index}个神煞解析:`, {
+      原始: { shenSha: item.shenSha || item.shensha, position: item.position, nature: item.nature },
+      解析后: parsed,
+    });
+    return parsed;
+  });
+}
+
+/**
+ * 解析自坐信息（方案1适配版）
+ */
+function parseZiZuoInfoAdapted(data: any): ZiZuoInfo {
+  if (!data) {
+    return {
+      diZhi: 0 as DiZhi,
+      benQiShiShen: 0 as ShiShen,
+      cangGanShiShenList: [],
+    };
+  }
+
+  return {
+    diZhi: parseEnumValue(data.dizhi) as DiZhi,
+    benQiShiShen: parseEnumValue(data.benqiShishen) as ShiShen,
+    cangGanShiShenList: (data.cangganShishenList || []).map((s: any) => parseEnumValue(s) as ShiShen),
+  };
+}
+
+/**
+ * 解析完整命盘 V5 数据（旧版，保留用于向后兼容）
+ *
+ * @param data Runtime API 返回的原始数据
+ * @returns 解析后的完整命盘数据
+ */
+function parseFullBaziChartV5(data: any): FullBaziChartV5 | null {
+  try {
+    const jsonData = data.toJSON();
+    console.log('[BaziChainService] V5 JSON 数据:', JSON.stringify(jsonData));
+
+    // 解析出生时间
+    const birthTime = {
+      year: jsonData.birthTime?.year ?? 0,
+      month: jsonData.birthTime?.month ?? 0,
+      day: jsonData.birthTime?.day ?? 0,
+      hour: jsonData.birthTime?.hour ?? 0,
+      minute: jsonData.birthTime?.minute ?? 0,
+    };
+
+    // 解析性别
+    const genderValue = parseEnumValue(jsonData.gender);
+
+    // 解析增强四柱
+    const siZhu = parseEnhancedSiZhu(jsonData.sizhu);
+
+    // 解析大运信息
+    const daYun = parseDaYunInfoV5(jsonData.dayun);
+
+    // 解析空亡信息
+    const kongWang = parseKongWangInfo(jsonData.kongwang);
+
+    // 解析星运信息
+    const xingYun = parseXingYunInfo(jsonData.xingyun);
+
+    // 解析神煞列表
+    console.log('[parseFullBaziChartV5] shenshaList 原始数据:', jsonData.shenshaList);
+    const shenShaList = parseShenShaList(jsonData.shenshaList || []);
+
+    // 解析五行强度
+    const wuXingStrength = parseWuXingStrength(jsonData.wuxingStrength);
+
+    // 解析自坐信息 ⭐ 新增
+    const ziZuo = parseZiZuoInfo(jsonData.ziZuo);
+
+    // 解析喜用神
+    const xiYongShen = jsonData.xiyongShen !== null ? parseEnumValue(jsonData.xiyongShen) as WuXing : null;
+
+    // 解析 owner 地址
+    const ownerBytes = jsonData.owner;
+    let owner = '';
+    if (Array.isArray(ownerBytes)) {
+      // 将字节数组转换为 hex 字符串
+      owner = '0x' + ownerBytes.map((b: number) => b.toString(16).padStart(2, '0')).join('');
+    } else if (typeof ownerBytes === 'string') {
+      owner = ownerBytes;
+    }
+
+    return {
+      chartId: jsonData.chartId ?? 0,
+      owner,
+      birthTime,
+      gender: genderValue as Gender,
+      ziShiMode: jsonData.zishiMode ?? 1,
+      siZhu,
+      daYun,
+      kongWang,
+      shenShaList,
+      xingYun,
+      ziZuo,  // ⭐ 新增自坐字段
+      wuXingStrength,
+      xiYongShen,
+      timestamp: jsonData.timestamp ?? 0,
+    };
+  } catch (error) {
+    console.error('[BaziChainService] 解析完整命盘 V5 失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析枚举值（支持数字索引、对象格式和字符串格式）
+ *
+ * 支持的枚举类型：
+ * - 五行 (WuXing): Jin/Mu/Shui/Huo/Tu
+ * - 性别 (Gender): Male/Female/Man/Woman
+ * - 十二长生 (ShiErChangSheng): ChangSheng/MuYu/GuanDai/LinGuan/DiWang/Shuai/Bing/Si/Mu/Jue/Tai/Yang
+ * - 十神 (ShiShen): BiJian/JieCai/ShiShen/ShangGuan/ZhengCai/PianCai/ZhengGuan/QiSha/ZhengYin/PianYin
+ * - 神煞 (ShenSha): TianYiGuiRen/TaiJiGuiRen/...
+ * - 四柱位置 (SiZhuPosition): Year/Month/Day/Hour
+ * - 神煞吉凶 (ShenShaNature): JiShen/XiongShen/Neutral
+ *
+ * **调试支持（方案1实现）**:
+ * 当链端返回枚举变体名称字符串时,自动解析为对应的索引值
+ * 这样既保持存储高效,又方便开发调试(console可以看到可读的枚举名)
+ */
+function parseEnumValue(value: any): number {
+  // ⚠️ 调试模式: 如果是 null/undefined,默认返回 0 可能导致误解,改为返回 -1 并打印警告
+  if (value === null || value === undefined) {
+    console.warn('[parseEnumValue] 接收到 null/undefined,默认返回 0。请检查链端数据是否正确!', new Error().stack);
+    return 0;
+  }
+  if (typeof value === 'number') return value;
+
+  // 通用枚举名称到索引的映射表
+  const enumNameToIndex: Record<string, number> = {
+    // 五行映射 (WuXing)
+    'Jin': 3, 'Mu': 0, 'Shui': 4, 'Huo': 1, 'Tu': 2,
+    // 性别映射 (Gender)
+    'Male': 0, 'Female': 1, 'Man': 0, 'Woman': 1,
+    // 十二长生映射 (ShiErChangSheng) ⭐ 核心修复
+    'ChangSheng': 0, // 长生
+    'MuYu': 1,       // 沐浴
+    'GuanDai': 2,    // 冠带
+    'LinGuan': 3,    // 临官
+    'DiWang': 4,     // 帝旺
+    'Shuai': 5,      // 衰
+    'Bing': 6,       // 病
+    'Si': 7,         // 死
+    'Mu': 8,         // 墓（注意：与五行的 Mu 木重复，但上下文不同）
+    'Jue': 9,        // 绝
+    'Tai': 10,       // 胎
+    'Yang': 11,      // 养
+    // 十神映射 (ShiShen)
+    'BiJian': 0,     // 比肩
+    'JieCai': 1,     // 劫财
+    'ShiShen': 2,    // 食神
+    'ShangGuan': 3,  // 伤官
+    'ZhengCai': 4,   // 正财
+    'PianCai': 5,    // 偏财
+    'ZhengGuan': 6,  // 正官
+    'QiSha': 7,      // 七杀
+    'ZhengYin': 8,   // 正印
+    'PianYin': 9,    // 偏印
+    // 神煞映射 (ShenSha)
+    'TianYiGuiRen': 0,   // 天乙贵人
+    'TaiJiGuiRen': 1,    // 太极贵人
+    'TianDeGuiRen': 2,   // 天德贵人
+    'YueDeGuiRen': 3,    // 月德贵人
+    'TianDeHe': 4,       // 天德合
+    'YueDeHe': 5,        // 月德合
+    'WenChangGuiRen': 6, // 文昌贵人
+    'FuXingGuiRen': 7,   // 福星贵人
+    'GuoYinGuiRen': 8,   // 国印贵人
+    'TaoHua': 9,         // 桃花
+    'HongLuan': 10,      // 红鸾
+    'TianXi': 11,        // 天喜
+    'GuChen': 12,        // 孤辰
+    'GuaSu': 13,         // 寡宿
+    'JinYu': 14,         // 金舆
+    'JiangXing': 15,     // 将星
+    'YiMa': 16,          // 驿马
+    'HuaGai': 17,        // 华盖
+    'TianChu': 18,       // 天厨
+    'YangRen': 19,       // 羊刃
+    'WangShen': 20,      // 亡神
+    'JieSha': 21,        // 劫煞
+    'XueRen': 22,        // 血刃
+    'YuanChen': 23,      // 元辰
+    'TianLuo': 24,       // 天罗
+    'DiWang2': 25,       // 地网（避免与帝旺冲突）
+    'TongZiSha': 26,     // 童子煞
+    'JiuChou': 27,       // 九丑
+    'KongWang': 28,      // 空亡
+    // 四柱位置映射 (SiZhuPosition)
+    'Year': 0,
+    'Month': 1,
+    'Day': 2,
+    'Hour': 3,
+    // 神煞吉凶映射 (ShenShaNature)
+    'JiShen': 0,     // 吉神
+    'XiongShen': 1,  // 凶神
+    'Neutral': 2,    // 中性
+    // 藏干类型映射 (CangGanType)
+    'ZhuQi': 0,      // 主气
+    'ZhongQi': 1,    // 中气
+    'YuQi': 2,       // 余气
+  };
+
+  // 处理对象格式 { "EnumName": null }
+  if (typeof value === 'object' && value !== null) {
+    const key = Object.keys(value)[0];
+    return enumNameToIndex[key] ?? 0;
+  }
+
+  // 处理字符串格式 "EnumName"
+  if (typeof value === 'string') {
+    return enumNameToIndex[value] ?? 0;
+  }
+
+  return 0;
+}
+
+/**
+ * 解析增强四柱
+ */
+function parseEnhancedSiZhu(data: any): EnhancedSiZhu {
+  return {
+    yearZhu: parseEnhancedZhu(data?.yearZhu),
+    monthZhu: parseEnhancedZhu(data?.monthZhu),
+    dayZhu: parseEnhancedZhu(data?.dayZhu),
+    hourZhu: parseEnhancedZhu(data?.hourZhu),
+    riZhu: parseEnumValue(data?.rizhu) as TianGan,
+  };
+}
+
+/**
+ * 解析增强单柱
+ */
+function parseEnhancedZhu(data: any): EnhancedZhu {
+  if (!data) {
+    return {
+      ganZhi: { tianGan: 0 as TianGan, diZhi: 0 as DiZhi },
+      tianGanShiShen: 0 as ShiShen,
+      diZhiBenQiShiShen: 0 as ShiShen,
+      cangGanList: [],
+      naYin: 0 as NaYinType,
+      changSheng: 0 as ShiErChangSheng,
+    };
+  }
+
+  // 解析干支
+  const ganZhi = {
+    tianGan: parseEnumValue(data.ganzhi?.gan) as TianGan,
+    diZhi: parseEnumValue(data.ganzhi?.zhi) as DiZhi,
+  };
+
+  // 解析藏干列表
+  const cangGanList: CangGanDetail[] = (data.cangganList || []).map((cg: any) => ({
+    gan: parseEnumValue(cg.gan) as TianGan,
+    shiShen: parseEnumValue(cg.shishen) as ShiShen,
+    cangGanType: parseEnumValue(cg.cangganType) as CangGanType,
+    weight: cg.weight ?? 0,
+  }));
+
+  return {
+    ganZhi,
+    tianGanShiShen: parseEnumValue(data.tianganShishen) as ShiShen,
+    diZhiBenQiShiShen: parseEnumValue(data.dizhiBenqiShishen) as ShiShen,
+    cangGanList,
+    naYin: parseEnumValue(data.nayin) as NaYinType,
+    changSheng: parseEnumValue(data.changsheng) as ShiErChangSheng,
+  };
+}
+
+/**
+ * 解析大运信息 V5
+ */
+function parseDaYunInfoV5(data: any): DaYunInfoV5 {
+  if (!data) {
+    return {
+      qiYunAge: 0,
+      qiYunYear: 0,
+      isShun: true,
+      daYunList: [],
+    };
+  }
+
+  const daYunList: DaYunStepV5[] = (data.dayunList || []).map((step: any) => ({
+    ganZhi: {
+      tianGan: parseEnumValue(step.ganzhi?.gan) as TianGan,
+      diZhi: parseEnumValue(step.ganzhi?.zhi) as DiZhi,
+    },
+    startAge: step.startAge ?? 0,
+    endAge: step.endAge ?? 0,
+    startYear: step.startYear ?? 0,
+    endYear: step.endYear ?? 0,
+    tianGanShiShen: parseEnumValue(step.tianganShishen) as ShiShen,
+    cangGanShiShen: (step.cangganShishen || []).map((s: any) => parseEnumValue(s) as ShiShen),
+  }));
+
+  return {
+    qiYunAge: data.qiyunAge ?? 0,
+    qiYunYear: data.qiyunYear ?? 0,
+    isShun: data.isShun ?? true,
+    daYunList,
+  };
+}
+
+/**
+ * 解析空亡信息
+ */
+function parseKongWangInfo(data: any): KongWangInfo {
+  if (!data) {
+    return {
+      yearKongWang: [0 as DiZhi, 0 as DiZhi],
+      monthKongWang: [0 as DiZhi, 0 as DiZhi],
+      dayKongWang: [0 as DiZhi, 0 as DiZhi],
+      hourKongWang: [0 as DiZhi, 0 as DiZhi],
+      yearIsKong: false,
+      monthIsKong: false,
+      dayIsKong: false,
+      hourIsKong: false,
+    };
+  }
+
+  const parseKongWangPair = (pair: any): [DiZhi, DiZhi] => {
+    if (Array.isArray(pair) && pair.length >= 2) {
+      return [parseEnumValue(pair[0]) as DiZhi, parseEnumValue(pair[1]) as DiZhi];
+    }
+    return [0 as DiZhi, 0 as DiZhi];
+  };
+
+  return {
+    yearKongWang: parseKongWangPair(data.yearKongwang),
+    monthKongWang: parseKongWangPair(data.monthKongwang),
+    dayKongWang: parseKongWangPair(data.dayKongwang),
+    hourKongWang: parseKongWangPair(data.hourKongwang),
+    yearIsKong: data.yearIsKong ?? false,
+    monthIsKong: data.monthIsKong ?? false,
+    dayIsKong: data.dayIsKong ?? false,
+    hourIsKong: data.hourIsKong ?? false,
+  };
+}
+
+/**
+ * 解析星运信息
+ */
+function parseXingYunInfo(data: any): XingYunInfo {
+  if (!data) {
+    return {
+      yearChangSheng: 0 as ShiErChangSheng,
+      monthChangSheng: 0 as ShiErChangSheng,
+      dayChangSheng: 0 as ShiErChangSheng,
+      hourChangSheng: 0 as ShiErChangSheng,
+    };
+  }
+
+  return {
+    yearChangSheng: parseEnumValue(data.yearChangsheng) as ShiErChangSheng,
+    monthChangSheng: parseEnumValue(data.monthChangsheng) as ShiErChangSheng,
+    dayChangSheng: parseEnumValue(data.dayChangsheng) as ShiErChangSheng,
+    hourChangSheng: parseEnumValue(data.hourChangsheng) as ShiErChangSheng,
+  };
+}
+
+/**
+ * 解析神煞列表
+ */
+function parseShenShaList(data: any[]): ShenShaEntryV5[] {
+  console.log('[parseShenShaList] 原始神煞数据:', JSON.stringify(data));
+  return data.map((item: any, index: number) => {
+    const parsed = {
+      shenSha: parseEnumValue(item.shensha) as ShenSha,
+      position: parseEnumValue(item.position) as SiZhuPosition,
+      nature: parseEnumValue(item.nature) as ShenShaNature,
+    };
+    console.log(`[parseShenShaList] 第${index}个神煞解析:`, {
+      原始: { shensha: item.shensha, position: item.position, nature: item.nature },
+      解析后: parsed,
+    });
+    return parsed;
+  });
+}
+
+/**
+ * 解析五行强度
+ */
+function parseWuXingStrength(data: any): WuXingStrength {
+  if (!data) {
+    return { jin: 0, mu: 0, shui: 0, huo: 0, tu: 0 };
+  }
+
+  return {
+    jin: data.jin ?? 0,
+    mu: data.mu ?? 0,
+    shui: data.shui ?? 0,
+    huo: data.huo ?? 0,
+    tu: data.tu ?? 0,
+  };
+}
+
+/**
+ * 解析自坐信息
+ */
+function parseZiZuoInfo(data: any): ZiZuoInfo {
+  if (!data) {
+    return {
+      diZhi: 0 as DiZhi,
+      benQiShiShen: 0 as ShiShen,
+      cangGanShiShenList: [],
+    };
+  }
+
+  return {
+    diZhi: parseEnumValue(data.dizhi) as DiZhi,
+    benQiShiShen: parseEnumValue(data.benqiShishen) as ShiShen,
+    cangGanShiShenList: (data.cangganShishenList || []).map((s: any) => parseEnumValue(s) as ShiShen),
+  };
+}
+
+// ==================== V5 导出类型重新导出 ====================
+
+export type {
+  FullBaziChartV5,
+  EnhancedSiZhu,
+  EnhancedZhu,
+  DaYunInfoV5,
+  DaYunStepV5,
+  KongWangInfo,
+  XingYunInfo,
+  ShenShaEntryV5,
+  CangGanDetail,
+  ZiZuoInfo,  // ⭐ 新增
+};
+
+// ==================== V6 多方授权加密系统 ====================
+
+import {
+  AccessRole,
+  AccessScope,
+  ServiceProviderType,
+  publicKeyToChain,
+  encryptedDataToChain,
+  type MultiKeyEncryptedChartParams,
+  type EncryptedKeyEntry,
+} from './multiKeyEncryption';
+
+/**
+ * 服务提供者信息
+ */
+export interface ServiceProviderInfo {
+  /** 服务类型 */
+  providerType: ServiceProviderType;
+  /** X25519 公钥 (hex) */
+  publicKey: string;
+  /** 信誉分 (0-100) */
+  reputation: number;
+  /** 注册区块号 */
+  registeredAt: number;
+  /** 是否激活 */
+  isActive: boolean;
+}
+
+/**
+ * 多方授权加密命盘信息
+ */
+export interface MultiKeyChartInfo {
+  /** 所有者账户 */
+  owner: string;
+  /** 四柱索引 */
+  siZhuIndex: {
+    yearGan: number;
+    yearZhi: number;
+    monthGan: number;
+    monthZhi: number;
+    dayGan: number;
+    dayZhi: number;
+    hourGan: number;
+    hourZhi: number;
+  };
+  /** 性别 */
+  gender: 'Male' | 'Female';
+  /** 创建区块号 */
+  createdAt: number;
+  /** 授权数量 */
+  grantsCount: number;
+  /** 被授权账户列表 */
+  grantAccounts: string[];
+}
+
+// ==================== 密钥注册 ====================
+
+/**
+ * 注册用户加密公钥
+ *
+ * @param api Polkadot API 实例
+ * @param publicKey X25519 公钥 (hex, 32 bytes)
+ * @returns 交易对象
+ */
+export function registerEncryptionKey(
+  api: ApiPromise,
+  publicKey: string
+): SubmittableExtrinsic<'promise'> {
+  const publicKeyBytes = publicKeyToChain(publicKey);
+  return api.tx.baziChart.registerEncryptionKey(publicKeyBytes);
+}
+
+/**
+ * 查询用户加密公钥
+ *
+ * @param api Polkadot API 实例
+ * @param address 用户地址
+ * @returns 公钥 (hex) 或 null
+ */
+export async function getUserEncryptionKey(
+  api: ApiPromise,
+  address: string
+): Promise<string | null> {
+  try {
+    const result = await (api.call as any).baziChartApi.getUserEncryptionKey(address);
+    if (result.isSome) {
+      const keyBytes = result.unwrap();
+      return '0x' + Array.from(keyBytes as Uint8Array).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    return null;
+  } catch (error) {
+    console.error('获取用户加密公钥失败:', error);
+    return null;
+  }
+}
+
+// ==================== 服务提供者 ====================
+
+/**
+ * 注册为服务提供者
+ *
+ * @param api Polkadot API 实例
+ * @param providerType 服务类型
+ * @param publicKey X25519 公钥 (hex, 32 bytes)
+ * @returns 交易对象
+ */
+export function registerProvider(
+  api: ApiPromise,
+  providerType: ServiceProviderType,
+  publicKey: string
+): SubmittableExtrinsic<'promise'> {
+  const publicKeyBytes = publicKeyToChain(publicKey);
+  return api.tx.baziChart.registerProvider(providerType, publicKeyBytes);
+}
+
+/**
+ * 更新服务提供者公钥
+ *
+ * @param api Polkadot API 实例
+ * @param newPublicKey 新的 X25519 公钥 (hex, 32 bytes)
+ * @returns 交易对象
+ */
+export function updateProviderKey(
+  api: ApiPromise,
+  newPublicKey: string
+): SubmittableExtrinsic<'promise'> {
+  const publicKeyBytes = publicKeyToChain(newPublicKey);
+  return api.tx.baziChart.updateProviderKey(publicKeyBytes);
+}
+
+/**
+ * 设置服务提供者激活状态
+ *
+ * @param api Polkadot API 实例
+ * @param isActive 是否激活
+ * @returns 交易对象
+ */
+export function setProviderActive(
+  api: ApiPromise,
+  isActive: boolean
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.setProviderActive(isActive);
+}
+
+/**
+ * 注销服务提供者
+ *
+ * @param api Polkadot API 实例
+ * @returns 交易对象
+ */
+export function unregisterProvider(
+  api: ApiPromise
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.unregisterProvider();
+}
+
+/**
+ * 获取服务提供者信息
+ *
+ * @param api Polkadot API 实例
+ * @param address 服务提供者地址
+ * @returns 服务提供者信息或 null
+ */
+export async function getServiceProvider(
+  api: ApiPromise,
+  address: string
+): Promise<ServiceProviderInfo | null> {
+  try {
+    const result = await (api.call as any).baziChartApi.getServiceProvider(address);
+    if (result.isSome) {
+      const json = result.unwrap().toString();
+      const data = JSON.parse(json);
+      return {
+        providerType: ServiceProviderType[data.provider_type as keyof typeof ServiceProviderType] as unknown as ServiceProviderType,
+        publicKey: data.public_key,
+        reputation: data.reputation,
+        registeredAt: data.registered_at,
+        isActive: data.is_active,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('获取服务提供者信息失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取某类型的服务提供者列表
+ *
+ * @param api Polkadot API 实例
+ * @param providerType 服务类型
+ * @returns 服务提供者地址列表
+ */
+export async function getProvidersByType(
+  api: ApiPromise,
+  providerType: ServiceProviderType
+): Promise<string[]> {
+  try {
+    const result = await (api.call as any).baziChartApi.getProvidersByType(providerType);
+    return result.map((addr: any) => addr.toString());
+  } catch (error) {
+    console.error('获取服务提供者列表失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 获取被授权访问的命盘列表
+ *
+ * @param api Polkadot API 实例
+ * @param address 账户地址
+ * @returns 命盘 ID 列表
+ */
+export async function getProviderGrants(
+  api: ApiPromise,
+  address: string
+): Promise<number[]> {
+  try {
+    const result = await (api.call as any).baziChartApi.getProviderGrants(address);
+    return result.map((id: any) => id.toNumber());
+  } catch (error) {
+    console.error('获取授权命盘列表失败:', error);
+    return [];
+  }
+}
+
+// ==================== 多方授权加密命盘 ====================
+
+/**
+ * 创建多方授权加密命盘
+ *
+ * @param api Polkadot API 实例
+ * @param params 加密参数（由 prepareMultiKeyEncryptedChart 生成）
+ * @returns 交易对象
+ */
+export function createMultiKeyEncryptedChart(
+  api: ApiPromise,
+  params: MultiKeyEncryptedChartParams
+): SubmittableExtrinsic<'promise'> {
+  // 转换四柱索引
+  const siZhuIndex = {
+    year_gan: params.siZhuIndex.yearGan,
+    year_zhi: params.siZhuIndex.yearZhi,
+    month_gan: params.siZhuIndex.monthGan,
+    month_zhi: params.siZhuIndex.monthZhi,
+    day_gan: params.siZhuIndex.dayGan,
+    day_zhi: params.siZhuIndex.dayZhi,
+    hour_gan: params.siZhuIndex.hourGan,
+    hour_zhi: params.siZhuIndex.hourZhi,
+  };
+
+  // 转换性别
+  const gender = params.gender === 'Male' ? 0 : 1;
+
+  // 转换加密数据
+  const encryptedData = encryptedDataToChain(params.encryptedData);
+
+  // 转换数据哈希
+  const dataHash = Array.from(params.dataHash);
+
+  // 转换加密密钥条目
+  const encryptedKeys = params.encryptedKeys.map(entry => ({
+    account: entry.account,
+    encrypted_key: encryptedDataToChain(entry.encryptedKey),
+    role: entry.role,
+    scope: entry.scope,
+  }));
+
+  return api.tx.baziChart.createMultiKeyEncryptedChart(
+    siZhuIndex,
+    gender,
+    encryptedData,
+    dataHash,
+    encryptedKeys
+  );
+}
+
+/**
+ * 授权访问多方授权加密命盘
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @param grantee 被授权账户
+ * @param encryptedKey 用被授权方公钥加密的 DataKey
+ * @param role 授权角色
+ * @param scope 访问范围
+ * @param expiresAt 过期区块号（0=永久）
+ * @returns 交易对象
+ */
+export function grantChartAccess(
+  api: ApiPromise,
+  chartId: number,
+  grantee: string,
+  encryptedKey: Uint8Array,
+  role: AccessRole,
+  scope: AccessScope,
+  expiresAt: number = 0
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.grantChartAccess(
+    chartId,
+    grantee,
+    encryptedDataToChain(encryptedKey),
+    role,
+    scope,
+    expiresAt
+  );
+}
+
+/**
+ * 撤销单个账户的访问权限
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @param revokee 被撤销账户
+ * @returns 交易对象
+ */
+export function revokeChartAccess(
+  api: ApiPromise,
+  chartId: number,
+  revokee: string
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.revokeChartAccess(chartId, revokee);
+}
+
+/**
+ * 撤销所有授权（紧急情况）
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @returns 交易对象
+ */
+export function revokeAllChartAccess(
+  api: ApiPromise,
+  chartId: number
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.revokeAllChartAccess(chartId);
+}
+
+/**
+ * 删除多方授权加密命盘
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @returns 交易对象
+ */
+export function deleteMultiKeyEncryptedChart(
+  api: ApiPromise,
+  chartId: number
+): SubmittableExtrinsic<'promise'> {
+  return api.tx.baziChart.deleteMultiKeyEncryptedChart(chartId);
+}
+
+/**
+ * 获取多方授权加密命盘信息
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @returns 命盘信息或 null
+ */
+export async function getMultiKeyEncryptedChartInfo(
+  api: ApiPromise,
+  chartId: number
+): Promise<MultiKeyChartInfo | null> {
+  try {
+    const result = await (api.call as any).baziChartApi.getMultiKeyEncryptedChartInfo(chartId);
+    if (result.isSome) {
+      const json = result.unwrap().toString();
+      const data = JSON.parse(json);
+      return {
+        owner: data.owner,
+        siZhuIndex: {
+          yearGan: data.sizhu_index.year_gan,
+          yearZhi: data.sizhu_index.year_zhi,
+          monthGan: data.sizhu_index.month_gan,
+          monthZhi: data.sizhu_index.month_zhi,
+          dayGan: data.sizhu_index.day_gan,
+          dayZhi: data.sizhu_index.day_zhi,
+          hourGan: data.sizhu_index.hour_gan,
+          hourZhi: data.sizhu_index.hour_zhi,
+        },
+        gender: data.gender,
+        createdAt: data.created_at,
+        grantsCount: data.grants_count,
+        grantAccounts: data.grant_accounts,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('获取多方授权加密命盘信息失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取多方授权加密命盘的解盘
+ *
+ * @param api Polkadot API 实例
+ * @param chartId 命盘 ID
+ * @returns 解盘结果或 null
+ */
+export async function getMultiKeyEncryptedChartInterpretation(
+  api: ApiPromise,
+  chartId: number
+): Promise<BaziInterpretation | null> {
+  try {
+    const result = await (api.call as any).baziChartApi.getMultiKeyEncryptedChartInterpretation(chartId);
+    if (result.isSome) {
+      return parseInterpretation(result.unwrap());
+    }
+    return null;
+  } catch (error) {
+    console.error('获取多方授权加密命盘解盘失败:', error);
+    return null;
+  }
+}
+
+// 重新导出多方授权相关类型和工具
+export {
+  AccessRole,
+  AccessScope,
+  ServiceProviderType,
+  type EncryptedKeyEntry,
+  type MultiKeyEncryptedChartParams,
+} from './multiKeyEncryption';
+
+export {
+  generateX25519KeyPair,
+  generateDataKey,
+  savePrivateKey,
+  loadPrivateKey,
+  deletePrivateKey,
+  hasStoredKey,
+  prepareMultiKeyEncryptedChart,
+  decryptMultiKeyChart,
+  sealDataKey,
+  unsealDataKey,
+  bytesToHex,
+} from './multiKeyEncryption';

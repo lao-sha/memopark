@@ -44,6 +44,27 @@
   margin-bottom: 0;
 }
 
+/* ==================== form-row 布局样式 ==================== */
+
+.bazi-page .form-row {
+  display: flex;
+  align-items: center;
+}
+
+.bazi-page .form-label {
+  color: #8B6914;
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 65px !important;
+  text-align: right;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.bazi-page .form-content {
+  flex: 1;
+}
+
 .bazi-page .input-tips {
   background: #FFF9F0;
   padding: 12px;
@@ -446,32 +467,98 @@
   box-shadow: none !important;
 }
 
-/* 性别按钮组样式 */
-.bazi-page .ant-radio-group {
-  display: flex;
-  width: 100%;
+/* 性别按钮组样式 - 直角 */
+.bazi-page .ant-radio-button-wrapper {
+  border-color: #d9d9d9 !important;
+  color: #666 !important;
+  background: #fff !important;
+  border-radius: 0 !important;
 }
 
-.bazi-page .ant-radio-button-wrapper {
-  flex: 1;
-  text-align: center;
-  height: 40px;
-  line-height: 38px;
+.bazi-page .ant-radio-button-wrapper:first-child {
+  border-radius: 0 !important;
+}
+
+.bazi-page .ant-radio-button-wrapper:last-child {
+  border-radius: 0 !important;
+}
+
+.bazi-page .ant-radio-button-wrapper:hover {
+  color: #B2955D !important;
 }
 
 .bazi-page .ant-radio-button-wrapper-checked {
-  background: #B2955D;
+  background: #B2955D !important;
   border-color: #B2955D !important;
-  color: #FFFFFF;
+  color: #fff !important;
 }
 
 .bazi-page .ant-radio-button-wrapper-checked:hover {
-  background: #B2955D;
-  border-color: #B2955D !important;
-  color: #FFFFFF;
+  background: #9a7f4d !important;
+  border-color: #9a7f4d !important;
+  color: #fff !important;
 }
 
-/* 开始排盘按钮特殊样式 */
+.bazi-page .ant-radio-button-wrapper-checked::before {
+  background-color: #B2955D !important;
+}
+
+/* 所有输入框直角 */
+.bazi-page .ant-input,
+.bazi-page .ant-input-number,
+.bazi-page .ant-input-number-input,
+.bazi-page .ant-select-selector,
+.bazi-page .ant-picker {
+  border-radius: 0 !important;
+}
+
+/* Input 输入框白色背景 + 直角 + 边框 */
+.bazi-page .ant-input {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+  padding: 4px 8px !important;
+}
+
+/* Select 选择框白色背景 + 直角 + 边框 */
+.bazi-page .ant-select-selector {
+  background-color: #FFFFFF !important;
+  border: 1px solid #d9d9d9 !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+}
+
+.bazi-page .ant-select-single .ant-select-selector {
+  height: 32px !important;
+  padding: 0 8px !important;
+  border-radius: 0 !important;
+}
+
+.bazi-page .ant-select-single .ant-select-selection-item,
+.bazi-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 30px !important;
+}
+
+.bazi-page .ant-input:hover,
+.bazi-page .ant-select-selector:hover {
+  border-color: #B2955D !important;
+}
+
+.bazi-page .ant-input:focus,
+.bazi-page .ant-select-focused .ant-select-selector {
+  border-color: #B2955D !important;
+  box-shadow: 0 0 0 2px rgba(178, 149, 93, 0.2) !important;
+}
+
+/* 所有按钮直角 */
+.bazi-page .ant-btn {
+  border-radius: 0 !important;
+}
+
+/* 开始排盘按钮特殊样式 - 直角 */
 .bazi-page .ant-btn-primary {
   background: #000000 !important;
   border-color: #000000 !important;

@@ -3942,6 +3942,32 @@ impl pallet_bazi_chart::Config for Runtime {
 
 // ========= 🆕 2025-11-29 梅花易数系统（区块链占卜）=========
 
+/// 函数级详细中文注释：统一隐私授权模块 (Divination Privacy Pallet) 配置
+///
+/// ### 功能定位
+/// - 为所有占卜系统提供统一的加密存储和多方授权功能
+/// - 密钥管理、服务提供者管理、加密数据存储、授权管理
+///
+/// ### 配置参数
+/// - **MaxEncryptedDataLen**: 加密数据最大长度（64KB）
+/// - **MaxEncryptedKeyLen**: 加密密钥最大长度（512 bytes）
+/// - **MaxGranteesPerRecord**: 单条记录最大授权数（50）
+/// - **MaxRecordsPerUser**: 用户最大记录数（1000）
+/// - **MaxProvidersPerType**: 服务提供者最大数量（1000）
+/// - **MaxGrantsPerProvider**: 提供者最大被授权记录数（5000）
+/// - **MaxAuthorizationsPerBounty**: 单个悬赏最大授权数（100）
+impl pallet_divination_privacy::Config for Runtime {
+	type MaxEncryptedDataLen = frame_support::traits::ConstU32<{ 64 * 1024 }>;
+	type MaxEncryptedKeyLen = frame_support::traits::ConstU32<512>;
+	type MaxGranteesPerRecord = frame_support::traits::ConstU32<50>;
+	type MaxRecordsPerUser = frame_support::traits::ConstU32<1000>;
+	type MaxProvidersPerType = frame_support::traits::ConstU32<1000>;
+	type MaxGrantsPerProvider = frame_support::traits::ConstU32<5000>;
+	type MaxAuthorizationsPerBounty = frame_support::traits::ConstU32<100>;
+	type EventHandler = ();
+	type WeightInfo = ();
+}
+
 /// 函数级详细中文注释：梅花易数排盘 Pallet 配置
 ///
 /// ### 功能定位
@@ -4354,6 +4380,29 @@ impl pallet_divination_market::Config for Runtime {
     type MaxFollowUpsPerOrder = frame_support::traits::ConstU32<5>;
     type PlatformAccount = TreasuryAccount;
     type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
+
+    // ==================== 举报系统配置 ====================
+
+    /// 最小举报押金：10 DUST
+    type MinReportDeposit = frame_support::traits::ConstU128<{ 10 * UNIT }>;
+
+    /// 举报处理超时：7天 = 100800 区块
+    type ReportTimeout = frame_support::traits::ConstU32<100800>;
+
+    /// 举报冷却期：24小时 = 14400 区块（同一用户对同一大师的举报间隔）
+    type ReportCooldownPeriod = frame_support::traits::ConstU32<14400>;
+
+    /// 撤回举报窗口期：2小时 = 1200 区块
+    type ReportWithdrawWindow = frame_support::traits::ConstU32<1200>;
+
+    /// 恶意举报信用扣分：50 分
+    type MaliciousReportPenalty = frame_support::traits::ConstU16<50>;
+
+    /// 举报审核委员会权限（仅管理员可审核）
+    type ReportReviewOrigin = frame_system::EnsureSigned<AccountId>;
+
+    /// 国库账户
+    type TreasuryAccount = TreasuryAccount;
 }
 
 // ========= 🆕 2025-11-30 塔罗牌排盘系统配置 =========

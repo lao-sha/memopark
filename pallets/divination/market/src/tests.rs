@@ -1990,3 +1990,585 @@ fn reward_distribution_validation() {
     };
     assert!(!invalid_dist.is_valid()); // 总和 11000 != 10000
 }
+
+// ==================== 举报系统测试 ====================
+
+/// 辅助函数：设置测试环境（提供者已注册）
+fn setup_provider_for_report(provider: u64) {
+    assert_ok!(DivinationMarket::register_provider(
+        RuntimeOrigin::signed(provider),
+        b"Provider".to_vec(),
+        b"Bio".to_vec(),
+        0b00000001,
+        0b00000001
+    ));
+}
+
+/// 测试提交举报
+#[test]
+fn submit_report_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let provider = 10u64;
+        let reporter_initial = Balances::free_balance(reporter);
+        let platform_initial = Balances::free_balance(999);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            provider,
+            ReportType::Abuse,  // 辱骂
+            b"QmEvidenceCid".to_vec(),
+            b"Provider was abusive".to_vec(),
+            None,  // related_order_id
+            None,  // related_bounty_id
+            None,  // related_answer_id
+            false  // not anonymous
+        ));
+
+        // 验证举报已创建
+        let report = DivinationMarket::reports(0).expect("Report should exist");
+        assert_eq!(report.reporter, reporter);
+        assert_eq!(report.provider, provider);
+        assert_eq!(report.report_type, ReportType::Abuse);
+        assert_eq!(report.status, ReportStatus::Pending);
+        assert!(!report.is_anonymous);
+
+        // 验证押金已扣除（Abuse 类型是 0.8x 倍率，1000 * 80 / 100 = 800）
+        let expected_deposit = 800u64;
+        assert_eq!(report.reporter_deposit, expected_deposit);
+        assert_eq!(Balances::free_balance(reporter), reporter_initial - expected_deposit);
+        assert_eq!(Balances::free_balance(999), platform_initial + expected_deposit);
+
+        // 验证索引已更新
+        let provider_reports = DivinationMarket::provider_reports(provider);
+        assert_eq!(provider_reports.len(), 1);
+        assert_eq!(provider_reports[0], 0);
+
+        let user_reports = DivinationMarket::user_reports(reporter);
+        assert_eq!(user_reports.len(), 1);
+
+        let pending = DivinationMarket::pending_reports();
+        assert_eq!(pending.len(), 1);
+
+        // 验证统计
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.total_reports, 1);
+        assert_eq!(stats.pending_reports, 1);
+
+        // 验证大师举报档案
+        let profile = DivinationMarket::provider_report_profiles(provider);
+        assert_eq!(profile.total_reported, 1);
+    });
+}
+
+/// 测试不能举报自己
+#[test]
+fn submit_report_cannot_report_self() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        assert_noop!(
+            DivinationMarket::submit_report(
+                RuntimeOrigin::signed(10),  // 提供者举报自己
+                10,
+                ReportType::Abuse,
+                b"Evidence".to_vec(),
+                b"Description".to_vec(),
+                None,
+                None,
+                None,
+                false
+            ),
+            Error::<Test>::CannotReportSelf
+        );
+    });
+}
+
+/// 测试举报不存在的大师失败
+#[test]
+fn submit_report_provider_not_found() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            DivinationMarket::submit_report(
+                RuntimeOrigin::signed(1),
+                99,  // 不存在的提供者
+                ReportType::Abuse,
+                b"Evidence".to_vec(),
+                b"Description".to_vec(),
+                None,
+                None,
+                None,
+                false
+            ),
+            Error::<Test>::ProviderNotFound
+        );
+    });
+}
+
+/// 测试举报冷却期
+#[test]
+fn submit_report_cooldown_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        // 第一次举报成功
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence1".to_vec(),
+            b"Description1".to_vec(),
+            None,
+            None,
+            None,
+            false
+        ));
+
+        // 立即第二次举报失败（冷却期中）
+        assert_noop!(
+            DivinationMarket::submit_report(
+                RuntimeOrigin::signed(1),
+                10,
+                ReportType::Fraud,
+                b"Evidence2".to_vec(),
+                b"Description2".to_vec(),
+                None,
+                None,
+                None,
+                false
+            ),
+            Error::<Test>::ReportCooldownActive
+        );
+
+        // 推进区块超过冷却期（100 区块）
+        System::set_block_number(102);
+
+        // 冷却期后可以再次举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Fraud,
+            b"Evidence2".to_vec(),
+            b"Description2".to_vec(),
+            None,
+            None,
+            None,
+            false
+        ));
+    });
+}
+
+/// 测试不同举报类型的押金计算
+#[test]
+fn report_deposit_calculation() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+        setup_provider_for_report(11);
+
+        // Abuse (0.8x): 1000 * 80 / 100 = 800
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.reporter_deposit, 800);
+
+        // Other (2x): 1000 * 200 / 100 = 2000
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(2),
+            11,
+            ReportType::Other,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+        let report = DivinationMarket::reports(1).unwrap();
+        assert_eq!(report.reporter_deposit, 2000);
+    });
+}
+
+/// 测试撤回举报
+#[test]
+fn withdraw_report_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let reporter_initial = Balances::free_balance(reporter);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        let deposit = 800u64;  // Abuse 类型押金
+        assert_eq!(Balances::free_balance(reporter), reporter_initial - deposit);
+
+        // 撤回举报（在窗口期内）
+        assert_ok!(DivinationMarket::withdraw_report(
+            RuntimeOrigin::signed(reporter),
+            0
+        ));
+
+        // 验证状态更新
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.status, ReportStatus::Withdrawn);
+
+        // 验证 80% 押金退还
+        let refund = deposit * 80 / 100;  // 640
+        assert_eq!(Balances::free_balance(reporter), reporter_initial - deposit + refund);
+
+        // 验证从待处理队列移除
+        let pending = DivinationMarket::pending_reports();
+        assert_eq!(pending.len(), 0);
+
+        // 验证统计更新
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.pending_reports, 0);
+    });
+}
+
+/// 测试撤回窗口过期后不能撤回
+#[test]
+fn withdraw_report_window_expired() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        // 推进区块超过撤回窗口（50 区块）
+        System::set_block_number(52);
+
+        // 撤回失败
+        assert_noop!(
+            DivinationMarket::withdraw_report(RuntimeOrigin::signed(1), 0),
+            Error::<Test>::WithdrawWindowExpired
+        );
+    });
+}
+
+/// 测试非举报者不能撤回
+#[test]
+fn withdraw_report_not_reporter() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        // 他人尝试撤回
+        assert_noop!(
+            DivinationMarket::withdraw_report(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::NotReporter
+        );
+    });
+}
+
+/// 测试审核举报成立
+#[test]
+fn resolve_report_upheld_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let provider = 10u64;
+        let reporter_initial = Balances::free_balance(reporter);
+        let treasury_initial = Balances::free_balance(888);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            provider,
+            ReportType::FalseAdvertising,  // 虚假宣传，30% 罚金
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        let report = DivinationMarket::reports(0).unwrap();
+        let reporter_deposit = report.reporter_deposit;  // 1200 (1.2x)
+
+        // Root 权限审核举报成立
+        assert_ok!(DivinationMarket::resolve_report(
+            RuntimeOrigin::root(),
+            0,
+            ReportStatus::Upheld,
+            Some(b"QmResolutionCid".to_vec()),
+            None  // 使用默认惩罚比例
+        ));
+
+        // 验证状态
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.status, ReportStatus::Upheld);
+        assert!(report.resolved_at.is_some());
+        assert!(report.resolution_cid.is_some());
+
+        // 计算惩罚金额
+        // 大师押金 10000，虚假宣传罚金比例 30%
+        let provider_deposit = 10000u64;
+        let penalty_rate = 3000u16;  // 30%
+        let penalty_amount = provider_deposit * penalty_rate as u64 / 10000;  // 3000
+
+        // 举报者奖励 30% of 罚金
+        let reward_rate = 3000u16;  // 30%
+        let reporter_reward = penalty_amount * reward_rate as u64 / 10000;  // 900
+
+        // 验证举报者收到奖励 + 退还押金
+        let expected_reporter_balance = reporter_initial - reporter_deposit + reporter_reward + reporter_deposit;
+        assert_eq!(Balances::free_balance(reporter), expected_reporter_balance);
+
+        // 验证国库收到剩余罚金
+        let treasury_income = penalty_amount - reporter_reward;  // 2100
+        assert_eq!(Balances::free_balance(888), treasury_initial + treasury_income);
+
+        // 验证统计
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.upheld_reports, 1);
+        assert_eq!(stats.pending_reports, 0);
+
+        // 验证大师举报档案
+        let profile = DivinationMarket::provider_report_profiles(provider);
+        assert_eq!(profile.upheld_count, 1);
+    });
+}
+
+/// 测试审核举报驳回
+#[test]
+fn resolve_report_rejected_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let reporter_initial = Balances::free_balance(reporter);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        let report = DivinationMarket::reports(0).unwrap();
+        let _reporter_deposit = report.reporter_deposit;
+
+        // 审核驳回
+        assert_ok!(DivinationMarket::resolve_report(
+            RuntimeOrigin::root(),
+            0,
+            ReportStatus::Rejected,
+            None,
+            None
+        ));
+
+        // 验证状态
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.status, ReportStatus::Rejected);
+
+        // 验证全额退还押金
+        assert_eq!(Balances::free_balance(reporter), reporter_initial);
+
+        // 验证统计
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.rejected_reports, 1);
+    });
+}
+
+/// 测试审核恶意举报
+#[test]
+fn resolve_report_malicious_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let reporter_initial = Balances::free_balance(reporter);
+        let treasury_initial = Balances::free_balance(888);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            10,
+            ReportType::Abuse,
+            b"FakeEvidence".to_vec(),
+            b"Malicious report".to_vec(),
+            None, None, None, false
+        ));
+
+        let report = DivinationMarket::reports(0).unwrap();
+        let reporter_deposit = report.reporter_deposit;  // 800
+
+        // 审核为恶意举报
+        assert_ok!(DivinationMarket::resolve_report(
+            RuntimeOrigin::root(),
+            0,
+            ReportStatus::Malicious,
+            None,
+            None
+        ));
+
+        // 验证状态
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.status, ReportStatus::Malicious);
+
+        // 验证押金被没收到国库
+        assert_eq!(Balances::free_balance(reporter), reporter_initial - reporter_deposit);
+        assert_eq!(Balances::free_balance(888), treasury_initial + reporter_deposit);
+
+        // 验证统计
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.malicious_reports, 1);
+        assert_eq!(stats.total_confiscated_deposits, reporter_deposit);
+    });
+}
+
+/// 测试举报过期处理
+#[test]
+fn expire_report_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        let reporter = 1u64;
+        let reporter_initial = Balances::free_balance(reporter);
+
+        // 提交举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(reporter),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        let report = DivinationMarket::reports(0).unwrap();
+        let _reporter_deposit = report.reporter_deposit;
+
+        // 推进区块超过超时时间（2000 区块）
+        System::set_block_number(2002);
+
+        // 任何人可调用过期处理
+        assert_ok!(DivinationMarket::expire_report(
+            RuntimeOrigin::signed(99),
+            0
+        ));
+
+        // 验证状态
+        let report = DivinationMarket::reports(0).unwrap();
+        assert_eq!(report.status, ReportStatus::Expired);
+
+        // 验证全额退还押金给举报者
+        assert_eq!(Balances::free_balance(reporter), reporter_initial);
+
+        // 验证统计
+        let stats = DivinationMarket::report_stats();
+        assert_eq!(stats.pending_reports, 0);
+    });
+}
+
+/// 测试举报未过期不能调用过期处理
+#[test]
+fn expire_report_not_expired() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None, false
+        ));
+
+        // 时间未超过超时
+        System::set_block_number(100);
+
+        assert_noop!(
+            DivinationMarket::expire_report(RuntimeOrigin::signed(99), 0),
+            Error::<Test>::ReportNotExpired
+        );
+    });
+}
+
+/// 测试匿名举报
+#[test]
+fn anonymous_report_works() {
+    new_test_ext().execute_with(|| {
+        setup_provider_for_report(10);
+
+        // 提交匿名举报
+        assert_ok!(DivinationMarket::submit_report(
+            RuntimeOrigin::signed(1),
+            10,
+            ReportType::Abuse,
+            b"Evidence".to_vec(),
+            b"Description".to_vec(),
+            None, None, None,
+            true  // anonymous
+        ));
+
+        let report = DivinationMarket::reports(0).unwrap();
+        assert!(report.is_anonymous);
+        // 注意：即使是匿名举报，reporter 字段仍然存储（用于退还押金等）
+        // 但在事件中会显示为 None
+    });
+}
+
+/// 测试举报类型的永久封禁触发
+#[test]
+fn report_type_permanent_ban() {
+    // 验证哪些类型触发永久封禁
+    assert!(ReportType::Drugs.triggers_permanent_ban());
+    assert!(ReportType::Fraud.triggers_permanent_ban());
+    assert!(!ReportType::Abuse.triggers_permanent_ban());
+    assert!(!ReportType::FalseAdvertising.triggers_permanent_ban());
+}
+
+/// 测试举报类型的配置参数
+#[test]
+fn report_type_configurations() {
+    // 测试押金倍率
+    assert_eq!(ReportType::Abuse.deposit_multiplier(), 80);  // 0.8x
+    assert_eq!(ReportType::Fraud.deposit_multiplier(), 150); // 1.5x
+    assert_eq!(ReportType::Other.deposit_multiplier(), 200); // 2x
+
+    // 测试罚金比例
+    assert_eq!(ReportType::Drugs.provider_penalty_rate(), 10000);      // 100%
+    assert_eq!(ReportType::FalseAdvertising.provider_penalty_rate(), 3000); // 30%
+
+    // 测试奖励比例
+    assert_eq!(ReportType::Fraud.reporter_reward_rate(), 5000);  // 50%
+    assert_eq!(ReportType::Superstition.reporter_reward_rate(), 2000); // 20%
+
+    // 测试信用扣分
+    assert_eq!(ReportType::Drugs.credit_deduction(), 500);
+    assert_eq!(ReportType::Superstition.credit_deduction(), 50);
+}

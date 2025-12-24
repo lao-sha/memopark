@@ -1486,6 +1486,271 @@ pub struct GlobalCreditStats {
     pub weekly_violations: u32,
 }
 
+// ============================================================================
+// 举报系统类型定义
+// ============================================================================
+
+/// 举报类型
+///
+/// 定义用户可以举报大师的违规行为类型
+#[derive(
+    Clone,
+    Copy,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    TypeInfo,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+    Debug,
+)]
+pub enum ReportType {
+    /// 黄色/色情内容
+    Pornography = 0,
+    /// 赌博相关
+    Gambling = 1,
+    /// 毒品/违禁品
+    Drugs = 2,
+    /// 诈骗行为
+    Fraud = 3,
+    /// 虚假宣传/夸大资质
+    FalseAdvertising = 4,
+    /// 辱骂/人身攻击
+    Abuse = 5,
+    /// 泄露用户隐私
+    PrivacyBreach = 6,
+    /// 政治敏感内容
+    PoliticalContent = 7,
+    /// 封建迷信（过度恐吓）
+    Superstition = 8,
+    /// 其他违规
+    Other = 9,
+}
+
+impl ReportType {
+    /// 获取举报所需押金倍数（基于 MinReportDeposit，百分比）
+    ///
+    /// 不同类型的举报需要不同金额的押金，以防止恶意举报
+    pub fn deposit_multiplier(&self) -> u16 {
+        match self {
+            ReportType::Pornography => 100,      // 1x
+            ReportType::Gambling => 100,         // 1x
+            ReportType::Drugs => 100,            // 1x
+            ReportType::Fraud => 150,            // 1.5x（需要更多举证）
+            ReportType::FalseAdvertising => 120, // 1.2x
+            ReportType::Abuse => 80,             // 0.8x（易判断）
+            ReportType::PrivacyBreach => 150,    // 1.5x
+            ReportType::PoliticalContent => 100, // 1x
+            ReportType::Superstition => 80,      // 0.8x
+            ReportType::Other => 200,            // 2x（避免滥用）
+        }
+    }
+
+    /// 获取大师押金扣除比例（基点，10000 = 100%）
+    ///
+    /// 举报成立后，从大师押金中扣除的比例
+    pub fn provider_penalty_rate(&self) -> u16 {
+        match self {
+            ReportType::Pornography => 5000,      // 50%
+            ReportType::Gambling => 5000,         // 50%
+            ReportType::Drugs => 10000,           // 100%（永久封禁）
+            ReportType::Fraud => 8000,            // 80%
+            ReportType::FalseAdvertising => 3000, // 30%
+            ReportType::Abuse => 2000,            // 20%
+            ReportType::PrivacyBreach => 4000,    // 40%
+            ReportType::PoliticalContent => 5000, // 50%
+            ReportType::Superstition => 1500,     // 15%
+            ReportType::Other => 2000,            // 20%
+        }
+    }
+
+    /// 获取举报者奖励比例（占大师罚金的百分比，基点）
+    ///
+    /// 举报成立后，举报者可获得大师罚金的一部分作为奖励
+    pub fn reporter_reward_rate(&self) -> u16 {
+        match self {
+            ReportType::Pornography => 4000,      // 40%
+            ReportType::Gambling => 4000,         // 40%
+            ReportType::Drugs => 5000,            // 50%
+            ReportType::Fraud => 5000,            // 50%
+            ReportType::FalseAdvertising => 3000, // 30%
+            ReportType::Abuse => 3000,            // 30%
+            ReportType::PrivacyBreach => 4000,    // 40%
+            ReportType::PoliticalContent => 3000, // 30%
+            ReportType::Superstition => 2000,     // 20%
+            ReportType::Other => 2500,            // 25%
+        }
+    }
+
+    /// 获取信用扣分值
+    ///
+    /// 举报成立后，从大师信用分中扣除的分数
+    pub fn credit_deduction(&self) -> u16 {
+        match self {
+            ReportType::Pornography => 150,
+            ReportType::Gambling => 150,
+            ReportType::Drugs => 500,        // 直接封禁级别
+            ReportType::Fraud => 200,
+            ReportType::FalseAdvertising => 80,
+            ReportType::Abuse => 100,
+            ReportType::PrivacyBreach => 150,
+            ReportType::PoliticalContent => 120,
+            ReportType::Superstition => 50,
+            ReportType::Other => 50,
+        }
+    }
+
+    /// 是否触发永久封禁
+    ///
+    /// 某些严重违规会导致大师被永久封禁
+    pub fn triggers_permanent_ban(&self) -> bool {
+        matches!(self, ReportType::Drugs | ReportType::Fraud)
+    }
+}
+
+/// 举报状态
+///
+/// 记录举报的处理进度
+#[derive(
+    Clone,
+    Copy,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    TypeInfo,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+    Debug,
+    Default,
+)]
+pub enum ReportStatus {
+    /// 待审核
+    #[default]
+    Pending = 0,
+    /// 审核中（委员会已介入）
+    UnderReview = 1,
+    /// 举报成立
+    Upheld = 2,
+    /// 举报驳回（证据不足）
+    Rejected = 3,
+    /// 恶意举报（反向惩罚举报者）
+    Malicious = 4,
+    /// 已撤销（举报者主动撤回）
+    Withdrawn = 5,
+    /// 已过期（超时未处理）
+    Expired = 6,
+}
+
+/// 举报记录
+///
+/// 存储完整的举报信息，包括举报者、被举报者、证据、处理结果等
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
+#[scale_info(skip_type_params(MaxEvidenceLen, MaxReasonLen))]
+pub struct Report<AccountId, Balance, BlockNumber, MaxEvidenceLen: Get<u32>, MaxReasonLen: Get<u32>> {
+    /// 举报 ID
+    pub id: u64,
+    /// 举报者账户
+    pub reporter: AccountId,
+    /// 被举报的大师账户
+    pub provider: AccountId,
+    /// 举报类型
+    pub report_type: ReportType,
+    /// 证据 IPFS CID（截图、录音、聊天记录等）
+    pub evidence_cid: BoundedVec<u8, MaxEvidenceLen>,
+    /// 举报描述
+    pub description: BoundedVec<u8, MaxReasonLen>,
+    /// 关联的订单 ID（如有）
+    pub related_order_id: Option<u64>,
+    /// 关联的悬赏 ID（如有）
+    pub related_bounty_id: Option<u64>,
+    /// 关联的回答 ID（如有）
+    pub related_answer_id: Option<u64>,
+    /// 举报者缴纳的押金
+    pub reporter_deposit: Balance,
+    /// 当前状态
+    pub status: ReportStatus,
+    /// 创建时间
+    pub created_at: BlockNumber,
+    /// 处理时间
+    pub resolved_at: Option<BlockNumber>,
+    /// 处理结果说明 CID
+    pub resolution_cid: Option<BoundedVec<u8, MaxEvidenceLen>>,
+    /// 处理人（委员会成员）
+    pub resolved_by: Option<AccountId>,
+    /// 大师被扣除的押金金额
+    pub provider_penalty: Balance,
+    /// 举报者获得的奖励金额
+    pub reporter_reward: Balance,
+    /// 是否为匿名举报
+    pub is_anonymous: bool,
+}
+
+/// 举报统计
+///
+/// 全局举报系统统计数据
+#[derive(
+    Clone,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    TypeInfo,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+    Debug,
+    Default,
+)]
+pub struct ReportStats<Balance: Default> {
+    /// 总举报数
+    pub total_reports: u64,
+    /// 待处理举报数
+    pub pending_reports: u64,
+    /// 举报成立数
+    pub upheld_reports: u64,
+    /// 驳回举报数
+    pub rejected_reports: u64,
+    /// 恶意举报数
+    pub malicious_reports: u64,
+    /// 总罚没金额
+    pub total_penalties: Balance,
+    /// 总奖励发放金额
+    pub total_rewards: Balance,
+    /// 总没收的举报押金
+    pub total_confiscated_deposits: Balance,
+}
+
+/// 大师举报档案
+///
+/// 记录大师被举报的历史统计
+#[derive(
+    Clone,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    TypeInfo,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+    Debug,
+    Default,
+)]
+pub struct ProviderReportProfile<BlockNumber: Default> {
+    /// 被举报总次数
+    pub total_reported: u32,
+    /// 举报成立次数
+    pub upheld_count: u32,
+    /// 累计被扣押金（u128 避免溢出）
+    pub total_penalty_amount: u128,
+    /// 最近一次被举报时间
+    pub last_reported_at: BlockNumber,
+    /// 是否处于观察期
+    pub under_watch: bool,
+    /// 观察期结束时间
+    pub watch_period_end: Option<BlockNumber>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7628,6 +7628,7 @@ dependencies = [
  "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
  "frame-system 41.0.2",
  "libm",
+ "pallet-almanac",
  "pallet-divination-common",
  "parity-scale-codec",
  "scale-info",
@@ -7893,6 +7894,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-divination-privacy"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 41.0.1",
+ "frame-support 41.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "frame-system 41.0.2",
+ "log",
+ "pallet-balances 42.0.0",
+ "pallet-divination-common",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api 37.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-core 37.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-io 41.0.1 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-runtime 42.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+ "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=stable2506)",
+]
+
+[[package]]
 name = "pallet-dust-bridge"
 version = "0.1.0"
 dependencies = [
@@ -8146,6 +8167,8 @@ dependencies = [
  "log",
  "pallet-almanac",
  "pallet-balances 42.0.0",
+ "pallet-divination-common",
+ "pallet-divination-privacy",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -15056,6 +15079,7 @@ dependencies = [
  "pallet-divination-common",
  "pallet-divination-market",
  "pallet-divination-nft",
+ "pallet-divination-privacy",
  "pallet-dust-bridge",
  "pallet-dynamic-fee",
  "pallet-escrow",

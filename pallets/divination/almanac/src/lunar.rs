@@ -157,6 +157,85 @@ pub struct FourPillars {
 // 公历转农历
 // ============================================================================
 
+/// 农历转公历
+///
+/// # 参数
+/// - `lunar_year`: 农历年份 (1901-2100)
+/// - `lunar_month`: 农历月份 (1-12)
+/// - `lunar_day`: 农历日期 (1-30)
+/// - `is_leap_month`: 是否为闰月
+///
+/// # 返回
+/// 公历日期 (year, month, day)，如果输入无效则返回 None
+///
+/// # 示例
+/// ```ignore
+/// // 农历 2024年正月初一 转换为公历
+/// let (year, month, day) = lunar_to_solar(2024, 1, 1, false)?;
+/// // 结果: 2024年2月10日（春节）
+/// ```
+pub fn lunar_to_solar(
+    lunar_year: u16,
+    lunar_month: u8,
+    lunar_day: u8,
+    is_leap_month: bool,
+) -> Option<(u16, u8, u8)> {
+    // 验证年份范围
+    if lunar_year < LUNAR_START_YEAR || lunar_year > LUNAR_END_YEAR {
+        return None;
+    }
+
+    // 验证月份和日期
+    if lunar_month < 1 || lunar_month > 12 || lunar_day < 1 || lunar_day > 30 {
+        return None;
+    }
+
+    // 获取农历年信息
+    let info = get_lunar_info(lunar_year)?;
+    let leap_month = get_leap_month(info);
+
+    // 验证闰月有效性
+    if is_leap_month && (leap_month == 0 || leap_month != lunar_month) {
+        return None; // 该月不是闰月
+    }
+
+    // 计算从农历正月初一到目标日期的天数
+    let mut days_offset: i32 = 0;
+
+    // 累加之前月份的天数
+    for m in 1..lunar_month {
+        // 普通月份
+        days_offset += get_month_days(info, m) as i32;
+
+        // 检查是否有闰月在当前月之后
+        if leap_month > 0 && m == leap_month {
+            days_offset += get_leap_month_days(info) as i32;
+        }
+    }
+
+    // 如果目标是闰月，需要先加上该月的普通月份天数
+    if is_leap_month {
+        days_offset += get_month_days(info, lunar_month) as i32;
+    }
+
+    // 加上当月的天数（减1因为初一是第0天）
+    days_offset += (lunar_day - 1) as i32;
+
+    // 获取该年春节日期（农历正月初一对应的公历日期）
+    let (sf_month, sf_day) = get_spring_festival(lunar_year);
+
+    // 计算春节的儒略日
+    let sf_jd = julian_day(lunar_year, sf_month, sf_day);
+
+    // 目标日期的儒略日
+    let target_jd = sf_jd + days_offset;
+
+    // 转换为公历日期
+    let (year, month, day) = from_julian_day(target_jd);
+
+    Some((year, month, day))
+}
+
 /// 公历转农历
 ///
 /// # 参数
@@ -754,5 +833,43 @@ mod tests {
         };
         assert_eq!(lunar.month_name(), "正月");
         assert_eq!(lunar.day_name(), "初一");
+    }
+
+    #[test]
+    fn test_lunar_to_solar() {
+        // 测试农历转公历
+
+        // 2024年春节：农历正月初一 = 公历 2024年2月10日
+        let result = lunar_to_solar(2024, 1, 1, false);
+        assert!(result.is_some());
+        let (year, month, day) = result.unwrap();
+        assert_eq!(year, 2024);
+        assert_eq!(month, 2);
+        assert_eq!(day, 10);
+
+        // 测试无效输入
+        assert!(lunar_to_solar(1800, 1, 1, false).is_none()); // 年份超出范围
+        assert!(lunar_to_solar(2024, 13, 1, false).is_none()); // 月份无效
+        assert!(lunar_to_solar(2024, 1, 31, false).is_none()); // 日期无效
+
+        // 测试无效闰月
+        assert!(lunar_to_solar(2024, 1, 1, true).is_none()); // 正月不是闰月
+    }
+
+    #[test]
+    fn test_lunar_solar_roundtrip() {
+        // 测试公历→农历→公历往返转换
+        let original = (2024, 6, 15);
+        let lunar = solar_to_lunar(original.0, original.1, original.2);
+        assert!(lunar.is_some());
+
+        let l = lunar.unwrap();
+        let back = lunar_to_solar(l.year, l.month, l.day, l.is_leap);
+        assert!(back.is_some());
+
+        let (year, month, day) = back.unwrap();
+        assert_eq!(year, original.0);
+        assert_eq!(month, original.1);
+        assert_eq!(day, original.2);
     }
 }
