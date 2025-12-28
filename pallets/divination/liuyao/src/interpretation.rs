@@ -1347,13 +1347,21 @@ where
 {
     let mut result = LiuYaoCoreInterpretation::new(timestamp);
 
+    // 解包 Option 字段（使用默认值处理 Private 模式）
+    let original_yaos = gua.original_yaos.unwrap_or_default();
+    let changed_yaos = gua.changed_yaos.unwrap_or_default();
+    let day_gz = gua.day_gz.unwrap_or_default();
+    let month_gz = gua.month_gz.unwrap_or_default();
+    let gua_xu = gua.gua_xu.unwrap_or_default();
+    let moving_yaos = gua.moving_yaos.unwrap_or(0);
+
     // 1. 确定用神六亲
     result.yong_shen_qin = shi_xiang.default_yong_shen_qin();
 
     // 2. 查找用神位置
     let mut yong_shen_pos: u8 = 255;
     for i in 0..6 {
-        if gua.original_yaos[i].liu_qin == result.yong_shen_qin {
+        if original_yaos[i].liu_qin == result.yong_shen_qin {
             yong_shen_pos = i as u8;
             break;
         }
@@ -1361,7 +1369,7 @@ where
     result.yong_shen_pos = yong_shen_pos;
 
     // 3. 计算旬空
-    let (kong1, kong2) = calculate_xun_kong(gua.day_gz.0, gua.day_gz.1);
+    let (kong1, kong2) = calculate_xun_kong(day_gz.0, day_gz.1);
 
     // 4. 计算各爻状态
     let mut xun_kong_bitmap: u8 = 0;
@@ -1369,7 +1377,7 @@ where
     let mut ri_chong_bitmap: u8 = 0;
 
     for i in 0..6 {
-        let yao_zhi = gua.original_yaos[i].di_zhi;
+        let yao_zhi = original_yaos[i].di_zhi;
 
         // 检查旬空
         if is_zhi_kong(yao_zhi, kong1, kong2) {
@@ -1377,12 +1385,12 @@ where
         }
 
         // 检查月破
-        if is_zhi_yue_po(yao_zhi, gua.month_gz.1) {
+        if is_zhi_yue_po(yao_zhi, month_gz.1) {
             yue_po_bitmap |= 1 << i;
         }
 
         // 检查日冲
-        if is_zhi_ri_chong(yao_zhi, gua.day_gz.1) {
+        if is_zhi_ri_chong(yao_zhi, day_gz.1) {
             ri_chong_bitmap |= 1 << i;
         }
     }
@@ -1392,14 +1400,14 @@ where
     result.ri_chong_bitmap = ri_chong_bitmap;
 
     // 5. 动爻分析
-    result.dong_yao_bitmap = gua.moving_yaos;
-    result.dong_yao_count = gua.moving_yaos.count_ones() as u8;
+    result.dong_yao_bitmap = moving_yaos;
+    result.dong_yao_count = moving_yaos.count_ones() as u8;
 
     // 6. 计算用神状态
     if yong_shen_pos < 6 {
-        let yong_zhi = gua.original_yaos[yong_shen_pos as usize].di_zhi;
+        let yong_zhi = original_yaos[yong_shen_pos as usize].di_zhi;
         let yong_kong = is_zhi_kong(yong_zhi, kong1, kong2);
-        let yong_yue_po = is_zhi_yue_po(yong_zhi, gua.month_gz.1);
+        let yong_yue_po = is_zhi_yue_po(yong_zhi, month_gz.1);
 
         if yong_kong {
             result.yong_shen_state = YongShenState::KongWang;
@@ -1407,14 +1415,14 @@ where
             result.yong_shen_state = YongShenState::ShouKe; // 月破类似受克
         } else {
             result.yong_shen_state =
-                calculate_wang_shuai(yong_zhi, gua.month_gz.1, gua.day_gz.1);
+                calculate_wang_shuai(yong_zhi, month_gz.1, day_gz.1);
         }
 
         // 检查用神是否动爻
-        if (gua.moving_yaos >> yong_shen_pos) & 1 == 1 {
+        if (moving_yaos >> yong_shen_pos) & 1 == 1 {
             // 用神发动，检查变化
             if gua.has_bian_gua {
-                let changed_zhi = gua.changed_yaos[yong_shen_pos as usize].di_zhi;
+                let changed_zhi = changed_yaos[yong_shen_pos as usize].di_zhi;
                 let hua = calculate_hua_type(yong_zhi, changed_zhi, kong1, kong2);
                 result.yong_shen_state = match hua {
                     HuaType::HuaJin => YongShenState::DongHuaJin,
@@ -1430,28 +1438,28 @@ where
     }
 
     // 7. 世应状态
-    let shi_pos = gua.gua_xu.shi_yao_pos() as usize - 1;
-    let ying_pos = gua.gua_xu.ying_yao_pos() as usize - 1;
+    let shi_pos = gua_xu.shi_yao_pos() as usize - 1;
+    let ying_pos = gua_xu.ying_yao_pos() as usize - 1;
 
     if shi_pos < 6 {
-        let shi_zhi = gua.original_yaos[shi_pos].di_zhi;
+        let shi_zhi = original_yaos[shi_pos].di_zhi;
         let shi_kong = is_zhi_kong(shi_zhi, kong1, kong2);
         if shi_kong {
             result.shi_yao_state = YongShenState::KongWang;
         } else {
             result.shi_yao_state =
-                calculate_wang_shuai(shi_zhi, gua.month_gz.1, gua.day_gz.1);
+                calculate_wang_shuai(shi_zhi, month_gz.1, day_gz.1);
         }
     }
 
     if ying_pos < 6 {
-        let ying_zhi = gua.original_yaos[ying_pos].di_zhi;
+        let ying_zhi = original_yaos[ying_pos].di_zhi;
         let ying_kong = is_zhi_kong(ying_zhi, kong1, kong2);
         if ying_kong {
             result.ying_yao_state = YongShenState::KongWang;
         } else {
             result.ying_yao_state =
-                calculate_wang_shuai(ying_zhi, gua.month_gz.1, gua.day_gz.1);
+                calculate_wang_shuai(ying_zhi, month_gz.1, day_gz.1);
         }
     }
 

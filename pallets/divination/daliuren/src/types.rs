@@ -13,7 +13,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use frame_support::BoundedVec;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
@@ -764,7 +764,7 @@ impl GeJuType {
 // ============================================================================
 
 /// 起课方式
-#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
 pub enum DivinationMethod {
     /// 时间起课
     #[default]
@@ -902,6 +902,15 @@ impl TianJiangPan {
 // ============================================================================
 
 /// 大六壬式盘
+///
+/// 存储完整的大六壬排盘结果
+///
+/// ## 隐私模式说明
+///
+/// 支持三种隐私模式：
+/// - **Public**: 所有数据明文存储，任何人可查看
+/// - **Partial**: 计算数据明文，敏感数据（问题内容等）加密
+/// - **Private**: 所有数据加密，仅存储元数据
 #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
 #[scale_info(skip_type_params(MaxCidLen))]
 pub struct DaLiuRenPan<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>> {
@@ -912,55 +921,96 @@ pub struct DaLiuRenPan<AccountId, BlockNumber, MaxCidLen: frame_support::traits:
     /// 创建区块
     pub created_at: BlockNumber,
 
+    // ============ 隐私控制字段 ============
+
+    /// 隐私模式（必有）
+    pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+    /// 加密字段位图（可选，Partial 模式使用）
+    /// bit 0: question_cid 已加密
+    /// bit 1: 时间信息已加密（Private 模式）
+    pub encrypted_fields: Option<u8>,
+    /// 敏感数据哈希（用于验证完整性）
+    pub sensitive_data_hash: Option<[u8; 32]>,
+
     // ===== 起课信息 =====
     /// 起课方式
     pub method: DivinationMethod,
     /// 占问事项（可选，链下存储）
     pub question_cid: Option<BoundedVec<u8, MaxCidLen>>,
 
-    // ===== 时间信息 =====
+    // ===== 时间信息（Private 模式时为 None）=====
     /// 年干支
-    pub year_gz: (TianGan, DiZhi),
+    pub year_gz: Option<(TianGan, DiZhi)>,
     /// 月干支
-    pub month_gz: (TianGan, DiZhi),
+    pub month_gz: Option<(TianGan, DiZhi)>,
     /// 日干支
-    pub day_gz: (TianGan, DiZhi),
+    pub day_gz: Option<(TianGan, DiZhi)>,
     /// 时干支
-    pub hour_gz: (TianGan, DiZhi),
+    pub hour_gz: Option<(TianGan, DiZhi)>,
 
-    // ===== 起课参数 =====
+    // ===== 起课参数（Private 模式时为 None）=====
     /// 月将
-    pub yue_jiang: DiZhi,
+    pub yue_jiang: Option<DiZhi>,
     /// 占时
-    pub zhan_shi: DiZhi,
+    pub zhan_shi: Option<DiZhi>,
     /// 是否昼占
-    pub is_day: bool,
+    pub is_day: Option<bool>,
 
-    // ===== 式盘信息 =====
+    // ===== 式盘信息（Private 模式时为 None）=====
     /// 天盘
-    pub tian_pan: TianPan,
+    pub tian_pan: Option<TianPan>,
     /// 天将盘
-    pub tian_jiang_pan: TianJiangPan,
+    pub tian_jiang_pan: Option<TianJiangPan>,
     /// 四课
-    pub si_ke: SiKe,
+    pub si_ke: Option<SiKe>,
     /// 三传
-    pub san_chuan: SanChuan,
+    pub san_chuan: Option<SanChuan>,
 
-    // ===== 课式与格局 =====
+    // ===== 课式与格局（Private 模式时为 None）=====
     /// 课式类型
-    pub ke_shi: KeShiType,
+    pub ke_shi: Option<KeShiType>,
     /// 格局类型
-    pub ge_ju: GeJuType,
+    pub ge_ju: Option<GeJuType>,
 
-    // ===== 空亡 =====
+    // ===== 空亡（Private 模式时为 None）=====
     /// 日旬空（两个地支）
-    pub xun_kong: (DiZhi, DiZhi),
+    pub xun_kong: Option<(DiZhi, DiZhi)>,
 
-    // ===== 状态 =====
-    /// 是否公开
-    pub is_public: bool,
+    // ===== AI 解读 =====
     /// AI 解读 CID
     pub ai_interpretation_cid: Option<BoundedVec<u8, MaxCidLen>>,
+}
+
+impl<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>>
+    DaLiuRenPan<AccountId, BlockNumber, MaxCidLen>
+{
+    /// 检查是否有计算数据（用于解盘）
+    pub fn has_calculation_data(&self) -> bool {
+        self.san_chuan.is_some()
+    }
+
+    /// 检查是否可解读
+    ///
+    /// Private 模式无计算数据，无法解读
+    pub fn can_interpret(&self) -> bool {
+        self.san_chuan.is_some() && self.si_ke.is_some()
+    }
+
+    /// 检查是否公开
+    pub fn is_public(&self) -> bool {
+        matches!(
+            self.privacy_mode,
+            pallet_divination_privacy::types::PrivacyMode::Public
+        )
+    }
+
+    /// 检查是否完全私有
+    pub fn is_private(&self) -> bool {
+        matches!(
+            self.privacy_mode,
+            pallet_divination_privacy::types::PrivacyMode::Private
+        )
+    }
 }
 
 // ============================================================================

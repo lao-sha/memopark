@@ -6,6 +6,7 @@
 
 use crate::{mock::*, types::*, Error, Event};
 use frame_support::{assert_noop, assert_ok};
+use pallet_divination_privacy::types::PrivacyMode;
 
 // ==================== 时间起局测试 ====================
 
@@ -26,6 +27,12 @@ fn divine_by_time_works() {
             1,      // 节气内天数
             [0u8; 32], // 问题哈希
             false,  // 不公开
+            None,   // name
+            None,   // gender
+            None,   // birth_year
+            None,   // question
+            None,   // question_type
+            0,      // pan_method (转盘)
         ));
 
         // 验证排盘记录已创建
@@ -66,6 +73,7 @@ fn divine_by_time_invalid_jieqi_fails() {
                 1,
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::InvalidJieQi
         );
@@ -87,6 +95,7 @@ fn divine_by_time_invalid_day_in_jieqi_fails() {
                 0, // 无效天数
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::InvalidDayInJieQi
         );
@@ -102,6 +111,7 @@ fn divine_by_time_invalid_day_in_jieqi_fails() {
                 16, // 超出范围
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::InvalidDayInJieQi
         );
@@ -124,14 +134,15 @@ fn divine_by_numbers_works() {
             true, // 阳遁
             [1u8; 32],
             true, // 公开
+            None, None, None, None, None, 0,
         ));
 
         // 验证排盘记录已创建
         let chart = Qimen::charts(0).unwrap();
         assert_eq!(chart.diviner, BOB);
         assert_eq!(chart.method, DivinationMethod::ByNumbers);
-        assert_eq!(chart.dun_type, DunType::Yang);
-        assert!(chart.is_public);
+        assert_eq!(chart.dun_type, Some(DunType::Yang));
+        assert_eq!(chart.privacy_mode, PrivacyMode::Public);
 
         // 验证公开列表已更新
         let public_charts = Qimen::public_charts();
@@ -154,6 +165,7 @@ fn divine_by_numbers_empty_fails() {
                 true,
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::MissingNumberParams
         );
@@ -169,6 +181,7 @@ fn divine_random_works() {
             RuntimeOrigin::signed(CHARLIE),
             [2u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         let chart = Qimen::charts(0).unwrap();
@@ -176,7 +189,8 @@ fn divine_random_works() {
         assert_eq!(chart.method, DivinationMethod::Random);
 
         // 局数应该在1-9范围内
-        assert!(chart.ju_number >= 1 && chart.ju_number <= 9);
+        let ju_number = chart.ju_number.unwrap();
+        assert!(ju_number >= 1 && ju_number <= 9);
     });
 }
 
@@ -192,11 +206,12 @@ fn divine_manual_works() {
             (4, 6), // 时柱：戊午
             [3u8; 32],
             true,
+            None, None, None, None, None, 0,
         ));
 
         let chart = Qimen::charts(0).unwrap();
-        assert_eq!(chart.dun_type, DunType::Yin);
-        assert_eq!(chart.ju_number, 5);
+        assert_eq!(chart.dun_type, Some(DunType::Yin));
+        assert_eq!(chart.ju_number, Some(5));
         assert_eq!(chart.method, DivinationMethod::Manual);
     });
 }
@@ -213,6 +228,7 @@ fn divine_manual_invalid_ju_number_fails() {
                 (0, 0),
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::InvalidJuNumber
         );
@@ -225,6 +241,7 @@ fn divine_manual_invalid_ju_number_fails() {
                 (0, 0),
                 [0u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::InvalidJuNumber
         );
@@ -242,6 +259,7 @@ fn daily_limit_works() {
                 RuntimeOrigin::signed(ALICE),
                 [i as u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ));
         }
 
@@ -251,6 +269,7 @@ fn daily_limit_works() {
                 RuntimeOrigin::signed(ALICE),
                 [11u8; 32],
                 false,
+                None, None, None, None, None, 0,
             ),
             Error::<Test>::DailyLimitExceeded
         );
@@ -260,6 +279,7 @@ fn daily_limit_works() {
             RuntimeOrigin::signed(BOB),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
     });
 }
@@ -274,6 +294,7 @@ fn request_ai_interpretation_works() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         let initial_balance = Balances::free_balance(ALICE);
@@ -309,6 +330,7 @@ fn request_ai_interpretation_not_owner_fails() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         // Bob 尝试请求 AI 解读（应该失败）
@@ -326,6 +348,7 @@ fn request_ai_interpretation_duplicate_fails() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         assert_ok!(Qimen::request_ai_interpretation(
@@ -351,6 +374,7 @@ fn submit_ai_interpretation_works() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         assert_ok!(Qimen::request_ai_interpretation(
@@ -393,6 +417,7 @@ fn set_chart_visibility_works() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false, // 私密
+            None, None, None, None, None, 0,
         ));
 
         assert_eq!(Qimen::public_charts().len(), 0);
@@ -424,6 +449,7 @@ fn set_chart_visibility_not_owner_fails() {
             RuntimeOrigin::signed(ALICE),
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         // Bob 尝试更改公开状态（应该失败）
@@ -449,12 +475,16 @@ fn chart_palaces_are_valid() {
             1,      // 上元
             [0u8; 32],
             false,
+            None, None, None, None, None, 0,
         ));
 
         let chart = Qimen::charts(0).unwrap();
 
+        // 获取九宫数据
+        let palaces = chart.palaces.expect("palaces should exist");
+
         // 验证九宫都有有效数据
-        for (i, palace) in chart.palaces.iter().enumerate() {
+        for (i, palace) in palaces.iter().enumerate() {
             let expected_gong = JiuGong::from_num((i + 1) as u8).unwrap();
             assert_eq!(palace.gong, expected_gong);
 
@@ -468,6 +498,75 @@ fn chart_palaces_are_valid() {
                 assert!(palace.shen.is_some());
             }
         }
+    });
+}
+
+// ==================== 隐私模式测试 ====================
+
+#[test]
+fn privacy_mode_public_works() {
+    new_test_ext().execute_with(|| {
+        // 创建公开排盘
+        assert_ok!(Qimen::divine_random(
+            RuntimeOrigin::signed(ALICE),
+            [0u8; 32],
+            true, // 公开
+            None, None, None, None, None, 0,
+        ));
+
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.privacy_mode, PrivacyMode::Public);
+        assert!(chart.has_calculation_data());
+        assert!(chart.can_interpret());
+        assert!(chart.is_public());
+    });
+}
+
+#[test]
+fn privacy_mode_partial_works() {
+    new_test_ext().execute_with(|| {
+        // 创建私密排盘（默认使用 Partial 模式）
+        assert_ok!(Qimen::divine_random(
+            RuntimeOrigin::signed(ALICE),
+            [0u8; 32],
+            false, // 私密
+            None, None, None, None, None, 0,
+        ));
+
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.privacy_mode, PrivacyMode::Partial);
+        assert!(chart.has_calculation_data());
+        assert!(chart.can_interpret());
+        assert!(!chart.is_public());
+    });
+}
+
+#[test]
+fn chart_helper_methods_work() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Qimen::divine_by_time(
+            RuntimeOrigin::signed(ALICE),
+            (0, 0),
+            (2, 2),
+            (0, 0),
+            (0, 0),
+            0,
+            1,
+            [0u8; 32],
+            false,
+            None, None, None, None, None, 0,
+        ));
+
+        let chart = Qimen::charts(0).unwrap();
+
+        // 测试 helper 方法
+        assert!(chart.get_palaces().is_some());
+        assert!(chart.get_day_ganzhi().is_some());
+        assert!(chart.get_hour_ganzhi().is_some());
+        assert!(chart.get_jie_qi().is_some());
+        assert!(chart.get_zhi_fu_xing().is_some());
+        assert!(chart.get_zhi_shi_men().is_some());
+        assert!(chart.get_dun_type().is_some());
     });
 }
 
@@ -532,4 +631,364 @@ fn test_wu_xing_relations() {
     assert!(WuXing::Jin.conquers(&WuXing::Mu));    // 金克木
     assert!(WuXing::Mu.conquers(&WuXing::Tu));     // 木克土
     assert!(!WuXing::Jin.conquers(&WuXing::Shui)); // 金不克水
+}
+
+// ==================== 解卦测试 ====================
+
+#[test]
+fn test_core_interpretation_size() {
+    use crate::interpretation::QimenCoreInterpretation;
+    use codec::Encode;
+
+    let core = QimenCoreInterpretation {
+        ge_ju: GeJuType::ZhengGe,
+        yong_shen_gong: 1,
+        zhi_fu_xing: JiuXing::TianQin,
+        zhi_shi_men: BaMen::Kai,
+        ri_gan_gong: 1,
+        shi_gan_gong: 1,
+        fortune: Fortune::Ping,
+        fortune_score: 50,
+        wang_shuai: WangShuai::Xiu,
+        special_patterns: 0,
+        confidence: 80,
+        timestamp: 1000000,
+        algorithm_version: 1,
+    };
+
+    let encoded = core.encode();
+    println!("✅ QimenCoreInterpretation 编码大小: {} bytes", encoded.len());
+    assert!(
+        encoded.len() <= 20,
+        "QimenCoreInterpretation 编码大小应 <= 20 bytes，实际: {} bytes",
+        encoded.len()
+    );
+}
+
+// ==================== 加密接口测试 ====================
+
+#[test]
+fn divine_by_solar_time_encrypted_public_works() {
+    new_test_ext().execute_with(|| {
+        // Public 模式（encryption_level = 0）
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            0,      // encryption_level: Public
+            2024,   // solar_year
+            1,      // solar_month
+            15,     // solar_day
+            10,     // hour
+            [0u8; 32], // question_hash
+            None,   // encrypted_data (不需要)
+            None,   // data_hash (不需要)
+            None,   // owner_key_backup (不需要)
+            Some(0), // question_type: General
+            0,      // pan_method: ZhuanPan
+        ));
+
+        // 验证排盘记录已创建
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.diviner, ALICE);
+        assert_eq!(chart.privacy_mode, PrivacyMode::Public);
+        assert!(chart.has_calculation_data());
+        assert!(chart.can_interpret());
+
+        // 验证公开列表已更新
+        let public_charts = Qimen::public_charts();
+        assert_eq!(public_charts.len(), 1);
+    });
+}
+
+#[test]
+fn divine_by_solar_time_encrypted_partial_works() {
+    new_test_ext().execute_with(|| {
+        use frame_support::BoundedVec;
+
+        // 模拟加密数据
+        let encrypted_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![1, 2, 3, 4, 5].try_into().unwrap();
+        let data_hash = [1u8; 32];
+        let owner_key_backup = [2u8; 80];
+
+        // Partial 模式（encryption_level = 1）
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,      // encryption_level: Partial
+            2024,   // solar_year
+            3,      // solar_month
+            20,     // solar_day
+            14,     // hour
+            [0u8; 32], // question_hash
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+            Some(1), // question_type: Career
+            0,      // pan_method
+        ));
+
+        // 验证排盘记录已创建
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.diviner, ALICE);
+        assert_eq!(chart.privacy_mode, PrivacyMode::Partial);
+        assert!(chart.has_calculation_data()); // Partial 模式仍有计算数据
+        assert!(chart.can_interpret());
+        assert!(!chart.is_public());
+
+        // 验证加密数据已存储
+        assert!(Qimen::encrypted_data(0).is_some());
+
+        // 验证密钥备份已存储
+        assert_eq!(Qimen::owner_key_backup(0), Some([2u8; 80]));
+
+        // 验证不在公开列表中
+        assert_eq!(Qimen::public_charts().len(), 0);
+    });
+}
+
+#[test]
+fn divine_by_solar_time_encrypted_private_works() {
+    new_test_ext().execute_with(|| {
+        use frame_support::BoundedVec;
+
+        // 模拟加密数据
+        let encrypted_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![10, 20, 30, 40, 50].try_into().unwrap();
+        let data_hash = [3u8; 32];
+        let owner_key_backup = [4u8; 80];
+
+        // Private 模式（encryption_level = 2）
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(BOB),
+            2,      // encryption_level: Private
+            2024,   // solar_year
+            6,      // solar_month
+            15,     // solar_day
+            8,      // hour
+            [0u8; 32], // question_hash
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+            None,   // question_type
+            1,      // pan_method: FeiPan
+        ));
+
+        // 验证排盘记录已创建
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.diviner, BOB);
+        assert_eq!(chart.privacy_mode, PrivacyMode::Private);
+        assert!(!chart.has_calculation_data()); // Private 模式无计算数据
+        assert!(!chart.can_interpret()); // 无法直接解读
+
+        // 验证加密数据已存储
+        assert!(Qimen::encrypted_data(0).is_some());
+        assert!(Qimen::owner_key_backup(0).is_some());
+    });
+}
+
+#[test]
+fn divine_by_solar_time_encrypted_invalid_level_fails() {
+    new_test_ext().execute_with(|| {
+        // 无效的加密级别（3）
+        assert_noop!(
+            Qimen::divine_by_solar_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                3,      // 无效加密级别
+                2024,
+                1,
+                15,
+                10,
+                [0u8; 32],
+                None,
+                None,
+                None,
+                None,
+                0,
+            ),
+            Error::<Test>::InvalidEncryptionLevel
+        );
+    });
+}
+
+#[test]
+fn divine_by_solar_time_encrypted_missing_data_fails() {
+    new_test_ext().execute_with(|| {
+        // Partial 模式缺少加密数据
+        assert_noop!(
+            Qimen::divine_by_solar_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1,      // Partial 模式
+                2024,
+                1,
+                15,
+                10,
+                [0u8; 32],
+                None,   // 缺少 encrypted_data
+                Some([0u8; 32]),
+                Some([0u8; 80]),
+                None,
+                0,
+            ),
+            Error::<Test>::EncryptedDataMissing
+        );
+
+        // Partial 模式缺少数据哈希
+        assert_noop!(
+            Qimen::divine_by_solar_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1,
+                2024,
+                1,
+                15,
+                10,
+                [0u8; 32],
+                Some(vec![1, 2, 3].try_into().unwrap()),
+                None,   // 缺少 data_hash
+                Some([0u8; 80]),
+                None,
+                0,
+            ),
+            Error::<Test>::DataHashMissing
+        );
+
+        // Partial 模式缺少密钥备份
+        assert_noop!(
+            Qimen::divine_by_solar_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1,
+                2024,
+                1,
+                15,
+                10,
+                [0u8; 32],
+                Some(vec![1, 2, 3].try_into().unwrap()),
+                Some([0u8; 32]),
+                None,   // 缺少 owner_key_backup
+                None,
+                0,
+            ),
+            Error::<Test>::OwnerKeyBackupMissing
+        );
+    });
+}
+
+#[test]
+fn update_encrypted_data_works() {
+    new_test_ext().execute_with(|| {
+        use frame_support::BoundedVec;
+
+        // 先创建一个 Partial 模式的排盘
+        let initial_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![1, 2, 3].try_into().unwrap();
+
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            2024, 1, 15, 10,
+            [0u8; 32],
+            Some(initial_data),
+            Some([1u8; 32]),
+            Some([1u8; 80]),
+            None,
+            0,
+        ));
+
+        // 更新加密数据
+        let new_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![4, 5, 6, 7, 8].try_into().unwrap();
+        let new_hash = [2u8; 32];
+        let new_key_backup = [3u8; 80];
+
+        assert_ok!(Qimen::update_encrypted_data(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            new_data.clone(),
+            new_hash,
+            new_key_backup,
+        ));
+
+        // 验证更新成功
+        let chart = Qimen::charts(0).unwrap();
+        assert_eq!(chart.sensitive_data_hash, Some(new_hash));
+        assert_eq!(Qimen::encrypted_data(0), Some(new_data));
+        assert_eq!(Qimen::owner_key_backup(0), Some(new_key_backup));
+
+        // 验证事件
+        System::assert_has_event(RuntimeEvent::Qimen(Event::EncryptedDataUpdated {
+            chart_id: 0,
+            data_hash: new_hash,
+        }));
+    });
+}
+
+#[test]
+fn update_encrypted_data_not_owner_fails() {
+    new_test_ext().execute_with(|| {
+        use frame_support::BoundedVec;
+
+        // Alice 创建排盘
+        let initial_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![1, 2, 3].try_into().unwrap();
+
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            2024, 1, 15, 10,
+            [0u8; 32],
+            Some(initial_data),
+            Some([1u8; 32]),
+            Some([1u8; 80]),
+            None,
+            0,
+        ));
+
+        // Bob 尝试更新（应该失败）
+        let new_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![4, 5, 6].try_into().unwrap();
+
+        assert_noop!(
+            Qimen::update_encrypted_data(
+                RuntimeOrigin::signed(BOB),
+                0,
+                new_data,
+                [0u8; 32],
+                [0u8; 80],
+            ),
+            Error::<Test>::NotOwner
+        );
+    });
+}
+
+#[test]
+fn update_encrypted_data_public_chart_fails() {
+    new_test_ext().execute_with(|| {
+        use frame_support::BoundedVec;
+
+        // 创建 Public 模式的排盘
+        assert_ok!(Qimen::divine_by_solar_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            0,  // Public
+            2024, 1, 15, 10,
+            [0u8; 32],
+            None,
+            None,
+            None,
+            None,
+            0,
+        ));
+
+        // 尝试更新加密数据（Public 模式不允许）
+        let new_data: BoundedVec<u8, frame_support::traits::ConstU32<512>> =
+            vec![1, 2, 3].try_into().unwrap();
+
+        assert_noop!(
+            Qimen::update_encrypted_data(
+                RuntimeOrigin::signed(ALICE),
+                0,
+                new_data,
+                [0u8; 32],
+                [0u8; 80],
+            ),
+            Error::<Test>::InvalidEncryptionLevel
+        );
+    });
 }

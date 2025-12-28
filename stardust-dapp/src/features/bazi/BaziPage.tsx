@@ -69,7 +69,9 @@ import {
   saveBaziToChain,
   getBaziChart,
   getInterpretation,
+  calculateBaziTemp,
   type V3FullInterpretation,
+  type FullBaziChartV5,
 } from '../../services/baziChainService';
 import {
   requestDivinationInterpretation,
@@ -245,6 +247,11 @@ const BaziPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [savedChartId, setSavedChartId] = useState<number | null>(null);
 
+  // 临时排盘状态
+  const [tempChart, setTempChart] = useState<FullBaziChartV5 | null>(null);
+  const [tempLoading, setTempLoading] = useState(false);
+  const [isTempMode, setIsTempMode] = useState(false); // 是否为临时排盘模式
+
   // AI解读状态
   const [requestingAI, setRequestingAI] = useState(false);
 
@@ -305,11 +312,105 @@ const BaziPage: React.FC = () => {
   }, [birthDate, birthHour, gender, isConnected, selectedAccount]);
 
   /**
+   * 临时排盘（免费，不存储）
+   */
+  const handleTempCalculate = useCallback(async () => {
+    setTempLoading(true);
+    setIsTempMode(true);
+    try {
+      message.info('正在计算八字（免费试算）...');
+
+      // 调用临时排盘 Runtime API（免费）
+      const result = await calculateBaziTemp({
+        year: birthDate.year(),
+        month: birthDate.month() + 1,
+        day: birthDate.date(),
+        hour: birthHour,
+        minute: birthMinute,
+        gender,
+        zishiMode: 2, // 现代派
+        longitude: useTrueSolarTime ? longitude : null,
+      });
+
+      if (!result) {
+        throw new Error('排盘计算失败，请检查输入参数');
+      }
+
+      setTempChart(result);
+      message.success('临时排盘完成！结果不会保存到链上');
+    } catch (error) {
+      console.error('临时排盘失败:', error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Modal.error({
+        title: '临时排盘失败',
+        content: <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{friendlyMessage}</pre>,
+        width: 500,
+      });
+    } finally {
+      setTempLoading(false);
+    }
+  }, [birthDate, birthHour, birthMinute, gender, useTrueSolarTime, longitude]);
+
+  /**
+   * 从临时排盘保存到链上
+   */
+  const handleSaveTempToChain = useCallback(async () => {
+    if (!isConnected || !selectedAccount) {
+      message.warning('请先连接钱包');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      message.info('正在保存到区块链...');
+
+      // 调用上链保存
+      const chartId = await saveBaziToChain({
+        year: birthDate.year(),
+        month: birthDate.month() + 1,
+        day: birthDate.date(),
+        hour: birthHour,
+        gender,
+      });
+
+      setSavedChartId(chartId);
+      setIsTempMode(false);
+
+      // 获取链上数据
+      const chart = await getBaziChart(chartId);
+      if (chart) {
+        setChartData(chart);
+      }
+
+      // 获取解盘
+      const interp = await getInterpretation(chartId);
+      if (interp) {
+        setInterpretation(interp);
+      }
+
+      setTempChart(null); // 清除临时数据
+      message.success(`命盘已保存！ID: ${chartId}`);
+    } catch (error) {
+      console.error('保存失败:', error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Modal.error({
+        title: '保存失败',
+        content: <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{friendlyMessage}</pre>,
+        width: 500,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [birthDate, birthHour, gender, isConnected, selectedAccount]);
+
+  /**
    * 重新排盘
    */
   const handleReset = useCallback(() => {
     setChartData(null);
     setInterpretation(null);
+    setTempChart(null);
+    setIsTempMode(false);
     setName('');
     setBirthDate(dayjs());
     setBirthHour(new Date().getHours());
@@ -390,6 +491,234 @@ const BaziPage: React.FC = () => {
       setRequestingAI(false);
     }
   }, [savedChartId, isConnected, selectedAccount, requestingAI]);
+
+  /**
+   * 渲染临时排盘结果（四柱显示）
+   */
+  const renderTempSiZhu = () => {
+    if (!tempChart) return null;
+
+    const { siZhu } = tempChart;
+
+    return (
+      <Card className="si-zhu-card" size="small">
+        <Title level={5}>
+          四柱八字
+          <Tag color="orange" style={{ marginLeft: 8, fontSize: 12 }}>临时排盘</Tag>
+        </Title>
+        <div style={{ display: 'flex', justifyContent: 'space-around', padding: '16px 0' }}>
+          {/* 年柱 */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>年柱</div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[siZhu.yearZhu.ganZhi.tianGan % 5]
+            }}>
+              {TIAN_GAN_NAMES[siZhu.yearZhu.ganZhi.tianGan]}
+            </div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[(siZhu.yearZhu.ganZhi.diZhi % 12) % 5]
+            }}>
+              {DI_ZHI_NAMES[siZhu.yearZhu.ganZhi.diZhi]}
+            </div>
+            <Tag color={SHI_SHEN_COLORS[siZhu.yearZhu.tianGanShiShen]} style={{ marginTop: 4, fontSize: 10 }}>
+              {SHI_SHEN_SHORT[siZhu.yearZhu.tianGanShiShen]}
+            </Tag>
+          </div>
+          {/* 月柱 */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>月柱</div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[siZhu.monthZhu.ganZhi.tianGan % 5]
+            }}>
+              {TIAN_GAN_NAMES[siZhu.monthZhu.ganZhi.tianGan]}
+            </div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[(siZhu.monthZhu.ganZhi.diZhi % 12) % 5]
+            }}>
+              {DI_ZHI_NAMES[siZhu.monthZhu.ganZhi.diZhi]}
+            </div>
+            <Tag color={SHI_SHEN_COLORS[siZhu.monthZhu.tianGanShiShen]} style={{ marginTop: 4, fontSize: 10 }}>
+              {SHI_SHEN_SHORT[siZhu.monthZhu.tianGanShiShen]}
+            </Tag>
+          </div>
+          {/* 日柱 */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>日柱</div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[siZhu.dayZhu.ganZhi.tianGan % 5]
+            }}>
+              {TIAN_GAN_NAMES[siZhu.dayZhu.ganZhi.tianGan]}
+            </div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[(siZhu.dayZhu.ganZhi.diZhi % 12) % 5]
+            }}>
+              {DI_ZHI_NAMES[siZhu.dayZhu.ganZhi.diZhi]}
+            </div>
+            <Tag color="gold" style={{ marginTop: 4, fontSize: 10 }}>日主</Tag>
+          </div>
+          {/* 时柱 */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>时柱</div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[siZhu.hourZhu.ganZhi.tianGan % 5]
+            }}>
+              {TIAN_GAN_NAMES[siZhu.hourZhu.ganZhi.tianGan]}
+            </div>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: WU_XING_COLORS[(siZhu.hourZhu.ganZhi.diZhi % 12) % 5]
+            }}>
+              {DI_ZHI_NAMES[siZhu.hourZhu.ganZhi.diZhi]}
+            </div>
+            <Tag color={SHI_SHEN_COLORS[siZhu.hourZhu.tianGanShiShen]} style={{ marginTop: 4, fontSize: 10 }}>
+              {SHI_SHEN_SHORT[siZhu.hourZhu.tianGanShiShen]}
+            </Tag>
+          </div>
+        </div>
+        <Divider style={{ margin: '8px 0' }} />
+        <div style={{ textAlign: 'center' }}>
+          <Text type="warning" style={{ fontSize: 12 }}>
+            此为临时排盘结果，不会保存到链上
+          </Text>
+        </div>
+      </Card>
+    );
+  };
+
+  /**
+   * 渲染临时排盘的五行强度
+   */
+  const renderTempWuXingStrength = () => {
+    if (!tempChart) return null;
+
+    const { wuXingStrength } = tempChart;
+    const total = wuXingStrength.jin + wuXingStrength.mu + wuXingStrength.shui + wuXingStrength.huo + wuXingStrength.tu;
+
+    const wuXingData = [
+      { name: '金', value: wuXingStrength.jin, color: WU_XING_COLORS[3] },
+      { name: '木', value: wuXingStrength.mu, color: WU_XING_COLORS[0] },
+      { name: '水', value: wuXingStrength.shui, color: WU_XING_COLORS[4] },
+      { name: '火', value: wuXingStrength.huo, color: WU_XING_COLORS[1] },
+      { name: '土', value: wuXingStrength.tu, color: WU_XING_COLORS[2] },
+    ];
+
+    return (
+      <Card className="wuxing-card" size="small">
+        <Title level={5}>五行强度</Title>
+        <div style={{ display: 'flex', justifyContent: 'space-around', padding: '8px 0' }}>
+          {wuXingData.map((wx) => (
+            <div key={wx.name} style={{ textAlign: 'center' }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                background: wx.color,
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold',
+                fontSize: 16,
+                margin: '0 auto'
+              }}>
+                {wx.name}
+              </div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>
+                {total > 0 ? Math.round((wx.value / total) * 100) : 0}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  };
+
+  /**
+   * 渲染临时排盘结果页面
+   */
+  const renderTempResult = () => {
+    if (!tempChart) return null;
+
+    return (
+      <div className="result-container">
+        {/* 基本信息 */}
+        <Card className="info-card" size="small">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Statistic
+                title="公历"
+                value={`${tempChart.birthTime.year}年${tempChart.birthTime.month}月${tempChart.birthTime.day}日`}
+                valueStyle={{ fontSize: 14 }}
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="性别"
+                value={tempChart.gender === Gender.Male ? '男' : '女'}
+                valueStyle={{ fontSize: 14 }}
+              />
+            </Col>
+          </Row>
+          <Divider style={{ margin: '12px 0' }} />
+          <div style={{ textAlign: 'center' }}>
+            <Tag color="orange">临时排盘（免费试算）</Tag>
+          </div>
+        </Card>
+
+        {/* 四柱 */}
+        {renderTempSiZhu()}
+
+        {/* 五行强度 */}
+        {renderTempWuXingStrength()}
+
+        {/* 操作按钮 */}
+        <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
+          <Button
+            type="primary"
+            block
+            onClick={handleSaveTempToChain}
+            loading={loading}
+            disabled={!isConnected}
+            style={{
+              background: '#000000',
+              borderColor: '#000000',
+              height: '48px',
+              fontSize: '16px',
+              fontWeight: '500',
+              color: '#F7D3A1',
+            }}
+          >
+            {isConnected ? '保存到链上（需支付Gas）' : '请先连接钱包'}
+          </Button>
+          <Button block onClick={handleReset}>
+            重新排盘
+          </Button>
+        </Space>
+
+        <Divider style={{ margin: '16px 0' }} />
+        <div style={{ textAlign: 'center' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            💡 保存到链上后可获取完整解盘、AI解读等功能
+          </Text>
+        </div>
+      </div>
+    );
+  };
 
   /**
    * 渲染四柱（基于链上解盘结果）
@@ -784,6 +1113,28 @@ const BaziPage: React.FC = () => {
           </div>
         )}
 
+        {/* 临时排盘按钮（免费试算） */}
+        <Button
+          type="default"
+          size="large"
+          block
+          onClick={handleTempCalculate}
+          loading={tempLoading}
+          style={{
+            background: '#fff',
+            borderColor: '#B2955D',
+            borderRadius: '0',
+            height: '48px',
+            fontSize: '16px',
+            fontWeight: '500',
+            color: '#B2955D',
+            marginBottom: 8,
+          }}
+        >
+          {tempLoading ? '计算中...' : '免费试算（不保存）'}
+        </Button>
+
+        {/* 保存到链上按钮 */}
         <Button
           type="primary"
           size="large"
@@ -807,10 +1158,16 @@ const BaziPage: React.FC = () => {
         {!isConnected && (
           <div style={{ textAlign: 'center' }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              💡 需要连接钱包才能使用区块链生成八字
+              💡 需要连接钱包才能保存到区块链
             </Text>
           </div>
         )}
+
+        <div style={{ textAlign: 'center', marginTop: 8 }}>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            免费试算：立即查看四柱八字 | 开始排盘：保存到链上并获取完整解盘
+          </Text>
+        </div>
       </Space>
     </Card>
     </>
@@ -900,16 +1257,23 @@ const BaziPage: React.FC = () => {
 
   return (
     <div className="bazi-page">
-      {loading && (
+      {(loading || tempLoading) && (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <Spin
             indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
-            tip="正在区块链上生成八字命盘..."
+            tip={tempLoading ? '正在计算八字（免费试算）...' : '正在区块链上生成八字命盘...'}
           />
         </div>
       )}
 
-      {!loading && (chartData && interpretation ? renderResult() : renderInputForm())}
+      {!loading && !tempLoading && (
+        // 判断显示顺序：链上结果 > 临时结果 > 输入表单
+        chartData && interpretation
+          ? renderResult()
+          : tempChart
+            ? renderTempResult()
+            : renderInputForm()
+      )}
 
       {/* 底部导航 */}
       <div className="bottom-nav">

@@ -49,6 +49,8 @@ parameter_types! {
     pub const MaxCidLen: u32 = 64;
     /// 每日最大起课次数
     pub const MaxDailyDivinations: u32 = 100;
+    /// 加密数据最大长度
+    pub const MaxEncryptedLen: u32 = 512;
     /// 起课费用
     pub const DivinationFee: u64 = 1_000_000_000; // 1 DUST (12 decimals scaled down)
     /// AI 解读费用
@@ -74,6 +76,7 @@ impl pallet_daliuren::Config for Test {
     type Randomness = TestRandomness;
     type MaxCidLen = MaxCidLen;
     type MaxDailyDivinations = MaxDailyDivinations;
+    type MaxEncryptedLen = MaxEncryptedLen;
     type DivinationFee = DivinationFee;
     type AiInterpretationFee = AiInterpretationFee;
     type AiSubmitter = EnsureSigned<u64>;

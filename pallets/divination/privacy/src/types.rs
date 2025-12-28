@@ -5,7 +5,7 @@
 //!
 //! ## 核心类型
 //!
-//! - `PrivacyMode`: 隐私模式（公开/私密/授权）
+//! - `PrivacyMode`: 隐私模式（公开/部分加密/完全私密），后两者支持授权
 //! - `AccessRole`: 授权角色（所有者/命理师/家族/AI/悬赏回答者）
 //! - `AccessScope`: 访问范围（只读/可评论/完全访问）
 //! - `ServiceProviderType`: 服务提供者类型
@@ -24,7 +24,7 @@ use scale_info::TypeInfo;
 
 /// 隐私模式
 ///
-/// 定义占卜结果的可见性级别
+/// 定义占卜结果的可见性和授权级别（按隐私强度递增）
 #[derive(
     Clone,
     Copy,
@@ -39,13 +39,30 @@ use scale_info::TypeInfo;
     Default,
 )]
 pub enum PrivacyMode {
-    /// 公开 - 所有人可见
+    /// 公开 - 所有人可见，无需授权
     #[default]
     Public = 0,
-    /// 私密 - 仅所有者可见
-    Private = 1,
-    /// 授权 - 被授权者可见
-    Authorized = 2,
+    /// 部分加密 - 计算数据明文 + 敏感数据加密 + 可授权访问 ⭐
+    ///
+    /// 此模式专为需要链上实时计算的占卜类型设计（如奇门遁甲）：
+    /// - 排盘计算数据（四柱干支、九宫、局数等）保持明文，支持 Runtime API 解盘
+    /// - 敏感数据（姓名、问题文本、出生时间等）存储在本模块中加密
+    /// - 所有者可授权他人（咨询师/家人/AI服务）访问加密数据
+    /// - 兼顾链上计算能力、隐私保护和协作需求
+    ///
+    /// **推荐用于**: 奇门遁甲、命运档案等需要专业解读的场景
+    ///
+    /// 注意：出生时间可从四柱干支反推（约2小时精度）
+    Partial = 1,
+    /// 完全私密 - 全部数据加密 + 可授权访问
+    ///
+    /// 所有数据完全加密存储，仅所有者可见：
+    /// - 无链上计算能力（Runtime API 无法访问明文数据）
+    /// - 最高隐私保护级别
+    /// - 所有者可选择授权他人（咨询师/家人/AI服务）访问
+    ///
+    /// **推荐用于**: 高度敏感的个人命理数据
+    Private = 2,
 }
 
 /// 授权角色
@@ -136,6 +153,53 @@ pub enum ServiceProviderType {
 // 核心数据结构
 // ============================================================================
 
+// ============================================================================
+// 部分加密字段标志位（用于 Partial 模式）
+// ============================================================================
+
+/// 加密字段标志位
+///
+/// 用于 Partial 模式下标识哪些字段被加密。
+/// 每个位代表一个可加密字段，支持灵活的字段级加密控制。
+///
+/// # 使用示例
+/// ```ignore
+/// // 加密姓名和问题
+/// let fields = EncryptedFields::NAME | EncryptedFields::QUESTION;
+///
+/// // 检查某字段是否加密
+/// if fields & EncryptedFields::NAME != 0 {
+///     // 姓名已加密
+/// }
+/// ```
+#[allow(non_snake_case)]
+pub mod EncryptedFields {
+    /// 姓名字段
+    pub const NAME: u16 = 0b0000_0000_0000_0001;
+    /// 问题/占问事宜字段
+    pub const QUESTION: u16 = 0b0000_0000_0000_0010;
+    /// 公历日期字段
+    pub const SOLAR_DATE: u16 = 0b0000_0000_0000_0100;
+    /// 公历时间字段
+    pub const SOLAR_TIME: u16 = 0b0000_0000_0000_1000;
+    /// 备注字段
+    pub const NOTES: u16 = 0b0000_0000_0001_0000;
+    /// 出生年份字段
+    pub const BIRTH_YEAR: u16 = 0b0000_0000_0010_0000;
+    /// 性别字段
+    pub const GENDER: u16 = 0b0000_0000_0100_0000;
+
+    /// 奇门遁甲推荐加密字段（姓名 + 问题）
+    ///
+    /// Partial 模式下推荐的最小加密集合：
+    /// - 排盘计算数据（四柱干支、九宫、局数等）保持明文
+    /// - 仅加密姓名和问题文本
+    pub const QIMEN_RECOMMENDED: u16 = NAME | QUESTION;
+
+    /// 完全加密字段（所有敏感数据）
+    pub const ALL: u16 = NAME | QUESTION | SOLAR_DATE | SOLAR_TIME | NOTES | BIRTH_YEAR | GENDER;
+}
+
 /// 用户加密密钥信息
 ///
 /// 存储用户的 X25519 公钥用于多方加密
@@ -183,7 +247,21 @@ impl<BlockNumber: Default> Default for ServiceProvider<BlockNumber> {
 
 /// 加密数据记录
 ///
-/// 存储加密的敏感数据，适用于所有占卜类型
+/// 存储加密的敏感数据，适用于所有占卜类型。
+/// 支持完全加密（Private/Authorized）和部分加密（Partial）两种模式。
+///
+/// # Partial 模式特性
+///
+/// 当 `privacy_mode == PrivacyMode::Partial` 时：
+/// - `encrypted_fields` 字段标识哪些数据被加密
+/// - 未加密数据存储在各占卜模块中（如 pallet-qimen 的 QimenChart）
+/// - 仅加密的敏感数据存储在本结构中
+/// - 支持 Runtime API 直接访问明文计算数据进行解盘
+///
+/// # 存储大小
+/// - 基础字段：约 100 bytes
+/// - encrypted_data：可变（最大 MaxDataLen）
+/// - 总计：约 100 + encrypted_data.len() bytes
 #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, PartialEq, Eq, Debug)]
 #[scale_info(skip_type_params(MaxDataLen))]
 pub struct EncryptedRecord<AccountId, BlockNumber, MaxDataLen: Get<u32>> {
@@ -207,6 +285,21 @@ pub struct EncryptedRecord<AccountId, BlockNumber, MaxDataLen: Get<u32>> {
     pub created_at: BlockNumber,
     /// 更新区块
     pub updated_at: BlockNumber,
+
+    // ==================== Partial 模式专用字段 ====================
+
+    /// 加密字段标志位（仅 Partial 模式使用）
+    ///
+    /// 使用 `EncryptedFields` 模块中的常量组合：
+    /// - `None`：完全加密模式（Private/Authorized），所有数据在 encrypted_data 中
+    /// - `Some(flags)`：部分加密模式（Partial），flags 标识哪些字段被加密
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 奇门遁甲推荐配置：仅加密姓名和问题
+    /// encrypted_fields: Some(EncryptedFields::NAME | EncryptedFields::QUESTION)
+    /// ```
+    pub encrypted_fields: Option<u16>,
 }
 
 /// 授权条目
@@ -350,6 +443,14 @@ mod tests {
     #[test]
     fn test_privacy_mode_default() {
         assert_eq!(PrivacyMode::default(), PrivacyMode::Public);
+    }
+
+    #[test]
+    fn test_privacy_mode_values() {
+        // 验证枚举值按隐私级别递增
+        assert_eq!(PrivacyMode::Public as u8, 0);
+        assert_eq!(PrivacyMode::Partial as u8, 1);
+        assert_eq!(PrivacyMode::Private as u8, 2);
     }
 
     #[test]

@@ -220,11 +220,11 @@ pub mod pallet {
             cid: BoundedVec<u8, ConstU32<64>>,
         },
 
-        /// 占卜公开状态已更改
-        /// [占卜ID, 是否公开]
-        ReadingVisibilityChanged {
+        /// 占卜隐私模式已更改
+        /// [占卜ID, 隐私模式]
+        ReadingPrivacyModeChanged {
             reading_id: u64,
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         },
     }
 
@@ -274,14 +274,14 @@ pub mod pallet {
         /// - `origin`: 调用者（签名账户）
         /// - `spread_type`: 牌阵类型
         /// - `question_hash`: 占卜问题的哈希值（隐私保护）
-        /// - `is_public`: 是否公开此占卜
+        /// - `privacy_mode`: 隐私模式（公开/私密/授权）
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_random(
             origin: OriginFor<T>,
             spread_type: SpreadType,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -303,7 +303,7 @@ pub mod pallet {
                 DivinationMethod::Random,
                 drawn,
                 question_hash,
-                is_public,
+                privacy_mode,
             )
         }
 
@@ -315,14 +315,14 @@ pub mod pallet {
         /// - `origin`: 调用者
         /// - `spread_type`: 牌阵类型
         /// - `question_hash`: 问题哈希
-        /// - `is_public`: 是否公开
+        /// - `privacy_mode`: 隐私模式
         #[pallet::call_index(1)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_by_time(
             origin: OriginFor<T>,
             spread_type: SpreadType,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -351,7 +351,7 @@ pub mod pallet {
                 DivinationMethod::ByTime,
                 drawn,
                 question_hash,
-                is_public,
+                privacy_mode,
             )
         }
 
@@ -364,7 +364,7 @@ pub mod pallet {
         /// - `numbers`: 用户提供的数字列表
         /// - `spread_type`: 牌阵类型
         /// - `question_hash`: 问题哈希
-        /// - `is_public`: 是否公开
+        /// - `privacy_mode`: 隐私模式
         #[pallet::call_index(2)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_by_numbers(
@@ -372,7 +372,7 @@ pub mod pallet {
             numbers: BoundedVec<u16, ConstU32<16>>,
             spread_type: SpreadType,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -396,7 +396,7 @@ pub mod pallet {
                 DivinationMethod::ByNumbers,
                 drawn,
                 question_hash,
-                is_public,
+                privacy_mode,
             )
         }
 
@@ -409,7 +409,7 @@ pub mod pallet {
         /// - `cards`: 指定的牌列表 (牌ID, 是否逆位)
         /// - `spread_type`: 牌阵类型
         /// - `question_hash`: 问题哈希
-        /// - `is_public`: 是否公开
+        /// - `privacy_mode`: 隐私模式
         #[pallet::call_index(3)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn divine_manual(
@@ -417,7 +417,7 @@ pub mod pallet {
             cards: BoundedVec<(u8, bool), ConstU32<12>>,
             spread_type: SpreadType,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -445,7 +445,7 @@ pub mod pallet {
                 DivinationMethod::Manual,
                 drawn,
                 question_hash,
-                is_public,
+                privacy_mode,
             )
         }
 
@@ -459,7 +459,7 @@ pub mod pallet {
         /// - `spread_type`: 牌阵类型
         /// - `cut_position`: 切牌位置（1-77），None 表示随机切牌
         /// - `question_hash`: 占卜问题的哈希值
-        /// - `is_public`: 是否公开此占卜
+        /// - `privacy_mode`: 隐私模式
         #[pallet::call_index(7)]
         #[pallet::weight(Weight::from_parts(55_000_000, 0))]
         pub fn divine_random_with_cut(
@@ -467,7 +467,7 @@ pub mod pallet {
             spread_type: SpreadType,
             cut_position: Option<u8>,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -486,7 +486,7 @@ pub mod pallet {
                 DivinationMethod::RandomWithCut,
                 drawn,
                 question_hash,
-                is_public,
+                privacy_mode,
             )
         }
 
@@ -597,18 +597,18 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 更改占卜公开状态
+        /// 更改占卜隐私模式
         ///
         /// # 参数
         /// - `origin`: 调用者
         /// - `reading_id`: 占卜记录 ID
-        /// - `is_public`: 是否公开
+        /// - `privacy_mode`: 新的隐私模式
         #[pallet::call_index(6)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]
-        pub fn set_reading_visibility(
+        pub fn set_reading_privacy_mode(
             origin: OriginFor<T>,
             reading_id: u64,
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -618,8 +618,9 @@ pub mod pallet {
                     .ok_or(Error::<T>::ReadingNotFound)?;
                 ensure!(reading.diviner == who, Error::<T>::NotOwner);
 
-                let was_public = reading.is_public;
-                reading.is_public = is_public;
+                let was_public = matches!(reading.privacy_mode, PrivacyMode::Public);
+                let is_public = matches!(privacy_mode, PrivacyMode::Public);
+                reading.privacy_mode = privacy_mode.clone();
 
                 // 更新公开占卜列表
                 if is_public && !was_public {
@@ -638,9 +639,9 @@ pub mod pallet {
                 Ok::<_, DispatchError>(())
             })?;
 
-            Self::deposit_event(Event::ReadingVisibilityChanged {
+            Self::deposit_event(Event::ReadingPrivacyModeChanged {
                 reading_id,
-                is_public,
+                privacy_mode,
             });
 
             Ok(())
@@ -685,7 +686,7 @@ pub mod pallet {
             method: DivinationMethod,
             drawn: Vec<(u8, bool)>,
             question_hash: [u8; 32],
-            is_public: bool,
+            privacy_mode: PrivacyMode,
         ) -> DispatchResult {
             // 获取新的占卜记录 ID
             let reading_id = NextReadingId::<T>::get();
@@ -713,7 +714,7 @@ pub mod pallet {
                 block_number,
                 timestamp,
                 interpretation_cid: None,
-                is_public,
+                privacy_mode: privacy_mode.clone(),
             };
 
             // 存储占卜记录
@@ -726,7 +727,7 @@ pub mod pallet {
             })?;
 
             // 如果公开，添加到公开列表
-            if is_public {
+            if matches!(privacy_mode, PrivacyMode::Public) {
                 PublicReadings::<T>::try_mutate(|list| {
                     list.try_push(reading_id)
                         .map_err(|_| Error::<T>::PublicReadingsFull)

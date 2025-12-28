@@ -26,6 +26,9 @@ pallet-timestamp.workspace = true
 # 黄历模块 - 统一农历转换
 pallet-almanac = { path = "../almanac", default-features = false }
 
+# 隐私授权模块
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 [dev-dependencies]
 sp-core = { workspace = true, default-features = true }
 sp-io = { workspace = true, default-features = true }
@@ -45,6 +48,7 @@ std = [
     "pallet-balances/std",
     "pallet-timestamp/std",
     "pallet-almanac/std",
+    "pallet-divination-privacy/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking/runtime-benchmarks",

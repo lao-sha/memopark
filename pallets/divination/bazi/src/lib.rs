@@ -288,6 +288,37 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
+	// ================================
+	// 统一隐私模式存储 (Phase 1.2.4)
+	// ================================
+
+	/// 存储映射: 命盘ID -> 加密的敏感数据
+	///
+	/// 用于 Partial/Private 模式存储加密的敏感数据
+	/// - Partial 模式：仅加密出生时间、姓名等敏感信息
+	/// - Private 模式：加密所有计算数据
+	#[pallet::storage]
+	#[pallet::getter(fn encrypted_data)]
+	pub type EncryptedData<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		u64,  // chart_id
+		BoundedVec<u8, ConstU32<512>>,  // 加密数据（最大 512 bytes）
+	>;
+
+	/// 存储映射: 命盘ID -> 所有者加密密钥包
+	///
+	/// 存储用所有者 X25519 公钥加密的 DataKey
+	/// 格式：临时公钥(32) + nonce(12) + 加密DataKey(48) = 92 bytes
+	#[pallet::storage]
+	#[pallet::getter(fn owner_key_backup)]
+	pub type OwnerKeyBackup<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		u64,  // chart_id
+		[u8; 92],  // 加密密钥包
+	>;
+
 	/// Pallet 事件
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -397,6 +428,31 @@ pub mod pallet {
 		ServiceProviderUnregistered {
 			account: T::AccountId,
 		},
+
+		// ================================
+		// 统一隐私模式事件 (Phase 1.2.4)
+		// ================================
+
+		/// 带隐私模式的八字命盘创建成功
+		///
+		/// # 参数
+		/// - owner: 所有者账户
+		/// - chart_id: 命盘ID
+		/// - privacy_mode: 隐私模式
+		BaziChartCreatedWithPrivacy {
+			owner: T::AccountId,
+			chart_id: u64,
+			privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+		},
+		/// 加密数据更新成功
+		///
+		/// # 参数
+		/// - chart_id: 命盘ID
+		/// - owner: 所有者账户
+		EncryptedDataUpdated {
+			chart_id: u64,
+			owner: T::AccountId,
+		},
 	}
 
 	/// Pallet 错误
@@ -486,6 +542,19 @@ pub mod pallet {
 		InvalidProviderType,
 		/// 服务提供者已被禁用
 		ProviderDisabled,
+
+		// ================================
+		// 统一隐私模式错误 (Phase 1.2.4)
+		// ================================
+
+		/// 无效的隐私模式（应为 0=Public, 1=Partial, 2=Private）
+		InvalidPrivacyMode,
+		/// Public 模式不应包含加密数据
+		PublicModeNoEncryptedData,
+		/// Partial/Private 模式缺少加密数据
+		EncryptedDataRequired,
+		/// Partial 模式缺少计算参数
+		PartialModeRequiresCalculationParams,
 	}
 
 	/// Pallet 可调用函数
@@ -656,18 +725,24 @@ pub mod pallet {
 				crate::types::BaziInputType::SiZhu { .. } => crate::types::InputCalendarType::SiZhu,
 			};
 
-			// 9. 构建八字信息
+			// 9. 构建八字信息（默认使用 Public 模式）
 			let bazi_chart = BaziChart {
 				owner: who.clone(),
 				name: name.unwrap_or_default(),
-				birth_time,
-				input_calendar_type,
-				gender,
-				zishi_mode,
+				// 隐私控制字段 - 默认 Public 模式
+				privacy_mode: pallet_divination_privacy::types::PrivacyMode::Public,
+				encrypted_fields: None,
+				sensitive_data_hash: None,
+				// 出生信息
+				birth_time: Some(birth_time),
+				input_calendar_type: Some(input_calendar_type),
+				gender: Some(gender),
+				zishi_mode: Some(zishi_mode),
 				longitude,
-				sizhu,
-				dayun: dayun_info,
-				wuxing_strength,
+				// 计算数据
+				sizhu: Some(sizhu),
+				dayun: Some(dayun_info),
+				wuxing_strength: Some(wuxing_strength),
 				xiyong_shen,
 				timestamp: frame_system::Pallet::<T>::block_number().saturated_into(),
 			};
@@ -924,6 +999,287 @@ pub mod pallet {
 			Self::deposit_event(Event::EncryptedBaziChartDeleted {
 				owner: who,
 				chart_id,
+			});
+
+			Ok(())
+		}
+
+		// ================================
+		// 统一隐私模式交易 (Phase 1.2.4)
+		// ================================
+
+		/// 创建带隐私模式的八字命盘
+		///
+		/// # 隐私模式
+		///
+		/// - **Public (0)**: 所有数据明文存储，可公开查看
+		/// - **Partial (1)**: 计算数据明文 + 敏感数据加密 ⭐推荐
+		/// - **Private (2)**: 所有数据加密，无法链上解读
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者
+		/// - `privacy_mode`: 隐私模式 (0=Public, 1=Partial, 2=Private)
+		/// - `name`: 命盘名称（可选）
+		/// - `input`: 输入类型（Partial 模式必填，Private 模式可选）
+		/// - `gender`: 性别（Partial 模式必填）
+		/// - `zishi_mode`: 子时模式（Partial 模式必填）
+		/// - `longitude`: 出生地经度（可选）
+		/// - `encrypted_data`: 加密的敏感数据（Partial/Private 模式必填）
+		/// - `data_hash`: 原始数据哈希（用于验证解密正确性）
+		/// - `owner_key_backup`: 所有者加密密钥包（92 bytes）
+		#[pallet::call_index(5)]
+		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
+		pub fn create_bazi_chart_encrypted(
+			origin: OriginFor<T>,
+			privacy_mode: u8,
+			name: Option<BoundedVec<u8, ConstU32<32>>>,
+			input: Option<BaziInputType>,
+			gender: Option<Gender>,
+			zishi_mode: Option<ZiShiMode>,
+			longitude: Option<i32>,
+			encrypted_data: Option<BoundedVec<u8, ConstU32<512>>>,
+			data_hash: Option<[u8; 32]>,
+			owner_key_backup: Option<[u8; 92]>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 1. 验证并转换隐私模式
+			let privacy = match privacy_mode {
+				0 => pallet_divination_privacy::types::PrivacyMode::Public,
+				1 => pallet_divination_privacy::types::PrivacyMode::Partial,
+				2 => pallet_divination_privacy::types::PrivacyMode::Private,
+				_ => return Err(Error::<T>::InvalidPrivacyMode.into()),
+			};
+
+			// 2. 根据隐私模式验证参数
+			match privacy {
+				pallet_divination_privacy::types::PrivacyMode::Public => {
+					// Public 模式不应有加密数据
+					ensure!(encrypted_data.is_none(), Error::<T>::PublicModeNoEncryptedData);
+					// 必须有计算参数
+					ensure!(input.is_some() && gender.is_some() && zishi_mode.is_some(),
+						Error::<T>::PartialModeRequiresCalculationParams);
+				},
+				pallet_divination_privacy::types::PrivacyMode::Partial => {
+					// Partial 模式必须有加密数据
+					ensure!(encrypted_data.is_some() && data_hash.is_some() && owner_key_backup.is_some(),
+						Error::<T>::EncryptedDataRequired);
+					// 必须有计算参数
+					ensure!(input.is_some() && gender.is_some() && zishi_mode.is_some(),
+						Error::<T>::PartialModeRequiresCalculationParams);
+				},
+				pallet_divination_privacy::types::PrivacyMode::Private => {
+					// Private 模式必须有加密数据
+					ensure!(encrypted_data.is_some() && data_hash.is_some() && owner_key_backup.is_some(),
+						Error::<T>::EncryptedDataRequired);
+					// 计算参数可选（前端已加密）
+				},
+			}
+
+			// 3. 检查账户八字数量限制
+			let existing_charts = UserCharts::<T>::get(&who);
+			ensure!(
+				existing_charts.len() < T::MaxChartsPerAccount::get() as usize,
+				Error::<T>::TooManyCharts
+			);
+
+			// 4. 根据隐私模式构建命盘
+			let chart_id = NextChartId::<T>::get();
+			ensure!(chart_id < u64::MAX, Error::<T>::ChartIdOverflow);
+
+			let bazi_chart = if privacy == pallet_divination_privacy::types::PrivacyMode::Private {
+				// Private 模式：不存储计算数据
+				BaziChart {
+					owner: who.clone(),
+					name: name.unwrap_or_default(),
+					privacy_mode: privacy,
+					encrypted_fields: Some(0xFF), // 所有字段加密
+					sensitive_data_hash: data_hash,
+					birth_time: None,
+					input_calendar_type: None,
+					gender: None,
+					zishi_mode: None,
+					longitude: None,
+					sizhu: None,
+					dayun: None,
+					wuxing_strength: None,
+					xiyong_shen: None,
+					timestamp: frame_system::Pallet::<T>::block_number().saturated_into(),
+				}
+			} else {
+				// Public/Partial 模式：计算并存储数据
+				let input_val = input.ok_or(Error::<T>::PartialModeRequiresCalculationParams)?;
+				let gender_val = gender.ok_or(Error::<T>::PartialModeRequiresCalculationParams)?;
+				let zishi_mode_val = zishi_mode.ok_or(Error::<T>::PartialModeRequiresCalculationParams)?;
+
+				ensure!(input_val.is_valid(), Error::<T>::InvalidInput);
+
+				// 计算四柱
+				let (sizhu, birth_time, birth_year) = Self::calculate_sizhu_from_input_with_solar_time(
+					&input_val,
+					zishi_mode_val,
+					longitude,
+				)?;
+
+				let day_ganzhi = sizhu.day_zhu.ganzhi;
+				let year_ganzhi = sizhu.year_zhu.ganzhi;
+				let month_ganzhi = sizhu.month_zhu.ganzhi;
+				let hour_ganzhi = sizhu.hour_zhu.ganzhi;
+
+				// 计算大运
+				let days_to_jieqi = 6u8;
+				let (qiyun_age, is_shun) = crate::calculations::calculate_qiyun_age(year_ganzhi.gan.0, gender_val, days_to_jieqi);
+				let qiyun_year = birth_year + qiyun_age as u16;
+
+				let dayun_list_simple = crate::calculations::calculate_dayun_list(month_ganzhi, birth_year, qiyun_age, is_shun, 12);
+
+				let mut dayun_steps = BoundedVec::<DaYunStep<T>, T::MaxDaYunSteps>::default();
+				for (gz, start_age, start_year) in dayun_list_simple {
+					let end_age = start_age + 10;
+					let end_year = start_year + 10;
+					let tiangan_shishen = crate::constants::calculate_shishen(day_ganzhi.gan, gz.gan);
+
+					let hidden_stems = crate::constants::get_hidden_stems(gz.zhi);
+					let mut canggan_shishen = BoundedVec::<ShiShen, T::MaxCangGan>::default();
+					for (cg_gan, _, _) in hidden_stems.iter() {
+						if !crate::constants::is_valid_canggan(cg_gan.0) {
+							continue;
+						}
+						let cg_shishen = crate::constants::calculate_shishen(day_ganzhi.gan, *cg_gan);
+						canggan_shishen.try_push(cg_shishen).map_err(|_| Error::<T>::TooManyCangGan)?;
+					}
+
+					let step = DaYunStep {
+						ganzhi: gz,
+						start_age,
+						end_age,
+						start_year,
+						end_year,
+						tiangan_shishen,
+						canggan_shishen,
+					};
+					dayun_steps.try_push(step).map_err(|_| Error::<T>::TooManyDaYunSteps)?;
+				}
+
+				let dayun_info = DaYunInfo {
+					qiyun_age,
+					qiyun_year,
+					is_shun,
+					dayun_list: dayun_steps,
+				};
+
+				// 计算五行强度和喜用神
+				let wuxing_strength = crate::calculations::calculate_wuxing_strength(
+					&year_ganzhi,
+					&month_ganzhi,
+					&day_ganzhi,
+					&hour_ganzhi,
+				);
+				let xiyong_shen = crate::calculations::determine_xiyong_shen(&wuxing_strength, day_ganzhi.gan);
+
+				let input_calendar_type = match input_val {
+					crate::types::BaziInputType::Solar { .. } => crate::types::InputCalendarType::Solar,
+					crate::types::BaziInputType::Lunar { .. } => crate::types::InputCalendarType::Lunar,
+					crate::types::BaziInputType::SiZhu { .. } => crate::types::InputCalendarType::SiZhu,
+				};
+
+				BaziChart {
+					owner: who.clone(),
+					name: name.unwrap_or_default(),
+					privacy_mode: privacy,
+					encrypted_fields: if privacy == pallet_divination_privacy::types::PrivacyMode::Partial {
+						Some(0x0F) // 敏感字段加密（姓名、出生日期、性别、经度）
+					} else {
+						None
+					},
+					sensitive_data_hash: data_hash,
+					birth_time: Some(birth_time),
+					input_calendar_type: Some(input_calendar_type),
+					gender: Some(gender_val),
+					zishi_mode: Some(zishi_mode_val),
+					longitude,
+					sizhu: Some(sizhu),
+					dayun: Some(dayun_info),
+					wuxing_strength: Some(wuxing_strength),
+					xiyong_shen,
+					timestamp: frame_system::Pallet::<T>::block_number().saturated_into(),
+				}
+			};
+
+			// 5. 存储命盘
+			ChartById::<T>::insert(chart_id, bazi_chart);
+
+			// 6. 存储加密数据（Partial/Private 模式）
+			if let Some(enc_data) = encrypted_data {
+				EncryptedData::<T>::insert(chart_id, enc_data);
+			}
+			if let Some(key_backup) = owner_key_backup {
+				OwnerKeyBackup::<T>::insert(chart_id, key_backup);
+			}
+
+			// 7. 更新用户命盘列表
+			UserCharts::<T>::try_mutate(&who, |charts| {
+				charts.try_push(chart_id).map_err(|_| Error::<T>::TooManyCharts)
+			})?;
+
+			NextChartId::<T>::put(chart_id + 1);
+
+			// 8. 触发事件
+			Self::deposit_event(Event::BaziChartCreatedWithPrivacy {
+				owner: who,
+				chart_id,
+				privacy_mode: privacy,
+			});
+
+			Ok(())
+		}
+
+		/// 更新加密数据
+		///
+		/// 允许所有者更新命盘的加密数据（例如：重新加密或添加新信息）
+		///
+		/// # 参数
+		///
+		/// - `origin`: 交易发起者（必须是命盘所有者）
+		/// - `chart_id`: 命盘ID
+		/// - `encrypted_data`: 新的加密数据
+		/// - `data_hash`: 新的数据哈希
+		/// - `owner_key_backup`: 新的所有者密钥包
+		#[pallet::call_index(6)]
+		#[pallet::weight(T::WeightInfo::create_bazi_chart())]
+		pub fn update_encrypted_data(
+			origin: OriginFor<T>,
+			chart_id: u64,
+			encrypted_data: BoundedVec<u8, ConstU32<512>>,
+			data_hash: [u8; 32],
+			owner_key_backup: [u8; 92],
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			// 1. 获取命盘并验证所有权
+			let mut chart = ChartById::<T>::get(chart_id)
+				.ok_or(Error::<T>::ChartNotFound)?;
+			ensure!(chart.owner == who, Error::<T>::NotChartOwner);
+
+			// 2. 验证命盘使用加密模式
+			ensure!(
+				chart.privacy_mode != pallet_divination_privacy::types::PrivacyMode::Public,
+				Error::<T>::PublicModeNoEncryptedData
+			);
+
+			// 3. 更新加密数据
+			EncryptedData::<T>::insert(chart_id, encrypted_data);
+			OwnerKeyBackup::<T>::insert(chart_id, owner_key_backup);
+
+			// 4. 更新命盘的数据哈希
+			chart.sensitive_data_hash = Some(data_hash);
+			ChartById::<T>::insert(chart_id, chart);
+
+			// 5. 触发事件
+			Self::deposit_event(Event::EncryptedDataUpdated {
+				chart_id,
+				owner: who,
 			});
 
 			Ok(())

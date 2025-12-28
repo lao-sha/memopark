@@ -38,37 +38,53 @@ pub fn calculate_core_interpretation<AccountId, BlockNumber, MaxCidLen: frame_su
     pan: &DaLiuRenPan<AccountId, BlockNumber, MaxCidLen>,
     current_block: u32,
 ) -> CoreInterpretation {
+    // 检查是否有计算数据
+    // 如果没有（Private 模式），返回默认解盘结果
+    if !pan.has_calculation_data() {
+        return CoreInterpretation::default_with_timestamp(current_block);
+    }
+
+    // 解包所有必需的 Option 字段
+    let san_chuan = pan.san_chuan.as_ref().unwrap();
+    let tian_jiang_pan = pan.tian_jiang_pan.as_ref().unwrap();
+    let si_ke = pan.si_ke.as_ref().unwrap();
+    let day_gz = pan.day_gz.unwrap();
+    let month_gz = pan.month_gz.unwrap();
+    let xun_kong = pan.xun_kong.unwrap();
+    let ke_shi = pan.ke_shi.unwrap_or_default();
+    let ge_ju = pan.ge_ju.unwrap_or_default();
+
     // 获取月令五行（用于旺衰判断）
-    let month_wuxing = pan.month_gz.1.wu_xing();
+    let month_wuxing = month_gz.1.wu_xing();
 
     // 1. 分析三传
     let san_chuan_analysis = analyze_san_chuan(
-        &pan.san_chuan,
-        &pan.tian_jiang_pan,
-        pan.day_gz.0,
+        san_chuan,
+        tian_jiang_pan,
+        day_gz.0,
         month_wuxing,
-        pan.xun_kong,
+        xun_kong,
     );
 
     // 2. 分析四课
     let si_ke_analysis = analyze_si_ke(
-        &pan.si_ke,
-        pan.day_gz.0,
-        pan.day_gz.1,
+        si_ke,
+        day_gz.0,
+        day_gz.1,
         month_wuxing,
     );
 
     // 3. 分析天将
     let tian_jiang_analysis = analyze_tian_jiang(
-        &pan.tian_jiang_pan,
-        &pan.san_chuan,
-        pan.xun_kong,
+        tian_jiang_pan,
+        san_chuan,
+        xun_kong,
     );
 
     // 4. 计算应期
     let (ying_qi_num, ying_qi_unit, secondary_ying_qi) = calculate_ying_qi(
-        &pan.san_chuan,
-        pan.xun_kong,
+        san_chuan,
+        xun_kong,
     );
 
     // 5. 综合吉凶判断
@@ -76,8 +92,8 @@ pub fn calculate_core_interpretation<AccountId, BlockNumber, MaxCidLen: frame_su
         &san_chuan_analysis,
         &si_ke_analysis,
         &tian_jiang_analysis,
-        pan.ke_shi,
-        pan.ge_ju,
+        ke_shi,
+        ge_ju,
     );
 
     // 6. 判断趋势
@@ -95,7 +111,7 @@ pub fn calculate_core_interpretation<AccountId, BlockNumber, MaxCidLen: frame_su
 
     // 9. 计算可信度
     let confidence = calculate_confidence(
-        pan.ke_shi,
+        ke_shi,
         &san_chuan_analysis,
         &tian_jiang_analysis,
     );
@@ -103,18 +119,18 @@ pub fn calculate_core_interpretation<AccountId, BlockNumber, MaxCidLen: frame_su
     // 10. 应期可信度
     let ying_qi_confidence = calculate_ying_qi_confidence(
         &san_chuan_analysis,
-        pan.xun_kong,
+        xun_kong,
     );
 
     CoreInterpretation {
-        ke_shi: pan.ke_shi,
-        ge_ju: pan.ge_ju,
+        ke_shi,
+        ge_ju,
         fortune,
         trend,
         outcome,
-        primary_lei_shen: pan.san_chuan.chu,
+        primary_lei_shen: san_chuan.chu,
         primary_wang_shuai: san_chuan_analysis.chu_wang_shuai,
-        primary_liu_qin: pan.san_chuan.chu_qin,
+        primary_liu_qin: san_chuan.chu_qin,
         primary_jiang_ji: san_chuan_analysis.chu_jiang_ji,
         ying_qi_num,
         ying_qi_unit,
@@ -134,38 +150,52 @@ pub fn calculate_full_interpretation<AccountId, BlockNumber, MaxCidLen: frame_su
     current_block: u32,
     shi_xiang_type: Option<ShiXiangType>,
 ) -> FullInterpretation {
-    let month_wuxing = pan.month_gz.1.wu_xing();
+    // 检查是否有计算数据
+    if !pan.has_calculation_data() {
+        return FullInterpretation::default_with_timestamp(current_block);
+    }
+
+    // 解包必需字段
+    let san_chuan = pan.san_chuan.as_ref().unwrap();
+    let tian_jiang_pan = pan.tian_jiang_pan.as_ref().unwrap();
+    let si_ke = pan.si_ke.as_ref().unwrap();
+    let day_gz = pan.day_gz.unwrap();
+    let month_gz = pan.month_gz.unwrap();
+    let xun_kong = pan.xun_kong.unwrap();
+
+    let month_wuxing = month_gz.1.wu_xing();
 
     // 计算各项分析
     let san_chuan_analysis = analyze_san_chuan(
-        &pan.san_chuan,
-        &pan.tian_jiang_pan,
-        pan.day_gz.0,
+        san_chuan,
+        tian_jiang_pan,
+        day_gz.0,
         month_wuxing,
-        pan.xun_kong,
+        xun_kong,
     );
 
     let si_ke_analysis = analyze_si_ke(
-        &pan.si_ke,
-        pan.day_gz.0,
-        pan.day_gz.1,
+        si_ke,
+        day_gz.0,
+        day_gz.1,
         month_wuxing,
     );
 
     let tian_jiang_analysis = analyze_tian_jiang(
-        &pan.tian_jiang_pan,
-        &pan.san_chuan,
-        pan.xun_kong,
+        tian_jiang_pan,
+        san_chuan,
+        xun_kong,
     );
 
     let shen_sha_analysis = analyze_shen_sha(
-        pan,
+        san_chuan,
+        day_gz,
         &san_chuan_analysis,
     );
 
     let ying_qi_analysis = calculate_ying_qi_analysis(
-        &pan.san_chuan,
-        pan.xun_kong,
+        san_chuan,
+        xun_kong,
         shi_xiang_type,
     );
 
@@ -407,18 +437,19 @@ fn analyze_tian_jiang(
 // ============================================================================
 
 /// 分析神煞
-fn analyze_shen_sha<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>>(
-    pan: &DaLiuRenPan<AccountId, BlockNumber, MaxCidLen>,
+fn analyze_shen_sha(
+    san_chuan: &SanChuan,
+    day_gz: (TianGan, DiZhi),
     san_chuan_analysis: &SanChuanAnalysis,
 ) -> ShenShaAnalysis {
     let mut ji_shen_sha = BoundedVec::new();
     let mut xiong_shen_sha = BoundedVec::new();
 
     // 检查驿马入传
-    let yi_ma = pan.day_gz.1.yi_ma();
-    let yi_ma_ru_chuan = pan.san_chuan.chu == yi_ma
-        || pan.san_chuan.zhong == yi_ma
-        || pan.san_chuan.mo == yi_ma;
+    let yi_ma = day_gz.1.yi_ma();
+    let yi_ma_ru_chuan = san_chuan.chu == yi_ma
+        || san_chuan.zhong == yi_ma
+        || san_chuan.mo == yi_ma;
 
     if yi_ma_ru_chuan {
         let _ = ji_shen_sha.try_push(ShenShaType::YiMa);
@@ -426,7 +457,7 @@ fn analyze_shen_sha<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Ge
 
     // 检查天罗地网
     // 天罗：辰戌，地网：丑未（简化判断）
-    let tian_luo_di_wang = [pan.san_chuan.chu, pan.san_chuan.zhong, pan.san_chuan.mo]
+    let tian_luo_di_wang = [san_chuan.chu, san_chuan.zhong, san_chuan.mo]
         .iter()
         .any(|zhi| matches!(zhi, DiZhi::Chen | DiZhi::Xu | DiZhi::Chou | DiZhi::Wei));
 
@@ -436,10 +467,10 @@ fn analyze_shen_sha<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Ge
     }
 
     // 检查三刑入传
-    let san_xing_ru_chuan = check_san_xing(&pan.san_chuan);
+    let san_xing_ru_chuan = check_san_xing(san_chuan);
 
     // 检查六害入传
-    let liu_hai_ru_chuan = check_liu_hai(&pan.san_chuan, pan.day_gz.1);
+    let liu_hai_ru_chuan = check_liu_hai(san_chuan, day_gz.1);
 
     // 添加基本吉神
     if !san_chuan_analysis.chu_kong {

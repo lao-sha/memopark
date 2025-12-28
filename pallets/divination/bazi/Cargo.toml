@@ -35,6 +35,9 @@ pallet-divination-common = { path = "../common", default-features = false }
 # 黄历模块（农历转换功能）
 pallet-almanac = { path = "../almanac", default-features = false }
 
+# 隐私模块（隐私模式类型定义）
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 [dev-dependencies]
 sp-core = { workspace = true }
 sp-io = { workspace = true }
@@ -52,6 +55,7 @@ std = [
 	"sp-std/std",
 	"pallet-divination-common/std",
 	"pallet-almanac/std",
+	"pallet-divination-privacy/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

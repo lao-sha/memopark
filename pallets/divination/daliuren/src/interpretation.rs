@@ -437,6 +437,18 @@ pub struct CoreInterpretation {
     pub timestamp: u32,
 }
 
+impl CoreInterpretation {
+    /// 创建带时间戳的默认解盘结果
+    ///
+    /// 用于 Private 模式下无计算数据时返回
+    pub fn default_with_timestamp(timestamp: u32) -> Self {
+        Self {
+            timestamp,
+            ..Default::default()
+        }
+    }
+}
+
 // ============================================================================
 // Layer 2: 扩展分析结构
 // ============================================================================
@@ -647,6 +659,18 @@ impl Default for FullInterpretation {
             shen_sha_analysis: ShenShaAnalysis::default(),
             ying_qi_analysis: YingQiAnalysis::default(),
             shi_xiang_hints: None,
+        }
+    }
+}
+
+impl FullInterpretation {
+    /// 创建带时间戳的默认解盘结果
+    ///
+    /// 用于 Private 模式下无计算数据时返回
+    pub fn default_with_timestamp(timestamp: u32) -> Self {
+        Self {
+            core: CoreInterpretation::default_with_timestamp(timestamp),
+            ..Default::default()
         }
     }
 }

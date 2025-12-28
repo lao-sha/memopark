@@ -17,7 +17,7 @@ use scale_info::TypeInfo;
 /// 天干类型 (0-9)
 ///
 /// 甲(0) 乙(1) 丙(2) 丁(3) 戊(4) 己(5) 庚(6) 辛(7) 壬(8) 癸(9)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct TianGan(pub u8);
 
 impl TianGan {
@@ -68,7 +68,7 @@ impl TianGan {
 /// 地支类型 (0-11)
 ///
 /// 子(0) 丑(1) 寅(2) 卯(3) 辰(4) 巳(5) 午(6) 未(7) 申(8) 酉(9) 戌(10) 亥(11)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct DiZhi(pub u8);
 
 impl DiZhi {
@@ -126,7 +126,7 @@ impl DiZhi {
 /// 干支组合 (0-59)
 ///
 /// 六十甲子从"甲子"(0)到"癸亥"(59)循环
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct GanZhi {
 	/// 天干
 	pub gan: TianGan,
@@ -207,9 +207,10 @@ impl WuXing {
 }
 
 /// 十神类型
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum ShiShen {
 	/// 比肩 - 同我(同性)
+	#[default]
 	BiJian,
 	/// 劫财 - 同我(异性)
 	JieCai,
@@ -257,9 +258,10 @@ impl ShiShen {
 ///
 /// 表示天干在地支中的生旺死绝状态
 /// 用于判断日主在四柱各支的旺衰程度
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum ShiErChangSheng {
 	/// 长生 - 如人之初生，生命开始
+	#[default]
 	ChangSheng = 0,
 	/// 沐浴 - 如婴儿沐浴，脆弱之时
 	MuYu = 1,
@@ -329,9 +331,10 @@ impl ShiErChangSheng {
 /// 藏干类型
 ///
 /// 每个地支藏有1-3个天干，分为主气、中气、余气
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum CangGanType {
 	/// 主气（权重最高）
+	#[default]
 	ZhuQi,
 	/// 中气（权重中等）
 	ZhongQi,
@@ -357,8 +360,9 @@ pub struct CangGanInfo {
 /// 纳音五行 (30种)
 ///
 /// 六十甲子对应30种纳音五行，每两个相邻干支共享一个纳音
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum NaYin {
+	#[default]
 	HaiZhongJin,    // 海中金 (甲子乙丑)
 	LuZhongHuo,     // 炉中火 (丙寅丁卯)
 	DaLinMu,        // 大林木 (戊辰己巳)
@@ -447,9 +451,10 @@ pub enum ZiShiMode {
 ///
 /// 用于前端显示和数据分析，不影响八字计算。
 /// 所有输入最终都会转换为公历进行计算，但需要记录原始输入类型以便前端正确显示。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
 pub enum InputCalendarType {
 	/// 公历输入
+	#[default]
 	Solar = 0,
 	/// 农历输入
 	Lunar = 1,
@@ -513,9 +518,10 @@ impl JieQi {
 }
 
 /// 性别
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, DecodeWithMemTracking, TypeInfo, MaxEncodedLen)]
 pub enum Gender {
 	/// 男性
+	#[default]
 	Male = 1,
 	/// 女性
 	Female = 0,
@@ -685,34 +691,92 @@ pub struct BaziChart<T: crate::pallet::Config> {
 	pub owner: T::AccountId,
 	/// 命盘名称（可选，最大32字节UTF-8，如"张三"、"父亲命盘"等）
 	pub name: BoundedVec<u8, ConstU32<32>>,
+
+	// ===== 隐私控制字段 (Phase 1.2.4 新增) =====
+	/// 隐私模式 (0=Public, 1=Partial, 2=Private)
+	/// - Public: 所有数据明文存储
+	/// - Partial: 计算数据明文 + 敏感数据加密（推荐）
+	/// - Private: 所有数据加密
+	pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+	/// 加密字段标记（位标志：bit 0=姓名, bit 1=出生日期, bit 2=性别, bit 3=经度）
+	pub encrypted_fields: Option<u8>,
+	/// 敏感数据哈希（用于完整性验证）
+	pub sensitive_data_hash: Option<[u8; 32]>,
+
+	// ===== 出生信息（Private 模式时为 None）=====
 	/// 出生时间
-	pub birth_time: BirthTime,
+	pub birth_time: Option<BirthTime>,
 	/// 输入日历类型（记录原始输入是公历还是农历）
 	/// 用于前端显示，不影响八字计算
-	pub input_calendar_type: InputCalendarType,
-	/// 性别
-	pub gender: Gender,
+	pub input_calendar_type: Option<InputCalendarType>,
+	/// 性别（Private 模式时为 None）
+	pub gender: Option<Gender>,
 	/// 子时模式
-	pub zishi_mode: ZiShiMode,
+	pub zishi_mode: Option<ZiShiMode>,
 	/// 出生地经度（可选，1/100000 度，如 116.40000° → 11640000）
 	/// 当有值时，使用真太阳时修正时辰；为 None 时，不使用真太阳时
 	pub longitude: Option<i32>,
+
+	// ===== 计算数据（Private 模式时为 None）=====
 	/// 四柱
-	pub sizhu: SiZhu<T>,
+	pub sizhu: Option<SiZhu<T>>,
 	/// 大运
-	pub dayun: DaYunInfo<T>,
+	pub dayun: Option<DaYunInfo<T>>,
 	/// 五行强度
-	pub wuxing_strength: WuXingStrength,
+	pub wuxing_strength: Option<WuXingStrength>,
 	/// 喜用神
 	pub xiyong_shen: Option<WuXing>,
+
 	/// 创建时间戳（区块号）
 	pub timestamp: u64,
+}
+
+impl<T: crate::pallet::Config> BaziChart<T> {
+	/// 检查是否有计算数据（用于判断是否可以解读）
+	///
+	/// 当四柱和大运数据都存在时返回 true
+	pub fn has_calculation_data(&self) -> bool {
+		self.sizhu.is_some() && self.dayun.is_some()
+	}
+
+	/// 检查是否可以进行解读（非 Private 模式且有计算数据）
+	///
+	/// Private 模式下所有计算数据加密，无法直接解读
+	pub fn can_interpret(&self) -> bool {
+		self.privacy_mode != pallet_divination_privacy::types::PrivacyMode::Private
+			&& self.has_calculation_data()
+	}
+
+	/// 检查是否公开（向后兼容）
+	///
+	/// 仅 Public 模式返回 true
+	pub fn is_public(&self) -> bool {
+		self.privacy_mode == pallet_divination_privacy::types::PrivacyMode::Public
+	}
+
+	/// 获取四柱数据（如果可用）
+	pub fn get_sizhu(&self) -> Option<&SiZhu<T>> {
+		self.sizhu.as_ref()
+	}
+
+	/// 获取大运数据（如果可用）
+	pub fn get_dayun(&self) -> Option<&DaYunInfo<T>> {
+		self.dayun.as_ref()
+	}
+
+	/// 获取性别（如果可用）
+	pub fn get_gender(&self) -> Option<Gender> {
+		self.gender
+	}
 }
 
 impl<T: crate::pallet::Config> PartialEq for BaziChart<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.owner == other.owner &&
 		self.name == other.name &&
+		self.privacy_mode == other.privacy_mode &&
+		self.encrypted_fields == other.encrypted_fields &&
+		self.sensitive_data_hash == other.sensitive_data_hash &&
 		self.birth_time == other.birth_time &&
 		self.input_calendar_type == other.input_calendar_type &&
 		self.gender == other.gender &&
@@ -1051,7 +1115,7 @@ impl SiZhuDirectInput {
 /// - 甲午旬（甲午到癸卯）: 辰巳空
 /// - 甲辰旬（甲辰到癸丑）: 寅卯空
 /// - 甲寅旬（甲寅到癸亥）: 子丑空
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct KongWangInfo {
 	/// 年柱的旬空地支对
 	pub year_kongwang: (DiZhi, DiZhi),
@@ -1085,7 +1149,7 @@ pub struct KongWangInfo {
 /// - 旺相: 长生、冠带、临官、帝旺
 /// - 衰败: 衰、病、死、墓、绝
 /// - 中性: 沐浴、胎、养
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct XingYunInfo {
 	/// 日主在年支的十二长生
 	pub year_changsheng: ShiErChangSheng,

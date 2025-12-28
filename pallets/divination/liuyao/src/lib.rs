@@ -99,6 +99,10 @@ pub mod pallet {
         /// IPFS CID 最大长度
         #[pallet::constant]
         type MaxCidLen: Get<u32>;
+
+        /// 加密数据最大长度（默认: 512 bytes）
+        #[pallet::constant]
+        type MaxEncryptedLen: Get<u32>;
     }
 
     // ========================================================================
@@ -118,6 +122,26 @@ pub mod pallet {
         Blake2_128Concat,
         u64,
         LiuYaoGua<T::AccountId, BlockNumberFor<T>, T::MaxCidLen>,
+    >;
+
+    /// 加密数据存储
+    #[pallet::storage]
+    #[pallet::getter(fn encrypted_data)]
+    pub type EncryptedDataStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<u8, T::MaxEncryptedLen>,
+    >;
+
+    /// 所有者密钥备份存储
+    #[pallet::storage]
+    #[pallet::getter(fn owner_key_backup)]
+    pub type OwnerKeyBackupStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        [u8; 80],
     >;
 
     /// 用户的卦象列表
@@ -160,12 +184,24 @@ pub mod pallet {
             gua_id: u64,
             creator: T::AccountId,
             method: DivinationMethod,
-            original_name_idx: u8,
+            original_name_idx: Option<u8>,
         },
         /// 可见性变更
         VisibilityChanged {
             gua_id: u64,
             is_public: bool,
+        },
+        /// 加密卦象创建成功
+        EncryptedGuaCreated {
+            gua_id: u64,
+            creator: T::AccountId,
+            privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+            method: DivinationMethod,
+        },
+        /// 加密数据已更新
+        EncryptedDataUpdated {
+            gua_id: u64,
+            data_hash: [u8; 32],
         },
     }
 
@@ -191,6 +227,16 @@ pub mod pallet {
         UserGuaLimitExceeded,
         /// 超过公开列表上限
         PublicGuaLimitExceeded,
+        /// 无效的加密级别
+        InvalidEncryptionLevel,
+        /// 加密数据缺失
+        EncryptedDataMissing,
+        /// 数据哈希缺失
+        DataHashMissing,
+        /// 密钥备份缺失
+        OwnerKeyBackupMissing,
+        /// 加密数据过长
+        EncryptedDataTooLong,
     }
 
     // ========================================================================
@@ -568,6 +614,10 @@ pub mod pallet {
         }
 
         /// 设置卦象可见性
+        ///
+        /// # 参数
+        /// - `gua_id`: 卦象 ID
+        /// - `is_public`: 是否公开（true = Public 模式，false = Partial 模式）
         #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]
         pub fn set_gua_visibility(
@@ -581,10 +631,14 @@ pub mod pallet {
             let gua = Guas::<T>::get(gua_id).ok_or(Error::<T>::GuaNotFound)?;
             ensure!(gua.creator == who, Error::<T>::NotGuaOwner);
 
-            // 更新可见性
+            // 更新可见性（使用 privacy_mode）
             Guas::<T>::mutate(gua_id, |maybe_gua| {
                 if let Some(gua) = maybe_gua {
-                    gua.is_public = is_public;
+                    gua.privacy_mode = if is_public {
+                        pallet_divination_privacy::types::PrivacyMode::Public
+                    } else {
+                        pallet_divination_privacy::types::PrivacyMode::Partial
+                    };
                 }
             });
 
@@ -604,6 +658,307 @@ pub mod pallet {
             }
 
             Self::deposit_event(Event::VisibilityChanged { gua_id, is_public });
+
+            Ok(())
+        }
+
+        /// 加密铜钱起卦 - 支持三种隐私模式
+        ///
+        /// # 隐私模式
+        /// - 0 (Public): 所有数据明文存储
+        /// - 1 (Partial): 计算数据明文，敏感数据加密
+        /// - 2 (Private): 所有数据加密，仅存储加密数据和元数据
+        ///
+        /// # 参数
+        /// - `encryption_level`: 加密级别（0-2）
+        /// - `coins`: 六次摇卦结果（Public/Partial 模式需要）
+        /// - `year_gz`, `month_gz`, `day_gz`, `hour_gz`: 干支信息
+        /// - `encrypted_data`: 加密的敏感数据（Partial/Private 模式需要）
+        /// - `data_hash`: 敏感数据哈希
+        /// - `owner_key_backup`: 所有者密钥备份
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(120_000_000, 0))]
+        pub fn divine_by_coins_encrypted(
+            origin: OriginFor<T>,
+            encryption_level: u8,
+            coins: Option<[u8; 6]>,
+            year_gz: Option<(u8, u8)>,
+            month_gz: Option<(u8, u8)>,
+            day_gz: Option<(u8, u8)>,
+            hour_gz: Option<(u8, u8)>,
+            encrypted_data: Option<BoundedVec<u8, T::MaxEncryptedLen>>,
+            data_hash: Option<[u8; 32]>,
+            owner_key_backup: Option<[u8; 80]>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 校验加密级别
+            ensure!(encryption_level <= 2, Error::<T>::InvalidEncryptionLevel);
+
+            // 检查每日限制
+            Self::check_daily_limit(&who)?;
+
+            // 根据隐私模式处理
+            let privacy_mode = match encryption_level {
+                0 => pallet_divination_privacy::types::PrivacyMode::Public,
+                1 => pallet_divination_privacy::types::PrivacyMode::Partial,
+                _ => pallet_divination_privacy::types::PrivacyMode::Private,
+            };
+
+            // Partial/Private 模式需要加密数据
+            if encryption_level >= 1 {
+                ensure!(encrypted_data.is_some(), Error::<T>::EncryptedDataMissing);
+                ensure!(data_hash.is_some(), Error::<T>::DataHashMissing);
+                ensure!(owner_key_backup.is_some(), Error::<T>::OwnerKeyBackupMissing);
+            }
+
+            // 获取新 ID
+            let gua_id = NextGuaId::<T>::get();
+            NextGuaId::<T>::put(gua_id + 1);
+
+            // 检查用户存储上限
+            let user_guas = UserGuas::<T>::get(&who);
+            ensure!(
+                user_guas.len() < T::MaxUserGuas::get() as usize,
+                Error::<T>::UserGuaLimitExceeded
+            );
+
+            // 根据模式创建卦象
+            let gua = if encryption_level == 2 {
+                // Private 模式：不存储计算数据
+                LiuYaoGua {
+                    id: gua_id,
+                    creator: who.clone(),
+                    created_at: <frame_system::Pallet<T>>::block_number(),
+                    privacy_mode,
+                    encrypted_fields: Some(0xFF), // 所有字段加密
+                    sensitive_data_hash: data_hash,
+                    method: DivinationMethod::CoinMethod,
+                    question_cid: None,
+                    year_gz: None,
+                    month_gz: None,
+                    day_gz: None,
+                    hour_gz: None,
+                    original_yaos: None,
+                    original_inner: None,
+                    original_outer: None,
+                    original_name_idx: None,
+                    gong: None,
+                    gua_xu: None,
+                    has_bian_gua: false,
+                    changed_yaos: None,
+                    changed_inner: None,
+                    changed_outer: None,
+                    changed_name_idx: None,
+                    hu_inner: None,
+                    hu_outer: None,
+                    hu_name_idx: None,
+                    gua_shen: None,
+                    moving_yaos: None,
+                    xun_kong: None,
+                    fu_shen: None,
+                }
+            } else {
+                // Public/Partial 模式：存储计算数据
+                let coins_data = coins.ok_or(Error::<T>::InvalidCoinCount)?;
+
+                // 参数校验
+                for &coin in coins_data.iter() {
+                    ensure!(coin <= 3, Error::<T>::InvalidCoinCount);
+                }
+
+                let year = year_gz.ok_or(Error::<T>::InvalidNumber)?;
+                let month = month_gz.ok_or(Error::<T>::InvalidNumber)?;
+                let day = day_gz.ok_or(Error::<T>::InvalidNumber)?;
+                let hour = hour_gz.ok_or(Error::<T>::InvalidNumber)?;
+
+                // 从铜钱结果生成六爻
+                let yaos = coins_to_yaos(&coins_data);
+
+                let year_gz_val = (TianGan::from_index(year.0), DiZhi::from_index(year.1));
+                let month_gz_val = (TianGan::from_index(month.0), DiZhi::from_index(month.1));
+                let day_gz_val = (TianGan::from_index(day.0), DiZhi::from_index(day.1));
+                let hour_gz_val = (TianGan::from_index(hour.0), DiZhi::from_index(hour.1));
+
+                // 计算内外卦
+                let (original_inner, original_outer) = yaos_to_trigrams(&yaos);
+                let (gua_xu, gong) = calculate_shi_ying_gong(original_inner, original_outer);
+                let liu_shen_array = calculate_liu_shen(day_gz_val.0);
+                let xun_kong = calculate_xun_kong(day_gz_val.0, day_gz_val.1);
+                let original_name_idx = calculate_gua_index(original_inner, original_outer);
+
+                // 构建本卦六爻信息
+                let gong_wx = gong.wu_xing();
+                let mut original_yaos_arr = [YaoInfo::default(); 6];
+                let mut liu_qin_array = [LiuQin::XiongDi; 6];
+
+                for i in 0..6 {
+                    let (gan, zhi) = if i < 3 {
+                        get_inner_najia(original_inner, i as u8)
+                    } else {
+                        get_outer_najia(original_outer, (i - 3) as u8)
+                    };
+                    let yao_wx = zhi.wu_xing();
+                    let liu_qin = LiuQin::from_wu_xing(gong_wx, yao_wx);
+                    liu_qin_array[i] = liu_qin;
+
+                    let shi_pos = gua_xu.shi_yao_pos() as usize;
+                    let ying_pos = gua_xu.ying_yao_pos() as usize;
+
+                    original_yaos_arr[i] = YaoInfo {
+                        yao: yaos[i],
+                        tian_gan: gan,
+                        di_zhi: zhi,
+                        wu_xing: yao_wx,
+                        liu_qin,
+                        liu_shen: liu_shen_array[i],
+                        is_shi: i + 1 == shi_pos,
+                        is_ying: i + 1 == ying_pos,
+                    };
+                }
+
+                // 计算变卦
+                let (changed_inner, changed_outer, has_bian_gua) = calculate_bian_gua(&yaos);
+                let changed_name_idx = calculate_gua_index(changed_inner, changed_outer);
+
+                let mut changed_yaos_arr = [YaoInfo::default(); 6];
+                if has_bian_gua {
+                    for i in 0..6 {
+                        let (gan, zhi) = if i < 3 {
+                            get_inner_najia(changed_inner, i as u8)
+                        } else {
+                            get_outer_najia(changed_outer, (i - 3) as u8)
+                        };
+                        let yao_wx = zhi.wu_xing();
+                        let liu_qin = LiuQin::from_wu_xing(gong_wx, yao_wx);
+
+                        changed_yaos_arr[i] = YaoInfo {
+                            yao: if yaos[i].is_moving() {
+                                if yaos[i].is_yang() { Yao::ShaoYin } else { Yao::ShaoYang }
+                            } else {
+                                yaos[i]
+                            },
+                            tian_gan: gan,
+                            di_zhi: zhi,
+                            wu_xing: yao_wx,
+                            liu_qin,
+                            liu_shen: liu_shen_array[i],
+                            is_shi: false,
+                            is_ying: false,
+                        };
+                    }
+                }
+
+                let moving_yaos = calculate_moving_bitmap(&yaos);
+                let (hu_inner, hu_outer) = calculate_hu_gua(&yaos);
+                let hu_name_idx = calculate_gua_index(hu_inner, hu_outer);
+                let shi_pos = gua_xu.shi_yao_pos();
+                let shi_is_yang = yaos[(shi_pos - 1) as usize].is_yang();
+                let gua_shen = calculate_gua_shen(shi_pos, shi_is_yang);
+                let fu_shen = find_fu_shen(gong, &liu_qin_array);
+
+                LiuYaoGua {
+                    id: gua_id,
+                    creator: who.clone(),
+                    created_at: <frame_system::Pallet<T>>::block_number(),
+                    privacy_mode,
+                    encrypted_fields: if encryption_level == 1 { Some(0x03) } else { None },
+                    sensitive_data_hash: data_hash,
+                    method: DivinationMethod::CoinMethod,
+                    question_cid: None,
+                    year_gz: Some(year_gz_val),
+                    month_gz: Some(month_gz_val),
+                    day_gz: Some(day_gz_val),
+                    hour_gz: Some(hour_gz_val),
+                    original_yaos: Some(original_yaos_arr),
+                    original_inner: Some(original_inner),
+                    original_outer: Some(original_outer),
+                    original_name_idx: Some(original_name_idx),
+                    gong: Some(gong),
+                    gua_xu: Some(gua_xu),
+                    has_bian_gua,
+                    changed_yaos: Some(changed_yaos_arr),
+                    changed_inner: Some(changed_inner),
+                    changed_outer: Some(changed_outer),
+                    changed_name_idx: Some(changed_name_idx),
+                    hu_inner: Some(hu_inner),
+                    hu_outer: Some(hu_outer),
+                    hu_name_idx: Some(hu_name_idx),
+                    gua_shen: Some(gua_shen),
+                    moving_yaos: Some(moving_yaos),
+                    xun_kong: Some(xun_kong),
+                    fu_shen: Some(fu_shen),
+                }
+            };
+
+            // 存储卦象
+            Guas::<T>::insert(gua_id, gua);
+
+            // 存储加密数据
+            if let Some(enc_data) = encrypted_data {
+                EncryptedDataStorage::<T>::insert(gua_id, enc_data);
+            }
+            if let Some(key_backup) = owner_key_backup {
+                OwnerKeyBackupStorage::<T>::insert(gua_id, key_backup);
+            }
+
+            // 更新用户卦象列表
+            UserGuas::<T>::try_mutate(&who, |list| {
+                list.try_push(gua_id).map_err(|_| Error::<T>::UserGuaLimitExceeded)
+            })?;
+
+            // 更新每日计数
+            Self::increment_daily_count(&who);
+
+            // 更新用户统计
+            UserStatsStorage::<T>::mutate(&who, |stats| {
+                if stats.total_guas == 0 {
+                    stats.first_gua_block = Self::block_to_day(<frame_system::Pallet<T>>::block_number());
+                }
+                stats.total_guas = stats.total_guas.saturating_add(1);
+            });
+
+            // 发出事件
+            Self::deposit_event(Event::EncryptedGuaCreated {
+                gua_id,
+                creator: who,
+                privacy_mode,
+                method: DivinationMethod::CoinMethod,
+            });
+
+            Ok(())
+        }
+
+        /// 更新加密数据
+        ///
+        /// 仅卦象所有者可更新加密数据
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn update_encrypted_data(
+            origin: OriginFor<T>,
+            gua_id: u64,
+            encrypted_data: BoundedVec<u8, T::MaxEncryptedLen>,
+            data_hash: [u8; 32],
+            owner_key_backup: [u8; 80],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查卦象存在且属于调用者
+            let gua = Guas::<T>::get(gua_id).ok_or(Error::<T>::GuaNotFound)?;
+            ensure!(gua.creator == who, Error::<T>::NotGuaOwner);
+
+            // 更新加密数据
+            EncryptedDataStorage::<T>::insert(gua_id, encrypted_data);
+            OwnerKeyBackupStorage::<T>::insert(gua_id, owner_key_backup);
+
+            // 更新数据哈希
+            Guas::<T>::mutate(gua_id, |maybe_gua| {
+                if let Some(gua) = maybe_gua {
+                    gua.sensitive_data_hash = Some(data_hash);
+                }
+            });
+
+            Self::deposit_event(Event::EncryptedDataUpdated { gua_id, data_hash });
 
             Ok(())
         }
@@ -758,36 +1113,48 @@ pub mod pallet {
             // 查找伏神
             let fu_shen = find_fu_shen(gong, &liu_qin_array);
 
-            // 创建卦象
+            // 创建卦象（Public 模式，所有数据明文存储）
             let gua = LiuYaoGua {
                 id: gua_id,
                 creator: who.clone(),
                 created_at: <frame_system::Pallet<T>>::block_number(),
+                // 隐私控制字段
+                privacy_mode: pallet_divination_privacy::types::PrivacyMode::Public,
+                encrypted_fields: None,
+                sensitive_data_hash: None,
+                // 起卦信息
                 method,
                 question_cid: None,
-                year_gz,
-                month_gz,
-                day_gz,
-                hour_gz,
-                original_yaos,
-                original_inner,
-                original_outer,
-                original_name_idx,
-                gong,
-                gua_xu,
+                // 时间信息
+                year_gz: Some(year_gz),
+                month_gz: Some(month_gz),
+                day_gz: Some(day_gz),
+                hour_gz: Some(hour_gz),
+                // 本卦信息
+                original_yaos: Some(original_yaos),
+                original_inner: Some(original_inner),
+                original_outer: Some(original_outer),
+                original_name_idx: Some(original_name_idx),
+                gong: Some(gong),
+                gua_xu: Some(gua_xu),
+                // 变卦信息
                 has_bian_gua,
-                changed_yaos,
-                changed_inner,
-                changed_outer,
-                changed_name_idx,
-                hu_inner,
-                hu_outer,
-                hu_name_idx,
-                gua_shen,
-                moving_yaos,
-                xun_kong,
-                fu_shen,
-                is_public: false,
+                changed_yaos: Some(changed_yaos),
+                changed_inner: Some(changed_inner),
+                changed_outer: Some(changed_outer),
+                changed_name_idx: Some(changed_name_idx),
+                // 互卦信息
+                hu_inner: Some(hu_inner),
+                hu_outer: Some(hu_outer),
+                hu_name_idx: Some(hu_name_idx),
+                // 卦身
+                gua_shen: Some(gua_shen),
+                // 动爻
+                moving_yaos: Some(moving_yaos),
+                // 旬空
+                xun_kong: Some(xun_kong),
+                // 伏神
+                fu_shen: Some(fu_shen),
             };
 
             // 存储卦象
@@ -821,12 +1188,17 @@ pub mod pallet {
         ///
         /// # 返回
         /// - `Some(LiuYaoCoreInterpretation)`: 核心解卦
-        /// - `None`: 卦象不存在
+        /// - `None`: 卦象不存在或无法解读（Private 模式）
         pub fn get_core_interpretation(
             gua_id: u64,
             shi_xiang: u8,
         ) -> Option<crate::interpretation::LiuYaoCoreInterpretation> {
             let gua = Guas::<T>::get(gua_id)?;
+
+            // 检查是否可解读
+            if !gua.can_interpret() {
+                return None;
+            }
 
             // 转换事项类型
             let shi_xiang_type = match shi_xiang {
@@ -862,12 +1234,17 @@ pub mod pallet {
         ///
         /// # 返回
         /// - `Some(LiuYaoFullInterpretation)`: 完整解卦
-        /// - `None`: 卦象不存在
+        /// - `None`: 卦象不存在或无法解读（Private 模式）
         pub fn get_full_interpretation(
             gua_id: u64,
             shi_xiang: u8,
         ) -> Option<crate::interpretation::LiuYaoFullInterpretation> {
             let gua = Guas::<T>::get(gua_id)?;
+
+            // 检查是否可解读
+            if !gua.can_interpret() {
+                return None;
+            }
 
             // 转换事项类型
             let shi_xiang_type = match shi_xiang {
@@ -898,36 +1275,48 @@ pub mod pallet {
             let mut full = crate::interpretation::LiuYaoFullInterpretation::new(timestamp);
             full.core = core;
 
-            // 填充卦象分析
-            full.gua_xiang.ben_gua_idx = gua.original_name_idx;
+            // 填充卦象分析（需要解包 Option）
+            let original_name_idx = gua.original_name_idx.unwrap_or(0);
+            let changed_name_idx = gua.changed_name_idx.unwrap_or(0);
+            let hu_name_idx = gua.hu_name_idx.unwrap_or(0);
+            let gong = gua.gong.unwrap_or_default();
+            let gua_xu = gua.gua_xu.unwrap_or_default();
+            let gua_shen = gua.gua_shen.unwrap_or_default();
+            let original_yaos = gua.original_yaos.unwrap_or_default();
+            let changed_yaos = gua.changed_yaos.unwrap_or_default();
+            let fu_shen = gua.fu_shen.unwrap_or_default();
+            let day_gz = gua.day_gz.unwrap_or_default();
+            let month_gz = gua.month_gz.unwrap_or_default();
+
+            full.gua_xiang.ben_gua_idx = original_name_idx;
             full.gua_xiang.bian_gua_idx = if gua.has_bian_gua {
-                gua.changed_name_idx
+                changed_name_idx
             } else {
                 255
             };
-            full.gua_xiang.hu_gua_idx = gua.hu_name_idx;
-            full.gua_xiang.gong = gua.gong.index();
-            full.gua_xiang.gua_xu = gua.gua_xu as u8;
-            full.gua_xiang.shi_pos = gua.gua_xu.shi_yao_pos() - 1;
-            full.gua_xiang.ying_pos = gua.gua_xu.ying_yao_pos() - 1;
-            full.gua_xiang.gua_shen = gua.gua_shen.index();
+            full.gua_xiang.hu_gua_idx = hu_name_idx;
+            full.gua_xiang.gong = gong.index();
+            full.gua_xiang.gua_xu = gua_xu as u8;
+            full.gua_xiang.shi_pos = gua_xu.shi_yao_pos() - 1;
+            full.gua_xiang.ying_pos = gua_xu.ying_yao_pos() - 1;
+            full.gua_xiang.gua_shen = gua_shen.index();
 
             // 判断六冲六合
             full.gua_xiang.is_liu_chong =
-                crate::algorithm::is_liu_chong_by_index(gua.original_name_idx);
+                crate::algorithm::is_liu_chong_by_index(original_name_idx);
             full.gua_xiang.is_liu_he =
-                crate::algorithm::is_liu_he(gua.original_name_idx);
+                crate::algorithm::is_liu_he(original_name_idx);
 
             // 填充六亲分析
             for i in 0..6 {
-                let qin = gua.original_yaos[i].liu_qin;
+                let qin = original_yaos[i].liu_qin;
                 let state = full.liu_qin.get_qin_state_mut(qin);
                 state.add_position(i as u8);
             }
 
             // 检查伏神
             for i in 0..6 {
-                if let Some(fu) = &gua.fu_shen[i] {
+                if let Some(fu) = &fu_shen[i] {
                     let state = full.liu_qin.get_qin_state_mut(fu.liu_qin);
                     state.has_fu_shen = true;
                     state.fu_shen_pos = fu.position;
@@ -935,7 +1324,7 @@ pub mod pallet {
             }
 
             // 填充各爻分析
-            let (kong1, kong2) = crate::algorithm::calculate_xun_kong(gua.day_gz.0, gua.day_gz.1);
+            let (kong1, kong2) = crate::algorithm::calculate_xun_kong(day_gz.0, day_gz.1);
 
             for i in 0..6 {
                 let yao = if let Some(y) = full.get_yao_mut(i as u8) {
@@ -944,17 +1333,17 @@ pub mod pallet {
                     continue;
                 };
 
-                let yao_info = &gua.original_yaos[i];
+                let yao_info = &original_yaos[i];
                 yao.position = i as u8;
                 yao.is_kong = crate::interpretation::is_zhi_kong(yao_info.di_zhi, kong1, kong2);
                 yao.is_yue_po =
-                    crate::interpretation::is_zhi_yue_po(yao_info.di_zhi, gua.month_gz.1);
+                    crate::interpretation::is_zhi_yue_po(yao_info.di_zhi, month_gz.1);
                 yao.is_ri_chong =
-                    crate::interpretation::is_zhi_ri_chong(yao_info.di_zhi, gua.day_gz.1);
+                    crate::interpretation::is_zhi_ri_chong(yao_info.di_zhi, day_gz.1);
                 yao.is_dong = yao_info.yao.is_moving();
 
                 if yao.is_dong && gua.has_bian_gua {
-                    let changed_zhi = gua.changed_yaos[i].di_zhi;
+                    let changed_zhi = changed_yaos[i].di_zhi;
                     let hua = crate::interpretation::calculate_hua_type(
                         yao_info.di_zhi,
                         changed_zhi,
@@ -966,8 +1355,8 @@ pub mod pallet {
 
                 yao.wang_shuai = crate::interpretation::calculate_wang_shuai(
                     yao_info.di_zhi,
-                    gua.month_gz.1,
-                    gua.day_gz.1,
+                    month_gz.1,
+                    day_gz.1,
                 );
             }
 
@@ -982,7 +1371,7 @@ pub mod pallet {
         ///
         /// # 返回
         /// - `Some(Vec<JieGuaTextType>)`: 解卦文本索引列表
-        /// - `None`: 卦象不存在
+        /// - `None`: 卦象不存在或无法解读
         pub fn get_interpretation_texts(
             gua_id: u64,
             shi_xiang: u8,
@@ -991,6 +1380,13 @@ pub mod pallet {
 
             let core = Self::get_core_interpretation(gua_id, shi_xiang)?;
             let gua = Guas::<T>::get(gua_id)?;
+
+            // 检查是否可解读
+            if !gua.can_interpret() {
+                return None;
+            }
+
+            let original_name_idx = gua.original_name_idx.unwrap_or(0);
 
             let mut texts = sp_std::vec::Vec::new();
 
@@ -1030,10 +1426,10 @@ pub mod pallet {
             }
 
             // 4. 特殊状态
-            if crate::algorithm::is_liu_chong_by_index(gua.original_name_idx) {
+            if crate::algorithm::is_liu_chong_by_index(original_name_idx) {
                 texts.push(JieGuaTextType::GuaFengLiuChong);
             }
-            if crate::algorithm::is_liu_he(gua.original_name_idx) {
+            if crate::algorithm::is_liu_he(original_name_idx) {
                 texts.push(JieGuaTextType::GuaFengLiuHe);
             }
 

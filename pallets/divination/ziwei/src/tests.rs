@@ -53,9 +53,9 @@ fn test_divine_manual_works() {
         ));
 
         let chart = Ziwei::charts(0).unwrap();
-        assert_eq!(chart.year_gan, TianGan::Yi);
-        assert_eq!(chart.year_zhi, DiZhi::Chou);
-        assert_eq!(chart.gender, Gender::Female);
+        assert_eq!(chart.year_gan, Some(TianGan::Yi));
+        assert_eq!(chart.year_zhi, Some(DiZhi::Chou));
+        assert_eq!(chart.gender, Some(Gender::Female));
     });
 }
 
@@ -307,7 +307,7 @@ fn test_set_visibility_works() {
         ));
 
         let chart = Ziwei::charts(0).unwrap();
-        assert!(chart.is_public);
+        assert!(chart.is_public());
 
         // 检查公开列表
         let public_charts = Ziwei::public_charts();
@@ -321,7 +321,7 @@ fn test_set_visibility_works() {
         ));
 
         let chart = Ziwei::charts(0).unwrap();
-        assert!(!chart.is_public);
+        assert!(!chart.is_public());
 
         let public_charts = Ziwei::public_charts();
         assert!(!public_charts.contains(&0));
@@ -814,4 +814,328 @@ fn test_generate_da_xian_details() {
     let da_xians_rev = generate_da_xian_details(2, 4, false, TianGan::Jia);
     // 第二大限应在丑宫
     assert_eq!(da_xians_rev[1].3, DiZhi::Chou);
+}
+
+// ============================================================================
+// 隐私模式测试 - Phase 1.2.4
+// ============================================================================
+
+#[test]
+fn test_divine_by_time_encrypted_public_mode() {
+    use pallet_divination_privacy::types::PrivacyMode;
+    #[allow(unused_imports)]
+    use frame_support::BoundedVec;
+
+    new_test_ext().execute_with(|| {
+        // Public 模式（加密级别 0）- 无需加密数据
+        assert_ok!(Ziwei::divine_by_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            0, // encryption_level = Public
+            1990,
+            1,
+            1,
+            DiZhi::Zi,
+            Gender::Male,
+            false,
+            None, // 无加密数据
+            None, // 无数据哈希
+            None, // 无密钥备份
+        ));
+
+        // 验证命盘创建
+        let chart = Ziwei::charts(0).unwrap();
+        assert_eq!(chart.privacy_mode, PrivacyMode::Public);
+        assert!(chart.has_calculation_data());
+        assert!(chart.can_interpret());
+        assert!(chart.is_public());
+
+        // 验证计算数据存在
+        assert!(chart.palaces.is_some());
+        assert!(chart.wu_xing_ju.is_some());
+        assert!(chart.ming_gong_pos.is_some());
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_partial_mode() {
+    use pallet_divination_privacy::types::PrivacyMode;
+    use frame_support::BoundedVec;
+
+    new_test_ext().execute_with(|| {
+        // 准备加密数据
+        let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3, 4, 5].try_into().unwrap();
+        let data_hash = [0u8; 32];
+        let owner_key_backup = [0u8; 80];
+
+        // Partial 模式（加密级别 1）- 需要加密数据
+        assert_ok!(Ziwei::divine_by_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1, // encryption_level = Partial
+            1990,
+            1,
+            1,
+            DiZhi::Zi,
+            Gender::Male,
+            false,
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证命盘
+        let chart = Ziwei::charts(0).unwrap();
+        assert_eq!(chart.privacy_mode, PrivacyMode::Partial);
+        assert!(chart.has_calculation_data());
+        assert!(chart.can_interpret());
+        assert!(!chart.is_public());
+
+        // 验证加密数据存储
+        assert!(Ziwei::encrypted_data(0).is_some());
+        assert!(Ziwei::owner_key_backup(0).is_some());
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_private_mode() {
+    use pallet_divination_privacy::types::PrivacyMode;
+    use frame_support::BoundedVec;
+
+    new_test_ext().execute_with(|| {
+        // 准备加密数据
+        let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3, 4, 5].try_into().unwrap();
+        let data_hash = [0u8; 32];
+        let owner_key_backup = [0u8; 80];
+
+        // Private 模式（加密级别 2）- 不存储计算数据
+        assert_ok!(Ziwei::divine_by_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            2, // encryption_level = Private
+            1990,
+            1,
+            1,
+            DiZhi::Zi,
+            Gender::Male,
+            false,
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证命盘
+        let chart = Ziwei::charts(0).unwrap();
+        assert_eq!(chart.privacy_mode, PrivacyMode::Private);
+        assert!(!chart.has_calculation_data()); // 无计算数据
+        assert!(!chart.can_interpret()); // 无法解读
+        assert!(!chart.is_public());
+
+        // 验证计算数据不存在
+        assert!(chart.palaces.is_none());
+        assert!(chart.wu_xing_ju.is_none());
+        assert!(chart.ming_gong_pos.is_none());
+
+        // 但加密数据和元数据存在
+        assert!(Ziwei::encrypted_data(0).is_some());
+        assert!(Ziwei::owner_key_backup(0).is_some());
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_missing_data_fails() {
+    new_test_ext().execute_with(|| {
+        // Partial 模式缺少加密数据应该失败
+        assert_noop!(
+            Ziwei::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1, // encryption_level = Partial
+                1990,
+                1,
+                1,
+                DiZhi::Zi,
+                Gender::Male,
+                false,
+                None, // 缺少加密数据
+                None,
+                None,
+            ),
+            Error::<Test>::EncryptedDataMissing
+        );
+
+        // Private 模式缺少加密数据应该失败
+        assert_noop!(
+            Ziwei::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                2, // encryption_level = Private
+                1990,
+                1,
+                1,
+                DiZhi::Zi,
+                Gender::Male,
+                false,
+                None, // 缺少加密数据
+                None,
+                None,
+            ),
+            Error::<Test>::EncryptedDataMissing
+        );
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_invalid_level_fails() {
+    new_test_ext().execute_with(|| {
+        // 无效的加密级别应该失败
+        assert_noop!(
+            Ziwei::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                3, // 无效的加密级别
+                1990,
+                1,
+                1,
+                DiZhi::Zi,
+                Gender::Male,
+                false,
+                None,
+                None,
+                None,
+            ),
+            Error::<Test>::InvalidEncryptionLevel
+        );
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_works() {
+    use frame_support::BoundedVec;
+
+    new_test_ext().execute_with(|| {
+        // 先创建 Partial 模式命盘
+        let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+        let data_hash = [1u8; 32];
+        let owner_key_backup = [1u8; 80];
+
+        assert_ok!(Ziwei::divine_by_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            1990,
+            1,
+            1,
+            DiZhi::Zi,
+            Gender::Male,
+            false,
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 更新加密数据
+        let new_encrypted_data: BoundedVec<u8, _> = vec![4, 5, 6, 7].try_into().unwrap();
+        let new_data_hash = [2u8; 32];
+        let new_owner_key_backup = [2u8; 80];
+
+        assert_ok!(Ziwei::update_encrypted_data(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            new_encrypted_data.clone(),
+            new_data_hash,
+            new_owner_key_backup,
+        ));
+
+        // 验证更新
+        let stored_data = Ziwei::encrypted_data(0).unwrap();
+        assert_eq!(stored_data.to_vec(), vec![4, 5, 6, 7]);
+
+        let chart = Ziwei::charts(0).unwrap();
+        assert_eq!(chart.sensitive_data_hash, Some(new_data_hash));
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_not_owner_fails() {
+    use frame_support::BoundedVec;
+
+    new_test_ext().execute_with(|| {
+        // Alice 创建命盘
+        let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+        assert_ok!(Ziwei::divine_by_time_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            1990,
+            1,
+            1,
+            DiZhi::Zi,
+            Gender::Male,
+            false,
+            Some(encrypted_data.clone()),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        // Bob 尝试更新应该失败
+        assert_noop!(
+            Ziwei::update_encrypted_data(
+                RuntimeOrigin::signed(BOB),
+                0,
+                encrypted_data,
+                [0u8; 32],
+                [0u8; 80],
+            ),
+            Error::<Test>::NotChartOwner
+        );
+    });
+}
+
+#[test]
+fn test_compute_chart_result_works() {
+    use crate::runtime_api::compute_chart_result;
+
+    // 正常计算
+    let result = compute_chart_result(1990, 1, 1, 0, 0, false);
+    assert!(result.is_some());
+
+    let chart = result.unwrap();
+    assert!(chart.ju_shu >= 2 && chart.ju_shu <= 6);
+    assert!(chart.ming_gong_pos < 12);
+    assert!(chart.shen_gong_pos < 12);
+    assert!(chart.ziwei_pos < 12);
+    assert!(chart.tianfu_pos < 12);
+
+    // 无效参数应返回 None
+    let invalid_month = compute_chart_result(1990, 0, 1, 0, 0, false);
+    assert!(invalid_month.is_none());
+
+    let invalid_day = compute_chart_result(1990, 1, 0, 0, 0, false);
+    assert!(invalid_day.is_none());
+
+    let invalid_hour = compute_chart_result(1990, 1, 1, 12, 0, false);
+    assert!(invalid_hour.is_none());
+}
+
+#[test]
+fn test_ziwei_public_metadata_default() {
+    use crate::runtime_api::ZiweiPublicMetadata;
+
+    let metadata = ZiweiPublicMetadata::default();
+    assert_eq!(metadata.id, 0);
+    assert!(!metadata.has_encrypted_data);
+    assert!(!metadata.can_interpret);
+    assert!(!metadata.has_ai_interpretation);
+}
+
+#[test]
+fn test_ziwei_chart_result_fields() {
+    use crate::runtime_api::compute_chart_result;
+
+    let result = compute_chart_result(1985, 8, 15, 6, 1, false).unwrap();
+
+    // 验证所有字段都有效
+    assert!(matches!(
+        result.wu_xing_ju,
+        WuXing::Water | WuXing::Wood | WuXing::Metal | WuXing::Earth | WuXing::Fire
+    ));
+    assert!(result.qi_yun_age >= 2 && result.qi_yun_age <= 6);
+
+    // 验证十二宫都已初始化
+    for palace in result.palaces.iter() {
+        assert!(palace.di_zhi.index() < 12);
+    }
 }

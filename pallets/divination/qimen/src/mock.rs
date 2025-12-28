@@ -111,6 +111,8 @@ impl pallet_qimen::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = EnsureRoot<u64>;
     type MaxCidLen = ConstU32<64>;
+    /// 加密数据最大长度（512 bytes）
+    type MaxEncryptedLen = ConstU32<512>;
 }
 
 /// 测试账户 ID

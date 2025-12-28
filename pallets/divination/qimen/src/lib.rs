@@ -87,6 +87,12 @@ pub mod pallet {
         /// IPFS CID 最大长度
         #[pallet::constant]
         type MaxCidLen: Get<u32>;
+
+        /// 加密数据最大长度（默认: 512 bytes）
+        ///
+        /// 用于存储加密后的敏感数据（姓名、问题等）
+        #[pallet::constant]
+        type MaxEncryptedLen: Get<u32>;
     }
 
     /// 货币余额类型别名
@@ -172,6 +178,38 @@ pub mod pallet {
     pub type UserStatsStorage<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, UserStats, ValueQuery>;
 
+    /// 加密数据存储
+    ///
+    /// 键：排盘记录 ID
+    /// 值：加密后的敏感数据（姓名、问题等）
+    ///
+    /// 仅当 privacy_mode 为 Partial 或 Private 时存储
+    #[pallet::storage]
+    #[pallet::getter(fn encrypted_data)]
+    pub type EncryptedDataStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<u8, T::MaxEncryptedLen>,
+    >;
+
+    /// 所有者密钥备份存储
+    ///
+    /// 键：排盘记录 ID
+    /// 值：用所有者公钥加密的主密钥备份（80 bytes）
+    ///
+    /// 用于：
+    /// - 所有者更换设备后恢复密钥
+    /// - 授权查看者时解密主密钥
+    #[pallet::storage]
+    #[pallet::getter(fn owner_key_backup)]
+    pub type OwnerKeyBackupStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        [u8; 80],
+    >;
+
     // ==================== 事件 ====================
 
     #[pallet::event]
@@ -206,6 +244,23 @@ pub mod pallet {
             chart_id: u64,
             is_public: bool,
         },
+
+        /// 加密排盘记录创建成功
+        /// [排盘ID, 排盘者, 隐私模式, 阴阳遁, 局数]
+        EncryptedChartCreated {
+            chart_id: u64,
+            diviner: T::AccountId,
+            privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+            dun_type: Option<DunType>,
+            ju_number: Option<u8>,
+        },
+
+        /// 加密数据已更新
+        /// [排盘ID, 数据哈希]
+        EncryptedDataUpdated {
+            chart_id: u64,
+            data_hash: [u8; 32],
+        },
     }
 
     // ==================== 错误 ====================
@@ -238,6 +293,18 @@ pub mod pallet {
         InvalidGanZhi,
         /// 节气天数超范围
         InvalidDayInJieQi,
+        /// 无效的加密级别（必须为 0/1/2）
+        InvalidEncryptionLevel,
+        /// 加密数据缺失（Partial/Private 模式必须提供）
+        EncryptedDataMissing,
+        /// 数据哈希缺失（Partial/Private 模式必须提供）
+        DataHashMissing,
+        /// 密钥备份缺失（Partial/Private 模式必须提供）
+        OwnerKeyBackupMissing,
+        /// 加密数据过长
+        EncryptedDataTooLong,
+        /// 加密数据不存在
+        EncryptedDataNotFound,
     }
 
     // ==================== 可调用函数 ====================
@@ -258,6 +325,12 @@ pub mod pallet {
         /// - `day_in_jieqi`: 节气内天数（1-15）
         /// - `question_hash`: 问题哈希（隐私保护）
         /// - `is_public`: 是否公开此排盘
+        /// - `name`: 命主姓名（可选，UTF-8编码，最大32字节）
+        /// - `gender`: 命主性别（可选，0=男，1=女）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选，UTF-8编码，最大128字节）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_parts(80_000_000, 0))]
         pub fn divine_by_time(
@@ -270,6 +343,13 @@ pub mod pallet {
             day_in_jieqi: u8,
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<u8>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<u8>,
+            pan_method: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -285,6 +365,25 @@ pub mod pallet {
             let hour_gz = Self::parse_ganzhi(hour_ganzhi)?;
 
             let jieqi = JieQi::from_index(jie_qi).ok_or(Error::<T>::InvalidJieQi)?;
+
+            // 转换命主信息
+            let gender_enum = gender.and_then(Gender::from_u8);
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
 
             // 调用排盘算法
             let (dun_type, san_yuan, ju_number, zhi_fu_xing, zhi_shi_men, palaces) =
@@ -306,6 +405,13 @@ pub mod pallet {
                 palaces,
                 question_hash,
                 is_public,
+                // 命主信息
+                name,
+                gender_enum,
+                birth_year,
+                question,
+                question_type_enum,
+                pan_method_enum,
             )
         }
 
@@ -322,6 +428,12 @@ pub mod pallet {
         /// - `hour`: 小时 (0-23)
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `name`: 命主姓名（可选，UTF-8编码，最大32字节）
+        /// - `gender`: 命主性别（可选，0=男，1=女）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选，UTF-8编码，最大128字节）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
         #[pallet::call_index(7)]
         #[pallet::weight(Weight::from_parts(120_000_000, 0))]
         pub fn divine_by_solar_time(
@@ -332,6 +444,13 @@ pub mod pallet {
             hour: u8,
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<u8>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<u8>,
+            pan_method: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
@@ -341,6 +460,25 @@ pub mod pallet {
             ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidJieQi);
             ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidJieQi);
             ensure!(hour < 24, Error::<T>::InvalidJieQi);
+
+            // 转换命主信息
+            let gender_enum = gender.and_then(Gender::from_u8);
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
 
             // 调用 almanac 计算四柱
             let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
@@ -392,6 +530,13 @@ pub mod pallet {
                 palaces,
                 question_hash,
                 is_public,
+                // 命主信息
+                name,
+                gender_enum,
+                birth_year,
+                question,
+                question_type_enum,
+                pan_method_enum,
             )
         }
 
@@ -405,6 +550,12 @@ pub mod pallet {
         /// - `dun_type`: 阴阳遁（true=阳遁，false=阴遁）
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `name`: 命主姓名（可选）
+        /// - `gender`: 命主性别（可选，0=男，1=女）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
         #[pallet::call_index(1)]
         #[pallet::weight(Weight::from_parts(70_000_000, 0))]
         pub fn divine_by_numbers(
@@ -413,11 +564,37 @@ pub mod pallet {
             yang_dun: bool,
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<u8>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<u8>,
+            pan_method: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
 
             ensure!(!numbers.is_empty(), Error::<T>::MissingNumberParams);
+
+            // 转换命主信息
+            let gender_enum = gender.and_then(Gender::from_u8);
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
 
             // 获取区块哈希作为额外随机源
             let block_hash = <frame_system::Pallet<T>>::parent_hash();
@@ -464,6 +641,13 @@ pub mod pallet {
                 palaces,
                 question_hash,
                 is_public,
+                // 命主信息
+                name,
+                gender_enum,
+                birth_year,
+                question,
+                question_type_enum,
+                pan_method_enum,
             )
         }
 
@@ -475,15 +659,47 @@ pub mod pallet {
         /// - `origin`: 调用者
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `name`: 命主姓名（可选）
+        /// - `gender`: 命主性别（可选，0=男，1=女）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
         #[pallet::call_index(2)]
         #[pallet::weight(Weight::from_parts(70_000_000, 0))]
         pub fn divine_random(
             origin: OriginFor<T>,
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<u8>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<u8>,
+            pan_method: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
+
+            // 转换命主信息
+            let gender_enum = gender.and_then(Gender::from_u8);
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
 
             // 使用链上随机源
             let random_seed = T::Randomness::random(&b"qimen"[..]).0;
@@ -528,6 +744,13 @@ pub mod pallet {
                 palaces,
                 question_hash,
                 is_public,
+                // 命主信息
+                name,
+                gender_enum,
+                birth_year,
+                question,
+                question_type_enum,
+                pan_method_enum,
             )
         }
 
@@ -542,6 +765,12 @@ pub mod pallet {
         /// - `hour_ganzhi`: 时柱干支
         /// - `question_hash`: 问题哈希
         /// - `is_public`: 是否公开
+        /// - `name`: 命主姓名（可选）
+        /// - `gender`: 命主性别（可选，0=男，1=女）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
         #[pallet::call_index(3)]
         #[pallet::weight(Weight::from_parts(60_000_000, 0))]
         pub fn divine_manual(
@@ -551,11 +780,37 @@ pub mod pallet {
             hour_ganzhi: (u8, u8),
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<u8>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<u8>,
+            pan_method: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::check_daily_limit(&who)?;
 
             ensure!(algorithm::validate_ju_number(ju_number), Error::<T>::InvalidJuNumber);
+
+            // 转换命主信息
+            let gender_enum = gender.and_then(Gender::from_u8);
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
 
             let hour_gz = Self::parse_ganzhi(hour_ganzhi)?;
             let dun_type = if yang_dun { DunType::Yang } else { DunType::Yin };
@@ -619,6 +874,13 @@ pub mod pallet {
                 palaces,
                 question_hash,
                 is_public,
+                // 命主信息
+                name,
+                gender_enum,
+                birth_year,
+                question,
+                question_type_enum,
+                pan_method_enum,
             )
         }
 
@@ -734,7 +996,7 @@ pub mod pallet {
         /// # 参数
         /// - `origin`: 调用者
         /// - `chart_id`: 排盘记录 ID
-        /// - `is_public`: 是否公开
+        /// - `is_public`: 是否公开（向后兼容接口，映射为 PrivacyMode）
         #[pallet::call_index(6)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]
         pub fn set_chart_visibility(
@@ -742,6 +1004,8 @@ pub mod pallet {
             chart_id: u64,
             is_public: bool,
         ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
             let who = ensure_signed(origin)?;
 
             Charts::<T>::try_mutate(chart_id, |maybe_chart| {
@@ -750,8 +1014,12 @@ pub mod pallet {
                     .ok_or(Error::<T>::ChartNotFound)?;
                 ensure!(chart.diviner == who, Error::<T>::NotOwner);
 
-                let was_public = chart.is_public;
-                chart.is_public = is_public;
+                let was_public = chart.privacy_mode == PrivacyMode::Public;
+                chart.privacy_mode = if is_public {
+                    PrivacyMode::Public
+                } else {
+                    PrivacyMode::Partial
+                };
 
                 // 更新公开排盘列表
                 if is_public && !was_public {
@@ -773,6 +1041,294 @@ pub mod pallet {
             Self::deposit_event(Event::ChartVisibilityChanged {
                 chart_id,
                 is_public,
+            });
+
+            Ok(())
+        }
+
+        /// 公历时间加密起局排盘
+        ///
+        /// 支持三种隐私模式：
+        /// - 0 (Public): 所有数据明文存储
+        /// - 1 (Partial): 计算数据明文 + 敏感数据加密（推荐）
+        /// - 2 (Private): 全部数据加密（需前端解密后调用 compute_chart API）
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `encryption_level`: 加密级别（0=Public, 1=Partial, 2=Private）
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `question_hash`: 问题哈希（用于验证）
+        /// - `encrypted_data`: 加密的敏感数据（Partial/Private 模式必填）
+        /// - `data_hash`: 原始敏感数据哈希（用于完整性验证）
+        /// - `owner_key_backup`: 所有者密钥备份（80 bytes，用于密钥恢复）
+        /// - `question_type`: 问事类型（可选，0-11）
+        /// - `pan_method`: 排盘方法（0=转盘，1=飞盘）
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(150_000_000, 0))]
+        pub fn divine_by_solar_time_encrypted(
+            origin: OriginFor<T>,
+            encryption_level: u8,
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+            question_hash: [u8; 32],
+            encrypted_data: Option<BoundedVec<u8, T::MaxEncryptedLen>>,
+            data_hash: Option<[u8; 32]>,
+            owner_key_backup: Option<[u8; 80]>,
+            question_type: Option<u8>,
+            pan_method: u8,
+        ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
+            let who = ensure_signed(origin)?;
+            Self::check_daily_limit(&who)?;
+
+            // 验证加密级别
+            let privacy_mode = match encryption_level {
+                0 => PrivacyMode::Public,
+                1 => PrivacyMode::Partial,
+                2 => PrivacyMode::Private,
+                _ => return Err(Error::<T>::InvalidEncryptionLevel.into()),
+            };
+
+            // Partial/Private 模式验证
+            if encryption_level >= 1 {
+                ensure!(encrypted_data.is_some(), Error::<T>::EncryptedDataMissing);
+                ensure!(data_hash.is_some(), Error::<T>::DataHashMissing);
+                ensure!(owner_key_backup.is_some(), Error::<T>::OwnerKeyBackupMissing);
+            }
+
+            // 参数校验
+            ensure!(solar_year >= 1901 && solar_year <= 2100, Error::<T>::InvalidJieQi);
+            ensure!(solar_month >= 1 && solar_month <= 12, Error::<T>::InvalidJieQi);
+            ensure!(solar_day >= 1 && solar_day <= 31, Error::<T>::InvalidJieQi);
+            ensure!(hour < 24, Error::<T>::InvalidJieQi);
+
+            // 转换问事类型
+            let question_type_enum = question_type.and_then(|t| match t {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            });
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
+
+            // 根据隐私模式处理
+            let (dun_type, ju_number, palaces, year_gz, month_gz, day_gz, hour_gz, jieqi, san_yuan, zhi_fu_xing, zhi_shi_men) =
+                if encryption_level == 2 {
+                    // Private 模式：不存储计算数据
+                    (None, None, None, None, None, None, None, None, None, None, None)
+                } else {
+                    // Public/Partial 模式：计算并存储数据
+                    // 调用 almanac 计算四柱
+                    let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
+
+                    // 转换为本模块的 GanZhi 类型
+                    let year_gz = GanZhi {
+                        gan: TianGan::from_index(pillars.year.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                        zhi: DiZhi::from_index(pillars.year.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+                    };
+                    let month_gz = GanZhi {
+                        gan: TianGan::from_index(pillars.month.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                        zhi: DiZhi::from_index(pillars.month.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+                    };
+                    let day_gz = GanZhi {
+                        gan: TianGan::from_index(pillars.day.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                        zhi: DiZhi::from_index(pillars.day.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+                    };
+                    let hour_gz = GanZhi {
+                        gan: TianGan::from_index(pillars.hour.gan).ok_or(Error::<T>::InvalidJieQi)?,
+                        zhi: DiZhi::from_index(pillars.hour.zhi).ok_or(Error::<T>::InvalidJieQi)?,
+                    };
+
+                    // 获取节气
+                    let jie_qi_idx = pallet_almanac::get_solar_term(solar_year, solar_month, solar_day)
+                        .unwrap_or(0);
+                    let jieqi = JieQi::from_index(jie_qi_idx).unwrap_or(JieQi::LiChun);
+
+                    // 计算节气内天数
+                    let day_in_jieqi = ((solar_day - 1) % 15) + 1;
+
+                    // 调用排盘算法
+                    let (dun, yuan, ju, xing, men, pal) =
+                        algorithm::generate_qimen_chart(year_gz, month_gz, day_gz, hour_gz, jieqi, day_in_jieqi);
+
+                    (
+                        Some(dun),
+                        Some(ju),
+                        Some(pal),
+                        Some(year_gz),
+                        Some(month_gz),
+                        Some(day_gz),
+                        Some(hour_gz),
+                        Some(jieqi),
+                        Some(yuan),
+                        Some(xing),
+                        Some(men),
+                    )
+                };
+
+            // 获取新的排盘记录 ID
+            let chart_id = NextChartId::<T>::get();
+            NextChartId::<T>::put(chart_id.saturating_add(1));
+
+            // 获取当前区块号和时间戳
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            let timestamp = Self::get_timestamp_secs();
+
+            // 创建排盘记录
+            let chart = QimenChart {
+                id: chart_id,
+                diviner: who.clone(),
+                method: DivinationMethod::ByTime,
+                // 隐私控制字段
+                privacy_mode,
+                encrypted_fields: if encryption_level >= 1 {
+                    // 标记加密的敏感字段：姓名(bit 0) + 问题(bit 3)
+                    Some(0b1001) // NAME | QUESTION
+                } else {
+                    None
+                },
+                sensitive_data_hash: data_hash,
+                // 命主敏感信息（加密模式下不存储在主结构中）
+                name: None,
+                gender: None,
+                birth_year: None,
+                question: None,
+                question_type: question_type_enum,
+                pan_method: pan_method_enum,
+                // 四柱干支
+                year_ganzhi: year_gz,
+                month_ganzhi: month_gz,
+                day_ganzhi: day_gz,
+                hour_ganzhi: hour_gz,
+                jie_qi: jieqi,
+                // 局数信息
+                dun_type,
+                san_yuan,
+                ju_number,
+                // 盘面数据
+                zhi_fu_xing,
+                zhi_shi_men,
+                palaces,
+                // 元数据
+                timestamp,
+                block_number,
+                interpretation_cid: None,
+                question_hash,
+            };
+
+            // 存储排盘记录
+            Charts::<T>::insert(chart_id, chart);
+
+            // 存储加密数据（如果有）
+            if let Some(enc_data) = encrypted_data {
+                EncryptedDataStorage::<T>::insert(chart_id, enc_data);
+            }
+
+            // 存储密钥备份（如果有）
+            if let Some(key_backup) = owner_key_backup {
+                OwnerKeyBackupStorage::<T>::insert(chart_id, key_backup);
+            }
+
+            // 更新用户排盘索引
+            UserCharts::<T>::try_mutate(&who, |list| {
+                list.try_push(chart_id)
+                    .map_err(|_| Error::<T>::UserChartsFull)
+            })?;
+
+            // Public 模式添加到公开列表
+            if encryption_level == 0 {
+                PublicCharts::<T>::try_mutate(|list| {
+                    list.try_push(chart_id)
+                        .map_err(|_| Error::<T>::PublicChartsFull)
+                })?;
+            }
+
+            // 更新用户统计
+            if let (Some(dt), Some(xing), Some(men)) = (dun_type, zhi_fu_xing, zhi_shi_men) {
+                UserStatsStorage::<T>::mutate(&who, |stats| {
+                    stats.update_from_chart(dt, xing, men);
+                });
+            }
+
+            // 发送事件
+            Self::deposit_event(Event::EncryptedChartCreated {
+                chart_id,
+                diviner: who,
+                privacy_mode,
+                dun_type,
+                ju_number,
+            });
+
+            Ok(())
+        }
+
+        /// 更新加密数据
+        ///
+        /// 允许所有者更新已有排盘的加密数据（用于密钥轮换等场景）
+        ///
+        /// # 参数
+        /// - `origin`: 调用者（必须是排盘所有者）
+        /// - `chart_id`: 排盘记录 ID
+        /// - `encrypted_data`: 新的加密数据
+        /// - `data_hash`: 新的数据哈希
+        /// - `owner_key_backup`: 新的密钥备份
+        #[pallet::call_index(9)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn update_encrypted_data(
+            origin: OriginFor<T>,
+            chart_id: u64,
+            encrypted_data: BoundedVec<u8, T::MaxEncryptedLen>,
+            data_hash: [u8; 32],
+            owner_key_backup: [u8; 80],
+        ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
+            let who = ensure_signed(origin)?;
+
+            // 验证排盘记录存在且为调用者所有
+            Charts::<T>::try_mutate(chart_id, |maybe_chart| {
+                let chart = maybe_chart
+                    .as_mut()
+                    .ok_or(Error::<T>::ChartNotFound)?;
+                ensure!(chart.diviner == who, Error::<T>::NotOwner);
+
+                // 只有 Partial/Private 模式可以更新加密数据
+                ensure!(
+                    chart.privacy_mode != PrivacyMode::Public,
+                    Error::<T>::InvalidEncryptionLevel
+                );
+
+                // 更新哈希
+                chart.sensitive_data_hash = Some(data_hash);
+
+                Ok::<_, DispatchError>(())
+            })?;
+
+            // 更新加密数据
+            EncryptedDataStorage::<T>::insert(chart_id, encrypted_data);
+
+            // 更新密钥备份
+            OwnerKeyBackupStorage::<T>::insert(chart_id, owner_key_backup);
+
+            // 发送事件
+            Self::deposit_event(Event::EncryptedDataUpdated {
+                chart_id,
+                data_hash,
             });
 
             Ok(())
@@ -859,6 +1415,26 @@ pub mod pallet {
         }
 
         /// 创建排盘记录并存储
+        ///
+        /// # 参数
+        /// - `diviner`: 排盘者账户
+        /// - `method`: 起局方式
+        /// - `year_ganzhi` ~ `hour_ganzhi`: 四柱干支
+        /// - `jie_qi`: 节气
+        /// - `dun_type`: 阴阳遁
+        /// - `san_yuan`: 三元
+        /// - `ju_number`: 局数（1-9）
+        /// - `zhi_fu_xing`: 值符星
+        /// - `zhi_shi_men`: 值使门
+        /// - `palaces`: 九宫排盘结果
+        /// - `question_hash`: 问题哈希（隐私保护）
+        /// - `is_public`: 是否公开（向后兼容，映射为 PrivacyMode）
+        /// - `name`: 命主姓名（可选）
+        /// - `gender`: 命主性别（可选）
+        /// - `birth_year`: 命主出生年份（可选）
+        /// - `question`: 占问事宜（可选）
+        /// - `question_type`: 问事类型（可选）
+        /// - `pan_method`: 排盘方法（转盘/飞盘）
         #[allow(clippy::too_many_arguments)]
         fn create_chart(
             diviner: T::AccountId,
@@ -876,7 +1452,16 @@ pub mod pallet {
             palaces: [Palace; 9],
             question_hash: [u8; 32],
             is_public: bool,
+            // 新增命主信息参数
+            name: Option<BoundedVec<u8, MaxNameLen>>,
+            gender: Option<Gender>,
+            birth_year: Option<u16>,
+            question: Option<BoundedVec<u8, MaxQuestionLen>>,
+            question_type: Option<QuestionType>,
+            pan_method: PanMethod,
         ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
             // 获取新的排盘记录 ID
             let chart_id = NextChartId::<T>::get();
             NextChartId::<T>::put(chart_id.saturating_add(1));
@@ -885,26 +1470,48 @@ pub mod pallet {
             let block_number = <frame_system::Pallet<T>>::block_number();
             let timestamp = Self::get_timestamp_secs();
 
-            // 创建排盘记录
+            // 将 is_public 映射为 PrivacyMode（向后兼容）
+            let privacy_mode = if is_public {
+                PrivacyMode::Public
+            } else {
+                // 默认私密使用 Partial 模式（计算数据明文，敏感数据后续可加密）
+                PrivacyMode::Partial
+            };
+
+            // 创建排盘记录（包含命主信息和隐私字段）
             let chart = QimenChart {
                 id: chart_id,
                 diviner: diviner.clone(),
                 method,
-                year_ganzhi,
-                month_ganzhi,
-                day_ganzhi,
-                hour_ganzhi,
-                jie_qi,
-                dun_type,
-                san_yuan,
-                ju_number,
-                zhi_fu_xing,
-                zhi_shi_men,
-                palaces,
+                // 隐私控制字段（v3.4 新增）
+                privacy_mode,
+                encrypted_fields: None, // 非加密模式无需设置
+                sensitive_data_hash: None, // 非加密模式无需设置
+                // 命主信息
+                name,
+                gender,
+                birth_year,
+                question,
+                question_type,
+                pan_method,
+                // 四柱干支（明文存储，用于解盘）
+                year_ganzhi: Some(year_ganzhi),
+                month_ganzhi: Some(month_ganzhi),
+                day_ganzhi: Some(day_ganzhi),
+                hour_ganzhi: Some(hour_ganzhi),
+                jie_qi: Some(jie_qi),
+                // 局数信息
+                dun_type: Some(dun_type),
+                san_yuan: Some(san_yuan),
+                ju_number: Some(ju_number),
+                // 盘面数据
+                zhi_fu_xing: Some(zhi_fu_xing),
+                zhi_shi_men: Some(zhi_shi_men),
+                palaces: Some(palaces),
+                // 元数据
                 timestamp,
                 block_number,
                 interpretation_cid: None,
-                is_public,
                 question_hash,
             };
 
@@ -990,7 +1597,7 @@ pub mod pallet {
         ///
         /// # 返回
         ///
-        /// 单宫详细解读
+        /// 单宫详细解读（如果是 Private 模式或数据不可用则返回 None）
         pub fn api_get_palace_interpretation(
             chart_id: u64,
             palace_num: u8,
@@ -1000,8 +1607,14 @@ pub mod pallet {
             }
 
             let chart = Charts::<T>::get(chart_id)?;
-            let palace = &chart.palaces[(palace_num - 1) as usize];
-            Some(interpretation::analyze_palace_detail(palace, chart.jie_qi))
+            // 检查是否可以解读（非 Private 模式且有计算数据）
+            if !chart.can_interpret() {
+                return None;
+            }
+            let palaces = chart.get_palaces()?;
+            let jie_qi = chart.get_jie_qi()?;
+            let palace = &palaces[(palace_num - 1) as usize];
+            Some(interpretation::analyze_palace_detail(palace, jie_qi))
         }
 
         /// 获取用神分析（Runtime API）
@@ -1035,6 +1648,175 @@ pub mod pallet {
             let chart = Charts::<T>::get(chart_id)?;
             let core = Self::api_get_core_interpretation(chart_id)?;
             Some(interpretation::calculate_ying_qi(&chart, core.yong_shen_gong))
+        }
+
+        // ==================== 隐私相关 Runtime API ====================
+
+        /// 获取加密数据（Runtime API）
+        ///
+        /// 用于 Partial/Private 模式下获取链上存储的加密数据，
+        /// 前端需要使用用户私钥解密。
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        ///
+        /// # 返回
+        ///
+        /// 加密数据（如果存在）
+        pub fn api_get_encrypted_data(chart_id: u64) -> Option<Vec<u8>> {
+            EncryptedDataStorage::<T>::get(chart_id).map(|v| v.into_inner())
+        }
+
+        /// 获取所有者密钥备份（Runtime API）
+        ///
+        /// 用于所有者恢复加密密钥或授权他人查看。
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        ///
+        /// # 返回
+        ///
+        /// 80 字节的密钥备份（如果存在）
+        pub fn api_get_owner_key_backup(chart_id: u64) -> Option<[u8; 80]> {
+            OwnerKeyBackupStorage::<T>::get(chart_id)
+        }
+
+        /// 临时计算排盘（Runtime API，用于 Private 模式）
+        ///
+        /// 当用户使用 Private 模式保存了排盘，但需要查看解读时：
+        /// 1. 前端获取加密数据并解密
+        /// 2. 使用解密后的日期时间参数调用此 API
+        /// 3. 返回完整的排盘计算结果（不存储）
+        ///
+        /// # 参数
+        ///
+        /// - `solar_year`: 公历年份 (1901-2100)
+        /// - `solar_month`: 公历月份 (1-12)
+        /// - `solar_day`: 公历日期 (1-31)
+        /// - `hour`: 小时 (0-23)
+        /// - `question_type`: 问事类型 (0-11)
+        /// - `pan_method`: 排盘方法 (0=转盘, 1=飞盘)
+        ///
+        /// # 返回
+        ///
+        /// 临时排盘结果（不存储到链上）
+        pub fn api_compute_chart(
+            solar_year: u16,
+            solar_month: u8,
+            solar_day: u8,
+            hour: u8,
+            question_type: u8,
+            pan_method: u8,
+        ) -> Option<crate::runtime_api::QimenChartResult> {
+            // 参数校验
+            if solar_year < 1901 || solar_year > 2100 {
+                return None;
+            }
+            if solar_month < 1 || solar_month > 12 {
+                return None;
+            }
+            if solar_day < 1 || solar_day > 31 {
+                return None;
+            }
+            if hour >= 24 {
+                return None;
+            }
+
+            // 调用 almanac 计算四柱
+            let pillars = pallet_almanac::four_pillars(solar_year, solar_month, solar_day, hour);
+
+            // 转换为本模块的 GanZhi 类型
+            let year_gz = GanZhi {
+                gan: TianGan::from_index(pillars.year.gan)?,
+                zhi: DiZhi::from_index(pillars.year.zhi)?,
+            };
+            let month_gz = GanZhi {
+                gan: TianGan::from_index(pillars.month.gan)?,
+                zhi: DiZhi::from_index(pillars.month.zhi)?,
+            };
+            let day_gz = GanZhi {
+                gan: TianGan::from_index(pillars.day.gan)?,
+                zhi: DiZhi::from_index(pillars.day.zhi)?,
+            };
+            let hour_gz = GanZhi {
+                gan: TianGan::from_index(pillars.hour.gan)?,
+                zhi: DiZhi::from_index(pillars.hour.zhi)?,
+            };
+
+            // 获取节气
+            let jie_qi_idx = pallet_almanac::get_solar_term(solar_year, solar_month, solar_day)
+                .unwrap_or(0);
+            let jieqi = JieQi::from_index(jie_qi_idx).unwrap_or(JieQi::LiChun);
+
+            // 计算节气内天数
+            let day_in_jieqi = ((solar_day - 1) % 15) + 1;
+
+            // 调用排盘算法
+            let (dun_type, san_yuan, ju_number, zhi_fu_xing, zhi_shi_men, palaces) =
+                algorithm::generate_qimen_chart(year_gz, month_gz, day_gz, hour_gz, jieqi, day_in_jieqi);
+
+            // 转换问事类型
+            let question_type_enum = match question_type {
+                0 => Some(QuestionType::General),
+                1 => Some(QuestionType::Career),
+                2 => Some(QuestionType::Wealth),
+                3 => Some(QuestionType::Marriage),
+                4 => Some(QuestionType::Health),
+                5 => Some(QuestionType::Study),
+                6 => Some(QuestionType::Travel),
+                7 => Some(QuestionType::Lawsuit),
+                8 => Some(QuestionType::Finding),
+                9 => Some(QuestionType::Investment),
+                10 => Some(QuestionType::Business),
+                11 => Some(QuestionType::Prayer),
+                _ => None,
+            };
+            let pan_method_enum = if pan_method == 1 { PanMethod::FeiPan } else { PanMethod::ZhuanPan };
+
+            Some(crate::runtime_api::QimenChartResult {
+                year_ganzhi: year_gz,
+                month_ganzhi: month_gz,
+                day_ganzhi: day_gz,
+                hour_ganzhi: hour_gz,
+                jie_qi: jieqi,
+                dun_type,
+                san_yuan,
+                ju_number,
+                zhi_fu_xing,
+                zhi_shi_men,
+                palaces,
+                question_type: question_type_enum,
+                pan_method: pan_method_enum,
+            })
+        }
+
+        /// 获取排盘公开元数据（Runtime API）
+        ///
+        /// 返回排盘的公开元数据，不包含敏感信息。
+        /// 适用于所有隐私模式。
+        ///
+        /// # 参数
+        ///
+        /// - `chart_id`: 排盘记录 ID
+        ///
+        /// # 返回
+        ///
+        /// 公开元数据
+        pub fn api_get_public_metadata(chart_id: u64) -> Option<crate::runtime_api::QimenPublicMetadata> {
+            let chart = Charts::<T>::get(chart_id)?;
+
+            Some(crate::runtime_api::QimenPublicMetadata {
+                id: chart.id,
+                privacy_mode: chart.privacy_mode,
+                method: chart.method,
+                pan_method: chart.pan_method,
+                timestamp: chart.timestamp,
+                question_type: chart.question_type,
+                has_encrypted_data: EncryptedDataStorage::<T>::contains_key(chart_id),
+                can_interpret: chart.can_interpret(),
+            })
         }
     }
 }

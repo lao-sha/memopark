@@ -56,6 +56,86 @@ use crate::interpretation::*;
 use crate::types::*;
 
 // ============================================================================
+// 隐私相关数据结构
+// ============================================================================
+
+/// 紫微斗数命盘计算结果（用于 Private 模式临时计算）
+///
+/// 包含完整的命盘计算数据，但不存储到链上
+#[derive(Clone, Encode, Decode, TypeInfo, RuntimeDebug)]
+pub struct ZiweiChartResult {
+    /// 五行局
+    pub wu_xing_ju: WuXing,
+
+    /// 局数
+    pub ju_shu: u8,
+
+    /// 命宫位置
+    pub ming_gong_pos: u8,
+
+    /// 身宫位置
+    pub shen_gong_pos: u8,
+
+    /// 紫微星位置
+    pub ziwei_pos: u8,
+
+    /// 天府星位置
+    pub tianfu_pos: u8,
+
+    /// 十二宫数据
+    pub palaces: [Palace; 12],
+
+    /// 四化星
+    pub si_hua_stars: [SiHuaStar; 4],
+
+    /// 起运年龄
+    pub qi_yun_age: u8,
+
+    /// 大运顺逆（true=顺行）
+    pub da_yun_shun: bool,
+
+    /// 年干
+    pub year_gan: TianGan,
+
+    /// 年支
+    pub year_zhi: DiZhi,
+}
+
+/// 紫微斗数公开元数据
+///
+/// 返回命盘的公开元数据，不包含敏感信息。
+/// 适用于所有隐私模式。
+#[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug, Default)]
+pub struct ZiweiPublicMetadata {
+    /// 命盘记录 ID
+    pub id: u64,
+
+    /// 隐私模式
+    pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+
+    /// 创建时间戳（区块号）
+    pub created_at: u64,
+
+    /// 是否有加密数据
+    pub has_encrypted_data: bool,
+
+    /// 是否可解读（Public/Partial 模式且有计算数据）
+    pub can_interpret: bool,
+
+    /// 五行局（如果公开）
+    pub wu_xing_ju: Option<WuXing>,
+
+    /// 局数（如果公开）
+    pub ju_shu: Option<u8>,
+
+    /// 命宫位置（如果公开）
+    pub ming_gong_pos: Option<u8>,
+
+    /// 是否有 AI 解读
+    pub has_ai_interpretation: bool,
+}
+
+// ============================================================================
 // 流年运势数据结构
 // ============================================================================
 
@@ -417,6 +497,71 @@ sp_api::decl_runtime_apis! {
         fn get_interpretations_batch(
             chart_ids: Vec<u64>,
         ) -> Vec<Option<ZiweiInterpretation>>;
+
+        // ====================================================================
+        // 隐私相关 API
+        // ====================================================================
+
+        /// 获取加密数据
+        ///
+        /// 用于 Partial/Private 模式下获取链上存储的加密数据，
+        /// 前端需要使用用户私钥解密。
+        ///
+        /// # 参数
+        /// - `chart_id`: 命盘记录 ID
+        ///
+        /// # 返回
+        /// 加密数据（如果存在）
+        fn get_encrypted_data(chart_id: u64) -> Option<Vec<u8>>;
+
+        /// 获取所有者密钥备份
+        ///
+        /// 用于所有者恢复加密密钥或授权他人查看。
+        ///
+        /// # 参数
+        /// - `chart_id`: 命盘记录 ID
+        ///
+        /// # 返回
+        /// 80 字节的密钥备份（如果存在）
+        fn get_owner_key_backup(chart_id: u64) -> Option<[u8; 80]>;
+
+        /// 临时计算命盘（用于 Private 模式）
+        ///
+        /// 当用户使用 Private 模式保存了命盘，但需要查看解读时：
+        /// 1. 前端获取加密数据并解密
+        /// 2. 使用解密后的日期时间参数调用此 API
+        /// 3. 返回完整的命盘计算结果（不存储）
+        ///
+        /// # 参数
+        /// - `lunar_year`: 农历年份
+        /// - `lunar_month`: 农历月份 (1-12)
+        /// - `lunar_day`: 农历日期 (1-30)
+        /// - `birth_hour`: 出生时辰地支索引 (0-11)
+        /// - `gender`: 性别 (0=男, 1=女)
+        /// - `is_leap_month`: 是否闰月
+        ///
+        /// # 返回
+        /// 临时命盘计算结果（不存储到链上）
+        fn compute_chart(
+            lunar_year: u16,
+            lunar_month: u8,
+            lunar_day: u8,
+            birth_hour: u8,
+            gender: u8,
+            is_leap_month: bool,
+        ) -> Option<ZiweiChartResult>;
+
+        /// 获取命盘公开元数据
+        ///
+        /// 返回命盘的公开元数据，不包含敏感信息。
+        /// 适用于所有隐私模式。
+        ///
+        /// # 参数
+        /// - `chart_id`: 命盘记录 ID
+        ///
+        /// # 返回
+        /// 公开元数据
+        fn get_public_metadata(chart_id: u64) -> Option<ZiweiPublicMetadata>;
     }
 }
 
@@ -430,21 +575,29 @@ sp_api::decl_runtime_apis! {
 /// - `chart`: 命盘数据
 ///
 /// # 返回
-/// 完整解卦数据
+/// 完整解卦数据，如果必要字段缺失则返回 None
 pub fn generate_interpretation<AccountId, BlockNumber, Moment, MaxCidLen: Get<u32>>(
     chart: &ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen>,
-) -> ZiweiInterpretation {
+) -> Option<ZiweiInterpretation> {
+    // 检查必要字段是否存在
+    let palaces = chart.palaces.as_ref()?;
+    let ming_gong_pos = chart.ming_gong_pos?;
+    let shen_gong_pos = chart.shen_gong_pos?;
+    let si_hua_stars = chart.si_hua_stars?;
+    let qi_yun_age = chart.qi_yun_age?;
+    let da_yun_shun = chart.da_yun_shun?;
+
     // 1. 生成十二宫解读
     let mut palace_interpretations: [PalaceInterpretation; 12] = Default::default();
     let mut palace_scores: [u8; 12] = [50u8; 12];
 
-    for (i, palace) in chart.palaces.iter().enumerate() {
+    for (i, palace) in palaces.iter().enumerate() {
         palace_interpretations[i] = generate_palace_interpretation(palace);
         palace_scores[i] = palace_interpretations[i].score;
     }
 
     // 2. 识别格局
-    let patterns = identify_all_patterns(&chart.palaces, chart.ming_gong_pos);
+    let patterns = identify_all_patterns(palaces, ming_gong_pos);
     let pattern_total_score: i32 = patterns.iter().map(|p| p.score as i32).sum();
     let auspicious_count = patterns.iter().filter(|p| p.is_auspicious).count();
     let inauspicious_count = patterns.len() - auspicious_count;
@@ -452,7 +605,7 @@ pub fn generate_interpretation<AccountId, BlockNumber, Moment, MaxCidLen: Get<u3
     // 3. 计算整体评分
     let overall_score = generate_overall_score(
         &palace_scores,
-        chart.ming_gong_pos,
+        ming_gong_pos,
         auspicious_count,
         inauspicious_count,
         pattern_total_score,
@@ -460,25 +613,28 @@ pub fn generate_interpretation<AccountId, BlockNumber, Moment, MaxCidLen: Get<u3
 
     // 4. 四化分析
     let si_hua_analysis = analyze_si_hua(
-        &chart.palaces,
-        chart.ming_gong_pos,
-        chart.si_hua_stars,
+        palaces,
+        ming_gong_pos,
+        si_hua_stars,
     );
 
     // 5. 大限解读
-    let da_xian_interpretations = generate_da_xian_interpretations(
-        chart,
+    let da_xian_interpretations = generate_da_xian_interpretations_inner(
+        palaces,
+        ming_gong_pos,
+        qi_yun_age,
+        da_yun_shun,
         &palace_scores,
     );
 
     // 6. 五行分布
-    let wu_xing_distribution = calculate_wu_xing_distribution(&chart.palaces);
+    let wu_xing_distribution = calculate_wu_xing_distribution(palaces);
 
     // 7. 命主身主星
-    let ming_zhu_star = calculate_ming_zhu_star(chart.ming_gong_pos);
-    let shen_zhu_star = calculate_shen_zhu_star(chart.shen_gong_pos);
+    let ming_zhu_star = calculate_ming_zhu_star(ming_gong_pos);
+    let shen_zhu_star = calculate_shen_zhu_star(shen_gong_pos);
 
-    ZiweiInterpretation {
+    Some(ZiweiInterpretation {
         chart_id: chart.id,
         overall_score,
         palace_interpretations,
@@ -490,25 +646,43 @@ pub fn generate_interpretation<AccountId, BlockNumber, Moment, MaxCidLen: Get<u3
         shen_zhu_star,
         created_at: 0, // 由调用者设置
         ai_interpretation_cid: None,
-    }
+    })
 }
 
-/// 生成大限解读
+/// 生成大限解读（向后兼容包装器）
+#[allow(dead_code)]
 fn generate_da_xian_interpretations<AccountId, BlockNumber, Moment, MaxCidLen: Get<u32>>(
     chart: &ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen>,
     palace_scores: &[u8; 12],
 ) -> [DaXianInterpretation; 12] {
-    let mut da_xian: [DaXianInterpretation; 12] = Default::default();
+    // 尝试获取必要字段，如果缺失则返回默认值
+    let palaces = match chart.palaces.as_ref() {
+        Some(p) => p,
+        None => return Default::default(),
+    };
+    let ming_gong_pos = chart.ming_gong_pos.unwrap_or(0);
+    let qi_yun_age = chart.qi_yun_age.unwrap_or(2);
+    let da_yun_shun = chart.da_yun_shun.unwrap_or(true);
 
-    let qi_yun_age = chart.qi_yun_age;
-    let da_yun_shun = chart.da_yun_shun;
+    generate_da_xian_interpretations_inner(palaces, ming_gong_pos, qi_yun_age, da_yun_shun, palace_scores)
+}
+
+/// 生成大限解读（内部实现）
+fn generate_da_xian_interpretations_inner(
+    palaces: &[Palace; 12],
+    ming_gong_pos: u8,
+    qi_yun_age: u8,
+    da_yun_shun: bool,
+    palace_scores: &[u8; 12],
+) -> [DaXianInterpretation; 12] {
+    let mut da_xian: [DaXianInterpretation; 12] = Default::default();
 
     for i in 0..12 {
         // 计算大限宫位索引
         let gong_index = if da_yun_shun {
-            (chart.ming_gong_pos as usize + i) % 12
+            (ming_gong_pos as usize + i) % 12
         } else {
-            (chart.ming_gong_pos as usize + 12 - i) % 12
+            (ming_gong_pos as usize + 12 - i) % 12
         };
 
         // 计算年龄范围
@@ -516,8 +690,7 @@ fn generate_da_xian_interpretations<AccountId, BlockNumber, Moment, MaxCidLen: G
         let end_age = start_age + 9;
 
         // 获取该宫干四化
-        let _palace = &chart.palaces[gong_index];
-        let si_hua_fei_ru = calculate_fei_hua(&chart.palaces, gong_index as u8);
+        let si_hua_fei_ru = calculate_fei_hua(palaces, gong_index as u8);
 
         // 评分
         let base_score = palace_scores[gong_index];
@@ -697,7 +870,7 @@ fn get_pattern_impact(pattern: PatternType) -> &'static str {
 /// - `year`: 公历年份
 ///
 /// # 返回
-/// 流年运势数据
+/// 流年运势数据，如果必要字段缺失则返回默认值
 pub fn calculate_liu_nian_fortune<AccountId, BlockNumber, Moment, MaxCidLen: Get<u32>>(
     chart: &ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen>,
     year: u16,
@@ -712,15 +885,37 @@ pub fn calculate_liu_nian_fortune<AccountId, BlockNumber, Moment, MaxCidLen: Get
     // 太岁入宫（流年地支落入的宫位）
     let tai_sui_palace = di_zhi.index();
 
+    // 尝试获取命盘数据，如果缺失则返回默认评分
+    let palaces = match chart.palaces.as_ref() {
+        Some(p) => p,
+        None => {
+            return LiuNianFortune {
+                year,
+                tian_gan,
+                di_zhi,
+                si_hua_stars,
+                fortune_score: 50,
+                fortune_level: FortuneLevel::Ping,
+                wealth_fortune: 50,
+                career_fortune: 50,
+                relationship_fortune: 50,
+                health_fortune: 50,
+                keywords: select_liu_nian_keywords(50),
+                tai_sui_palace,
+            };
+        }
+    };
+    let ming_gong_pos = chart.ming_gong_pos.unwrap_or(0);
+
     // 基础评分（根据太岁宫位的评分）
-    let base_score = calculate_palace_score(&chart.palaces[tai_sui_palace as usize]);
+    let base_score = calculate_palace_score(&palaces[tai_sui_palace as usize]);
 
     // 流年四化对命宫的影响
     let mut si_hua_bonus: i32 = 0;
     for (i, star) in si_hua_stars.iter().enumerate() {
         // 检查四化星是否落入命宫或三方
-        if let Some(star_palace) = find_star_palace(&chart.palaces, *star) {
-            if star_palace == chart.ming_gong_pos {
+        if let Some(star_palace) = find_star_palace(palaces, *star) {
+            if star_palace == ming_gong_pos {
                 si_hua_bonus += match i {
                     0 => 10,   // 化禄
                     1 => 8,    // 化权
@@ -734,10 +929,10 @@ pub fn calculate_liu_nian_fortune<AccountId, BlockNumber, Moment, MaxCidLen: Get
     let fortune_score = (base_score as i32 + si_hua_bonus).clamp(0, 100) as u8;
 
     // 各项运势
-    let wealth_fortune = calculate_aspect_fortune(chart, year, GongWei::CaiBo);
-    let career_fortune = calculate_aspect_fortune(chart, year, GongWei::GuanLu);
-    let relationship_fortune = calculate_aspect_fortune(chart, year, GongWei::FuQi);
-    let health_fortune = calculate_aspect_fortune(chart, year, GongWei::JiE);
+    let wealth_fortune = calculate_aspect_fortune_inner(palaces, ming_gong_pos, GongWei::CaiBo);
+    let career_fortune = calculate_aspect_fortune_inner(palaces, ming_gong_pos, GongWei::GuanLu);
+    let relationship_fortune = calculate_aspect_fortune_inner(palaces, ming_gong_pos, GongWei::FuQi);
+    let health_fortune = calculate_aspect_fortune_inner(palaces, ming_gong_pos, GongWei::JiE);
 
     // 关键词
     let keywords = select_liu_nian_keywords(fortune_score);
@@ -758,22 +953,164 @@ pub fn calculate_liu_nian_fortune<AccountId, BlockNumber, Moment, MaxCidLen: Get
     }
 }
 
-/// 计算特定宫位的流年运势
+/// 计算特定宫位的流年运势（向后兼容包装器）
+#[allow(dead_code)]
 fn calculate_aspect_fortune<AccountId, BlockNumber, Moment, MaxCidLen: Get<u32>>(
     chart: &ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen>,
     _year: u16,
     gong_wei: GongWei,
 ) -> u8 {
+    let palaces = match chart.palaces.as_ref() {
+        Some(p) => p,
+        None => return 50,
+    };
+    let ming_gong_pos = chart.ming_gong_pos.unwrap_or(0);
+    calculate_aspect_fortune_inner(palaces, ming_gong_pos, gong_wei)
+}
+
+/// 计算特定宫位的流年运势（内部实现）
+fn calculate_aspect_fortune_inner(
+    palaces: &[Palace; 12],
+    ming_gong_pos: u8,
+    gong_wei: GongWei,
+) -> u8 {
     // 获取对应宫位的索引
     let gong_index = match gong_wei {
-        GongWei::CaiBo => (chart.ming_gong_pos + 8) % 12,
-        GongWei::GuanLu => (chart.ming_gong_pos + 4) % 12,
-        GongWei::FuQi => (chart.ming_gong_pos + 10) % 12,
-        GongWei::JiE => (chart.ming_gong_pos + 7) % 12,
-        _ => chart.ming_gong_pos,
+        GongWei::CaiBo => (ming_gong_pos + 8) % 12,
+        GongWei::GuanLu => (ming_gong_pos + 4) % 12,
+        GongWei::FuQi => (ming_gong_pos + 10) % 12,
+        GongWei::JiE => (ming_gong_pos + 7) % 12,
+        _ => ming_gong_pos,
     };
 
-    calculate_palace_score(&chart.palaces[gong_index as usize])
+    calculate_palace_score(&palaces[gong_index as usize])
+}
+
+/// 临时计算命盘（供 Runtime API 使用）
+///
+/// 用于 Private 模式下，前端解密出生时间后调用此函数计算命盘
+pub fn compute_chart_result(
+    lunar_year: u16,
+    lunar_month: u8,
+    lunar_day: u8,
+    birth_hour: u8,
+    gender: u8,
+    _is_leap_month: bool,
+) -> Option<ZiweiChartResult> {
+    use crate::algorithm::*;
+
+    // 参数校验
+    if lunar_month < 1 || lunar_month > 12 {
+        return None;
+    }
+    if lunar_day < 1 || lunar_day > 30 {
+        return None;
+    }
+    if birth_hour > 11 {
+        return None;
+    }
+
+    // 转换参数
+    let birth_hour_dizhi = DiZhi::from_index(birth_hour);
+    let gender_enum = if gender == 0 { Gender::Male } else { Gender::Female };
+
+    // 计算年干支
+    let year_gan = TianGan::from_index(((lunar_year - 4) % 10) as u8);
+    let year_zhi = DiZhi::from_index(((lunar_year - 4) % 12) as u8);
+
+    // 计算命宫位置
+    let ming_gong_pos = calculate_ming_gong(lunar_month, birth_hour_dizhi);
+
+    // 计算身宫位置
+    let shen_gong_pos = calculate_shen_gong(lunar_month, birth_hour_dizhi);
+
+    // 计算五行局
+    let (wu_xing_ju, ju_shu) = calculate_wu_xing_ju(year_gan, ming_gong_pos);
+
+    // 计算紫微星位置
+    let ziwei_pos = calculate_ziwei_position(lunar_day, ju_shu);
+
+    // 计算天府星位置
+    let tianfu_pos = calculate_tianfu_position(ziwei_pos);
+
+    // 初始化十二宫
+    let mut palaces = init_palaces(year_gan, ming_gong_pos);
+
+    // 安紫微星系
+    let ziwei_series = place_ziwei_series(ziwei_pos);
+    for (star, pos) in ziwei_series.iter() {
+        let palace = &mut palaces[*pos as usize];
+        for slot in palace.zhu_xing.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(*star);
+                break;
+            }
+        }
+    }
+
+    // 安天府星系
+    let tianfu_series = place_tianfu_series(tianfu_pos);
+    for (star, pos) in tianfu_series.iter() {
+        let palace = &mut palaces[*pos as usize];
+        for slot in palace.zhu_xing.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(*star);
+                break;
+            }
+        }
+    }
+
+    // 安六吉星
+    let (wen_chang, wen_qu) = calculate_wen_chang_qu(birth_hour_dizhi);
+    let (zuo_fu, you_bi) = calculate_zuo_fu_you_bi(lunar_month);
+    let (tian_kui, tian_yue) = calculate_tian_kui_yue(year_gan);
+
+    palaces[wen_chang as usize].liu_ji[0] = true;
+    palaces[wen_qu as usize].liu_ji[1] = true;
+    palaces[zuo_fu as usize].liu_ji[2] = true;
+    palaces[you_bi as usize].liu_ji[3] = true;
+    palaces[tian_kui as usize].liu_ji[4] = true;
+    palaces[tian_yue as usize].liu_ji[5] = true;
+
+    // 安六煞星
+    let (qing_yang, tuo_luo) = calculate_qing_yang_tuo_luo(year_gan);
+    let (huo_xing, ling_xing) = calculate_huo_ling(year_zhi, birth_hour_dizhi);
+    let (di_kong, di_jie) = calculate_di_kong_jie(birth_hour_dizhi);
+
+    palaces[qing_yang as usize].liu_sha[0] = true;
+    palaces[tuo_luo as usize].liu_sha[1] = true;
+    palaces[huo_xing as usize].liu_sha[2] = true;
+    palaces[ling_xing as usize].liu_sha[3] = true;
+    palaces[di_kong as usize].liu_sha[4] = true;
+    palaces[di_jie as usize].liu_sha[5] = true;
+
+    // 安禄存天马
+    let lu_cun = calculate_lu_cun(year_gan);
+    palaces[lu_cun as usize].lu_cun = true;
+    let tian_ma_pos = calculate_tian_ma(year_zhi);
+    palaces[tian_ma_pos as usize].tian_ma = true;
+
+    // 获取四化星
+    let si_hua_stars = get_si_hua_stars_full(year_gan);
+
+    // 计算起运
+    let qi_yun_age = calculate_qi_yun_age(ju_shu);
+    let da_yun_shun = calculate_da_yun_direction(year_gan, gender_enum);
+
+    Some(ZiweiChartResult {
+        wu_xing_ju,
+        ju_shu,
+        ming_gong_pos,
+        shen_gong_pos,
+        ziwei_pos,
+        tianfu_pos,
+        palaces,
+        si_hua_stars,
+        qi_yun_age,
+        da_yun_shun,
+        year_gan,
+        year_zhi,
+    })
 }
 
 /// 选择流年关键词

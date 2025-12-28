@@ -1104,3 +1104,447 @@ async function calculateInterpretationLocally(chartId: number): Promise<ZiweiInt
     shenZhuStar: chart.shenGong % 14,
   };
 }
+
+// ==================== 隐私加密服务 ====================
+
+import CryptoJS from 'crypto-js';
+import { blake2AsU8a } from '@polkadot/util-crypto';
+
+/**
+ * 隐私模式枚举
+ *
+ * 与链端 pallet_divination_privacy::types::PrivacyMode 对应
+ */
+export enum PrivacyMode {
+  /** 公开：所有数据明文存储，任何人可查看 */
+  Public = 0,
+  /** 部分隐私：计算数据明文，敏感数据加密 */
+  Partial = 1,
+  /** 完全隐私：所有数据加密，仅所有者可解密后查看 */
+  Private = 2,
+}
+
+/**
+ * 紫微斗数敏感数据接口
+ *
+ * 包含需要加密保护的用户数据
+ */
+export interface ZiweiSensitiveData {
+  /** 命主姓名 */
+  name?: string;
+  /** 农历年份 */
+  lunarYear?: number;
+  /** 农历月份 */
+  lunarMonth?: number;
+  /** 农历日期 */
+  lunarDay?: number;
+  /** 出生时辰 */
+  birthHour?: number;
+  /** 性别 */
+  gender?: number;
+  /** 是否闰月 */
+  isLeapMonth?: boolean;
+}
+
+/**
+ * 加密排盘创建参数
+ */
+export interface EncryptedZiweiParams {
+  /** 隐私模式 */
+  privacyMode: PrivacyMode;
+  /** 农历年份 */
+  lunarYear: number;
+  /** 农历月份 */
+  lunarMonth: number;
+  /** 农历日期 */
+  lunarDay: number;
+  /** 出生时辰 */
+  birthHour: DiZhi;
+  /** 性别 */
+  gender: Gender;
+  /** 是否闰月 */
+  isLeapMonth: boolean;
+  /** 敏感数据（Partial/Private 模式需要加密） */
+  sensitiveData?: ZiweiSensitiveData;
+}
+
+/**
+ * 紫微命盘公开元数据
+ */
+export interface ZiweiPublicMetadata {
+  /** 命盘 ID */
+  id: number;
+  /** 隐私模式 */
+  privacyMode: PrivacyMode;
+  /** 创建时间戳（区块号） */
+  createdAt: number;
+  /** 是否有加密数据 */
+  hasEncryptedData: boolean;
+  /** 是否可解读 */
+  canInterpret: boolean;
+  /** 五行局（如果公开） */
+  wuXingJu?: WuXingJu;
+  /** 局数（如果公开） */
+  juShu?: number;
+  /** 命宫位置（如果公开） */
+  mingGong?: number;
+  /** 是否有 AI 解读 */
+  hasAiInterpretation: boolean;
+}
+
+/**
+ * 加密农历时间起盘
+ *
+ * 支持三种隐私模式：
+ * - Public (0): 所有数据明文存储
+ * - Partial (1): 计算数据明文 + 敏感数据加密
+ * - Private (2): 全部数据加密
+ *
+ * @param params - 加密排盘参数
+ * @param encryptionKey - 加密密钥（32字节，Partial/Private 模式必须）
+ * @returns 命盘 ID
+ */
+export async function divineByTimeEncrypted(
+  params: EncryptedZiweiParams,
+  encryptionKey?: Uint8Array
+): Promise<number> {
+  const api = await getSignedApi();
+
+  if (!api.tx.ziwei || !api.tx.ziwei.divineByTimeEncrypted) {
+    throw new Error('区块链节点未包含加密紫微斗数接口，请检查节点版本');
+  }
+
+  const {
+    privacyMode,
+    lunarYear,
+    lunarMonth,
+    lunarDay,
+    birthHour,
+    gender,
+    isLeapMonth,
+    sensitiveData,
+  } = params;
+
+  // 准备加密数据（Partial/Private 模式）
+  let encryptedData: Uint8Array | null = null;
+  let dataHash: Uint8Array | null = null;
+  let ownerKeyBackup: Uint8Array | null = null;
+
+  if (privacyMode >= PrivacyMode.Partial && sensitiveData && encryptionKey) {
+    const encrypted = await encryptZiweiSensitiveData(sensitiveData, encryptionKey);
+    encryptedData = encrypted.encryptedData;
+    dataHash = encrypted.dataHash;
+    ownerKeyBackup = encrypted.ownerKeyBackup;
+  }
+
+  // 调用链端方法
+  const tx = api.tx.ziwei.divineByTimeEncrypted(
+    privacyMode,
+    lunarYear,
+    lunarMonth,
+    lunarDay,
+    birthHour,
+    gender,
+    isLeapMonth,
+    encryptedData ? Array.from(encryptedData) : null,
+    dataHash ? Array.from(dataHash) : null,
+    ownerKeyBackup ? Array.from(ownerKeyBackup) : null
+  );
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer!, ({ status, events }) => {
+      if (status.isInBlock || status.isFinalized) {
+        // 查找 EncryptedChartCreated 事件获取命盘 ID
+        for (const { event } of events) {
+          if (event.section === 'ziwei' && event.method === 'EncryptedChartCreated') {
+            const chartId = (event.data as any)[0].toNumber();
+            resolve(chartId);
+            return;
+          }
+          if (event.section === 'ziwei' && event.method === 'ChartCreated') {
+            const chartId = (event.data as any)[0].toNumber();
+            resolve(chartId);
+            return;
+          }
+        }
+        reject(new Error('未找到命盘创建事件'));
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 更新加密数据
+ *
+ * @param chartId - 命盘 ID
+ * @param sensitiveData - 新的敏感数据
+ * @param encryptionKey - 新的加密密钥
+ */
+export async function updateZiweiEncryptedData(
+  chartId: number,
+  sensitiveData: ZiweiSensitiveData,
+  encryptionKey: Uint8Array
+): Promise<void> {
+  const api = await getSignedApi();
+
+  if (!api.tx.ziwei || !api.tx.ziwei.updateEncryptedData) {
+    throw new Error('区块链节点未包含更新加密数据接口');
+  }
+
+  const encrypted = await encryptZiweiSensitiveData(sensitiveData, encryptionKey);
+
+  const tx = api.tx.ziwei.updateEncryptedData(
+    chartId,
+    Array.from(encrypted.encryptedData),
+    Array.from(encrypted.dataHash),
+    Array.from(encrypted.ownerKeyBackup)
+  );
+
+  return new Promise((resolve, reject) => {
+    tx.signAndSend(api.signer!, ({ status }) => {
+      if (status.isInBlock || status.isFinalized) {
+        resolve();
+      }
+    }).catch(reject);
+  });
+}
+
+/**
+ * 获取命盘公开元数据
+ *
+ * @param chartId - 命盘 ID
+ * @returns 公开元数据
+ */
+export async function getZiweiPublicMetadata(chartId: number): Promise<ZiweiPublicMetadata | null> {
+  const api = await getApi();
+
+  try {
+    const chart = await api.query.ziwei.charts(chartId);
+
+    if (chart.isNone) {
+      return null;
+    }
+
+    const data = chart.unwrap();
+    const privacyModeStr = data.privacyMode?.toString() || 'Partial';
+    const privacyMode = privacyModeStr === 'Public' ? PrivacyMode.Public :
+                        privacyModeStr === 'Partial' ? PrivacyMode.Partial :
+                        PrivacyMode.Private;
+
+    // 检查是否有加密数据
+    const encryptedData = await api.query.ziwei.encryptedData(chartId);
+    const hasEncryptedData = encryptedData.isSome;
+
+    return {
+      id: chartId,
+      privacyMode,
+      createdAt: (data as any).createdAt?.toNumber() || 0,
+      hasEncryptedData,
+      canInterpret: privacyMode !== PrivacyMode.Private && (data as any).palaces?.isSome,
+      wuXingJu: (data as any).wuXingJu?.isSome ? (data as any).wuXingJu.unwrap().toNumber() : undefined,
+      juShu: (data as any).juShu?.isSome ? (data as any).juShu.unwrap().toNumber() : undefined,
+      mingGong: (data as any).mingGongPos?.isSome ? (data as any).mingGongPos.unwrap().toNumber() : undefined,
+      hasAiInterpretation: (data as any).aiInterpretationCid?.isSome,
+    };
+  } catch (error) {
+    console.error('[getZiweiPublicMetadata] 获取命盘元数据失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取加密数据
+ *
+ * @param chartId - 命盘 ID
+ * @returns 加密的数据
+ */
+export async function getZiweiEncryptedData(chartId: number): Promise<Uint8Array | null> {
+  const api = await getApi();
+
+  try {
+    const encryptedData = await api.query.ziwei.encryptedData(chartId);
+
+    if (encryptedData.isNone) {
+      return null;
+    }
+
+    const data = encryptedData.unwrap();
+    return new Uint8Array(data.toU8a());
+  } catch (error) {
+    console.error('[getZiweiEncryptedData] 获取加密数据失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取所有者密钥备份
+ *
+ * @param chartId - 命盘 ID
+ * @returns 80 字节密钥备份
+ */
+export async function getZiweiOwnerKeyBackup(chartId: number): Promise<Uint8Array | null> {
+  const api = await getApi();
+
+  try {
+    const keyBackup = await api.query.ziwei.ownerKeyBackup(chartId);
+
+    if (keyBackup.isNone) {
+      return null;
+    }
+
+    const data = keyBackup.unwrap();
+    return new Uint8Array(data.toU8a());
+  } catch (error) {
+    console.error('[getZiweiOwnerKeyBackup] 获取密钥备份失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 加密紫微敏感数据
+ *
+ * 使用 AES-256-CTR 加密敏感数据
+ *
+ * @param data - 敏感数据
+ * @param key - 32 字节加密密钥
+ * @returns 加密结果
+ */
+async function encryptZiweiSensitiveData(
+  data: ZiweiSensitiveData,
+  key: Uint8Array
+): Promise<{
+  encryptedData: Uint8Array;
+  dataHash: Uint8Array;
+  ownerKeyBackup: Uint8Array;
+}> {
+  // 序列化数据
+  const jsonData = JSON.stringify(data);
+  const dataBytes = new TextEncoder().encode(jsonData);
+
+  // 计算原始数据哈希
+  const dataHash = blake2AsU8a(dataBytes, 256);
+
+  // 生成 12 字节 IV
+  const iv = new Uint8Array(12);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(iv);
+  } else {
+    for (let i = 0; i < 12; i++) {
+      iv[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // 使用 CryptoJS 加密
+  const keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const encrypted = CryptoJS.AES.encrypt(
+    CryptoJS.lib.WordArray.create(Array.from(dataBytes) as any),
+    CryptoJS.enc.Hex.parse(keyHex),
+    {
+      iv: CryptoJS.enc.Hex.parse(ivHex),
+      mode: CryptoJS.mode.CTR,
+      padding: CryptoJS.pad.NoPadding,
+    }
+  );
+
+  // 组合 IV + 密文
+  const ciphertext = encrypted.ciphertext;
+  const ciphertextBytes = new Uint8Array(
+    ciphertext.words.flatMap((w: number) => [
+      (w >> 24) & 0xff,
+      (w >> 16) & 0xff,
+      (w >> 8) & 0xff,
+      w & 0xff,
+    ])
+  ).slice(0, ciphertext.sigBytes);
+
+  const encryptedData = new Uint8Array(iv.length + ciphertextBytes.length);
+  encryptedData.set(iv);
+  encryptedData.set(ciphertextBytes, iv.length);
+
+  // 生成所有者密钥备份（80 字节）
+  const ownerKeyBackup = new Uint8Array(80);
+  const keyHash = blake2AsU8a(key, 256);
+  ownerKeyBackup.set(keyHash);
+  if (typeof window !== 'undefined' && window.crypto) {
+    const padding = new Uint8Array(48);
+    window.crypto.getRandomValues(padding);
+    ownerKeyBackup.set(padding, 32);
+  }
+
+  return { encryptedData, dataHash, ownerKeyBackup };
+}
+
+/**
+ * 解密紫微敏感数据
+ *
+ * @param encryptedData - 加密的数据
+ * @param key - 32 字节解密密钥
+ * @returns 解密后的敏感数据
+ */
+export function decryptZiweiSensitiveData(
+  encryptedData: Uint8Array,
+  key: Uint8Array
+): ZiweiSensitiveData {
+  // 分离 IV 和密文
+  const iv = encryptedData.slice(0, 12);
+  const ciphertext = encryptedData.slice(12);
+
+  // 转换为 CryptoJS 格式
+  const keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  // 转换密文为 WordArray
+  const ciphertextWords: number[] = [];
+  for (let i = 0; i < ciphertext.length; i += 4) {
+    const word = (ciphertext[i] << 24) |
+                 ((ciphertext[i + 1] || 0) << 16) |
+                 ((ciphertext[i + 2] || 0) << 8) |
+                 (ciphertext[i + 3] || 0);
+    ciphertextWords.push(word);
+  }
+
+  const ciphertextWordArray = CryptoJS.lib.WordArray.create(ciphertextWords, ciphertext.length);
+
+  // 解密
+  const decrypted = CryptoJS.AES.decrypt(
+    { ciphertext: ciphertextWordArray } as CryptoJS.lib.CipherParams,
+    CryptoJS.enc.Hex.parse(keyHex),
+    {
+      iv: CryptoJS.enc.Hex.parse(ivHex),
+      mode: CryptoJS.mode.CTR,
+      padding: CryptoJS.pad.NoPadding,
+    }
+  );
+
+  // 转换为字符串
+  const decryptedBytes = new Uint8Array(
+    decrypted.words.flatMap((w: number) => [
+      (w >> 24) & 0xff,
+      (w >> 16) & 0xff,
+      (w >> 8) & 0xff,
+      w & 0xff,
+    ])
+  ).slice(0, decrypted.sigBytes);
+
+  const jsonData = new TextDecoder().decode(decryptedBytes);
+  return JSON.parse(jsonData);
+}
+
+/**
+ * 生成加密密钥
+ *
+ * @returns 32 字节随机密钥
+ */
+export function generateZiweiEncryptionKey(): Uint8Array {
+  const key = new Uint8Array(32);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(key);
+  } else {
+    for (let i = 0; i < 32; i++) {
+      key[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return key;
+}

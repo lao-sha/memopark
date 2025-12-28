@@ -106,6 +106,7 @@ impl pallet_liuyao::Config for Test {
     type DailyFreeGuas = ConstU32<3>;
     type MaxDailyGuas = ConstU32<10>;
     type MaxCidLen = ConstU32<64>;
+    type MaxEncryptedLen = ConstU32<512>;
 }
 
 /// 测试账户 ID

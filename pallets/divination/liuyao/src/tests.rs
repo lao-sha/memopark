@@ -177,7 +177,7 @@ fn test_set_visibility_works() {
         ));
 
         let gua = Liuyao::guas(0).unwrap();
-        assert!(gua.is_public);
+        assert!(gua.is_public());
 
         // 检查公开列表
         let public_guas = Liuyao::public_guas();
@@ -191,10 +191,249 @@ fn test_set_visibility_works() {
         ));
 
         let gua = Liuyao::guas(0).unwrap();
-        assert!(!gua.is_public);
+        assert!(!gua.is_public());
 
         let public_guas = Liuyao::public_guas();
         assert!(!public_guas.contains(&0));
+    });
+}
+
+// ============================================================================
+// 加密模式测试
+// ============================================================================
+
+#[test]
+fn test_divine_by_coins_encrypted_public() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Public 模式起卦
+        let coins = [2, 1, 2, 1, 2, 1];
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            0, // Public 模式
+            Some(coins),
+            Some((0, 0)),
+            Some((2, 2)),
+            Some((4, 4)),
+            Some((6, 6)),
+            None, // 无加密数据
+            None, // 无数据哈希
+            None, // 无密钥备份
+        ));
+
+        // 验证卦象
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.privacy_mode, PrivacyMode::Public);
+        assert!(gua.original_yaos.is_some());
+        assert!(gua.is_public());
+        assert!(gua.can_interpret());
+    });
+}
+
+#[test]
+fn test_divine_by_coins_encrypted_partial() {
+    new_test_ext().execute_with(|| {
+        use frame_support::{BoundedVec, traits::ConstU32};
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Partial 模式起卦
+        let coins = [1, 2, 3, 1, 2, 0];
+        let encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![1, 2, 3, 4, 5]).unwrap();
+        let data_hash = [0u8; 32];
+        let owner_key_backup = [0u8; 80];
+
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1, // Partial 模式
+            Some(coins),
+            Some((0, 0)),
+            Some((2, 2)),
+            Some((4, 4)),
+            Some((6, 6)),
+            Some(encrypted_data.clone()),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证卦象
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.privacy_mode, PrivacyMode::Partial);
+        assert!(gua.original_yaos.is_some());
+        assert!(gua.can_interpret());
+        assert!(!gua.is_public());
+
+        // 验证加密数据存储
+        assert!(Liuyao::encrypted_data(0).is_some());
+        assert!(Liuyao::owner_key_backup(0).is_some());
+    });
+}
+
+#[test]
+fn test_divine_by_coins_encrypted_private() {
+    new_test_ext().execute_with(|| {
+        use frame_support::{BoundedVec, traits::ConstU32};
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Private 模式起卦
+        let encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![5, 6, 7, 8]).unwrap();
+        let data_hash = [1u8; 32];
+        let owner_key_backup = [2u8; 80];
+
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            2, // Private 模式
+            None, // 无明文数据
+            None,
+            None,
+            None,
+            None,
+            Some(encrypted_data.clone()),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证卦象
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.privacy_mode, PrivacyMode::Private);
+        assert!(gua.original_yaos.is_none()); // Private 模式无计算数据
+        assert!(!gua.can_interpret()); // 无法解读
+        assert!(gua.is_private());
+
+        // 验证加密数据存储
+        assert!(Liuyao::encrypted_data(0).is_some());
+        assert!(Liuyao::owner_key_backup(0).is_some());
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_works() {
+    new_test_ext().execute_with(|| {
+        use frame_support::{BoundedVec, traits::ConstU32};
+
+        // 先创建一个 Partial 模式的卦象
+        let coins = [1, 2, 1, 2, 1, 2];
+        let encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+        let data_hash = [0u8; 32];
+        let owner_key_backup = [0u8; 80];
+
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            Some(coins),
+            Some((0, 0)),
+            Some((2, 2)),
+            Some((4, 4)),
+            Some((6, 6)),
+            Some(encrypted_data),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 更新加密数据
+        let new_encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![9, 8, 7, 6, 5]).unwrap();
+        let new_data_hash = [3u8; 32];
+        let new_owner_key_backup = [4u8; 80];
+
+        assert_ok!(Liuyao::update_encrypted_data(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            new_encrypted_data.clone(),
+            new_data_hash,
+            new_owner_key_backup,
+        ));
+
+        // 验证更新
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.sensitive_data_hash, Some(new_data_hash));
+
+        let stored_data = Liuyao::encrypted_data(0).unwrap();
+        assert_eq!(stored_data.to_vec(), vec![9, 8, 7, 6, 5]);
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_not_owner() {
+    new_test_ext().execute_with(|| {
+        use frame_support::{BoundedVec, traits::ConstU32};
+
+        // ALICE 创建卦象
+        let coins = [1, 2, 1, 2, 1, 2];
+        let encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            Some(coins),
+            Some((0, 0)),
+            Some((2, 2)),
+            Some((4, 4)),
+            Some((6, 6)),
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        // BOB 尝试更新
+        let new_encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![9, 9, 9]).unwrap();
+
+        assert_noop!(
+            Liuyao::update_encrypted_data(
+                RuntimeOrigin::signed(BOB),
+                0,
+                new_encrypted_data,
+                [1u8; 32],
+                [1u8; 80],
+            ),
+            Error::<Test>::NotGuaOwner
+        );
+    });
+}
+
+#[test]
+fn test_privacy_mode_affects_visibility() {
+    new_test_ext().execute_with(|| {
+        use frame_support::{BoundedVec, traits::ConstU32};
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // 创建 Partial 模式卦象
+        let encrypted_data: BoundedVec<u8, ConstU32<512>> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(Liuyao::divine_by_coins_encrypted(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            Some([1, 1, 1, 1, 1, 1]),
+            Some((0, 0)),
+            Some((2, 2)),
+            Some((4, 4)),
+            Some((6, 6)),
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.privacy_mode, PrivacyMode::Partial);
+        assert!(!gua.is_public());
+        assert!(gua.can_interpret());
+
+        // 尝试设为公开
+        assert_ok!(Liuyao::set_gua_visibility(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            true,
+        ));
+
+        let gua = Liuyao::guas(0).unwrap();
+        assert_eq!(gua.privacy_mode, PrivacyMode::Public);
+        assert!(gua.is_public());
     });
 }
 

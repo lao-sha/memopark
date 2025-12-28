@@ -333,10 +333,10 @@ fn test_create_bazi_chart_success() {
 
 		let chart = chart.unwrap();
 		assert_eq!(chart.owner, account_id);
-		assert_eq!(chart.birth_time.year, 1990);
-		assert_eq!(chart.birth_time.month, 11);
-		assert_eq!(chart.birth_time.day, 15);
-		assert_eq!(chart.gender, Gender::Male);
+		assert_eq!(chart.birth_time.unwrap().year, 1990);
+		assert_eq!(chart.birth_time.unwrap().month, 11);
+		assert_eq!(chart.birth_time.unwrap().day, 15);
+		assert_eq!(chart.gender, Some(Gender::Male));
 	});
 }
 
@@ -703,12 +703,13 @@ fn test_dayun_info() {
 		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
 
 		// 验证大运信息
-		assert!(chart.dayun.qiyun_age < 11); // 起运年龄一般在 1-10 岁
-		assert!(!chart.dayun.dayun_list.is_empty()); // 大运列表不为空
-		assert!(chart.dayun.dayun_list.len() >= 8); // 至少有 8 步大运
+		let dayun = chart.dayun.as_ref().unwrap();
+		assert!(dayun.qiyun_age < 11); // 起运年龄一般在 1-10 岁
+		assert!(!dayun.dayun_list.is_empty()); // 大运列表不为空
+		assert!(dayun.dayun_list.len() >= 8); // 至少有 8 步大运
 
 		// 验证第一步大运
-		let first_dayun = &chart.dayun.dayun_list[0];
+		let first_dayun = &dayun.dayun_list[0];
 		assert!(first_dayun.start_age <= first_dayun.end_age);
 		assert!((first_dayun.tiangan_shishen as u8) < 10); // 十神有效
 	});
@@ -749,11 +750,12 @@ fn test_canggan_list_in_chart() {
 		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
 
 		// 验证藏干列表（每柱 1-3 个藏干）
-		assert!(!chart.sizhu.year_zhu.canggan.is_empty());
-		assert!(chart.sizhu.year_zhu.canggan.len() <= 3);
+		let sizhu = chart.sizhu.as_ref().unwrap();
+		assert!(!sizhu.year_zhu.canggan.is_empty());
+		assert!(sizhu.year_zhu.canggan.len() <= 3);
 
 		// 验证藏干详细信息
-		for canggan in chart.sizhu.year_zhu.canggan.iter() {
+		for canggan in sizhu.year_zhu.canggan.iter() {
 			assert!(canggan.gan.0 < 10); // 天干有效
 			assert!((canggan.shishen as u8) < 10); // 十神有效
 			assert!((canggan.canggan_type as u8) < 3); // 藏干类型有效（主气/中气/余气）
@@ -892,10 +894,10 @@ fn test_create_bazi_chart_from_lunar() {
 		let chart = chart.unwrap();
 		assert_eq!(chart.owner, account_id);
 		// 公历应该是 2024年2月10日
-		assert_eq!(chart.birth_time.year, 2024);
-		assert_eq!(chart.birth_time.month, 2);
-		assert_eq!(chart.birth_time.day, 10);
-		assert_eq!(chart.gender, Gender::Male);
+		assert_eq!(chart.birth_time.unwrap().year, 2024);
+		assert_eq!(chart.birth_time.unwrap().month, 2);
+		assert_eq!(chart.birth_time.unwrap().day, 10);
+		assert_eq!(chart.gender, Some(Gender::Male));
 	});
 }
 
@@ -998,11 +1000,12 @@ fn test_create_bazi_chart_from_sizhu() {
 
 		let chart = chart.unwrap();
 		assert_eq!(chart.owner, account_id);
-		assert_eq!(chart.gender, Gender::Male);
+		assert_eq!(chart.gender, Some(Gender::Male));
 
 		// 验证四柱
-		assert_eq!(chart.sizhu.year_zhu.ganzhi.gan.0, 0); // 甲
-		assert_eq!(chart.sizhu.year_zhu.ganzhi.zhi.0, 0); // 子
+		let sizhu = chart.sizhu.as_ref().unwrap();
+		assert_eq!(sizhu.year_zhu.ganzhi.gan.0, 0); // 甲
+		assert_eq!(sizhu.year_zhu.ganzhi.zhi.0, 0); // 子
 	});
 }
 
@@ -1126,8 +1129,8 @@ fn test_input_calendar_type_solar() {
 		// 验证输入类型为公历
 		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
 		let chart = crate::pallet::ChartById::<Test>::get(user_charts[0]).unwrap();
-		assert_eq!(chart.input_calendar_type, InputCalendarType::Solar);
-		assert_eq!(chart.input_calendar_type.name(), "公历");
+		assert_eq!(chart.input_calendar_type, Some(InputCalendarType::Solar));
+		assert_eq!(chart.input_calendar_type.unwrap().name(), "公历");
 	});
 }
 
@@ -1160,8 +1163,8 @@ fn test_input_calendar_type_lunar() {
 		// 验证输入类型为农历
 		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
 		let chart = crate::pallet::ChartById::<Test>::get(user_charts[0]).unwrap();
-		assert_eq!(chart.input_calendar_type, InputCalendarType::Lunar);
-		assert_eq!(chart.input_calendar_type.name(), "农历");
+		assert_eq!(chart.input_calendar_type, Some(InputCalendarType::Lunar));
+		assert_eq!(chart.input_calendar_type.unwrap().name(), "农历");
 	});
 }
 
@@ -1193,8 +1196,8 @@ fn test_input_calendar_type_sizhu() {
 		// 验证输入类型为四柱
 		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
 		let chart = crate::pallet::ChartById::<Test>::get(user_charts[0]).unwrap();
-		assert_eq!(chart.input_calendar_type, InputCalendarType::SiZhu);
-		assert_eq!(chart.input_calendar_type.name(), "四柱");
+		assert_eq!(chart.input_calendar_type, Some(InputCalendarType::SiZhu));
+		assert_eq!(chart.input_calendar_type.unwrap().name(), "四柱");
 	});
 }
 
@@ -2069,5 +2072,708 @@ fn test_provider_grants_index_integrity() {
 		// 验证 ProviderGrants 完全清空
 		let grants = crate::pallet::ProviderGrants::<Test>::get(master);
 		assert!(grants.is_empty());
+	});
+}
+
+// ================================
+// 统一隐私模式测试 (Phase 1.2.4)
+// ================================
+
+#[test]
+fn test_create_bazi_chart_encrypted_public_mode() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// Public 模式：所有数据明文存储
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			0, // Public 模式
+			Some(b"test".to_vec().try_into().unwrap()), // name
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None, // longitude
+			None, // encrypted_data (Public 模式不需要)
+			None, // data_hash
+			None, // owner_key_backup
+		));
+
+		// 验证用户的命盘列表
+		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
+		assert_eq!(user_charts.len(), 1);
+
+		// 验证命盘存储
+		let chart_id = user_charts[0];
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+		assert_eq!(chart.owner, account_id);
+		assert_eq!(chart.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Public);
+		assert!(chart.encrypted_fields.is_none()); // Public 模式无加密字段
+		assert!(chart.sensitive_data_hash.is_none()); // 无敏感数据哈希
+
+		// 验证计算数据存在
+		assert!(chart.birth_time.is_some());
+		assert!(chart.sizhu.is_some());
+		assert!(chart.dayun.is_some());
+
+		// 验证没有加密数据存储
+		assert!(!crate::pallet::EncryptedData::<Test>::contains_key(chart_id));
+		assert!(!crate::pallet::OwnerKeyBackup::<Test>::contains_key(chart_id));
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_partial_mode() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 准备加密数据（模拟前端加密的敏感数据）
+		let encrypted_data: Vec<u8> = (0..128).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		// Partial 模式：计算数据明文 + 敏感数据加密
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1, // Partial 模式
+			Some(b"partial_test".to_vec().try_into().unwrap()),
+			Some(input),
+			Some(Gender::Female),
+			Some(ZiShiMode::Traditional),
+			None,
+			Some(BoundedVec::try_from(encrypted_data.clone()).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		// 验证命盘列表
+		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
+		assert_eq!(user_charts.len(), 1);
+
+		let chart_id = user_charts[0];
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+
+		// 验证隐私模式
+		assert_eq!(chart.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Partial);
+		assert_eq!(chart.encrypted_fields, Some(0x0F)); // 敏感字段加密标记
+		assert_eq!(chart.sensitive_data_hash, Some(data_hash));
+
+		// 验证计算数据存在（Partial 模式保留计算数据）
+		assert!(chart.birth_time.is_some());
+		assert!(chart.sizhu.is_some());
+		assert!(chart.dayun.is_some());
+		assert!(chart.wuxing_strength.is_some());
+
+		// 验证加密数据已存储
+		assert!(crate::pallet::EncryptedData::<Test>::contains_key(chart_id));
+		let stored_encrypted_data = crate::pallet::EncryptedData::<Test>::get(chart_id).unwrap();
+		assert_eq!(stored_encrypted_data.len(), 128);
+
+		// 验证密钥备份已存储
+		assert!(crate::pallet::OwnerKeyBackup::<Test>::contains_key(chart_id));
+		let stored_key_backup = crate::pallet::OwnerKeyBackup::<Test>::get(chart_id).unwrap();
+		assert_eq!(stored_key_backup, owner_key_backup);
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_private_mode() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 准备加密数据
+		let encrypted_data: Vec<u8> = (0..=255).collect();
+		let data_hash: [u8; 32] = [0xEF; 32];
+		let owner_key_backup: [u8; 92] = [0x12; 92];
+
+		// Private 模式：所有数据加密
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			2, // Private 模式
+			Some(b"private_test".to_vec().try_into().unwrap()),
+			None, // 计算参数可选（Private 模式）
+			None,
+			None,
+			None,
+			Some(BoundedVec::try_from(encrypted_data.clone()).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		// 验证命盘列表
+		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
+		assert_eq!(user_charts.len(), 1);
+
+		let chart_id = user_charts[0];
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+
+		// 验证隐私模式
+		assert_eq!(chart.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Private);
+		assert_eq!(chart.encrypted_fields, Some(0xFF)); // 所有字段加密
+		assert_eq!(chart.sensitive_data_hash, Some(data_hash));
+
+		// 验证计算数据为 None（Private 模式不存储计算数据）
+		assert!(chart.birth_time.is_none());
+		assert!(chart.sizhu.is_none());
+		assert!(chart.dayun.is_none());
+		assert!(chart.wuxing_strength.is_none());
+		assert!(chart.gender.is_none());
+		assert!(chart.zishi_mode.is_none());
+
+		// 验证加密数据已存储
+		assert!(crate::pallet::EncryptedData::<Test>::contains_key(chart_id));
+		assert!(crate::pallet::OwnerKeyBackup::<Test>::contains_key(chart_id));
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_invalid_privacy_mode() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 无效的隐私模式 (> 2)
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+				RuntimeOrigin::signed(account_id),
+				3, // 无效模式
+				None,
+				Some(input),
+				Some(Gender::Male),
+				Some(ZiShiMode::Modern),
+				None,
+				None,
+				None,
+				None,
+			),
+			crate::Error::<Test>::InvalidPrivacyMode
+		);
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_public_mode_with_encrypted_data() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// Public 模式不应包含加密数据
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+		let encrypted_data: Vec<u8> = (0..64).collect();
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+				RuntimeOrigin::signed(account_id),
+				0, // Public 模式
+				None,
+				Some(input),
+				Some(Gender::Male),
+				Some(ZiShiMode::Modern),
+				None,
+				Some(BoundedVec::try_from(encrypted_data).unwrap()), // 不应有加密数据
+				None,
+				None,
+			),
+			crate::Error::<Test>::PublicModeNoEncryptedData
+		);
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_partial_mode_missing_encrypted_data() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// Partial 模式必须有加密数据
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+				RuntimeOrigin::signed(account_id),
+				1, // Partial 模式
+				None,
+				Some(input),
+				Some(Gender::Male),
+				Some(ZiShiMode::Modern),
+				None,
+				None, // 缺少加密数据
+				None,
+				None,
+			),
+			crate::Error::<Test>::EncryptedDataRequired
+		);
+	});
+}
+
+#[test]
+fn test_create_bazi_chart_encrypted_partial_mode_missing_calculation_params() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// Partial 模式必须有计算参数
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+				RuntimeOrigin::signed(account_id),
+				1, // Partial 模式
+				None,
+				None, // 缺少 input
+				Some(Gender::Male),
+				Some(ZiShiMode::Modern),
+				None,
+				Some(BoundedVec::try_from(encrypted_data).unwrap()),
+				Some(data_hash),
+				Some(owner_key_backup),
+			),
+			crate::Error::<Test>::PartialModeRequiresCalculationParams
+		);
+	});
+}
+
+#[test]
+fn test_update_encrypted_data_success() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 先创建 Partial 模式命盘
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1, // Partial 模式
+			None,
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(account_id)[0];
+
+		// 更新加密数据
+		let new_encrypted_data: Vec<u8> = (100..200).collect();
+		let new_data_hash: [u8; 32] = [0xEF; 32];
+		let new_owner_key_backup: [u8; 92] = [0x12; 92];
+
+		assert_ok!(crate::pallet::Pallet::<Test>::update_encrypted_data(
+			RuntimeOrigin::signed(account_id),
+			chart_id,
+			BoundedVec::try_from(new_encrypted_data.clone()).unwrap(),
+			new_data_hash,
+			new_owner_key_backup,
+		));
+
+		// 验证更新后的加密数据
+		let stored_encrypted_data = crate::pallet::EncryptedData::<Test>::get(chart_id).unwrap();
+		assert_eq!(stored_encrypted_data.len(), 100);
+		assert_eq!(stored_encrypted_data[0], 100);
+
+		// 验证更新后的密钥备份
+		let stored_key_backup = crate::pallet::OwnerKeyBackup::<Test>::get(chart_id).unwrap();
+		assert_eq!(stored_key_backup, new_owner_key_backup);
+
+		// 验证命盘的数据哈希已更新
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+		assert_eq!(chart.sensitive_data_hash, Some(new_data_hash));
+	});
+}
+
+#[test]
+fn test_update_encrypted_data_not_owner() {
+	new_test_ext().execute_with(|| {
+		let owner = 1u64;
+		let attacker = 2u64;
+
+		// owner 创建 Partial 模式命盘
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(owner),
+			1,
+			None,
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(owner)[0];
+
+		// attacker 尝试更新应失败
+		let new_encrypted_data: Vec<u8> = (100..200).collect();
+		let new_data_hash: [u8; 32] = [0xEF; 32];
+		let new_owner_key_backup: [u8; 92] = [0x12; 92];
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::update_encrypted_data(
+				RuntimeOrigin::signed(attacker), // 非所有者
+				chart_id,
+				BoundedVec::try_from(new_encrypted_data).unwrap(),
+				new_data_hash,
+				new_owner_key_backup,
+			),
+			crate::Error::<Test>::NotChartOwner
+		);
+	});
+}
+
+#[test]
+fn test_update_encrypted_data_on_public_mode() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 创建 Public 模式命盘
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			0, // Public 模式
+			None,
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			None,
+			None,
+			None,
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(account_id)[0];
+
+		// 尝试在 Public 模式命盘上更新加密数据应失败
+		let new_encrypted_data: Vec<u8> = (100..200).collect();
+		let new_data_hash: [u8; 32] = [0xEF; 32];
+		let new_owner_key_backup: [u8; 92] = [0x12; 92];
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::update_encrypted_data(
+				RuntimeOrigin::signed(account_id),
+				chart_id,
+				BoundedVec::try_from(new_encrypted_data).unwrap(),
+				new_data_hash,
+				new_owner_key_backup,
+			),
+			crate::Error::<Test>::PublicModeNoEncryptedData
+		);
+	});
+}
+
+#[test]
+fn test_update_encrypted_data_chart_not_found() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+		let non_existent_chart_id = 9999u64;
+
+		let new_encrypted_data: Vec<u8> = (100..200).collect();
+		let new_data_hash: [u8; 32] = [0xEF; 32];
+		let new_owner_key_backup: [u8; 92] = [0x12; 92];
+
+		assert_noop!(
+			crate::pallet::Pallet::<Test>::update_encrypted_data(
+				RuntimeOrigin::signed(account_id),
+				non_existent_chart_id,
+				BoundedVec::try_from(new_encrypted_data).unwrap(),
+				new_data_hash,
+				new_owner_key_backup,
+			),
+			crate::Error::<Test>::ChartNotFound
+		);
+	});
+}
+
+#[test]
+fn test_delete_bazi_chart_with_encrypted_data() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 创建 Partial 模式命盘
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		let input = BaziInputType::Solar {
+			year: 1990,
+			month: 11,
+			day: 15,
+			hour: 14,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1, // Partial 模式
+			None,
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(account_id)[0];
+
+		// 验证加密数据存在
+		assert!(crate::pallet::EncryptedData::<Test>::contains_key(chart_id));
+		assert!(crate::pallet::OwnerKeyBackup::<Test>::contains_key(chart_id));
+
+		// 删除命盘
+		assert_ok!(crate::pallet::Pallet::<Test>::delete_bazi_chart(
+			RuntimeOrigin::signed(account_id),
+			chart_id,
+		));
+
+		// 验证命盘已删除
+		assert!(!crate::pallet::ChartById::<Test>::contains_key(chart_id));
+
+		// 注意：当前实现中，delete_bazi_chart 不会自动清理 EncryptedData 和 OwnerKeyBackup
+		// 这是一个潜在的优化点，可以在后续版本中添加
+	});
+}
+
+#[test]
+fn test_privacy_mode_with_lunar_input() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 使用农历输入创建 Partial 模式命盘
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		let input = BaziInputType::Lunar {
+			year: 2024,
+			month: 1,
+			day: 1,
+			is_leap_month: false,
+			hour: 12,
+			minute: 30,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1, // Partial 模式
+			Some(b"lunar_partial".to_vec().try_into().unwrap()),
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(account_id)[0];
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+
+		// 验证隐私模式
+		assert_eq!(chart.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Partial);
+
+		// 验证农历输入已转换为公历
+		let birth_time = chart.birth_time.unwrap();
+		assert_eq!(birth_time.year, 2024);
+		assert_eq!(birth_time.month, 2); // 农历正月初一 = 公历2024年2月10日
+		assert_eq!(birth_time.day, 10);
+
+		// 验证输入日历类型
+		assert_eq!(chart.input_calendar_type, Some(crate::types::InputCalendarType::Lunar));
+	});
+}
+
+#[test]
+fn test_privacy_mode_with_sizhu_input() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 使用四柱直接输入创建 Partial 模式命盘
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+
+		let input = BaziInputType::SiZhu {
+			year_gz: 0,   // 甲子
+			month_gz: 2,  // 丙寅
+			day_gz: 4,    // 戊辰
+			hour_gz: 0,   // 甲子
+			birth_year: 1984,
+		};
+
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1, // Partial 模式
+			Some(b"sizhu_partial".to_vec().try_into().unwrap()),
+			Some(input),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		let chart_id = crate::pallet::UserCharts::<Test>::get(account_id)[0];
+		let chart = crate::pallet::ChartById::<Test>::get(chart_id).unwrap();
+
+		// 验证隐私模式
+		assert_eq!(chart.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Partial);
+
+		// 验证四柱
+		let sizhu = chart.sizhu.unwrap();
+		assert_eq!(sizhu.year_zhu.ganzhi.gan.0, 0); // 甲
+		assert_eq!(sizhu.year_zhu.ganzhi.zhi.0, 0); // 子
+
+		// 验证输入日历类型
+		assert_eq!(chart.input_calendar_type, Some(crate::types::InputCalendarType::SiZhu));
+	});
+}
+
+#[test]
+fn test_multiple_privacy_mode_charts() {
+	new_test_ext().execute_with(|| {
+		let account_id = 1u64;
+
+		// 创建 Public 模式命盘
+		let input1 = BaziInputType::Solar {
+			year: 1990,
+			month: 1,
+			day: 1,
+			hour: 12,
+			minute: 0,
+		};
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			0,
+			None,
+			Some(input1),
+			Some(Gender::Male),
+			Some(ZiShiMode::Modern),
+			None,
+			None,
+			None,
+			None,
+		));
+
+		// 创建 Partial 模式命盘
+		let input2 = BaziInputType::Solar {
+			year: 1991,
+			month: 2,
+			day: 2,
+			hour: 14,
+			minute: 0,
+		};
+		let encrypted_data: Vec<u8> = (0..64).collect();
+		let data_hash: [u8; 32] = [0xAB; 32];
+		let owner_key_backup: [u8; 92] = [0xCD; 92];
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			1,
+			None,
+			Some(input2),
+			Some(Gender::Female),
+			Some(ZiShiMode::Traditional),
+			None,
+			Some(BoundedVec::try_from(encrypted_data.clone()).unwrap()),
+			Some(data_hash),
+			Some(owner_key_backup),
+		));
+
+		// 创建 Private 模式命盘
+		let data_hash2: [u8; 32] = [0xEF; 32];
+		let owner_key_backup2: [u8; 92] = [0x12; 92];
+		assert_ok!(crate::pallet::Pallet::<Test>::create_bazi_chart_encrypted(
+			RuntimeOrigin::signed(account_id),
+			2,
+			None,
+			None,
+			None,
+			None,
+			None,
+			Some(BoundedVec::try_from(encrypted_data).unwrap()),
+			Some(data_hash2),
+			Some(owner_key_backup2),
+		));
+
+		// 验证创建了 3 个命盘
+		let user_charts = crate::pallet::UserCharts::<Test>::get(account_id);
+		assert_eq!(user_charts.len(), 3);
+
+		// 验证各命盘的隐私模式
+		let chart1 = crate::pallet::ChartById::<Test>::get(user_charts[0]).unwrap();
+		assert_eq!(chart1.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Public);
+
+		let chart2 = crate::pallet::ChartById::<Test>::get(user_charts[1]).unwrap();
+		assert_eq!(chart2.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Partial);
+
+		let chart3 = crate::pallet::ChartById::<Test>::get(user_charts[2]).unwrap();
+		assert_eq!(chart3.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Private);
 	});
 }

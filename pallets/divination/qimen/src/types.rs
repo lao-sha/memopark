@@ -6,11 +6,64 @@
 //! - 九星、八门、八神
 //! - 三奇六仪
 //! - 排盘结果结构
+//!
+//! ## 隐私模式支持
+//!
+//! QimenChart 结构支持三种隐私模式（PrivacyMode）：
+//! - Public: 所有数据明文存储，公开可见
+//! - Partial: 计算数据明文 + 敏感数据加密（推荐用于专业解读场景）
+//! - Private: 全部数据加密，需前端解密后调用 compute_chart API
 
 use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use frame_support::BoundedVec;
+use frame_support::traits::ConstU32;
+use pallet_divination_privacy::types::PrivacyMode;
 use scale_info::TypeInfo;
 use sp_std::prelude::*;
+
+// ==================== 常量定义 ====================
+
+/// 命主姓名最大长度（字节）
+/// UTF-8 中文字符通常占 3 字节，32 字节约可存储 10 个汉字
+pub type MaxNameLen = ConstU32<32>;
+
+/// 占问事宜最大长度（字节）
+/// 128 字节约可存储 42 个汉字，足够描述简短的问题
+pub type MaxQuestionLen = ConstU32<128>;
+
+// ==================== 性别 ====================
+
+/// 性别
+///
+/// 用于命主信息，某些占卜分析可能需要考虑性别因素
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[repr(u8)]
+pub enum Gender {
+    /// 男性（默认）
+    #[default]
+    Male = 0,
+    /// 女性
+    Female = 1,
+}
+
+impl Gender {
+    /// 获取性别名称
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Male => "男",
+            Self::Female => "女",
+        }
+    }
+
+    /// 从数字获取性别
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Male),
+            1 => Some(Self::Female),
+            _ => None,
+        }
+    }
+}
 
 // ==================== 天干地支 ====================
 
@@ -219,6 +272,18 @@ impl GanZhi {
         let z = self.zhi.index() as u16;
         // (天干 - 地支) mod 10 配合地支位置
         ((g * 6 + z * 5) % 60) as u8
+    }
+}
+
+/// 为 GanZhi 实现 Default
+///
+/// 默认值为甲子（六十甲子的第一个）
+impl Default for GanZhi {
+    fn default() -> Self {
+        Self {
+            gan: TianGan::Jia,
+            zhi: DiZhi::Zi,
+        }
     }
 }
 
@@ -484,6 +549,15 @@ impl JiuXing {
     }
 }
 
+/// 为 JiuXing 实现 Default
+///
+/// 默认值为天禽星（中五宫）
+impl Default for JiuXing {
+    fn default() -> Self {
+        Self::TianQin
+    }
+}
+
 // ==================== 八门 ====================
 
 /// 八门
@@ -592,6 +666,15 @@ impl BaMen {
             9 => Some(Self::Jing),  // 离宫 - 景门
             _ => None,
         }
+    }
+}
+
+/// 为 BaMen 实现 Default
+///
+/// 默认值为开门（大吉门）
+impl Default for BaMen {
+    fn default() -> Self {
+        Self::Kai
     }
 }
 
@@ -1089,47 +1172,211 @@ impl Palace {
 // ==================== 完整排盘结果 ====================
 
 /// 奇门遁甲完整排盘结果
+///
+/// 包含完整的命主信息和排盘数据，支持链上存储和查询。
+///
+/// # 隐私模式支持
+///
+/// QimenChart 支持三种隐私模式：
+///
+/// ## Public 模式（公开）
+/// - 所有字段明文存储
+/// - 任何人可查看
+/// - `privacy_mode = PrivacyMode::Public`
+///
+/// ## Partial 模式（部分加密）⭐ 推荐
+/// - 计算字段（四柱、九宫等）明文存储，支持 Runtime API 解盘
+/// - 敏感字段（姓名、问题等）设为 None，加密存储在 Privacy pallet
+/// - `privacy_mode = PrivacyMode::Partial`
+/// - `encrypted_fields = Some(NAME | QUESTION)` 标识加密字段
+/// - `sensitive_data_hash` 存储敏感数据哈希用于验证
+///
+/// ## Private 模式（完全加密）
+/// - 所有计算字段设为 None
+/// - 全部数据加密存储在 Privacy pallet
+/// - 需前端解密后调用 `compute_chart` API
+/// - `privacy_mode = PrivacyMode::Private`
+///
+/// # 存储大小估算
+/// - 基础字段：约 200 bytes
+/// - 命主信息：约 170 bytes（name 32 + gender 1 + birth_year 2 + question 128 + 其他）
+/// - 九宫数据：约 180 bytes（9 宫 × 20 bytes）
+/// - 隐私字段：约 37 bytes（privacy_mode 1 + encrypted_fields 3 + hash 33）
+/// - 总计：约 590 bytes（Public 模式）/ 约 200 bytes（Private 模式）
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(MaxCidLen))]
 pub struct QimenChart<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>> {
+    // ==================== 基础信息 ====================
     /// 排盘 ID
     pub id: u64,
     /// 排盘者账户
     pub diviner: AccountId,
-    /// 起局方式
+    /// 起局方式（时间/数字/随机/手动）
     pub method: DivinationMethod,
-    /// 年柱
-    pub year_ganzhi: GanZhi,
-    /// 月柱
-    pub month_ganzhi: GanZhi,
-    /// 日柱
-    pub day_ganzhi: GanZhi,
-    /// 时柱
-    pub hour_ganzhi: GanZhi,
-    /// 节气
-    pub jie_qi: JieQi,
-    /// 阴阳遁
-    pub dun_type: DunType,
-    /// 三元
-    pub san_yuan: SanYuan,
-    /// 局数（1-9）
-    pub ju_number: u8,
-    /// 值符星
-    pub zhi_fu_xing: JiuXing,
-    /// 值使门
-    pub zhi_shi_men: BaMen,
-    /// 九宫排盘结果
-    pub palaces: [Palace; 9],
+
+    // ==================== 隐私控制字段（v3.4 新增） ====================
+    /// 隐私模式（Public/Partial/Private）
+    ///
+    /// - Public: 所有数据明文，任何人可见
+    /// - Partial: 计算数据明文 + 敏感数据加密（推荐）
+    /// - Private: 全部数据加密
+    pub privacy_mode: PrivacyMode,
+
+    /// 加密字段标志位（仅 Partial 模式使用）
+    ///
+    /// 使用 `EncryptedFields` 模块中的常量组合：
+    /// - `None`: Public 或 Private 模式
+    /// - `Some(flags)`: Partial 模式，flags 标识哪些敏感字段被加密
+    ///
+    /// 例如：`Some(EncryptedFields::NAME | EncryptedFields::QUESTION)`
+    pub encrypted_fields: Option<u16>,
+
+    /// 敏感数据哈希（用于完整性验证）
+    ///
+    /// 对原始敏感数据进行 SHA-256 哈希，用于：
+    /// - 验证解密后数据完整性
+    /// - 防止授权方篡改数据
+    pub sensitive_data_hash: Option<[u8; 32]>,
+
+    // ==================== 命主敏感信息 ====================
+    // Partial/Private 模式下为 None，加密存储在 Privacy pallet
+    /// 命主姓名（明文，可选）
+    /// UTF-8 编码，最大 32 字节（约 10 个汉字）
+    /// Partial/Private 模式下为 None
+    pub name: Option<BoundedVec<u8, MaxNameLen>>,
+    /// 命主性别（可选）
+    /// Partial/Private 模式下为 None
+    pub gender: Option<Gender>,
+    /// 命主出生年份（可选，用于年命分析）
+    /// 例如：1990 表示 1990 年出生
+    /// Partial/Private 模式下为 None
+    pub birth_year: Option<u16>,
+    /// 占问事宜（明文，可选）
+    /// UTF-8 编码，最大 128 字节（约 42 个汉字）
+    /// Partial/Private 模式下为 None
+    pub question: Option<BoundedVec<u8, MaxQuestionLen>>,
+    /// 问事类型（用于确定用神）
+    pub question_type: Option<QuestionType>,
+    /// 排盘方法（转盘/飞盘）
+    pub pan_method: PanMethod,
+
+    // ==================== 起局时间（计算数据） ====================
+    // Partial 模式下明文存储，Private 模式下为 None
+    /// 年柱（Private 模式下为 None）
+    pub year_ganzhi: Option<GanZhi>,
+    /// 月柱（Private 模式下为 None）
+    pub month_ganzhi: Option<GanZhi>,
+    /// 日柱（Private 模式下为 None）
+    pub day_ganzhi: Option<GanZhi>,
+    /// 时柱（Private 模式下为 None）
+    pub hour_ganzhi: Option<GanZhi>,
+    /// 节气（Private 模式下为 None）
+    pub jie_qi: Option<JieQi>,
+
+    // ==================== 局数信息（计算数据） ====================
+    // Partial 模式下明文存储，Private 模式下为 None
+    /// 阴阳遁（Private 模式下为 None）
+    pub dun_type: Option<DunType>,
+    /// 三元（Private 模式下为 None）
+    pub san_yuan: Option<SanYuan>,
+    /// 局数（1-9）（Private 模式下为 None）
+    pub ju_number: Option<u8>,
+
+    // ==================== 盘面数据（计算数据） ====================
+    // Partial 模式下明文存储，Private 模式下为 None
+    /// 值符星（Private 模式下为 None）
+    pub zhi_fu_xing: Option<JiuXing>,
+    /// 值使门（Private 模式下为 None）
+    pub zhi_shi_men: Option<BaMen>,
+    /// 九宫排盘结果（Private 模式下为 None）
+    pub palaces: Option<[Palace; 9]>,
+
+    // ==================== 元数据 ====================
     /// 排盘时间戳（秒）
     pub timestamp: u64,
     /// 创建区块号
     pub block_number: BlockNumber,
     /// AI 解读 IPFS CID（可选）
     pub interpretation_cid: Option<BoundedVec<u8, MaxCidLen>>,
-    /// 是否公开
-    pub is_public: bool,
-    /// 问题哈希（隐私保护）
+    /// 问题哈希（隐私保护，用于验证）
+    /// 用于在不暴露原始问题的情况下进行验证
     pub question_hash: [u8; 32],
+}
+
+/// QimenChart 辅助方法
+///
+/// 提供便捷的方法来访问可选字段，
+/// 主要用于解读模块中安全地处理不同隐私模式下的数据访问。
+impl<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>>
+    QimenChart<AccountId, BlockNumber, MaxCidLen>
+{
+    /// 检查是否有计算数据可用
+    ///
+    /// 对于 Public 和 Partial 模式，计算数据应该可用。
+    /// 对于 Private 模式，计算数据为 None。
+    pub fn has_calculation_data(&self) -> bool {
+        self.palaces.is_some()
+            && self.year_ganzhi.is_some()
+            && self.zhi_fu_xing.is_some()
+            && self.zhi_shi_men.is_some()
+    }
+
+    /// 检查是否可以进行解读
+    ///
+    /// 只有当计算数据可用时（Public 或 Partial 模式），才能进行解读。
+    /// Private 模式需要前端解密后调用 compute_chart API。
+    pub fn can_interpret(&self) -> bool {
+        use pallet_divination_privacy::types::PrivacyMode;
+        match self.privacy_mode {
+            PrivacyMode::Public | PrivacyMode::Partial => self.has_calculation_data(),
+            PrivacyMode::Private => false,
+        }
+    }
+
+    /// 获取九宫排盘数据（用于解读）
+    ///
+    /// # 返回
+    /// - `Some(&[Palace; 9])`: 如果数据可用
+    /// - `None`: 如果是 Private 模式或数据不可用
+    pub fn get_palaces(&self) -> Option<&[Palace; 9]> {
+        self.palaces.as_ref()
+    }
+
+    /// 获取日柱干支（用于确定用神）
+    pub fn get_day_ganzhi(&self) -> Option<GanZhi> {
+        self.day_ganzhi
+    }
+
+    /// 获取时柱干支
+    pub fn get_hour_ganzhi(&self) -> Option<GanZhi> {
+        self.hour_ganzhi
+    }
+
+    /// 获取节气
+    pub fn get_jie_qi(&self) -> Option<JieQi> {
+        self.jie_qi
+    }
+
+    /// 获取值符星
+    pub fn get_zhi_fu_xing(&self) -> Option<JiuXing> {
+        self.zhi_fu_xing
+    }
+
+    /// 获取值使门
+    pub fn get_zhi_shi_men(&self) -> Option<BaMen> {
+        self.zhi_shi_men
+    }
+
+    /// 获取阴阳遁类型
+    pub fn get_dun_type(&self) -> Option<DunType> {
+        self.dun_type
+    }
+
+    /// 检查是否是公开模式
+    pub fn is_public(&self) -> bool {
+        use pallet_divination_privacy::types::PrivacyMode;
+        self.privacy_mode == PrivacyMode::Public
+    }
 }
 
 /// 用户统计信息
@@ -1519,4 +1766,67 @@ impl Default for YingQiUnit {
     fn default() -> Self {
         Self::Day
     }
+}
+
+// ==================== Runtime API 返回类型 ====================
+
+/// 临时排盘结果
+///
+/// `compute_chart` Runtime API 的返回类型。
+/// 包含完整的排盘和解读结果，不存储敏感数据（姓名、问题等）。
+///
+/// # 使用场景
+///
+/// 1. **Private 模式解盘**：前端解密加密数据后，调用 `compute_chart` API
+/// 2. **临时排盘**：用户想预览排盘结果但不想保存
+/// 3. **预览功能**：在用户确认保存前展示排盘结果
+///
+/// # 与 QimenChart 的区别
+///
+/// - `QimenChart`：链上存储的完整记录，包含所有元数据
+/// - `QimenChartResult`：临时计算结果，仅包含排盘数据，不存储
+///
+/// # 存储大小估算
+/// - 四柱：8 bytes（4 × 2 bytes）
+/// - 局数信息：5 bytes
+/// - 盘面数据：约 180 bytes（9 宫 × 20 bytes）
+/// - 解读结果：约 10 bytes
+/// - **总计**：约 200 bytes
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
+pub struct QimenChartResult {
+    // ==================== 四柱 ====================
+    /// 年柱
+    pub year_ganzhi: GanZhi,
+    /// 月柱
+    pub month_ganzhi: GanZhi,
+    /// 日柱
+    pub day_ganzhi: GanZhi,
+    /// 时柱
+    pub hour_ganzhi: GanZhi,
+
+    // ==================== 局数信息 ====================
+    /// 节气
+    pub jie_qi: JieQi,
+    /// 阴阳遁
+    pub dun_type: DunType,
+    /// 三元
+    pub san_yuan: SanYuan,
+    /// 局数（1-9）
+    pub ju_number: u8,
+
+    // ==================== 盘面数据 ====================
+    /// 值符星
+    pub zhi_fu_xing: JiuXing,
+    /// 值使门
+    pub zhi_shi_men: BaMen,
+    /// 九宫排盘结果
+    pub palaces: [Palace; 9],
+
+    // ==================== 解读结果（可选）====================
+    /// 格局分析
+    pub ge_ju: Option<GeJuType>,
+    /// 综合吉凶
+    pub fortune: Option<Fortune>,
+    /// 用神得力状态
+    pub yong_shen_status: Option<DeLiStatus>,
 }

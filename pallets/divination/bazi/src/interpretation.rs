@@ -297,35 +297,57 @@ pub struct FullInterpretation {
 /// 计算核心解盘（Layer 1）
 ///
 /// 免费实时计算，不存储
+/// 要求命盘有计算数据（sizhu 和 wuxing_strength 必须存在）
 pub fn calculate_core_interpretation<T: crate::pallet::Config>(
     chart: &BaziChart<T>,
     current_block: u32,
 ) -> CoreInterpretation {
+    // 获取必要数据（如果不存在则返回默认值）
+    let sizhu = match &chart.sizhu {
+        Some(s) => s,
+        None => {
+            return CoreInterpretation {
+                ge_ju: GeJuType::ZhengGe,
+                qiang_ruo: MingJuQiangRuo::ZhongHe,
+                yong_shen: WuXing::Tu,
+                yong_shen_type: YongShenType::FuYi,
+                xi_shen: WuXing::Huo,
+                ji_shen: WuXing::Shui,
+                score: 50,
+                confidence: 0,
+                timestamp: current_block,
+                algorithm_version: 3,
+            };
+        }
+    };
+
+    let wuxing_strength = chart.wuxing_strength.unwrap_or_default();
+
     // 1. 分析格局
-    let ge_ju = analyze_ge_ju(&chart.sizhu, &chart.wuxing_strength);
+    let ge_ju = analyze_ge_ju(sizhu, &wuxing_strength);
 
     // 2. 分析强弱
-    let qiang_ruo = analyze_qiang_ruo(&chart.wuxing_strength, chart.sizhu.rizhu);
+    let qiang_ruo = analyze_qiang_ruo(&wuxing_strength, sizhu.rizhu);
 
     // 3. 分析用神
     let (yong_shen, yong_shen_type) = analyze_yong_shen(
         ge_ju,
         qiang_ruo,
-        &chart.sizhu,
-        &chart.wuxing_strength,
+        sizhu,
+        &wuxing_strength,
     );
 
     // 4. 推导喜神
     let xi_shen = derive_xi_shen(yong_shen);
 
     // 5. 推导忌神
-    let ji_shen = derive_ji_shen(yong_shen, qiang_ruo, chart.sizhu.rizhu);
+    let ji_shen = derive_ji_shen(yong_shen, qiang_ruo, sizhu.rizhu);
 
     // 6. 计算综合评分
-    let score = calculate_comprehensive_score(ge_ju, qiang_ruo, &chart.wuxing_strength);
+    let score = calculate_comprehensive_score(ge_ju, qiang_ruo, &wuxing_strength);
 
     // 7. 计算可信度
-    let confidence = calculate_confidence_score(chart, ge_ju, &chart.wuxing_strength);
+    let confidence = calculate_confidence_score(chart, ge_ju, &wuxing_strength);
 
     CoreInterpretation {
         ge_ju,
@@ -351,14 +373,26 @@ pub fn calculate_full_interpretation<T: crate::pallet::Config>(
     // 1. 计算核心指标
     let core = calculate_core_interpretation(chart, current_block);
 
+    // 如果没有四柱数据，返回仅有核心指标的结果
+    let sizhu = match &chart.sizhu {
+        Some(s) => s,
+        None => {
+            return FullInterpretation {
+                core,
+                xing_ge: None,
+                extended_ji_shen: None,
+            };
+        }
+    };
+
     // 2. 计算性格分析
-    let xing_ge = Some(analyze_xing_ge(&chart.sizhu));
+    let xing_ge = Some(analyze_xing_ge(sizhu));
 
     // 3. 计算扩展忌神
     let extended_ji_shen = Some(analyze_extended_ji_shen(
         core.yong_shen,
         core.qiang_ruo,
-        chart.sizhu.rizhu,
+        sizhu.rizhu,
     ));
 
     FullInterpretation {
@@ -757,9 +791,11 @@ fn calculate_confidence_score<T: crate::pallet::Config>(
 ) -> u8 {
     let mut confidence = 100u8;
 
-    // 时辰精确度
-    if chart.birth_time.minute == 0 {
-        confidence = confidence.saturating_sub(15);
+    // 时辰精确度（仅当 birth_time 存在时检查）
+    if let Some(birth_time) = &chart.birth_time {
+        if birth_time.minute == 0 {
+            confidence = confidence.saturating_sub(15);
+        }
     }
 
     // 格局稀有度
@@ -792,8 +828,8 @@ fn calculate_confidence_score<T: crate::pallet::Config>(
         }
     }
 
-    // 子时模式
-    if matches!(chart.zishi_mode, ZiShiMode::Traditional) {
+    // 子时模式（仅当存在时检查）
+    if matches!(chart.zishi_mode, Some(ZiShiMode::Traditional)) {
         confidence = confidence.saturating_sub(5);
     }
 
@@ -1114,7 +1150,7 @@ fn analyze_xing_ge_from_index(sizhu_index: &SiZhuIndex) -> CompactXingGe {
 /// 完整八字命盘（用于 Runtime API 返回）
 ///
 /// 包含所有计算字段的完整命盘数据，用于 JSON 序列化
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FullBaziChartForApi {
     /// 性别
     pub gender: Gender,
@@ -1136,7 +1172,7 @@ pub struct FullBaziChartForApi {
 }
 
 /// 四柱信息（用于 API）
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SiZhuForApi {
     /// 年柱
     pub year_zhu: ZhuForApi,
@@ -1151,7 +1187,7 @@ pub struct SiZhuForApi {
 }
 
 /// 单柱信息（用于 API）
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ZhuForApi {
     /// 干支组合
     pub ganzhi: GanZhi,
@@ -1168,7 +1204,7 @@ pub struct ZhuForApi {
 }
 
 /// 藏干信息（用于 API）
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CangGanForApi {
     /// 藏干天干
     pub gan: TianGan,
@@ -1279,56 +1315,69 @@ impl ZhuForApi {
 }
 
 /// 构建完整命盘用于 API 返回（从已存储的 BaziChart）
+///
+/// # 注意
+/// 此函数假设命盘处于 Public 或 Partial 模式，sizhu 等字段存在。
+/// Private 模式的命盘应使用其他方法处理。
 pub fn build_full_bazi_chart_for_api<T: crate::pallet::Config>(
     chart: &BaziChart<T>,
 ) -> FullBaziChartForApi {
     use crate::calculations::{xingyun, kongwang, shensha};
 
-    let rizhu = chart.sizhu.rizhu;
+    // 获取四柱（假设存在，如果不存在则返回默认值）
+    let sizhu = match &chart.sizhu {
+        Some(s) => s,
+        None => {
+            // Private 模式下没有四柱数据，返回空结构
+            return FullBaziChartForApi::default();
+        }
+    };
+
+    let rizhu = sizhu.rizhu;
 
     // 计算空亡
     let kongwang_info = kongwang::calculate_all_kongwang_temp(
-        &chart.sizhu.year_zhu.ganzhi,
-        &chart.sizhu.month_zhu.ganzhi,
-        &chart.sizhu.day_zhu.ganzhi,
-        &chart.sizhu.hour_zhu.ganzhi,
+        &sizhu.year_zhu.ganzhi,
+        &sizhu.month_zhu.ganzhi,
+        &sizhu.day_zhu.ganzhi,
+        &sizhu.hour_zhu.ganzhi,
     );
 
     // 计算星运
     let xingyun_info = xingyun::calculate_xingyun_temp(
         rizhu,
-        &chart.sizhu.year_zhu.ganzhi.zhi,
-        &chart.sizhu.month_zhu.ganzhi.zhi,
-        &chart.sizhu.day_zhu.ganzhi.zhi,
-        &chart.sizhu.hour_zhu.ganzhi.zhi,
+        &sizhu.year_zhu.ganzhi.zhi,
+        &sizhu.month_zhu.ganzhi.zhi,
+        &sizhu.day_zhu.ganzhi.zhi,
+        &sizhu.hour_zhu.ganzhi.zhi,
     );
 
     // 计算神煞
     let shensha_list = shensha::calculate_shensha_list_temp(
-        &chart.sizhu.year_zhu.ganzhi,
-        &chart.sizhu.month_zhu.ganzhi,
-        &chart.sizhu.day_zhu.ganzhi,
-        &chart.sizhu.hour_zhu.ganzhi,
+        &sizhu.year_zhu.ganzhi,
+        &sizhu.month_zhu.ganzhi,
+        &sizhu.day_zhu.ganzhi,
+        &sizhu.hour_zhu.ganzhi,
     );
 
     // 构建四柱信息
     let sizhu_for_api = SiZhuForApi {
-        year_zhu: build_zhu_for_api(&chart.sizhu.year_zhu.ganzhi, rizhu, xingyun_info.year_changsheng),
-        month_zhu: build_zhu_for_api(&chart.sizhu.month_zhu.ganzhi, rizhu, xingyun_info.month_changsheng),
-        day_zhu: build_zhu_for_api(&chart.sizhu.day_zhu.ganzhi, rizhu, xingyun_info.day_changsheng),
-        hour_zhu: build_zhu_for_api(&chart.sizhu.hour_zhu.ganzhi, rizhu, xingyun_info.hour_changsheng),
+        year_zhu: build_zhu_for_api(&sizhu.year_zhu.ganzhi, rizhu, xingyun_info.year_changsheng),
+        month_zhu: build_zhu_for_api(&sizhu.month_zhu.ganzhi, rizhu, xingyun_info.month_changsheng),
+        day_zhu: build_zhu_for_api(&sizhu.day_zhu.ganzhi, rizhu, xingyun_info.day_changsheng),
+        hour_zhu: build_zhu_for_api(&sizhu.hour_zhu.ganzhi, rizhu, xingyun_info.hour_changsheng),
         rizhu,
     };
 
     FullBaziChartForApi {
-        gender: chart.gender,
-        birth_year: chart.birth_time.year,
-        input_calendar_type: chart.input_calendar_type,
+        gender: chart.gender.unwrap_or(Gender::Male),
+        birth_year: chart.birth_time.map(|bt| bt.year).unwrap_or(0),
+        input_calendar_type: chart.input_calendar_type.unwrap_or(crate::types::InputCalendarType::Solar),
         sizhu: sizhu_for_api,
         kongwang: kongwang_info,
         xingyun: xingyun_info,
         shensha_list,
-        wuxing_strength: chart.wuxing_strength,
+        wuxing_strength: chart.wuxing_strength.unwrap_or_default(),
     }
 }
 

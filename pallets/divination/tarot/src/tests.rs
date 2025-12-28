@@ -3,7 +3,7 @@
 //! 测试各种占卜功能的正确性
 
 use crate::{mock::*, types::*, Error, Event};
-use frame_support::{assert_noop, assert_ok, BoundedVec};
+use frame_support::{assert_noop, assert_ok, BoundedVec, pallet_prelude::ConstU32};
 use sp_runtime::traits::BadOrigin;
 
 /// 测试随机抽牌占卜
@@ -17,7 +17,7 @@ fn test_divine_random_works() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         // 检查占卜记录是否创建
@@ -27,7 +27,7 @@ fn test_divine_random_works() {
         assert_eq!(reading.spread_type, SpreadType::SingleCard);
         assert_eq!(reading.method, DivinationMethod::Random);
         assert_eq!(reading.cards.len(), 1);
-        assert!(!reading.is_public);
+        assert_eq!(reading.privacy_mode, PrivacyMode::Private);
 
         // 检查用户占卜索引
         let user_readings = Tarot::user_readings(ALICE);
@@ -61,12 +61,12 @@ fn test_divine_three_card_spread() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::ThreeCardTime,
             question_hash,
-            true // 公开
+            PrivacyMode::Public // 公开
         ));
 
         let reading = Tarot::readings(0).unwrap();
         assert_eq!(reading.cards.len(), 3);
-        assert!(reading.is_public);
+        assert_eq!(reading.privacy_mode, PrivacyMode::Public);
 
         // 检查公开列表
         let public_readings = Tarot::public_readings();
@@ -85,7 +85,7 @@ fn test_divine_celtic_cross() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::CelticCross,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();
@@ -109,7 +109,7 @@ fn test_divine_by_time_works() {
             RuntimeOrigin::signed(BOB),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();
@@ -131,7 +131,7 @@ fn test_divine_by_numbers_works() {
             numbers,
             SpreadType::ThreeCardSituation,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();
@@ -154,7 +154,7 @@ fn test_divine_by_numbers_missing_params() {
                 empty_numbers,
                 SpreadType::SingleCard,
                 question_hash,
-                false
+                PrivacyMode::Private
             ),
             Error::<Test>::MissingNumberParams
         );
@@ -175,7 +175,7 @@ fn test_divine_manual_works() {
             cards,
             SpreadType::ThreeCardTime,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();
@@ -207,7 +207,7 @@ fn test_divine_manual_card_count_mismatch() {
                 cards,
                 SpreadType::ThreeCardTime, // 需要3张
                 question_hash,
-                false
+                PrivacyMode::Private
             ),
             Error::<Test>::CardCountMismatch
         );
@@ -229,7 +229,7 @@ fn test_divine_manual_invalid_card_id() {
                 cards,
                 SpreadType::ThreeCardTime,
                 question_hash,
-                false
+                PrivacyMode::Private
             ),
             Error::<Test>::InvalidCardId
         );
@@ -251,7 +251,7 @@ fn test_divine_manual_duplicate_cards() {
                 cards,
                 SpreadType::ThreeCardTime,
                 question_hash,
-                false
+                PrivacyMode::Private
             ),
             Error::<Test>::InvalidCardId
         );
@@ -265,12 +265,12 @@ fn test_daily_limit() {
         let question_hash = [11u8; 32];
 
         // 进行10次占卜（达到每日上限）
-        for i in 0..10 {
+        for _ in 0..10 {
             assert_ok!(Tarot::divine_random(
                 RuntimeOrigin::signed(ALICE),
                 SpreadType::SingleCard,
                 question_hash,
-                false
+                PrivacyMode::Private
             ));
         }
 
@@ -280,7 +280,7 @@ fn test_daily_limit() {
                 RuntimeOrigin::signed(ALICE),
                 SpreadType::SingleCard,
                 question_hash,
-                false
+                PrivacyMode::Private
             ),
             Error::<Test>::DailyLimitExceeded
         );
@@ -290,56 +290,56 @@ fn test_daily_limit() {
             RuntimeOrigin::signed(BOB),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
     });
 }
 
-/// 测试更改公开状态
+/// 测试更改隐私模式
 #[test]
-fn test_set_reading_visibility() {
+fn test_set_reading_privacy_mode() {
     new_test_ext().execute_with(|| {
         let question_hash = [12u8; 32];
 
-        // 创建非公开占卜
+        // 创建私密占卜
         assert_ok!(Tarot::divine_random(
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         // 公开列表应为空
         assert!(Tarot::public_readings().is_empty());
 
         // 设为公开
-        assert_ok!(Tarot::set_reading_visibility(
+        assert_ok!(Tarot::set_reading_privacy_mode(
             RuntimeOrigin::signed(ALICE),
             0,
-            true
+            PrivacyMode::Public
         ));
 
         // 检查更新
         let reading = Tarot::readings(0).unwrap();
-        assert!(reading.is_public);
+        assert_eq!(reading.privacy_mode, PrivacyMode::Public);
         assert_eq!(Tarot::public_readings().len(), 1);
 
-        // 再设为非公开
-        assert_ok!(Tarot::set_reading_visibility(
+        // 再设为私密
+        assert_ok!(Tarot::set_reading_privacy_mode(
             RuntimeOrigin::signed(ALICE),
             0,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();
-        assert!(!reading.is_public);
+        assert_eq!(reading.privacy_mode, PrivacyMode::Private);
         assert!(Tarot::public_readings().is_empty());
     });
 }
 
-/// 测试非所有者无法更改公开状态
+/// 测试非所有者无法更改隐私模式
 #[test]
-fn test_set_visibility_not_owner() {
+fn test_set_privacy_mode_not_owner() {
     new_test_ext().execute_with(|| {
         let question_hash = [13u8; 32];
 
@@ -348,12 +348,12 @@ fn test_set_visibility_not_owner() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         // Bob 尝试更改（应失败）
         assert_noop!(
-            Tarot::set_reading_visibility(RuntimeOrigin::signed(BOB), 0, true),
+            Tarot::set_reading_privacy_mode(RuntimeOrigin::signed(BOB), 0, PrivacyMode::Public),
             Error::<Test>::NotOwner
         );
     });
@@ -361,6 +361,7 @@ fn test_set_visibility_not_owner() {
 
 /// 测试请求 AI 解读
 #[test]
+#[allow(deprecated)]
 fn test_request_ai_interpretation() {
     new_test_ext().execute_with(|| {
         let question_hash = [14u8; 32];
@@ -370,7 +371,7 @@ fn test_request_ai_interpretation() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let alice_balance_before = Balances::free_balance(ALICE);
@@ -410,6 +411,7 @@ fn test_request_ai_interpretation() {
 
 /// 测试重复请求 AI 解读
 #[test]
+#[allow(deprecated)]
 fn test_request_ai_interpretation_already_exists() {
     new_test_ext().execute_with(|| {
         let question_hash = [15u8; 32];
@@ -418,7 +420,7 @@ fn test_request_ai_interpretation_already_exists() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         // 第一次请求成功
@@ -437,6 +439,7 @@ fn test_request_ai_interpretation_already_exists() {
 
 /// 测试提交 AI 解读结果
 #[test]
+#[allow(deprecated)]
 fn test_submit_ai_interpretation() {
     new_test_ext().execute_with(|| {
         let question_hash = [16u8; 32];
@@ -446,7 +449,7 @@ fn test_submit_ai_interpretation() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
         assert_ok!(Tarot::request_ai_interpretation(
             RuntimeOrigin::signed(ALICE),
@@ -484,6 +487,7 @@ fn test_submit_ai_interpretation() {
 
 /// 测试非授权提交 AI 解读
 #[test]
+#[allow(deprecated)]
 fn test_submit_ai_interpretation_unauthorized() {
     new_test_ext().execute_with(|| {
         let question_hash = [17u8; 32];
@@ -492,7 +496,7 @@ fn test_submit_ai_interpretation_unauthorized() {
             RuntimeOrigin::signed(ALICE),
             SpreadType::SingleCard,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
         assert_ok!(Tarot::request_ai_interpretation(
             RuntimeOrigin::signed(ALICE),
@@ -526,7 +530,7 @@ fn test_user_stats_update() {
                 RuntimeOrigin::signed(ALICE),
                 SpreadType::SingleCard,
                 question_hash,
-                false
+                PrivacyMode::Private
             ));
         }
 
@@ -538,11 +542,12 @@ fn test_user_stats_update() {
 
 /// 测试占卜记录不存在
 #[test]
+#[allow(deprecated)]
 fn test_reading_not_found() {
     new_test_ext().execute_with(|| {
         // 尝试更改不存在的占卜
         assert_noop!(
-            Tarot::set_reading_visibility(RuntimeOrigin::signed(ALICE), 999, true),
+            Tarot::set_reading_privacy_mode(RuntimeOrigin::signed(ALICE), 999, PrivacyMode::Public),
             Error::<Test>::ReadingNotFound
         );
 
@@ -575,7 +580,7 @@ fn test_various_spread_types() {
                 RuntimeOrigin::signed(ALICE),
                 *spread_type,
                 question_hash,
-                false
+                PrivacyMode::Private
             ));
 
             let reading = Tarot::readings(i as u64).unwrap();
@@ -600,7 +605,7 @@ fn test_tarot_card_structure() {
             cards,
             SpreadType::ThreeCardTime,
             question_hash,
-            false
+            PrivacyMode::Private
         ));
 
         let reading = Tarot::readings(0).unwrap();

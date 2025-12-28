@@ -840,6 +840,11 @@ pub struct Palace {
 // ============================================================================
 
 /// 紫微斗数命盘
+///
+/// 支持三种隐私模式：
+/// - Public (0): 所有数据明文存储，任何人可查看
+/// - Partial (1): 计算数据明文 + 敏感数据（姓名、问题）加密
+/// - Private (2): 全部数据加密，需前端解密后调用 compute_chart API
 #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
 #[scale_info(skip_type_params(MaxCidLen))]
 pub struct ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen: frame_support::traits::Get<u32>> {
@@ -852,59 +857,113 @@ pub struct ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen: frame_support::
     /// 时间戳（毫秒）
     pub timestamp: Moment,
 
+    // ===== 隐私控制字段 (v3.4 新增) =====
+    /// 隐私模式 (0=Public, 1=Partial, 2=Private)
+    pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+    /// 加密字段标记（位标志：bit 0=姓名, bit 1=出生日期, bit 2=性别, bit 3=问题）
+    pub encrypted_fields: Option<u8>,
+    /// 敏感数据哈希（用于完整性验证）
+    pub sensitive_data_hash: Option<[u8; 32]>,
+
     // ===== 出生信息 =====
-    /// 农历年
-    pub lunar_year: u16,
-    /// 农历月
-    pub lunar_month: u8,
-    /// 农历日
-    pub lunar_day: u8,
-    /// 出生时辰
-    pub birth_hour: DiZhi,
-    /// 性别
-    pub gender: Gender,
+    /// 农历年（Private 模式时为 None）
+    pub lunar_year: Option<u16>,
+    /// 农历月（Private 模式时为 None）
+    pub lunar_month: Option<u8>,
+    /// 农历日（Private 模式时为 None）
+    pub lunar_day: Option<u8>,
+    /// 出生时辰（Private 模式时为 None）
+    pub birth_hour: Option<DiZhi>,
+    /// 性别（Private 模式时为 None）
+    pub gender: Option<Gender>,
     /// 是否闰月
     pub is_leap_month: bool,
 
     // ===== 四柱信息 =====
-    /// 年干
-    pub year_gan: TianGan,
-    /// 年支
-    pub year_zhi: DiZhi,
+    /// 年干（Private 模式时为 None）
+    pub year_gan: Option<TianGan>,
+    /// 年支（Private 模式时为 None）
+    pub year_zhi: Option<DiZhi>,
 
-    // ===== 命盘核心 =====
+    // ===== 命盘核心（Private 模式时为 None）=====
     /// 五行局
-    pub wu_xing_ju: WuXing,
+    pub wu_xing_ju: Option<WuXing>,
     /// 局数
-    pub ju_shu: u8,
+    pub ju_shu: Option<u8>,
     /// 命宫位置（地支索引 0-11）
-    pub ming_gong_pos: u8,
+    pub ming_gong_pos: Option<u8>,
     /// 身宫位置
-    pub shen_gong_pos: u8,
+    pub shen_gong_pos: Option<u8>,
     /// 紫微星位置
-    pub ziwei_pos: u8,
+    pub ziwei_pos: Option<u8>,
     /// 天府星位置
-    pub tianfu_pos: u8,
+    pub tianfu_pos: Option<u8>,
 
-    // ===== 十二宫排布 =====
+    // ===== 十二宫排布（Private 模式时为 None）=====
     /// 十二宫数据
-    pub palaces: [Palace; 12],
+    pub palaces: Option<[Palace; 12]>,
 
-    // ===== 四化信息 =====
+    // ===== 四化信息（Private 模式时为 None）=====
     /// 生年四化星（使用 SiHuaStar 支持主星和辅星）
-    pub si_hua_stars: [SiHuaStar; 4],
+    pub si_hua_stars: Option<[SiHuaStar; 4]>,
 
-    // ===== 大运信息 =====
+    // ===== 大运信息（Private 模式时为 None）=====
     /// 起运年龄
-    pub qi_yun_age: u8,
+    pub qi_yun_age: Option<u8>,
     /// 大运顺逆（true=顺行，false=逆行）
-    pub da_yun_shun: bool,
+    pub da_yun_shun: Option<bool>,
 
     // ===== 状态 =====
-    /// 是否公开
-    pub is_public: bool,
     /// AI 解读 CID
     pub ai_interpretation_cid: Option<BoundedVec<u8, MaxCidLen>>,
+}
+
+impl<AccountId, BlockNumber, Moment, MaxCidLen: frame_support::traits::Get<u32>>
+    ZiweiChart<AccountId, BlockNumber, Moment, MaxCidLen>
+{
+    /// 检查是否有计算数据（用于判断是否可以解读）
+    pub fn has_calculation_data(&self) -> bool {
+        self.palaces.is_some() && self.wu_xing_ju.is_some()
+    }
+
+    /// 检查是否可以进行解读（非 Private 模式且有计算数据）
+    pub fn can_interpret(&self) -> bool {
+        self.privacy_mode != pallet_divination_privacy::types::PrivacyMode::Private
+            && self.has_calculation_data()
+    }
+
+    /// 检查是否公开（向后兼容）
+    pub fn is_public(&self) -> bool {
+        self.privacy_mode == pallet_divination_privacy::types::PrivacyMode::Public
+    }
+
+    /// 获取十二宫数据（如果可用）
+    pub fn get_palaces(&self) -> Option<&[Palace; 12]> {
+        self.palaces.as_ref()
+    }
+
+    /// 获取五行局（如果可用）
+    pub fn get_wu_xing_ju(&self) -> Option<WuXing> {
+        self.wu_xing_ju
+    }
+
+    /// 获取年干支（如果可用）
+    pub fn get_year_ganzhi(&self) -> Option<(TianGan, DiZhi)> {
+        match (self.year_gan, self.year_zhi) {
+            (Some(gan), Some(zhi)) => Some((gan, zhi)),
+            _ => None,
+        }
+    }
+
+    /// 获取出生时辰（如果可用）
+    pub fn get_birth_hour(&self) -> Option<DiZhi> {
+        self.birth_hour
+    }
+
+    /// 获取四化星（如果可用）
+    pub fn get_si_hua_stars(&self) -> Option<&[SiHuaStar; 4]> {
+        self.si_hua_stars.as_ref()
+    }
 }
 
 // ============================================================================

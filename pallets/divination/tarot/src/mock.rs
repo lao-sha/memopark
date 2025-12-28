@@ -6,7 +6,7 @@ use crate as pallet_tarot;
 use frame_support::{
     derive_impl,
     parameter_types,
-    traits::{ConstU32, ConstU64, ConstU128},
+    traits::ConstU32,
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -130,7 +130,6 @@ impl frame_support::traits::Get<u64> for TreasuryAccount {
 }
 
 impl pallet_tarot::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Randomness = RandomnessCollectiveFlip;
     type MaxCardsPerReading = MaxCardsPerReading;
@@ -165,6 +164,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
             (CHARLIE, INITIAL_BALANCE),
             (TREASURY, INITIAL_BALANCE),
         ],
+        dev_accounts: None,
     }
     .assimilate_storage(&mut t)
     .unwrap();
@@ -179,6 +179,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 /// 推进区块
+#[allow(dead_code)]
 pub fn run_to_block(n: u64) {
     while System::block_number() < n {
         System::set_block_number(System::block_number() + 1);

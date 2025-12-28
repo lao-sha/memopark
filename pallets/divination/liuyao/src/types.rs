@@ -624,6 +624,15 @@ pub struct LiuYaoGua<AccountId, BlockNumber, MaxCidLen: frame_support::traits::G
     /// 创建区块
     pub created_at: BlockNumber,
 
+    // ===== 隐私控制字段 (v3.4 新增) =====
+    /// 隐私模式
+    pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+    /// 加密字段掩码
+    /// bit0: 问事内容, bit1: 时间信息, bit2: 本卦信息, bit3: 变卦信息
+    pub encrypted_fields: Option<u8>,
+    /// 敏感数据哈希（用于完整性验证）
+    pub sensitive_data_hash: Option<[u8; 32]>,
+
     // ===== 起卦信息 =====
     /// 起卦方式
     pub method: DivinationMethod,
@@ -632,67 +641,88 @@ pub struct LiuYaoGua<AccountId, BlockNumber, MaxCidLen: frame_support::traits::G
 
     // ===== 时间信息 =====
     /// 年干支
-    pub year_gz: (TianGan, DiZhi),
+    pub year_gz: Option<(TianGan, DiZhi)>,
     /// 月干支
-    pub month_gz: (TianGan, DiZhi),
+    pub month_gz: Option<(TianGan, DiZhi)>,
     /// 日干支
-    pub day_gz: (TianGan, DiZhi),
+    pub day_gz: Option<(TianGan, DiZhi)>,
     /// 时干支
-    pub hour_gz: (TianGan, DiZhi),
+    pub hour_gz: Option<(TianGan, DiZhi)>,
 
     // ===== 本卦信息 =====
     /// 本卦六爻（从初爻到上爻）
-    pub original_yaos: [YaoInfo; 6],
+    pub original_yaos: Option<[YaoInfo; 6]>,
     /// 本卦内卦（下卦）
-    pub original_inner: Trigram,
+    pub original_inner: Option<Trigram>,
     /// 本卦外卦（上卦）
-    pub original_outer: Trigram,
+    pub original_outer: Option<Trigram>,
     /// 本卦卦名
-    pub original_name_idx: u8,
+    pub original_name_idx: Option<u8>,
     /// 本卦所属卦宫
-    pub gong: Trigram,
+    pub gong: Option<Trigram>,
     /// 卦序（在卦宫中的位置）
-    pub gua_xu: GuaXu,
+    pub gua_xu: Option<GuaXu>,
 
     // ===== 变卦信息 =====
     /// 是否有变卦
     pub has_bian_gua: bool,
     /// 变卦六爻（如有）
-    pub changed_yaos: [YaoInfo; 6],
+    pub changed_yaos: Option<[YaoInfo; 6]>,
     /// 变卦内卦
-    pub changed_inner: Trigram,
+    pub changed_inner: Option<Trigram>,
     /// 变卦外卦
-    pub changed_outer: Trigram,
+    pub changed_outer: Option<Trigram>,
     /// 变卦卦名
-    pub changed_name_idx: u8,
+    pub changed_name_idx: Option<u8>,
 
     // ===== 互卦信息 =====
     /// 互卦内卦（取2,3,4爻组成）
-    pub hu_inner: Trigram,
+    pub hu_inner: Option<Trigram>,
     /// 互卦外卦（取3,4,5爻组成）
-    pub hu_outer: Trigram,
+    pub hu_outer: Option<Trigram>,
     /// 互卦卦名索引 (0-63)
-    pub hu_name_idx: u8,
+    pub hu_name_idx: Option<u8>,
 
     // ===== 卦身 =====
     /// 卦身地支（阳爻从子起数到世爻位置，阴爻从午起数）
-    pub gua_shen: DiZhi,
+    pub gua_shen: Option<DiZhi>,
 
     // ===== 动爻位置 =====
     /// 动爻位置（位图，bit0=初爻, bit5=上爻）
-    pub moving_yaos: u8,
+    pub moving_yaos: Option<u8>,
 
     // ===== 旬空 =====
     /// 日旬空（两个地支）
-    pub xun_kong: (DiZhi, DiZhi),
+    pub xun_kong: Option<(DiZhi, DiZhi)>,
 
     // ===== 伏神 =====
     /// 伏神列表（最多5个，缺哪个六亲就伏哪个）
-    pub fu_shen: [Option<FuShenInfo>; 6],
+    pub fu_shen: Option<[Option<FuShenInfo>; 6]>,
+}
 
-    // ===== 状态 =====
+impl<AccountId, BlockNumber, MaxCidLen: frame_support::traits::Get<u32>>
+    LiuYaoGua<AccountId, BlockNumber, MaxCidLen>
+{
+    /// 检查是否有计算数据
+    pub fn has_calculation_data(&self) -> bool {
+        self.original_yaos.is_some() && self.original_inner.is_some()
+    }
+
+    /// 检查是否可解读
+    pub fn can_interpret(&self) -> bool {
+        self.privacy_mode != pallet_divination_privacy::types::PrivacyMode::Private
+            && self.has_calculation_data()
+    }
+
     /// 是否公开
-    pub is_public: bool,
+    pub fn is_public(&self) -> bool {
+        self.privacy_mode == pallet_divination_privacy::types::PrivacyMode::Public
+    }
+
+    /// 是否完全隐私
+    pub fn is_private(&self) -> bool {
+        self.privacy_mode == pallet_divination_privacy::types::PrivacyMode::Private
+    }
 }
 
 // ============================================================================

@@ -685,7 +685,7 @@ fn divine_with_privacy_with_encrypted_data() {
 
         // 模拟加密数据
         let encrypted_privacy = EncryptedPrivacyData {
-            privacy_mode: PrivacyMode::Authorized,
+            privacy_mode: PrivacyMode::Private, // 使用 Private 模式，不需要 encrypted_fields
             encrypted_data: vec![1, 2, 3, 4, 5, 6, 7, 8],  // 模拟加密数据
             nonce: [0u8; 24],
             auth_tag: [0u8; 16],
@@ -726,7 +726,7 @@ fn divine_with_privacy_with_encrypted_data() {
         let encrypted_record = Privacy::encrypted_records(DivinationType::Meihua, 0);
         assert!(encrypted_record.is_some());
         let record = encrypted_record.unwrap();
-        assert_eq!(record.privacy_mode, PrivacyMode::Authorized);
+        assert_eq!(record.privacy_mode, PrivacyMode::Private);
         assert_eq!(record.owner, 1);
     });
 }

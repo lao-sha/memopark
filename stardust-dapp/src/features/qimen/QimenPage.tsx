@@ -67,6 +67,7 @@ import {
   getYiMaGong,
 } from '../../types/qimen';
 import * as qimenService from '../../services/qimenService';
+import type { MingZhuInfo } from '../../services/qimenService';
 import './QimenPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -82,6 +83,59 @@ type JuSelectMode = 'auto' | 'manual';
 
 /** 排法类型 */
 type PaiMethod = 'zhuanpan' | 'feigong';
+
+/** 问事类型枚举（对应链端 QuestionType） */
+enum QuestionTypeEnum {
+  General = 0,      // 综合运势
+  Career = 1,       // 事业工作
+  Wealth = 2,       // 财运求财
+  Marriage = 3,     // 婚姻感情
+  Health = 4,       // 健康疾病
+  Study = 5,        // 学业考试
+  Travel = 6,       // 出行远行
+  Lawsuit = 7,      // 官司诉讼
+  Finding = 8,      // 寻人寻物
+  Investment = 9,   // 投资理财
+  Business = 10,    // 合作交易
+  Prayer = 11,      // 祈福求神
+}
+
+/** 问事类型选项 */
+const QUESTION_TYPE_OPTIONS = [
+  { value: QuestionTypeEnum.General, label: '综合运势', desc: '整体运势分析' },
+  { value: QuestionTypeEnum.Career, label: '事业工作', desc: '工作升迁求职' },
+  { value: QuestionTypeEnum.Wealth, label: '财运求财', desc: '正财偏财投资' },
+  { value: QuestionTypeEnum.Marriage, label: '婚姻感情', desc: '恋爱婚姻桃花' },
+  { value: QuestionTypeEnum.Health, label: '健康疾病', desc: '健康医疗康复' },
+  { value: QuestionTypeEnum.Study, label: '学业考试', desc: '考试进修资格' },
+  { value: QuestionTypeEnum.Travel, label: '出行远行', desc: '旅游搬迁出行' },
+  { value: QuestionTypeEnum.Lawsuit, label: '官司诉讼', desc: '纠纷仲裁诉讼' },
+  { value: QuestionTypeEnum.Finding, label: '寻人寻物', desc: '失物走失寻找' },
+  { value: QuestionTypeEnum.Investment, label: '投资理财', desc: '股票基金投资' },
+  { value: QuestionTypeEnum.Business, label: '合作交易', desc: '谈判签约合作' },
+  { value: QuestionTypeEnum.Prayer, label: '祈福求神', desc: '祭祀许愿祈福' },
+];
+
+/**
+ * 起局方式类型
+ * 对应链端 pallet-qimen 的5种起局函数
+ */
+type DivinationMethod = 'solar' | 'ganzhi' | 'number' | 'random' | 'manual';
+
+/**
+ * 起局方式选项配置
+ */
+const DIVINATION_METHOD_OPTIONS: Array<{
+  value: DivinationMethod;
+  label: string;
+  icon: React.ReactNode;
+  desc: string;
+}> = [
+  { value: 'solar', label: '公历', icon: <CalendarOutlined />, desc: '输入公历日期自动排盘' },
+  { value: 'random', label: '随机', icon: <CloudOutlined />, desc: '使用链上随机数起局' },
+  { value: 'number', label: '数字', icon: <DesktopOutlined />, desc: '输入数字起局' },
+  { value: 'manual', label: '指定', icon: <BookOutlined />, desc: '直接指定局数' },
+];
 
 /**
  * 二十四小时时辰选项（下拉框用，每小时一个选项）
@@ -321,11 +375,20 @@ const QimenPage: React.FC = () => {
   const [gender, setGender] = useState<Gender>(Gender.Male);
   const [birthYear, setBirthYear] = useState<number>(1985);
   const [question, setQuestion] = useState('某事');
+  const [questionType, setQuestionType] = useState<QuestionTypeEnum>(QuestionTypeEnum.General);
+
+  // 起局方式
+  const [divinationMethod, setDivinationMethod] = useState<DivinationMethod>('solar');
 
   // 起盘时间
   const [divinationDate, setDivinationDate] = useState<dayjs.Dayjs>(dayjs());
   const [hour, setHour] = useState<number>(new Date().getHours());
   const [minute, setMinute] = useState<number>(new Date().getMinutes());
+
+  // 数字起局专用
+  const [upperNumber, setUpperNumber] = useState<number>(1);
+  const [lowerNumber, setLowerNumber] = useState<number>(1);
+  const [numberYangDun, setNumberYangDun] = useState<boolean>(true); // 数字起局阴阳遁选择
 
   // 选局方式
   const [juSelectMode, setJuSelectMode] = useState<JuSelectMode>('auto');
@@ -372,14 +435,89 @@ const QimenPage: React.FC = () => {
 
   /**
    * 链端排盘
+   * 根据当前选择的起局方式调用对应的链端函数
    */
   const handleChainCalculate = useCallback(async () => {
     try {
-      const chartId = await qimenService.divineRandom(undefined, false);
+      let chartId: number;
+
+      // 构建命主信息对象
+      const mingZhuInfo: MingZhuInfo = {
+        name: name || undefined,
+        gender: gender === Gender.Male ? 0 : 1,
+        birthYear: birthYear || undefined,
+        question: question || undefined,
+        questionType: questionType, // 问事类型（0-11）
+        panMethod: paiMethod === 'zhuanpan' ? 0 : 1,
+      };
+
+      switch (divinationMethod) {
+        case 'solar':
+          // 公历时间起局 - 最方便，自动计算干支和节气
+          chartId = await qimenService.divineBySolarTime(
+            divinationDate.year(),
+            divinationDate.month() + 1,
+            divinationDate.date(),
+            hour,
+            undefined,  // questionHash
+            false,      // isPublic
+            mingZhuInfo // 命主信息
+          );
+          break;
+
+        case 'random':
+          // 随机起局 - 使用链上随机数
+          chartId = await qimenService.divineRandom(
+            undefined,
+            false,
+            mingZhuInfo // 命主信息
+          );
+          break;
+
+        case 'number':
+          // 数字起局 - 用户输入数字决定局数
+          if (upperNumber < 1 || lowerNumber < 1) {
+            message.warning('请输入有效的数字（大于0）');
+            return;
+          }
+          // 数字起局使用独立的阳遁/阴遁选择
+          chartId = await qimenService.divineByNumbers(
+            [upperNumber, lowerNumber],
+            numberYangDun,
+            undefined,  // questionHash
+            false,      // isPublic
+            mingZhuInfo // 命主信息
+          );
+          break;
+
+        case 'manual':
+          // 手动指定起局 - 直接指定局数和遁类型
+          const isYangDun = manualJu.startsWith('yang');
+          const juNum = parseInt(manualJu.replace('yang', '').replace('yin', ''), 10);
+          // 使用当前时辰（传 undefined 让服务层自动计算）
+          chartId = await qimenService.divineManual(
+            juNum,
+            isYangDun,
+            undefined,  // hourGanzhi - 使用当前时辰
+            undefined,  // questionHash
+            false,      // isPublic
+            mingZhuInfo // 命主信息
+          );
+          break;
+
+        default:
+          // 默认使用随机起局
+          chartId = await qimenService.divineRandom(
+            undefined,
+            false,
+            mingZhuInfo // 命主信息
+          );
+      }
+
       setChainChartId(chartId);
       message.success(`链端排盘成功，排盘ID: ${chartId}`);
 
-      // 可选：加载链端排盘数据到本地显示
+      // 加载链端排盘数据到本地显示
       try {
         const chartData = await qimenService.getChart(chartId);
         if (chartData) {
@@ -392,7 +530,7 @@ const QimenPage: React.FC = () => {
       console.error('链端排盘失败:', error);
       message.error(`链端排盘失败: ${error.message || '请检查钱包连接'}`);
     }
-  }, []);
+  }, [divinationMethod, divinationDate, hour, upperNumber, lowerNumber, numberYangDun, manualJu, name, gender, birthYear, question, questionType, paiMethod]);
 
   /**
    * 排盘
@@ -418,9 +556,14 @@ const QimenPage: React.FC = () => {
     setGender(Gender.Male);
     setBirthYear(1985);
     setQuestion('某事');
+    setQuestionType(QuestionTypeEnum.General);
+    setDivinationMethod('solar');
     setDivinationDate(dayjs());
     setHour(new Date().getHours());
     setMinute(new Date().getMinutes());
+    setUpperNumber(1);
+    setLowerNumber(1);
+    setNumberYangDun(true);
     setJuSelectMode('auto');
     setManualJu('yang1');
     setPaiMethod('zhuanpan');
@@ -533,8 +676,8 @@ const QimenPage: React.FC = () => {
     <Card className="divination-card input-card" style={{ margin: '12px', borderRadius: '8px', width: 'calc(100% + 10px)', marginLeft: '-5px' }}>
       {/* 姓名 + 性别 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          姓名：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          命主姓名：
         </div>
         <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Input
@@ -558,8 +701,8 @@ const QimenPage: React.FC = () => {
 
       {/* 生年 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          生年：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          出生年份：
         </div>
         <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
           <Select
@@ -576,120 +719,205 @@ const QimenPage: React.FC = () => {
 
       {/* 占事 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          占事：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          占问事宜：
         </div>
         <div className="form-content" style={{ flex: 1 }}>
           <Input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="某事"
+            placeholder="要问的事情"
             style={{ width: '100%' }}
           />
         </div>
       </div>
 
-      {/* 时间：年月日 */}
+      {/* 问事类型 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          时间：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          问事类型：
         </div>
-        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div className="form-content" style={{ flex: 1 }}>
           <Select
-            value={divinationDate.year()}
-            onChange={(v) => setDivinationDate(divinationDate.year(v))}
-            style={{ width: 80 }}
-            options={Array.from({ length: 50 }, (_, i) => ({
-              value: 2000 + i,
-              label: `${2000 + i}`
+            value={questionType}
+            onChange={(v) => setQuestionType(v)}
+            style={{ width: '100%' }}
+            options={QUESTION_TYPE_OPTIONS.map(opt => ({
+              value: opt.value,
+              label: `${opt.label} - ${opt.desc}`,
             }))}
           />
-          <span>年</span>
-          <Select
-            value={divinationDate.month() + 1}
-            onChange={(v) => setDivinationDate(divinationDate.month(v - 1))}
-            style={{ width: 60 }}
-            options={Array.from({ length: 12 }, (_, i) => ({
-              value: i + 1,
-              label: `${i + 1}`
-            }))}
-          />
-          <span>月</span>
-          <Select
-            value={divinationDate.date()}
-            onChange={(v) => setDivinationDate(divinationDate.date(v))}
-            style={{ width: 60 }}
-            options={Array.from({ length: 31 }, (_, i) => ({
-              value: i + 1,
-              label: `${i + 1}`
-            }))}
-          />
-          <span>日</span>
         </div>
       </div>
 
-      {/* 时辰：时 + 分 */}
+      {/* 起局方式 - 新增 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          时辰：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          起局方式：
         </div>
-        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Select
-            value={hour}
-            onChange={setHour}
-            style={{ width: 78 }}
-            options={SHICHEN_OPTIONS}
-          />
-          <span>时</span>
-          <Select
-            value={minute}
-            onChange={setMinute}
-            style={{ width: 60 }}
-            options={Array.from({ length: 60 }, (_, i) => ({
-              value: i,
-              label: `${i}`
-            }))}
-          />
-          <span>分</span>
+        <div className="form-content" style={{ flex: 1 }}>
+          <Radio.Group
+            value={divinationMethod}
+            onChange={(e: RadioChangeEvent) => setDivinationMethod(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            {DIVINATION_METHOD_OPTIONS.map((opt) => (
+              <Radio.Button key={opt.value} value={opt.value}>
+                {opt.label}
+              </Radio.Button>
+            ))}
+          </Radio.Group>
         </div>
       </div>
 
-      {/* 选局：手动/自动 */}
-      <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          选局：
+      {/* 公历时间起局输入区域 */}
+      {divinationMethod === 'solar' && (
+        <>
+          {/* 时间：年月日 */}
+          <div className="form-row" style={{ marginBottom: 16 }}>
+            <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+              起局日期：
+            </div>
+            <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <Select
+                value={divinationDate.year()}
+                onChange={(v) => setDivinationDate(divinationDate.year(v))}
+                style={{ width: 90 }}
+                options={Array.from({ length: 50 }, (_, i) => ({
+                  value: 2000 + i,
+                  label: `${2000 + i}年`
+                }))}
+              />
+              <Select
+                value={divinationDate.month() + 1}
+                onChange={(v) => setDivinationDate(divinationDate.month(v - 1))}
+                style={{ width: 70 }}
+                options={Array.from({ length: 12 }, (_, i) => ({
+                  value: i + 1,
+                  label: `${i + 1}月`
+                }))}
+              />
+              <Select
+                value={divinationDate.date()}
+                onChange={(v) => setDivinationDate(divinationDate.date(v))}
+                style={{ width: 70 }}
+                options={Array.from({ length: 31 }, (_, i) => ({
+                  value: i + 1,
+                  label: `${i + 1}日`
+                }))}
+              />
+            </div>
+          </div>
+
+          {/* 时辰：时 + 分 */}
+          <div className="form-row" style={{ marginBottom: 16 }}>
+            <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+              起局时辰：
+            </div>
+            <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Select
+                value={hour}
+                onChange={setHour}
+                style={{ width: 78 }}
+                options={SHICHEN_OPTIONS}
+              />
+              <span>时</span>
+              <Select
+                value={minute}
+                onChange={setMinute}
+                style={{ width: 60 }}
+                options={Array.from({ length: 60 }, (_, i) => ({
+                  value: i,
+                  label: `${i}`
+                }))}
+              />
+              <span>分</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 数字起局输入区域 */}
+      {divinationMethod === 'number' && (
+        <>
+          <div className="form-row" style={{ marginBottom: 16 }}>
+            <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+              起局数字：
+            </div>
+            <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>上卦数</span>
+              <InputNumber
+                min={1}
+                max={999}
+                value={upperNumber}
+                onChange={(v) => setUpperNumber(v || 1)}
+                style={{ width: 50, height: 32, borderRadius: 0, background: '#fff', textAlign: 'center' }}
+              />
+              <span>下卦数</span>
+              <InputNumber
+                min={1}
+                max={999}
+                value={lowerNumber}
+                onChange={(v) => setLowerNumber(v || 1)}
+                style={{ width: 50, height: 32, borderRadius: 0, background: '#fff', textAlign: 'center' }}
+              />
+            </div>
+          </div>
+
+          {/* 阳遁/阴遁选择（数字起局需要） */}
+          <div className="form-row" style={{ marginBottom: 16 }}>
+            <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+              遁法选择：
+            </div>
+            <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Radio.Group
+                value={numberYangDun ? 'yang' : 'yin'}
+                onChange={(e: RadioChangeEvent) => setNumberYangDun(e.target.value === 'yang')}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="yang">阳遁</Radio.Button>
+                <Radio.Button value="yin">阴遁</Radio.Button>
+              </Radio.Group>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 手动指定起局输入区域 */}
+      {divinationMethod === 'manual' && (
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+            指定局数：
+          </div>
+          <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Select
+              value={manualJu}
+              onChange={setManualJu}
+              style={{ width: 120 }}
+              options={JU_OPTIONS}
+            />
+          </div>
         </div>
-        <div className="form-content" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Radio.Group
-            value={juSelectMode}
-            onChange={(e: RadioChangeEvent) => setJuSelectMode(e.target.value)}
-            optionType="button"
-            buttonStyle="solid"
-          >
-            <Radio.Button value="manual">手动</Radio.Button>
-          </Radio.Group>
-          <Select
-            value={manualJu}
-            onChange={setManualJu}
-            style={{ width: 100 }}
-            options={JU_OPTIONS}
-            disabled={juSelectMode === 'auto'}
-          />
-          <Radio.Group
-            value={juSelectMode}
-            onChange={(e: RadioChangeEvent) => setJuSelectMode(e.target.value)}
-            optionType="button"
-            buttonStyle="solid"
-          >
-            <Radio.Button value="auto">自动</Radio.Button>
-          </Radio.Group>
+      )}
+
+      {/* 随机起局说明 */}
+      {divinationMethod === 'random' && (
+        <div className="form-row" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ width: 75 }}></div>
+          <div className="form-content" style={{ flex: 1 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              使用区块链随机数自动生成奇门遁甲盘，无需输入日期时间
+            </Text>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 排法：转盘/飞宫 */}
       <div className="form-row" style={{ marginBottom: 16 }}>
-        <div className="form-label" style={{ width: 50, textAlign: 'right', paddingRight: 8 }}>
-          排法：
+        <div className="form-label" style={{ width: 75, textAlign: 'right', paddingRight: 8 }}>
+          排盘方法：
         </div>
         <div className="form-content" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
           <Radio.Group
@@ -704,12 +932,35 @@ const QimenPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 排盘按钮 */}
-      <div style={{ marginTop: 24 }}>
+      {/* 本地排盘按钮（免费预览，不上链） */}
+      {divinationMethod === 'solar' && (
+        <Button
+          type="default"
+          size="large"
+          onClick={handleLocalCalculate}
+          loading={loading}
+          block
+          style={{
+            background: '#fff',
+            borderColor: '#B2955D',
+            borderRadius: '0',
+            height: '48px',
+            fontSize: '16px',
+            fontWeight: '500',
+            color: '#B2955D',
+            marginBottom: 8,
+          }}
+        >
+          {loading ? '计算中...' : '本地预览（不上链）'}
+        </Button>
+      )}
+
+      {/* 链端排盘按钮 */}
+      <div style={{ marginTop: divinationMethod === 'solar' ? 0 : 24 }}>
         <Button
           type="primary"
           size="large"
-          onClick={handleCalculate}
+          onClick={handleChainCalculate}
           loading={loading}
           block
           style={{
@@ -722,8 +973,15 @@ const QimenPage: React.FC = () => {
             color: '#F7D3A1'
           }}
         >
-          开始排盘
+          {loading ? '排盘中...' : '开始排盘（上链存储）'}
         </Button>
+      </div>
+
+      {/* 起局方式说明 */}
+      <div style={{ textAlign: 'center', marginTop: 12 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          {DIVINATION_METHOD_OPTIONS.find((opt) => opt.value === divinationMethod)?.desc}
+        </Text>
       </div>
     </Card>
   );

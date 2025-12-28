@@ -1299,6 +1299,13 @@ impl BaGua {
 /// 小六壬课盘
 ///
 /// 存储完整的小六壬排盘结果
+///
+/// ## 隐私模式说明
+///
+/// 支持三种隐私模式：
+/// - **Public**: 所有数据明文存储，任何人可查看
+/// - **Partial**: 计算数据明文，敏感数据（问题内容等）加密
+/// - **Private**: 所有数据加密，仅存储元数据
 #[derive(Clone, Encode, Decode, TypeInfo, MaxEncodedLen, RuntimeDebug)]
 #[scale_info(skip_type_params(MaxCidLen))]
 pub struct XiaoLiuRenPan<AccountId, BlockNumber, MaxCidLen: Get<u32>> {
@@ -1308,31 +1315,66 @@ pub struct XiaoLiuRenPan<AccountId, BlockNumber, MaxCidLen: Get<u32>> {
     pub creator: AccountId,
     /// 创建区块
     pub created_at: BlockNumber,
+
+    // ============ 隐私控制字段 ============
+
+    /// 隐私模式（必有）
+    pub privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+    /// 加密字段位图（可选，Partial 模式使用）
+    /// bit 0: question_cid 已加密
+    /// bit 1: san_gong 已加密（Private 模式）
+    pub encrypted_fields: Option<u8>,
+    /// 敏感数据哈希（用于验证完整性）
+    pub sensitive_data_hash: Option<[u8; 32]>,
+
+    // ============ 起课信息 ============
+
     /// 起课方式
     pub method: DivinationMethod,
     /// 占问事项CID（IPFS）
     pub question_cid: Option<BoundedVec<u8, MaxCidLen>>,
 
-    /// 起课参数
+    /// 起课参数（Private 模式时为 None）
     /// 对于时间起课：月、日、时
     /// 对于数字起课：三个数字
-    pub param1: u8,
-    pub param2: u8,
-    pub param3: u8,
+    pub param1: Option<u8>,
+    pub param2: Option<u8>,
+    pub param3: Option<u8>,
 
     /// 农历信息（可选，时间起课时使用）
     pub lunar_month: Option<u8>,
     pub lunar_day: Option<u8>,
     pub shi_chen: Option<ShiChen>,
 
-    /// 三宫结果
-    pub san_gong: SanGong,
-
-    /// 是否公开
-    pub is_public: bool,
+    /// 三宫结果（Private 模式时为 None）
+    pub san_gong: Option<SanGong>,
 
     /// AI 解读 CID
     pub ai_interpretation_cid: Option<BoundedVec<u8, MaxCidLen>>,
+}
+
+impl<AccountId, BlockNumber, MaxCidLen: Get<u32>> XiaoLiuRenPan<AccountId, BlockNumber, MaxCidLen> {
+    /// 检查是否有计算数据（用于解盘）
+    pub fn has_calculation_data(&self) -> bool {
+        self.san_gong.is_some()
+    }
+
+    /// 检查是否可解读
+    ///
+    /// Private 模式无计算数据，无法解读
+    pub fn can_interpret(&self) -> bool {
+        self.san_gong.is_some()
+    }
+
+    /// 检查是否公开
+    pub fn is_public(&self) -> bool {
+        matches!(self.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Public)
+    }
+
+    /// 检查是否完全私有
+    pub fn is_private(&self) -> bool {
+        matches!(self.privacy_mode, pallet_divination_privacy::types::PrivacyMode::Private)
+    }
 }
 
 // ============================================================================

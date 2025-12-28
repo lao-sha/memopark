@@ -30,6 +30,9 @@ pallet-timestamp = { workspace = true }
 # 占卜公共模块
 pallet-divination-common = { path = "../common", default-features = false }
 
+# 占卜隐私模块 - 统一隐私模式类型
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 # 黄历模块 - 统一农历转换
 pallet-almanac = { path = "../almanac", default-features = false }
 
@@ -51,6 +54,7 @@ std = [
     "sp-api/std",
     "pallet-timestamp/std",
     "pallet-divination-common/std",
+    "pallet-divination-privacy/std",
     "pallet-almanac/std",
 ]
 runtime-benchmarks = [

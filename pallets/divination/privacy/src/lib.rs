@@ -503,6 +503,19 @@ pub mod pallet {
         /// 关联记录非加密
         AssociatedRecordNotEncrypted,
 
+        // -------------------- Partial 模式错误 --------------------
+
+        /// Partial 模式必须指定加密字段
+        ///
+        /// 当 privacy_mode 为 Partial 时，encrypted_fields 参数必须指定
+        /// 至少一个要加密的字段（使用 EncryptedFields 常量组合）
+        PartialModeRequiresFields,
+
+        /// 无效的加密字段标志
+        ///
+        /// encrypted_fields 值无效或包含未定义的标志位
+        InvalidEncryptedFields,
+
         // -------------------- 通用错误 --------------------
 
         /// 无访问权限
@@ -863,6 +876,8 @@ pub mod pallet {
                 data_hash,
                 created_at: current_block,
                 updated_at: current_block,
+                // extrinsic 创建的记录不使用 Partial 模式，设为 None
+                encrypted_fields: None,
             };
 
             // 存储加密记录
@@ -1660,10 +1675,11 @@ pub mod pallet {
             // 获取记录
             if let Some(record) = EncryptedRecords::<T>::get(divination_type, result_id) {
                 match record.privacy_mode {
+                    // Public: 所有人可访问
                     PrivacyMode::Public => true,
-                    PrivacyMode::Private => record.owner == *account,
-                    PrivacyMode::Authorized => {
-                        // 检查是否是所有者或有授权
+                    // Partial & Private: 所有者或被授权者可访问
+                    PrivacyMode::Partial | PrivacyMode::Private => {
+                        // 检查是否是所有者
                         if record.owner == *account {
                             return true;
                         }
@@ -1743,8 +1759,10 @@ pub mod pallet {
             // 如果记录不存在或公开，则允许
             if let Some(record) = EncryptedRecords::<T>::get(divination_type, result_id) {
                 match record.privacy_mode {
+                    // Public: 任何人都可以回答
                     PrivacyMode::Public => true,
-                    PrivacyMode::Private | PrivacyMode::Authorized => {
+                    // Partial & Private: 需要授权才能访问敏感数据
+                    PrivacyMode::Partial | PrivacyMode::Private => {
                         // 检查是否有授权
                         if let Some(auth) =
                             Authorizations::<T>::get((divination_type, result_id, answerer))
@@ -1772,8 +1790,10 @@ pub mod pallet {
         ) -> bool {
             if let Some(record) = EncryptedRecords::<T>::get(divination_type, result_id) {
                 match record.privacy_mode {
+                    // Public: 不需要授权
                     PrivacyMode::Public => false,
-                    PrivacyMode::Private | PrivacyMode::Authorized => true,
+                    // Partial & Private: 需要授权访问加密/敏感数据
+                    PrivacyMode::Partial | PrivacyMode::Private => true,
                 }
             } else {
                 false
@@ -1826,11 +1846,73 @@ pub mod pallet {
             data_hash: [u8; 32],
             owner_encrypted_key: Vec<u8>,
         ) -> DispatchResult {
+            // 调用带 encrypted_fields 的完整版本
+            Self::do_create_encrypted_record_with_fields(
+                owner,
+                divination_type,
+                result_id,
+                privacy_mode,
+                encrypted_data,
+                nonce,
+                auth_tag,
+                data_hash,
+                owner_encrypted_key,
+                None, // 不指定加密字段（完全加密模式）
+            )
+        }
+
+        /// 内部函数：创建带字段标识的加密记录（支持 Partial 模式）
+        ///
+        /// 供其他 pallet（如 qimen）原子性调用，支持 Partial 模式的字段级加密。
+        /// 不触发事件，由调用方统一处理。
+        ///
+        /// # 参数
+        /// - `owner`: 记录所有者
+        /// - `divination_type`: 占卜类型
+        /// - `result_id`: 占卜结果 ID
+        /// - `privacy_mode`: 隐私模式
+        /// - `encrypted_data`: 加密数据
+        /// - `nonce`: 加密随机数（24 字节）
+        /// - `auth_tag`: 认证标签（16 字节）
+        /// - `data_hash`: 数据哈希（32 字节）
+        /// - `owner_encrypted_key`: 所有者的加密密钥
+        /// - `encrypted_fields`: 加密字段标志位（Partial 模式必需，使用 `EncryptedFields` 常量组合）
+        ///
+        /// # Partial 模式说明
+        ///
+        /// 当 `privacy_mode == PrivacyMode::Partial` 时：
+        /// - `encrypted_fields` 应指定哪些字段被加密（如 `EncryptedFields::NAME | EncryptedFields::QUESTION`）
+        /// - 加密数据仅包含指定字段的内容
+        /// - 未加密的计算数据保留在调用方的存储中（如 QimenChart）
+        ///
+        /// # 返回
+        /// - `Ok(())`: 创建成功
+        /// - `Err(DispatchError)`: 创建失败
+        pub fn do_create_encrypted_record_with_fields(
+            owner: &T::AccountId,
+            divination_type: DivinationType,
+            result_id: u64,
+            privacy_mode: PrivacyMode,
+            encrypted_data: Vec<u8>,
+            nonce: [u8; 24],
+            auth_tag: [u8; 16],
+            data_hash: [u8; 32],
+            owner_encrypted_key: Vec<u8>,
+            encrypted_fields: Option<u16>,
+        ) -> DispatchResult {
             // 检查记录是否已存在
             ensure!(
                 !EncryptedRecords::<T>::contains_key(divination_type, result_id),
                 Error::<T>::EncryptedRecordAlreadyExists
             );
+
+            // Partial 模式验证：必须指定加密字段
+            if privacy_mode == PrivacyMode::Partial {
+                ensure!(
+                    encrypted_fields.is_some() && encrypted_fields.unwrap() > 0,
+                    Error::<T>::PartialModeRequiresFields
+                );
+            }
 
             // 验证加密数据长度
             let bounded_data: BoundedVec<u8, T::MaxEncryptedDataLen> = encrypted_data
@@ -1851,6 +1933,8 @@ pub mod pallet {
                 data_hash,
                 created_at: current_block,
                 updated_at: current_block,
+                // Partial 模式专用字段
+                encrypted_fields,
             };
 
             // 存储加密记录
@@ -1894,6 +1978,47 @@ pub mod pallet {
             T::EventHandler::on_encrypted_record_created(divination_type, result_id, owner);
 
             Ok(())
+        }
+
+        /// 内部函数：获取加密记录的隐私模式
+        ///
+        /// 供其他 pallet 查询使用，判断是否为 Partial 模式
+        pub fn get_privacy_mode(
+            divination_type: DivinationType,
+            result_id: u64,
+        ) -> Option<PrivacyMode> {
+            EncryptedRecords::<T>::get(divination_type, result_id)
+                .map(|record| record.privacy_mode)
+        }
+
+        /// 内部函数：获取 Partial 模式的加密字段标志
+        ///
+        /// 供其他 pallet 查询使用，判断哪些字段被加密
+        ///
+        /// # 返回
+        /// - `Some(flags)`: Partial 模式，返回加密字段标志位
+        /// - `None`: 非 Partial 模式或记录不存在
+        pub fn get_encrypted_fields(
+            divination_type: DivinationType,
+            result_id: u64,
+        ) -> Option<u16> {
+            EncryptedRecords::<T>::get(divination_type, result_id)
+                .and_then(|record| {
+                    if record.privacy_mode == PrivacyMode::Partial {
+                        record.encrypted_fields
+                    } else {
+                        None
+                    }
+                })
+        }
+
+        /// 内部函数：检查是否为 Partial 模式
+        ///
+        /// 便捷方法，用于快速判断记录是否采用部分加密
+        pub fn is_partial_mode(divination_type: DivinationType, result_id: u64) -> bool {
+            Self::get_privacy_mode(divination_type, result_id)
+                .map(|mode| mode == PrivacyMode::Partial)
+                .unwrap_or(false)
         }
 
         /// 内部函数：检查加密记录是否存在

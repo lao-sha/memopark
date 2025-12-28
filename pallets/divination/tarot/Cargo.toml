@@ -28,11 +28,14 @@ sp-api = { workspace = true }
 # Timestamp
 pallet-timestamp = { workspace = true }
 
+# 隐私模块
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 [dev-dependencies]
-sp-io = { workspace = true }
-sp-core = { workspace = true }
-pallet-balances = { workspace = true }
-pallet-insecure-randomness-collective-flip = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506" }
+sp-io = { workspace = true, default-features = true }
+sp-core = { workspace = true, default-features = true }
+pallet-balances = { workspace = true, default-features = true }
+pallet-insecure-randomness-collective-flip = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "stable2506", default-features = true }
 
 [features]
 default = ["std"]
@@ -43,6 +46,7 @@ std = [
     "frame-support/std",
     "frame-system/std",
     "pallet-timestamp/std",
+    "pallet-divination-privacy/std",
     "sp-std/std",
     "sp-runtime/std",
     "sp-core/std",

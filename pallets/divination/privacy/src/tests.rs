@@ -267,12 +267,12 @@ mod encrypted_record {
             let data_hash = test_data_hash();
             let owner_key = test_encrypted_key(1);
 
-            // 创建加密记录
+            // 创建加密记录（使用 Partial 模式测试授权功能）
             assert_ok!(Privacy::create_encrypted_record(
                 RuntimeOrigin::signed(ALICE),
                 DivinationType::Bazi,
                 1,
-                PrivacyMode::Authorized,
+                PrivacyMode::Partial,
                 encrypted_data.clone(),
                 nonce,
                 auth_tag,
@@ -283,7 +283,7 @@ mod encrypted_record {
             // 验证记录存储
             let record = Privacy::encrypted_records(DivinationType::Bazi, 1).unwrap();
             assert_eq!(record.owner, ALICE);
-            assert_eq!(record.privacy_mode, PrivacyMode::Authorized);
+            assert_eq!(record.privacy_mode, PrivacyMode::Partial);
             assert_eq!(record.nonce, nonce);
 
             // 验证用户索引
@@ -300,7 +300,7 @@ mod encrypted_record {
                     divination_type: DivinationType::Bazi,
                     result_id: 1,
                     owner: ALICE,
-                    privacy_mode: PrivacyMode::Authorized,
+                    privacy_mode: PrivacyMode::Partial,
                 }
                 .into(),
             );
@@ -321,7 +321,7 @@ mod encrypted_record {
                 RuntimeOrigin::signed(ALICE),
                 DivinationType::Bazi,
                 1,
-                PrivacyMode::Authorized,
+                PrivacyMode::Partial,
                 encrypted_data.clone(),
                 nonce,
                 auth_tag,
@@ -335,7 +335,7 @@ mod encrypted_record {
                     RuntimeOrigin::signed(ALICE),
                     DivinationType::Bazi,
                     1,
-                    PrivacyMode::Authorized,
+                    PrivacyMode::Partial,
                     encrypted_data,
                     nonce,
                     auth_tag,
@@ -425,7 +425,7 @@ mod encrypted_record {
                 RuntimeOrigin::signed(ALICE),
                 DivinationType::Bazi,
                 1,
-                PrivacyMode::Authorized,
+                PrivacyMode::Partial,
                 test_encrypted_data(256),
                 test_nonce(),
                 test_auth_tag(),
@@ -471,7 +471,7 @@ mod authorization {
             RuntimeOrigin::signed(ALICE),
             DivinationType::Bazi,
             1,
-            PrivacyMode::Authorized,
+            PrivacyMode::Partial,
             test_encrypted_data(256),
             test_nonce(),
             test_auth_tag(),
@@ -738,7 +738,7 @@ mod bounty_authorization {
             RuntimeOrigin::signed(ALICE),
             DivinationType::Bazi,
             1,
-            PrivacyMode::Authorized,
+            PrivacyMode::Partial,
             test_encrypted_data(256),
             test_nonce(),
             test_auth_tag(),
@@ -899,7 +899,7 @@ mod trait_implementation {
             RuntimeOrigin::signed(ALICE),
             DivinationType::Bazi,
             1,
-            PrivacyMode::Authorized,
+            PrivacyMode::Partial,
             test_encrypted_data(256),
             test_nonce(),
             test_auth_tag(),
@@ -932,7 +932,7 @@ mod trait_implementation {
             // get_privacy_mode
             assert_eq!(
                 Privacy::get_privacy_mode(DivinationType::Bazi, 1),
-                Some(PrivacyMode::Authorized)
+                Some(PrivacyMode::Partial)
             );
 
             // has_access

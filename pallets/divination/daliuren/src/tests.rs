@@ -405,9 +405,9 @@ mod pallet_tests {
 
             let pan = Pans::<Test>::get(0).unwrap();
             assert_eq!(pan.method, DivinationMethod::ManualMethod);
-            assert_eq!(pan.day_gz.0, TianGan::Wu);
-            assert_eq!(pan.day_gz.1, DiZhi::Chen);
-            assert!(!pan.is_day);
+            assert_eq!(pan.day_gz.unwrap().0, TianGan::Wu);
+            assert_eq!(pan.day_gz.unwrap().1, DiZhi::Chen);
+            assert!(!pan.is_day.unwrap());
         });
     }
 
@@ -456,7 +456,7 @@ mod pallet_tests {
 
             // 默认不公开
             let pan = Pans::<Test>::get(0).unwrap();
-            assert!(!pan.is_public);
+            assert!(!pan.is_public());
             assert!(!PublicPans::<Test>::contains_key(0));
 
             // 设置为公开
@@ -467,7 +467,7 @@ mod pallet_tests {
             ));
 
             let pan = Pans::<Test>::get(0).unwrap();
-            assert!(pan.is_public);
+            assert!(pan.is_public());
             assert!(PublicPans::<Test>::contains_key(0));
 
             // 设置为私密
@@ -478,7 +478,7 @@ mod pallet_tests {
             ));
 
             let pan = Pans::<Test>::get(0).unwrap();
-            assert!(!pan.is_public);
+            assert!(!pan.is_public());
             assert!(!PublicPans::<Test>::contains_key(0));
         });
     }
@@ -679,7 +679,7 @@ mod pallet_tests {
                 let pan = Pans::<Test>::get(i as u64).unwrap();
                 // 验证课式和格局不为默认值（至少有一个被设置）
                 assert!(
-                    pan.ke_shi != KeShiType::default() || pan.ge_ju != GeJuType::default(),
+                    pan.ke_shi != Some(KeShiType::default()) || pan.ge_ju != Some(GeJuType::default()),
                     "Case {} should have valid ke_shi or ge_ju",
                     i
                 );
@@ -807,8 +807,8 @@ mod edge_case_tests {
             let pan_night = Pans::<Test>::get(1).unwrap();
 
             // 昼夜贵人不同，天将盘应不同
-            assert!(pan_day.is_day);
-            assert!(!pan_night.is_day);
+            assert_eq!(pan_day.is_day, Some(true));
+            assert_eq!(pan_night.is_day, Some(false));
             // 天将盘的逆顺可能不同
         });
     }
@@ -867,7 +867,7 @@ mod edge_case_tests {
 
             let pan = Pans::<Test>::get(0).unwrap();
             // 子加子，所有位置天盘与地盘相同
-            assert_eq!(pan.ke_shi, KeShiType::FuYin);
+            assert_eq!(pan.ke_shi, Some(KeShiType::FuYin));
         });
     }
 
@@ -891,7 +891,7 @@ mod edge_case_tests {
 
             let pan = Pans::<Test>::get(0).unwrap();
             // 午加子，子位上为午，午冲子，为返吟
-            assert_eq!(pan.ke_shi, KeShiType::FanYin);
+            assert_eq!(pan.ke_shi, Some(KeShiType::FanYin));
         });
     }
 }
@@ -1076,5 +1076,323 @@ mod new_feature_tests {
 
         // 甲子日，不是九丑日干
         assert!(!is_jiu_chou(&si_ke, TianGan::Jia, DiZhi::Zi));
+    }
+}
+
+// ============================================================================
+// 隐私模式测试 - Phase 1.2.4
+// ============================================================================
+
+mod privacy_tests {
+    use super::*;
+    use pallet_divination_privacy::types::PrivacyMode;
+
+    #[test]
+    fn test_divine_by_time_encrypted_public_mode() {
+        new_test_ext().execute_with(|| {
+            // Public 模式（加密级别 0）- 无需加密数据
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                0, // privacy_mode = Public
+                Some((0, 0)), // 甲子年
+                Some((0, 0)), // 甲子月
+                Some((0, 0)), // 甲子日
+                Some((0, 0)), // 甲子时
+                Some(6),      // 月将午
+                Some(0),      // 占时子
+                Some(true),   // 昼占
+                None,         // 无问题
+                None,         // 无加密数据
+                None,         // 无数据哈希
+                None,         // 无密钥备份
+            ));
+
+            // 验证式盘创建
+            let pan = Pans::<Test>::get(0).unwrap();
+            assert_eq!(pan.privacy_mode, PrivacyMode::Public);
+            assert!(pan.has_calculation_data());
+            assert!(pan.can_interpret());
+            assert!(pan.is_public());
+
+            // 验证计算数据存在
+            assert!(pan.tian_pan.is_some());
+            assert!(pan.si_ke.is_some());
+            assert!(pan.san_chuan.is_some());
+        });
+    }
+
+    #[test]
+    fn test_divine_by_time_encrypted_partial_mode() {
+        new_test_ext().execute_with(|| {
+            // 准备加密数据
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3, 4, 5].try_into().unwrap();
+            let data_hash = [0u8; 32];
+            let owner_key_backup = [0u8; 80];
+
+            // Partial 模式（加密级别 1）
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1, // privacy_mode = Partial
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some(6),
+                Some(0),
+                Some(true),
+                None,
+                Some(encrypted_data),
+                Some(data_hash),
+                Some(owner_key_backup),
+            ));
+
+            // 验证式盘
+            let pan = Pans::<Test>::get(0).unwrap();
+            assert_eq!(pan.privacy_mode, PrivacyMode::Partial);
+            assert!(pan.has_calculation_data());
+            assert!(pan.can_interpret());
+            assert!(!pan.is_public());
+
+            // 验证加密数据存储
+            assert!(DaLiuRen::encrypted_data(0).is_some());
+            assert!(DaLiuRen::owner_key_backup(0).is_some());
+        });
+    }
+
+    #[test]
+    fn test_divine_by_time_encrypted_private_mode() {
+        new_test_ext().execute_with(|| {
+            // 准备加密数据
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3, 4, 5].try_into().unwrap();
+            let data_hash = [0u8; 32];
+            let owner_key_backup = [0u8; 80];
+
+            // Private 模式（加密级别 2）- 不存储计算数据
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                2, // privacy_mode = Private
+                None, // Private 模式不需要明文数据
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(encrypted_data),
+                Some(data_hash),
+                Some(owner_key_backup),
+            ));
+
+            // 验证式盘
+            let pan = Pans::<Test>::get(0).unwrap();
+            assert_eq!(pan.privacy_mode, PrivacyMode::Private);
+            assert!(!pan.has_calculation_data()); // 无计算数据
+            assert!(!pan.can_interpret()); // 无法解读
+            assert!(!pan.is_public());
+
+            // 验证计算数据不存在
+            assert!(pan.tian_pan.is_none());
+            assert!(pan.si_ke.is_none());
+            assert!(pan.san_chuan.is_none());
+
+            // 但加密数据存在
+            assert!(DaLiuRen::encrypted_data(0).is_some());
+            assert!(DaLiuRen::owner_key_backup(0).is_some());
+        });
+    }
+
+    #[test]
+    fn test_divine_by_time_encrypted_invalid_mode_fails() {
+        new_test_ext().execute_with(|| {
+            // 无效的隐私模式应该失败
+            assert_noop!(
+                DaLiuRen::divine_by_time_encrypted(
+                    RuntimeOrigin::signed(ALICE),
+                    3, // 无效的隐私模式
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some(6),
+                    Some(0),
+                    Some(true),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+                Error::<Test>::InvalidPrivacyMode
+            );
+        });
+    }
+
+    #[test]
+    fn test_divine_by_time_encrypted_public_no_encrypted_data() {
+        new_test_ext().execute_with(|| {
+            // Public 模式不能有加密数据
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+
+            assert_noop!(
+                DaLiuRen::divine_by_time_encrypted(
+                    RuntimeOrigin::signed(ALICE),
+                    0, // Public
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some((0, 0)),
+                    Some(6),
+                    Some(0),
+                    Some(true),
+                    None,
+                    Some(encrypted_data), // 不应有加密数据
+                    None,
+                    None,
+                ),
+                Error::<Test>::PublicModeNoEncryptedData
+            );
+        });
+    }
+
+    #[test]
+    fn test_divine_by_time_encrypted_private_requires_encrypted_data() {
+        new_test_ext().execute_with(|| {
+            // Private 模式需要加密数据
+            assert_noop!(
+                DaLiuRen::divine_by_time_encrypted(
+                    RuntimeOrigin::signed(ALICE),
+                    2, // Private
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None, // 缺少加密数据
+                    None,
+                    None,
+                ),
+                Error::<Test>::PrivateModeRequiresEncryptedData
+            );
+        });
+    }
+
+    #[test]
+    fn test_update_encrypted_data_works() {
+        new_test_ext().execute_with(|| {
+            // 先创建 Partial 模式式盘
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+            let data_hash = [1u8; 32];
+            let owner_key_backup = [1u8; 80];
+
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1, // Partial
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some(6),
+                Some(0),
+                Some(true),
+                None,
+                Some(encrypted_data),
+                Some(data_hash),
+                Some(owner_key_backup),
+            ));
+
+            // 更新加密数据
+            let new_encrypted_data: BoundedVec<u8, _> = vec![4, 5, 6, 7].try_into().unwrap();
+            let new_data_hash = [2u8; 32];
+            let new_owner_key_backup = [2u8; 80];
+
+            assert_ok!(DaLiuRen::update_encrypted_data(
+                RuntimeOrigin::signed(ALICE),
+                0,
+                new_encrypted_data.clone(),
+                new_data_hash,
+                new_owner_key_backup,
+            ));
+
+            // 验证更新
+            let stored_data = DaLiuRen::encrypted_data(0).unwrap();
+            assert_eq!(stored_data.to_vec(), vec![4, 5, 6, 7]);
+
+            let pan = Pans::<Test>::get(0).unwrap();
+            assert_eq!(pan.sensitive_data_hash, Some(new_data_hash));
+        });
+    }
+
+    #[test]
+    fn test_update_encrypted_data_not_owner_fails() {
+        new_test_ext().execute_with(|| {
+            // Alice 创建式盘
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1,
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some(6),
+                Some(0),
+                Some(true),
+                None,
+                Some(encrypted_data.clone()),
+                Some([0u8; 32]),
+                Some([0u8; 80]),
+            ));
+
+            // Bob 尝试更新应该失败
+            assert_noop!(
+                DaLiuRen::update_encrypted_data(
+                    RuntimeOrigin::signed(BOB),
+                    0,
+                    encrypted_data,
+                    [0u8; 32],
+                    [0u8; 80],
+                ),
+                Error::<Test>::NotAuthorized
+            );
+        });
+    }
+
+    #[test]
+    fn test_encrypted_pan_events() {
+        new_test_ext().execute_with(|| {
+            System::set_block_number(1);
+
+            let encrypted_data: BoundedVec<u8, _> = vec![1, 2, 3].try_into().unwrap();
+
+            assert_ok!(DaLiuRen::divine_by_time_encrypted(
+                RuntimeOrigin::signed(ALICE),
+                1, // Partial
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some((0, 0)),
+                Some(6),
+                Some(0),
+                Some(true),
+                None,
+                Some(encrypted_data),
+                Some([0u8; 32]),
+                Some([0u8; 80]),
+            ));
+
+            // 验证事件
+            System::assert_has_event(
+                Event::<Test>::EncryptedPanCreated {
+                    pan_id: 0,
+                    creator: ALICE,
+                    privacy_mode: PrivacyMode::Partial,
+                    method: DivinationMethod::TimeMethod,
+                }
+                .into(),
+            );
+        });
     }
 }

@@ -140,6 +140,29 @@ impl QimenCoreInterpretation {
     }
 }
 
+/// 为 QimenCoreInterpretation 实现 Default
+///
+/// 用于 Private 模式下返回默认的空解卦结果
+impl Default for QimenCoreInterpretation {
+    fn default() -> Self {
+        Self {
+            ge_ju: GeJuType::default(),
+            yong_shen_gong: 0,
+            zhi_fu_xing: JiuXing::default(),
+            zhi_shi_men: BaMen::default(),
+            ri_gan_gong: 0,
+            shi_gan_gong: 0,
+            fortune: Fortune::default(),
+            fortune_score: 0,
+            wang_shuai: WangShuai::default(),
+            special_patterns: 0,
+            confidence: 0,
+            timestamp: 0,
+            algorithm_version: 1,
+        }
+    }
+}
+
 // ==================== Layer 2: 扩展解卦数据 ====================
 
 /// 单宫详细解读
@@ -319,6 +342,9 @@ pub struct QimenFullInterpretation {
 /// # 返回
 ///
 /// 核心解卦结果
+///
+/// 注意：此函数仅适用于 Public 和 Partial 模式（计算数据可用）。
+/// 对于 Private 模式，需使用 `compute_chart` Runtime API。
 pub fn calculate_core_interpretation<AccountId, BlockNumber, MaxCidLen: Get<u32>>(
     chart: &QimenChart<AccountId, BlockNumber, MaxCidLen>,
     current_block: u32,
@@ -327,28 +353,42 @@ where
     AccountId: Clone,
     BlockNumber: Clone,
 {
+    // 检查计算数据是否可用
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => {
+            // Private 模式或数据不可用，返回默认值
+            return QimenCoreInterpretation::default();
+        }
+    };
+
+    let day_ganzhi = chart.get_day_ganzhi().unwrap_or_default();
+    let hour_ganzhi = chart.get_hour_ganzhi().unwrap_or_default();
+    let zhi_fu_xing = chart.get_zhi_fu_xing().unwrap_or_default();
+    let zhi_shi_men = chart.get_zhi_shi_men().unwrap_or_default();
+
     // 1. 分析格局
-    let ge_ju = analyze_ge_ju(&chart.palaces);
+    let ge_ju = analyze_ge_ju(palaces);
 
     // 2. 确定用神宫位（默认使用日干）
     let yong_shen_gong = determine_yong_shen_gong(chart, QuestionType::General);
 
     // 3. 计算日干时干落宫
-    let ri_gan_gong = find_gan_palace(&chart.palaces, chart.day_ganzhi.gan);
-    let shi_gan_gong = find_gan_palace(&chart.palaces, chart.hour_ganzhi.gan);
+    let ri_gan_gong = find_gan_palace(palaces, day_ganzhi.gan);
+    let shi_gan_gong = find_gan_palace(palaces, hour_ganzhi.gan);
 
     // 4. 分析旺衰
     let wang_shuai = analyze_wang_shuai(chart, yong_shen_gong);
 
     // 5. 检测特殊格局
-    let special_patterns = detect_special_patterns(&chart.palaces);
+    let special_patterns = detect_special_patterns(palaces);
 
     // 6. 计算综合吉凶
     let (fortune, fortune_score) = calculate_fortune(
         ge_ju,
         wang_shuai,
-        chart.zhi_fu_xing,
-        chart.zhi_shi_men,
+        zhi_fu_xing,
+        zhi_shi_men,
         special_patterns,
     );
 
@@ -358,8 +398,8 @@ where
     QimenCoreInterpretation {
         ge_ju,
         yong_shen_gong,
-        zhi_fu_xing: chart.zhi_fu_xing,
-        zhi_shi_men: chart.zhi_shi_men,
+        zhi_fu_xing,
+        zhi_shi_men,
         ri_gan_gong,
         shi_gan_gong,
         fortune,
@@ -424,7 +464,7 @@ fn analyze_ge_ju(palaces: &[Palace; 9]) -> GeJuType {
 ///
 /// # 返回
 ///
-/// 旺衰状态
+/// 旺衰状态（如果数据不可用返回默认值）
 fn analyze_wang_shuai<AccountId, BlockNumber, MaxCidLen: Get<u32>>(
     chart: &QimenChart<AccountId, BlockNumber, MaxCidLen>,
     yong_shen_gong: u8,
@@ -437,11 +477,21 @@ where
         return WangShuai::Xiu;
     }
 
-    let palace = &chart.palaces[(yong_shen_gong - 1) as usize];
+    // 获取宫位数据
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => return WangShuai::default(),
+    };
+    let jie_qi = match chart.get_jie_qi() {
+        Some(j) => j,
+        None => return WangShuai::default(),
+    };
+
+    let palace = &palaces[(yong_shen_gong - 1) as usize];
     let yong_shen_wuxing = palace.tian_pan_gan.wu_xing();
 
     // 根据节气判断旺衰
-    let jie_qi_wuxing = get_jie_qi_wuxing(chart.jie_qi);
+    let jie_qi_wuxing = get_jie_qi_wuxing(jie_qi);
 
     if yong_shen_wuxing == jie_qi_wuxing {
         WangShuai::WangXiang // 当令为旺
@@ -467,7 +517,7 @@ where
 ///
 /// # 返回
 ///
-/// 用神宫位（1-9）
+/// 用神宫位（1-9）（如果数据不可用返回 0）
 fn determine_yong_shen_gong<AccountId, BlockNumber, MaxCidLen: Get<u32>>(
     chart: &QimenChart<AccountId, BlockNumber, MaxCidLen>,
     question_type: QuestionType,
@@ -476,24 +526,38 @@ where
     AccountId: Clone,
     BlockNumber: Clone,
 {
+    // 获取必要数据
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => return 0,
+    };
+    let day_ganzhi = match chart.get_day_ganzhi() {
+        Some(d) => d,
+        None => return 0,
+    };
+    let hour_ganzhi = match chart.get_hour_ganzhi() {
+        Some(h) => h,
+        None => return 0,
+    };
+
     // 根据问事类型确定用神
     // 默认使用日干作为用神（代表自己）
     let yong_shen_gan = match question_type {
-        QuestionType::General => chart.day_ganzhi.gan,      // 综合运势 - 日干
-        QuestionType::Career => chart.day_ganzhi.gan,       // 事业 - 日干
-        QuestionType::Wealth => chart.day_ganzhi.gan,       // 财运 - 日干
-        QuestionType::Marriage => chart.day_ganzhi.gan,     // 婚姻 - 日干
-        QuestionType::Health => chart.day_ganzhi.gan,       // 健康 - 日干
-        QuestionType::Study => chart.day_ganzhi.gan,        // 学业 - 日干
-        QuestionType::Travel => chart.hour_ganzhi.gan,      // 出行 - 时干
-        QuestionType::Lawsuit => chart.day_ganzhi.gan,      // 官司 - 日干
-        QuestionType::Finding => chart.hour_ganzhi.gan,     // 寻人寻物 - 时干
-        QuestionType::Investment => chart.day_ganzhi.gan,   // 投资 - 日干
-        QuestionType::Business => chart.day_ganzhi.gan,     // 合作 - 日干
-        QuestionType::Prayer => chart.day_ganzhi.gan,       // 祈福 - 日干
+        QuestionType::General => day_ganzhi.gan,      // 综合运势 - 日干
+        QuestionType::Career => day_ganzhi.gan,       // 事业 - 日干
+        QuestionType::Wealth => day_ganzhi.gan,       // 财运 - 日干
+        QuestionType::Marriage => day_ganzhi.gan,     // 婚姻 - 日干
+        QuestionType::Health => day_ganzhi.gan,       // 健康 - 日干
+        QuestionType::Study => day_ganzhi.gan,        // 学业 - 日干
+        QuestionType::Travel => hour_ganzhi.gan,      // 出行 - 时干
+        QuestionType::Lawsuit => day_ganzhi.gan,      // 官司 - 日干
+        QuestionType::Finding => hour_ganzhi.gan,     // 寻人寻物 - 时干
+        QuestionType::Investment => day_ganzhi.gan,   // 投资 - 日干
+        QuestionType::Business => day_ganzhi.gan,     // 合作 - 日干
+        QuestionType::Prayer => day_ganzhi.gan,       // 祈福 - 日干
     };
 
-    find_gan_palace(&chart.palaces, yong_shen_gan)
+    find_gan_palace(palaces, yong_shen_gan)
 }
 
 /// 检测特殊格局
@@ -667,7 +731,7 @@ where
     }
 
     // 3. 阴阳遁影响（阳遁略准）
-    if matches!(chart.dun_type, DunType::Yin) {
+    if matches!(chart.get_dun_type(), Some(DunType::Yin)) {
         confidence = confidence.saturating_sub(5);
     }
 
@@ -1006,8 +1070,18 @@ where
 {
     let mut palace_interps = Vec::new();
 
-    for palace in chart.palaces.iter() {
-        let interp = analyze_palace_detail(palace, chart.jie_qi);
+    // 获取九宫数据和节气，如果不可用则返回空列表
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => return palace_interps,
+    };
+    let jie_qi = match chart.get_jie_qi() {
+        Some(j) => j,
+        None => return palace_interps,
+    };
+
+    for palace in palaces.iter() {
+        let interp = analyze_palace_detail(palace, jie_qi);
         palace_interps.push(interp);
     }
 
@@ -1203,15 +1277,35 @@ where
     AccountId: Clone,
     BlockNumber: Clone,
 {
+    // 获取必要数据，如果不可用返回默认值
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => {
+            return YongShenAnalysis {
+                question_type,
+                primary_gong: JiuGong::Kan,
+                primary_type: YongShenType::RiGan,
+                secondary_gong: None,
+                secondary_type: None,
+                wang_shuai: WangShuai::default(),
+                de_li: DeLiStatus::default(),
+                fortune: Fortune::default(),
+                score: 0,
+            };
+        }
+    };
+    let day_ganzhi = chart.get_day_ganzhi().unwrap_or_default();
+    let hour_ganzhi = chart.get_hour_ganzhi().unwrap_or_default();
+
     // 1. 确定主用神
     let primary_type = YongShenType::RiGan;
-    let primary_gong_num = find_gan_palace(&chart.palaces, chart.day_ganzhi.gan);
+    let primary_gong_num = find_gan_palace(palaces, day_ganzhi.gan);
     let primary_gong = JiuGong::from_num(primary_gong_num).unwrap_or(JiuGong::Kan);
 
     // 2. 确定次用神（根据问事类型）
     let (secondary_gong, secondary_type) = match question_type {
         QuestionType::Travel | QuestionType::Finding => {
-            let shi_gan_gong_num = find_gan_palace(&chart.palaces, chart.hour_ganzhi.gan);
+            let shi_gan_gong_num = find_gan_palace(palaces, hour_ganzhi.gan);
             let shi_gan_gong = JiuGong::from_num(shi_gan_gong_num).unwrap_or(JiuGong::Kan);
             (Some(shi_gan_gong), Some(YongShenType::ShiGan))
         }
@@ -1222,7 +1316,7 @@ where
     let wang_shuai = analyze_wang_shuai(chart, primary_gong_num);
 
     // 4. 判断用神得力情况
-    let palace = &chart.palaces[(primary_gong_num - 1) as usize];
+    let palace = &palaces[(primary_gong_num - 1) as usize];
     let de_li = calculate_de_li_status(palace, wang_shuai);
 
     // 5. 计算用神吉凶
@@ -1346,12 +1440,29 @@ where
     AccountId: Clone,
     BlockNumber: Clone,
 {
+    // 获取必要数据
+    let palaces = match chart.get_palaces() {
+        Some(p) => p,
+        None => {
+            return YingQiAnalysis {
+                primary_num: yong_shen_gong,
+                secondary_nums: [1, 1],
+                unit: YingQiUnit::default(),
+                range_desc: BoundedVec::default(),
+                auspicious_times: BoundedVec::default(),
+                inauspicious_times: BoundedVec::default(),
+            };
+        }
+    };
+    let zhi_fu_xing = chart.get_zhi_fu_xing().unwrap_or_default();
+    let zhi_shi_men = chart.get_zhi_shi_men().unwrap_or_default();
+
     // 1. 主应期数（基于用神宫位）
     let primary_num = yong_shen_gong;
 
     // 2. 次应期数（基于值符值使）
-    let zhi_fu_gong = find_xing_palace(&chart.palaces, chart.zhi_fu_xing);
-    let zhi_shi_gong = find_men_palace(&chart.palaces, chart.zhi_shi_men);
+    let zhi_fu_gong = find_xing_palace(palaces, zhi_fu_xing);
+    let zhi_shi_gong = find_men_palace(palaces, zhi_shi_men);
     let secondary_nums = [zhi_fu_gong, zhi_shi_gong];
 
     // 3. 确定应期单位（根据旺衰）

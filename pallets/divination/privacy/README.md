@@ -27,7 +27,8 @@
 - 创建加密记录（AES-256-GCM）
 - 更新加密数据
 - 删除加密记录
-- 隐私模式管理（公开/私密/授权）
+- 隐私模式管理（公开/部分加密/完全私密）
+- Partial 和 Private 模式支持授权访问
 
 ### 4. 授权管理
 - 授权访问
@@ -73,11 +74,14 @@
 ## 数据类型
 
 ### 隐私模式 (PrivacyMode)
-| 值 | 说明 |
-|---|---|
-| Public | 公开 - 所有人可见 |
-| Private | 私密 - 仅所有者可见 |
-| Authorized | 授权 - 被授权者可见 |
+
+| 值 | 说明 | 支持授权 | 推荐场景 |
+|---|---|:---:|---|
+| Public | 公开 - 所有人可见 | ❌ | 公开展示、教学案例 |
+| Partial | 部分加密 - 计算数据明文 + 敏感数据加密 | ✅ | 奇门遁甲、命运档案 |
+| Private | 完全私密 - 全部数据加密 | ✅ | 高度敏感的个人数据 |
+
+**授权说明**: Partial 和 Private 模式下，所有者可以授权他人（咨询师/家人/AI服务）访问加密数据。
 
 ### 授权角色 (AccessRole)
 | 值 | 说明 |
@@ -166,13 +170,13 @@
 Privacy::register_encryption_key(origin, [/* X25519 公钥 */])?;
 ```
 
-### 2. 创建加密记录
+### 2. 创建加密记录（Partial 模式）
 ```rust
 Privacy::create_encrypted_record(
     origin,
     DivinationType::Bazi,
     result_id,
-    PrivacyMode::Authorized,
+    PrivacyMode::Partial,  // 部分加密 - 计算数据明文，敏感数据加密
     encrypted_data,
     nonce,
     auth_tag,

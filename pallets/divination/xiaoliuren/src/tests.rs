@@ -32,11 +32,12 @@ fn test_divine_by_time_works() {
 
         // 验证三宫计算结果
         // 月宫：从大安起正月，6月 = (6-1) % 6 = 5 → 空亡
-        assert_eq!(pan.san_gong.yue_gong, LiuGong::KongWang);
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
+        assert_eq!(san_gong.yue_gong, LiuGong::KongWang);
         // 日宫：从空亡起初一，初五 = (5 + 5 - 1) % 6 = 3 → 赤口
-        assert_eq!(pan.san_gong.ri_gong, LiuGong::ChiKou);
+        assert_eq!(san_gong.ri_gong, LiuGong::ChiKou);
         // 时宫：从赤口起子时，辰时(5) = (3 + 5 - 1) % 6 = 1 → 留连
-        assert_eq!(pan.san_gong.shi_gong, LiuGong::LiuLian);
+        assert_eq!(san_gong.shi_gong, LiuGong::LiuLian);
 
         // 验证用户课盘索引
         let user_pans = UserPans::<Test>::get(1);
@@ -139,17 +140,18 @@ fn test_divine_by_number_works() {
 
         let pan = Pans::<Test>::get(0).expect("Pan should exist");
         assert_eq!(pan.method, DivinationMethod::NumberMethod);
-        assert_eq!(pan.param1, 1);
-        assert_eq!(pan.param2, 2);
-        assert_eq!(pan.param3, 3);
+        assert_eq!(pan.param1, Some(1));
+        assert_eq!(pan.param2, Some(2));
+        assert_eq!(pan.param3, Some(3));
 
         // 验证三宫计算结果
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
         // 月宫 = (1-1) % 6 = 0 → 大安
-        assert_eq!(pan.san_gong.yue_gong, LiuGong::DaAn);
+        assert_eq!(san_gong.yue_gong, LiuGong::DaAn);
         // 日宫 = (1+2-2) % 6 = 1 → 留连
-        assert_eq!(pan.san_gong.ri_gong, LiuGong::LiuLian);
+        assert_eq!(san_gong.ri_gong, LiuGong::LiuLian);
         // 时宫 = (1+2+3-3) % 6 = 3 → 赤口
-        assert_eq!(pan.san_gong.shi_gong, LiuGong::ChiKou);
+        assert_eq!(san_gong.shi_gong, LiuGong::ChiKou);
     });
 }
 
@@ -167,13 +169,14 @@ fn test_divine_by_number_wrap_around() {
         ));
 
         let pan = Pans::<Test>::get(0).expect("Pan should exist");
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
 
         // 月宫 = (6-1) % 6 = 5 → 空亡
-        assert_eq!(pan.san_gong.yue_gong, LiuGong::KongWang);
+        assert_eq!(san_gong.yue_gong, LiuGong::KongWang);
         // 日宫 = (6+6-2) % 6 = 10 % 6 = 4 → 小吉
-        assert_eq!(pan.san_gong.ri_gong, LiuGong::XiaoJi);
+        assert_eq!(san_gong.ri_gong, LiuGong::XiaoJi);
         // 时宫 = (6+6+6-3) % 6 = 15 % 6 = 3 → 赤口
-        assert_eq!(pan.san_gong.shi_gong, LiuGong::ChiKou);
+        assert_eq!(san_gong.shi_gong, LiuGong::ChiKou);
     });
 }
 
@@ -212,9 +215,10 @@ fn test_divine_random_works() {
         assert_eq!(pan.method, DivinationMethod::RandomMethod);
 
         // 验证三宫都有效（索引在 0-5 范围内）
-        assert!(pan.san_gong.yue_gong.index() < 6);
-        assert!(pan.san_gong.ri_gong.index() < 6);
-        assert!(pan.san_gong.shi_gong.index() < 6);
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
+        assert!(san_gong.yue_gong.index() < 6);
+        assert!(san_gong.ri_gong.index() < 6);
+        assert!(san_gong.shi_gong.index() < 6);
     });
 }
 
@@ -237,9 +241,10 @@ fn test_divine_manual_works() {
 
         let pan = Pans::<Test>::get(0).expect("Pan should exist");
         assert_eq!(pan.method, DivinationMethod::ManualMethod);
-        assert_eq!(pan.san_gong.yue_gong, LiuGong::DaAn);
-        assert_eq!(pan.san_gong.ri_gong, LiuGong::SuXi);
-        assert_eq!(pan.san_gong.shi_gong, LiuGong::XiaoJi);
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
+        assert_eq!(san_gong.yue_gong, LiuGong::DaAn);
+        assert_eq!(san_gong.ri_gong, LiuGong::SuXi);
+        assert_eq!(san_gong.shi_gong, LiuGong::XiaoJi);
     });
 }
 
@@ -283,7 +288,7 @@ fn test_public_pan_works() {
 
         // 验证课盘状态
         let pan = Pans::<Test>::get(0).unwrap();
-        assert!(pan.is_public);
+        assert!(pan.is_public());
     });
 }
 
@@ -306,7 +311,7 @@ fn test_set_pan_visibility_works() {
         ));
 
         let pan = Pans::<Test>::get(0).unwrap();
-        assert!(pan.is_public);
+        assert!(pan.is_public());
         assert_eq!(PublicPans::<Test>::get().len(), 1);
 
         // 设为私有
@@ -317,7 +322,7 @@ fn test_set_pan_visibility_works() {
         ));
 
         let pan = Pans::<Test>::get(0).unwrap();
-        assert!(!pan.is_public);
+        assert!(!pan.is_public());
         assert_eq!(PublicPans::<Test>::get().len(), 0);
     });
 }
@@ -676,9 +681,10 @@ fn test_divine_by_hour_ke_works() {
         assert_eq!(pan.shi_chen, Some(ShiChen::Wei));
 
         // 验证三宫已计算
-        assert!(pan.san_gong.yue_gong.index() < 6);
-        assert!(pan.san_gong.ri_gong.index() < 6);
-        assert!(pan.san_gong.shi_gong.index() < 6);
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
+        assert!(san_gong.yue_gong.index() < 6);
+        assert!(san_gong.ri_gong.index() < 6);
+        assert!(san_gong.shi_gong.index() < 6);
     });
 }
 
@@ -726,7 +732,8 @@ fn test_divine_by_digits_works() {
         assert_eq!(pan.method, DivinationMethod::NumberMethod);
 
         // 验证三宫已计算（对于纯数字起课，三宫相同）
-        assert!(pan.san_gong.yue_gong.index() < 6);
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
+        assert!(san_gong.yue_gong.index() < 6);
     });
 }
 
@@ -747,12 +754,13 @@ fn test_divine_by_three_numbers_works() {
         assert_eq!(pan.method, DivinationMethod::NumberMethod);
 
         // 验证三宫计算
+        let san_gong = pan.san_gong.expect("Public mode should have san_gong");
         // 月宫 = (7-1) % 6 = 0 → 大安
-        assert_eq!(pan.san_gong.yue_gong, LiuGong::DaAn);
+        assert_eq!(san_gong.yue_gong, LiuGong::DaAn);
         // 日宫 = (0 + 14 - 1) % 6 = 13 % 6 = 1 → 留连
-        assert_eq!(pan.san_gong.ri_gong, LiuGong::LiuLian);
+        assert_eq!(san_gong.ri_gong, LiuGong::LiuLian);
         // 时宫 = (1 + 21 - 1) % 6 = 21 % 6 = 3 → 赤口
-        assert_eq!(pan.san_gong.shi_gong, LiuGong::ChiKou);
+        assert_eq!(san_gong.shi_gong, LiuGong::ChiKou);
     });
 }
 
@@ -1020,4 +1028,254 @@ fn test_interpretation_special_patterns() {
     let interp = interpret(&all_bad, None, XiaoLiuRenSchool::DaoJia);
     assert!(interp.special_pattern.is_all_inauspicious());
     assert!(interp.is_xiong());
+}
+
+// ============================================================================
+// 加密模式测试
+// ============================================================================
+
+#[test]
+fn test_divine_by_time_encrypted_public() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Public 模式起课
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            0, // Public 模式
+            Some(6),  // 农历六月
+            Some(5),  // 初五
+            Some(7),  // 7点 = 辰时
+            None, // 无问题 CID
+            None, // 无加密数据
+            None, // 无数据哈希
+            None, // 无密钥备份
+        ));
+
+        // 验证课盘
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.privacy_mode, PrivacyMode::Public);
+        assert!(pan.san_gong.is_some());
+        assert!(pan.is_public());
+        assert!(pan.can_interpret());
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_partial() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Partial 模式起课
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![1, 2, 3, 4, 5]).unwrap();
+        let data_hash = [0u8; 32];
+        let owner_key_backup = [0u8; 80];
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            1, // Partial 模式
+            Some(6),
+            Some(5),
+            Some(7),
+            None,
+            Some(encrypted_data.clone()),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证课盘
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.privacy_mode, PrivacyMode::Partial);
+        assert!(pan.san_gong.is_some()); // 计算数据仍然存在
+        assert!(pan.can_interpret());
+        assert!(!pan.is_public());
+
+        // 验证加密数据存储
+        assert!(crate::EncryptedDataStorage::<Test>::contains_key(0));
+        assert!(crate::OwnerKeyBackupStorage::<Test>::contains_key(0));
+    });
+}
+
+#[test]
+fn test_divine_by_time_encrypted_private() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // Private 模式起课
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![5, 6, 7, 8]).unwrap();
+        let data_hash = [1u8; 32];
+        let owner_key_backup = [2u8; 80];
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            2, // Private 模式
+            None, // 无明文数据
+            None,
+            None,
+            None,
+            Some(encrypted_data.clone()),
+            Some(data_hash),
+            Some(owner_key_backup),
+        ));
+
+        // 验证课盘
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.privacy_mode, PrivacyMode::Private);
+        assert!(pan.san_gong.is_none()); // Private 模式无计算数据
+        assert!(!pan.can_interpret()); // 无法解读
+        assert!(pan.is_private());
+
+        // 验证加密数据存储
+        assert!(crate::EncryptedDataStorage::<Test>::contains_key(0));
+        assert!(crate::OwnerKeyBackupStorage::<Test>::contains_key(0));
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_works() {
+    new_test_ext().execute_with(|| {
+        // 先创建一个 Partial 模式的课盘
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            1,
+            Some(6),
+            Some(5),
+            Some(7),
+            None,
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        // 更新加密数据
+        let new_encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![9, 8, 7, 6, 5]).unwrap();
+        let new_data_hash = [3u8; 32];
+        let new_owner_key_backup = [4u8; 80];
+
+        assert_ok!(XiaoLiuRen::update_encrypted_data(
+            RuntimeOrigin::signed(1),
+            0,
+            new_encrypted_data.clone(),
+            new_data_hash,
+            new_owner_key_backup,
+        ));
+
+        // 验证更新
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.sensitive_data_hash, Some(new_data_hash));
+
+        let stored_data = crate::EncryptedDataStorage::<Test>::get(0).unwrap();
+        assert_eq!(stored_data.to_vec(), vec![9, 8, 7, 6, 5]);
+    });
+}
+
+#[test]
+fn test_update_encrypted_data_not_owner() {
+    new_test_ext().execute_with(|| {
+        // 账户 1 创建课盘
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            1,
+            Some(6),
+            Some(5),
+            Some(7),
+            None,
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        // 账户 2 尝试更新
+        let new_encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![9, 9, 9]).unwrap();
+
+        assert_noop!(
+            XiaoLiuRen::update_encrypted_data(
+                RuntimeOrigin::signed(2),
+                0,
+                new_encrypted_data,
+                [1u8; 32],
+                [1u8; 80],
+            ),
+            Error::<Test>::NotOwner
+        );
+    });
+}
+
+#[test]
+fn test_privacy_mode_affects_visibility() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        // 创建 Partial 模式课盘
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            1, // Partial
+            Some(6),
+            Some(5),
+            Some(7),
+            None,
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.privacy_mode, PrivacyMode::Partial);
+        assert!(!pan.is_public());
+        assert!(pan.can_interpret());
+
+        // 尝试设为公开
+        assert_ok!(XiaoLiuRen::set_pan_visibility(
+            RuntimeOrigin::signed(1),
+            0,
+            true,
+        ));
+
+        let pan = Pans::<Test>::get(0).unwrap();
+        assert_eq!(pan.privacy_mode, PrivacyMode::Public);
+        assert!(pan.is_public());
+    });
+}
+
+#[test]
+fn test_encrypted_event_emitted() {
+    new_test_ext().execute_with(|| {
+        use pallet_divination_privacy::types::PrivacyMode;
+
+        let encrypted_data: BoundedVec<u8, crate::mock::MaxEncryptedLen> =
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap();
+
+        assert_ok!(XiaoLiuRen::divine_by_time_encrypted(
+            RuntimeOrigin::signed(1),
+            1, // Partial
+            Some(6),
+            Some(5),
+            Some(7),
+            None,
+            Some(encrypted_data),
+            Some([0u8; 32]),
+            Some([0u8; 80]),
+        ));
+
+        // 验证事件
+        System::assert_has_event(RuntimeEvent::XiaoLiuRen(Event::EncryptedPanCreated {
+            pan_id: 0,
+            creator: 1,
+            privacy_mode: PrivacyMode::Partial,
+            method: DivinationMethod::TimeMethod,
+        }));
+    });
 }

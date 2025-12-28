@@ -105,6 +105,7 @@ parameter_types! {
     pub const MaxCidLen: u32 = 64;
     pub const DailyFreeDivinations: u32 = 3;
     pub const MaxDailyDivinations: u32 = 50;
+    pub const MaxEncryptedLen: u32 = 512;
     pub const AiInterpretationFee: u64 = 100;
     pub TreasuryAccount: u64 = 999;
 }
@@ -152,6 +153,7 @@ impl pallet_xiaoliuren::Config for Test {
     type MaxCidLen = MaxCidLen;
     type DailyFreeDivinations = DailyFreeDivinations;
     type MaxDailyDivinations = MaxDailyDivinations;
+    type MaxEncryptedLen = MaxEncryptedLen;
     type AiInterpretationFee = AiInterpretationFee;
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = MockAiOracleOrigin;

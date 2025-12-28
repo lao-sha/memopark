@@ -26,6 +26,9 @@ pallet-balances = { workspace = true }
 # 玄学公共模块
 pallet-divination-common = { path = "../common", default-features = false }
 
+# 隐私授权模块
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 # 黄历模块 - 统一农历转换
 pallet-almanac = { path = "../almanac", default-features = false }
 
@@ -47,6 +50,7 @@ std = [
     "pallet-timestamp/std",
     "pallet-balances/std",
     "pallet-divination-common/std",
+    "pallet-divination-privacy/std",
     "pallet-almanac/std",
 ]
 runtime-benchmarks = [

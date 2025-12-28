@@ -29,6 +29,9 @@ pallet-divination-common = { path = "../common", default-features = false }
 # 黄历模块 - 统一农历转换
 pallet-almanac = { path = "../almanac", default-features = false }
 
+# 隐私授权模块
+pallet-divination-privacy = { path = "../privacy", default-features = false }
+
 # 可选依赖
 serde = { workspace = true, optional = true, features = ["derive"] }
 
@@ -51,6 +54,7 @@ std = [
     "pallet-timestamp/std",
     "pallet-divination-common/std",
     "pallet-almanac/std",
+    "pallet-divination-privacy/std",
     "serde/std",
 ]
 runtime-benchmarks = [

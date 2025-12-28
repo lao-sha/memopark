@@ -114,6 +114,7 @@ impl pallet_ziwei::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = EnsureRoot<u64>;
     type MaxCidLen = ConstU32<64>;
+    type MaxEncryptedLen = ConstU32<512>;
 }
 
 /// 测试账户 ID

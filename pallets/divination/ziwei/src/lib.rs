@@ -115,6 +115,12 @@ pub mod pallet {
         /// IPFS CID 最大长度
         #[pallet::constant]
         type MaxCidLen: Get<u32>;
+
+        /// 加密数据最大长度（默认: 512 bytes）
+        ///
+        /// 用于存储加密后的敏感数据（出生时间、性别等）
+        #[pallet::constant]
+        type MaxEncryptedLen: Get<u32>;
     }
 
     // ========================================================================
@@ -169,6 +175,38 @@ pub mod pallet {
     pub type UserStatsStorage<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, UserStats, ValueQuery>;
 
+    /// 加密数据存储
+    ///
+    /// 键：命盘记录 ID
+    /// 值：加密后的敏感数据（出生时间、性别等）
+    ///
+    /// 仅当 privacy_mode 为 Partial 或 Private 时存储
+    #[pallet::storage]
+    #[pallet::getter(fn encrypted_data)]
+    pub type EncryptedDataStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<u8, T::MaxEncryptedLen>,
+    >;
+
+    /// 所有者密钥备份存储
+    ///
+    /// 键：命盘记录 ID
+    /// 值：用所有者公钥加密的主密钥备份（80 bytes）
+    ///
+    /// 用于：
+    /// - 所有者更换设备后恢复密钥
+    /// - 授权查看者时解密主密钥
+    #[pallet::storage]
+    #[pallet::getter(fn owner_key_backup)]
+    pub type OwnerKeyBackupStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        [u8; 80],
+    >;
+
     // ========================================================================
     // 事件
     // ========================================================================
@@ -180,8 +218,8 @@ pub mod pallet {
         ChartCreated {
             chart_id: u64,
             creator: T::AccountId,
-            wu_xing_ju: WuXing,
-            ju_shu: u8,
+            wu_xing_ju: Option<WuXing>,
+            ju_shu: Option<u8>,
         },
         /// 请求 AI 解读
         AiInterpretationRequested {
@@ -197,6 +235,21 @@ pub mod pallet {
         VisibilityChanged {
             chart_id: u64,
             is_public: bool,
+        },
+        /// 加密命盘记录创建成功
+        /// [命盘ID, 创建者, 隐私模式, 五行局, 局数]
+        EncryptedChartCreated {
+            chart_id: u64,
+            creator: T::AccountId,
+            privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+            wu_xing_ju: Option<WuXing>,
+            ju_shu: Option<u8>,
+        },
+        /// 加密数据已更新
+        /// [命盘ID, 数据哈希]
+        EncryptedDataUpdated {
+            chart_id: u64,
+            data_hash: [u8; 32],
         },
     }
 
@@ -228,6 +281,18 @@ pub mod pallet {
         InsufficientBalance,
         /// 无效的年份
         InvalidYear,
+        /// 无效的加密级别（必须为 0/1/2）
+        InvalidEncryptionLevel,
+        /// 加密数据缺失（Partial/Private 模式必须提供）
+        EncryptedDataMissing,
+        /// 数据哈希缺失（Partial/Private 模式必须提供）
+        DataHashMissing,
+        /// 密钥备份缺失（Partial/Private 模式必须提供）
+        OwnerKeyBackupMissing,
+        /// 加密数据过长
+        EncryptedDataTooLong,
+        /// 加密数据不存在
+        EncryptedDataNotFound,
     }
 
     // ========================================================================
@@ -566,6 +631,11 @@ pub mod pallet {
         }
 
         /// 设置命盘可见性
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `chart_id`: 命盘记录 ID
+        /// - `is_public`: 是否公开（向后兼容接口，映射为 PrivacyMode）
         #[pallet::call_index(5)]
         #[pallet::weight(Weight::from_parts(20_000_000, 0))]
         pub fn set_chart_visibility(
@@ -573,21 +643,29 @@ pub mod pallet {
             chart_id: u64,
             is_public: bool,
         ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
             let who = ensure_signed(origin)?;
 
             // 检查命盘存在且属于调用者
             let chart = Charts::<T>::get(chart_id).ok_or(Error::<T>::ChartNotFound)?;
             ensure!(chart.creator == who, Error::<T>::NotChartOwner);
 
+            let was_public = chart.privacy_mode == PrivacyMode::Public;
+
             // 更新可见性
             Charts::<T>::mutate(chart_id, |maybe_chart| {
                 if let Some(chart) = maybe_chart {
-                    chart.is_public = is_public;
+                    chart.privacy_mode = if is_public {
+                        PrivacyMode::Public
+                    } else {
+                        PrivacyMode::Partial
+                    };
                 }
             });
 
             // 更新公开列表
-            if is_public {
+            if is_public && !was_public {
                 PublicCharts::<T>::try_mutate(|list| {
                     if !list.contains(&chart_id) {
                         list.try_push(chart_id).map_err(|_| Error::<T>::PublicChartLimitExceeded)
@@ -595,13 +673,303 @@ pub mod pallet {
                         Ok(())
                     }
                 })?;
-            } else {
+            } else if !is_public && was_public {
                 PublicCharts::<T>::mutate(|list| {
                     list.retain(|&id| id != chart_id);
                 });
             }
 
             Self::deposit_event(Event::VisibilityChanged { chart_id, is_public });
+
+            Ok(())
+        }
+
+        /// 加密时间起盘 - 支持三种隐私模式
+        ///
+        /// 根据出生时间计算命盘，支持：
+        /// - Public (0): 所有数据明文存储，任何人可查看
+        /// - Partial (1): 计算数据明文 + 敏感数据（姓名、出生日期）加密
+        /// - Private (2): 全部数据加密，需前端解密后查看
+        ///
+        /// # 参数
+        /// - `encryption_level`: 加密级别（0/1/2）
+        /// - `lunar_year`: 农历年份
+        /// - `lunar_month`: 农历月份 (1-12)
+        /// - `lunar_day`: 农历日期 (1-30)
+        /// - `birth_hour`: 出生时辰
+        /// - `gender`: 性别
+        /// - `is_leap_month`: 是否闰月
+        /// - `encrypted_data`: 加密后的敏感数据（Partial/Private 模式必须）
+        /// - `data_hash`: 敏感数据哈希，用于完整性验证
+        /// - `owner_key_backup`: 所有者密钥备份（80字节）
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(120_000_000, 0))]
+        pub fn divine_by_time_encrypted(
+            origin: OriginFor<T>,
+            encryption_level: u8,
+            lunar_year: u16,
+            lunar_month: u8,
+            lunar_day: u8,
+            birth_hour: DiZhi,
+            gender: Gender,
+            is_leap_month: bool,
+            encrypted_data: Option<BoundedVec<u8, T::MaxEncryptedLen>>,
+            data_hash: Option<[u8; 32]>,
+            owner_key_backup: Option<[u8; 80]>,
+        ) -> DispatchResult {
+            use pallet_divination_privacy::types::PrivacyMode;
+
+            let who = ensure_signed(origin)?;
+
+            // 验证加密级别
+            ensure!(encryption_level <= 2, Error::<T>::InvalidEncryptionLevel);
+            let privacy_mode = match encryption_level {
+                0 => PrivacyMode::Public,
+                1 => PrivacyMode::Partial,
+                _ => PrivacyMode::Private,
+            };
+
+            // 参数校验
+            ensure!(lunar_year >= 1900 && lunar_year <= 2100, Error::<T>::InvalidYear);
+            ensure!(lunar_month >= 1 && lunar_month <= 12, Error::<T>::InvalidLunarMonth);
+            ensure!(lunar_day >= 1 && lunar_day <= 30, Error::<T>::InvalidLunarDay);
+
+            // 检查每日限制
+            Self::check_daily_limit(&who)?;
+
+            // Partial/Private 模式必须提供加密数据
+            if privacy_mode != PrivacyMode::Public {
+                ensure!(encrypted_data.is_some(), Error::<T>::EncryptedDataMissing);
+                ensure!(data_hash.is_some(), Error::<T>::DataHashMissing);
+                ensure!(owner_key_backup.is_some(), Error::<T>::OwnerKeyBackupMissing);
+            }
+
+            // 计算年干支
+            let year_gan = TianGan::from_index(((lunar_year - 4) % 10) as u8);
+            let year_zhi = DiZhi::from_index(((lunar_year - 4) % 12) as u8);
+
+            // 获取新 ID
+            let chart_id = NextChartId::<T>::get();
+            NextChartId::<T>::put(chart_id + 1);
+
+            // 根据隐私模式决定存储策略
+            let chart = if privacy_mode == PrivacyMode::Private {
+                // Private 模式：不存储计算数据，只存储元数据和加密数据
+                ZiweiChart {
+                    id: chart_id,
+                    creator: who.clone(),
+                    created_at: <frame_system::Pallet<T>>::block_number(),
+                    timestamp: <pallet_timestamp::Pallet<T>>::get(),
+                    privacy_mode,
+                    encrypted_fields: Some(0b1111), // 所有字段加密
+                    sensitive_data_hash: data_hash,
+                    // 所有数据字段为 None（加密存储在 EncryptedDataStorage）
+                    lunar_year: None,
+                    lunar_month: None,
+                    lunar_day: None,
+                    birth_hour: None,
+                    gender: None,
+                    is_leap_month: false,
+                    year_gan: None,
+                    year_zhi: None,
+                    wu_xing_ju: None,
+                    ju_shu: None,
+                    ming_gong_pos: None,
+                    shen_gong_pos: None,
+                    ziwei_pos: None,
+                    tianfu_pos: None,
+                    palaces: None,
+                    si_hua_stars: None,
+                    qi_yun_age: None,
+                    da_yun_shun: None,
+                    ai_interpretation_cid: None,
+                }
+            } else {
+                // Public/Partial 模式：执行完整排盘计算
+                let ming_gong_pos = calculate_ming_gong(lunar_month, birth_hour);
+                let shen_gong_pos = calculate_shen_gong(lunar_month, birth_hour);
+                let (wu_xing_ju, ju_shu) = calculate_wu_xing_ju(year_gan, ming_gong_pos);
+                let ziwei_pos = calculate_ziwei_position(lunar_day, ju_shu);
+                let tianfu_pos = calculate_tianfu_position(ziwei_pos);
+
+                let mut palaces = init_palaces(year_gan, ming_gong_pos);
+
+                // 安紫微星系
+                let ziwei_series = place_ziwei_series(ziwei_pos);
+                for (star, pos) in ziwei_series.iter() {
+                    let palace = &mut palaces[*pos as usize];
+                    for slot in palace.zhu_xing.iter_mut() {
+                        if slot.is_none() {
+                            *slot = Some(*star);
+                            break;
+                        }
+                    }
+                }
+
+                // 安天府星系
+                let tianfu_series = place_tianfu_series(tianfu_pos);
+                for (star, pos) in tianfu_series.iter() {
+                    let palace = &mut palaces[*pos as usize];
+                    for slot in palace.zhu_xing.iter_mut() {
+                        if slot.is_none() {
+                            *slot = Some(*star);
+                            break;
+                        }
+                    }
+                }
+
+                // 安六吉星
+                let (wen_chang, wen_qu) = calculate_wen_chang_qu(birth_hour);
+                let (zuo_fu, you_bi) = calculate_zuo_fu_you_bi(lunar_month);
+                let (tian_kui, tian_yue) = calculate_tian_kui_yue(year_gan);
+
+                palaces[wen_chang as usize].liu_ji[0] = true;
+                palaces[wen_qu as usize].liu_ji[1] = true;
+                palaces[zuo_fu as usize].liu_ji[2] = true;
+                palaces[you_bi as usize].liu_ji[3] = true;
+                palaces[tian_kui as usize].liu_ji[4] = true;
+                palaces[tian_yue as usize].liu_ji[5] = true;
+
+                // 安六煞星
+                let (qing_yang, tuo_luo) = calculate_qing_yang_tuo_luo(year_gan);
+                let (huo_xing, ling_xing) = calculate_huo_ling(year_zhi, birth_hour);
+                let (di_kong, di_jie) = calculate_di_kong_jie(birth_hour);
+
+                palaces[qing_yang as usize].liu_sha[0] = true;
+                palaces[tuo_luo as usize].liu_sha[1] = true;
+                palaces[huo_xing as usize].liu_sha[2] = true;
+                palaces[ling_xing as usize].liu_sha[3] = true;
+                palaces[di_kong as usize].liu_sha[4] = true;
+                palaces[di_jie as usize].liu_sha[5] = true;
+
+                // 安禄存天马
+                let lu_cun = calculate_lu_cun(year_gan);
+                palaces[lu_cun as usize].lu_cun = true;
+                let tian_ma_pos = calculate_tian_ma(year_zhi);
+                palaces[tian_ma_pos as usize].tian_ma = true;
+
+                // 获取四化星
+                let si_hua_stars = get_si_hua_stars_full(year_gan);
+
+                // 计算起运
+                let qi_yun_age = calculate_qi_yun_age(ju_shu);
+                let da_yun_shun = calculate_da_yun_direction(year_gan, gender);
+
+                ZiweiChart {
+                    id: chart_id,
+                    creator: who.clone(),
+                    created_at: <frame_system::Pallet<T>>::block_number(),
+                    timestamp: <pallet_timestamp::Pallet<T>>::get(),
+                    privacy_mode,
+                    encrypted_fields: if privacy_mode == PrivacyMode::Partial {
+                        Some(0b0011) // 姓名和出生日期加密
+                    } else {
+                        None
+                    },
+                    sensitive_data_hash: data_hash,
+                    lunar_year: Some(lunar_year),
+                    lunar_month: Some(lunar_month),
+                    lunar_day: Some(lunar_day),
+                    birth_hour: Some(birth_hour),
+                    gender: Some(gender),
+                    is_leap_month,
+                    year_gan: Some(year_gan),
+                    year_zhi: Some(year_zhi),
+                    wu_xing_ju: Some(wu_xing_ju),
+                    ju_shu: Some(ju_shu),
+                    ming_gong_pos: Some(ming_gong_pos),
+                    shen_gong_pos: Some(shen_gong_pos),
+                    ziwei_pos: Some(ziwei_pos),
+                    tianfu_pos: Some(tianfu_pos),
+                    palaces: Some(palaces),
+                    si_hua_stars: Some(si_hua_stars),
+                    qi_yun_age: Some(qi_yun_age),
+                    da_yun_shun: Some(da_yun_shun),
+                    ai_interpretation_cid: None,
+                }
+            };
+
+            // 存储命盘
+            Charts::<T>::insert(chart_id, chart);
+
+            // 存储加密数据（Partial/Private 模式）
+            if let Some(enc_data) = encrypted_data {
+                EncryptedDataStorage::<T>::insert(chart_id, enc_data);
+            }
+
+            // 存储所有者密钥备份
+            if let Some(key_backup) = owner_key_backup {
+                OwnerKeyBackupStorage::<T>::insert(chart_id, key_backup);
+            }
+
+            // 更新用户命盘列表
+            UserCharts::<T>::try_mutate(&who, |list| {
+                list.try_push(chart_id).map_err(|_| Error::<T>::UserChartLimitExceeded)
+            })?;
+
+            // 更新每日计数
+            Self::increment_daily_count(&who);
+
+            // 更新用户统计
+            UserStatsStorage::<T>::mutate(&who, |stats| {
+                if stats.total_charts == 0 {
+                    stats.first_chart_block = Self::block_to_day(<frame_system::Pallet<T>>::block_number());
+                }
+                stats.total_charts = stats.total_charts.saturating_add(1);
+            });
+
+            // 发出事件
+            let stored_chart = Charts::<T>::get(chart_id).ok_or(Error::<T>::ChartNotFound)?;
+            Self::deposit_event(Event::EncryptedChartCreated {
+                chart_id,
+                creator: who,
+                privacy_mode,
+                wu_xing_ju: stored_chart.wu_xing_ju,
+                ju_shu: stored_chart.ju_shu,
+            });
+
+            Ok(())
+        }
+
+        /// 更新加密数据
+        ///
+        /// 允许所有者更新已有命盘的加密数据（用于密钥轮换等场景）
+        ///
+        /// # 参数
+        /// - `chart_id`: 命盘记录 ID
+        /// - `encrypted_data`: 新的加密数据
+        /// - `data_hash`: 新的数据哈希
+        /// - `owner_key_backup`: 新的密钥备份
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        pub fn update_encrypted_data(
+            origin: OriginFor<T>,
+            chart_id: u64,
+            encrypted_data: BoundedVec<u8, T::MaxEncryptedLen>,
+            data_hash: [u8; 32],
+            owner_key_backup: [u8; 80],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查命盘存在且属于调用者
+            let chart = Charts::<T>::get(chart_id).ok_or(Error::<T>::ChartNotFound)?;
+            ensure!(chart.creator == who, Error::<T>::NotChartOwner);
+
+            // 更新加密数据
+            EncryptedDataStorage::<T>::insert(chart_id, encrypted_data);
+            OwnerKeyBackupStorage::<T>::insert(chart_id, owner_key_backup);
+
+            // 更新命盘中的数据哈希
+            Charts::<T>::mutate(chart_id, |maybe_chart| {
+                if let Some(chart) = maybe_chart {
+                    chart.sensitive_data_hash = Some(data_hash);
+                }
+            });
+
+            Self::deposit_event(Event::EncryptedDataUpdated {
+                chart_id,
+                data_hash,
+            });
 
             Ok(())
         }
@@ -743,31 +1111,41 @@ pub mod pallet {
             let qi_yun_age = calculate_qi_yun_age(ju_shu);
             let da_yun_shun = calculate_da_yun_direction(year_gan, gender);
 
-            // 创建命盘
+            // 创建命盘（使用 Public 模式，向后兼容）
             let chart = ZiweiChart {
                 id: chart_id,
                 creator: who.clone(),
                 created_at: <frame_system::Pallet<T>>::block_number(),
                 timestamp: <pallet_timestamp::Pallet<T>>::get(),
-                lunar_year,
-                lunar_month,
-                lunar_day,
-                birth_hour,
-                gender,
+                // 隐私控制字段（默认 Partial，因为 is_public: false）
+                privacy_mode: pallet_divination_privacy::types::PrivacyMode::Partial,
+                encrypted_fields: None,
+                sensitive_data_hash: None,
+                // 出生信息（明文存储）
+                lunar_year: Some(lunar_year),
+                lunar_month: Some(lunar_month),
+                lunar_day: Some(lunar_day),
+                birth_hour: Some(birth_hour),
+                gender: Some(gender),
                 is_leap_month,
-                year_gan,
-                year_zhi,
-                wu_xing_ju,
-                ju_shu,
-                ming_gong_pos,
-                shen_gong_pos,
-                ziwei_pos,
-                tianfu_pos,
-                palaces,
-                si_hua_stars,
-                qi_yun_age,
-                da_yun_shun,
-                is_public: false,
+                // 年干支
+                year_gan: Some(year_gan),
+                year_zhi: Some(year_zhi),
+                // 命盘核心
+                wu_xing_ju: Some(wu_xing_ju),
+                ju_shu: Some(ju_shu),
+                ming_gong_pos: Some(ming_gong_pos),
+                shen_gong_pos: Some(shen_gong_pos),
+                ziwei_pos: Some(ziwei_pos),
+                tianfu_pos: Some(tianfu_pos),
+                // 十二宫
+                palaces: Some(palaces),
+                // 四化
+                si_hua_stars: Some(si_hua_stars),
+                // 大运
+                qi_yun_age: Some(qi_yun_age),
+                da_yun_shun: Some(da_yun_shun),
+                // 状态
                 ai_interpretation_cid: None,
             };
 

@@ -122,6 +122,10 @@ pub mod pallet {
         #[pallet::constant]
         type MaxDailyDivinations: Get<u32>;
 
+        /// 加密数据最大长度（默认: 512 bytes）
+        #[pallet::constant]
+        type MaxEncryptedLen: Get<u32>;
+
         /// 起课费用
         #[pallet::constant]
         type DivinationFee: Get<BalanceOf<Self>>;
@@ -196,6 +200,26 @@ pub mod pallet {
     pub type UserStatsStorage<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, UserStats, ValueQuery>;
 
+    /// 加密数据存储
+    #[pallet::storage]
+    #[pallet::getter(fn encrypted_data)]
+    pub type EncryptedDataStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        BoundedVec<u8, T::MaxEncryptedLen>,
+    >;
+
+    /// 所有者密钥备份存储
+    #[pallet::storage]
+    #[pallet::getter(fn owner_key_backup)]
+    pub type OwnerKeyBackupStorage<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        [u8; 80],
+    >;
+
     // ========================================================================
     // 事件
     // ========================================================================
@@ -227,6 +251,20 @@ pub mod pallet {
         PanVisibilityChanged {
             pan_id: u64,
             is_public: bool,
+        },
+
+        /// 加密式盘创建成功
+        EncryptedPanCreated {
+            pan_id: u64,
+            creator: T::AccountId,
+            privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+            method: DivinationMethod,
+        },
+
+        /// 加密数据已更新
+        EncryptedDataUpdated {
+            pan_id: u64,
+            data_hash: [u8; 32],
         },
     }
 
@@ -268,6 +306,21 @@ pub mod pallet {
 
         /// 无效的占时
         InvalidZhanShi,
+
+        /// 无效的隐私模式
+        InvalidPrivacyMode,
+
+        /// 加密数据缺失
+        EncryptedDataMissing,
+
+        /// 公开模式不能存储加密数据
+        PublicModeNoEncryptedData,
+
+        /// 私有模式需要加密数据
+        PrivateModeRequiresEncryptedData,
+
+        /// 无法解读（私有模式无计算数据）
+        CannotInterpretPrivateMode,
     }
 
     // ========================================================================
@@ -641,6 +694,7 @@ pub mod pallet {
         /// 设置式盘可见性
         ///
         /// 设置式盘是否公开可见。
+        /// 注意：此方法通过设置 privacy_mode 来控制可见性
         ///
         /// # 参数
         /// - `origin`: 调用者
@@ -662,13 +716,13 @@ pub mod pallet {
                 // 检查权限
                 ensure!(pan.creator == who, Error::<T>::NotAuthorized);
 
-                pan.is_public = is_public;
-
-                // 更新公开索引
+                // 使用 privacy_mode 控制可见性
                 if is_public {
+                    pan.privacy_mode = pallet_divination_privacy::types::PrivacyMode::Public;
                     let current_block = <frame_system::Pallet<T>>::block_number();
                     PublicPans::<T>::insert(pan_id, current_block);
                 } else {
+                    pan.privacy_mode = pallet_divination_privacy::types::PrivacyMode::Partial;
                     PublicPans::<T>::remove(pan_id);
                 }
 
@@ -677,6 +731,152 @@ pub mod pallet {
 
             // 发出事件
             Self::deposit_event(Event::PanVisibilityChanged { pan_id, is_public });
+
+            Ok(())
+        }
+
+        /// 加密时间起课
+        ///
+        /// 支持三种隐私模式的时间起课：
+        /// - Public (0): 所有数据明文存储
+        /// - Partial (1): 计算数据明文，敏感数据加密
+        /// - Private (2): 所有数据加密，仅存储元数据
+        ///
+        /// # 参数
+        /// - `origin`: 调用者
+        /// - `privacy_mode`: 隐私模式 (0=Public, 1=Partial, 2=Private)
+        /// - `year_gz`: 年干支（Private 模式为 None）
+        /// - `month_gz`: 月干支
+        /// - `day_gz`: 日干支
+        /// - `hour_gz`: 时干支
+        /// - `yue_jiang`: 月将
+        /// - `zhan_shi`: 占时
+        /// - `is_day`: 是否昼占
+        /// - `question_cid`: 问题 CID（可选）
+        /// - `encrypted_data`: 加密数据（Partial/Private 模式必需）
+        /// - `data_hash`: 敏感数据哈希（用于完整性验证）
+        /// - `owner_key_backup`: 所有者密钥备份
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(80_000_000, 0))]
+        pub fn divine_by_time_encrypted(
+            origin: OriginFor<T>,
+            privacy_mode: u8,
+            year_gz: Option<(u8, u8)>,
+            month_gz: Option<(u8, u8)>,
+            day_gz: Option<(u8, u8)>,
+            hour_gz: Option<(u8, u8)>,
+            yue_jiang: Option<u8>,
+            zhan_shi: Option<u8>,
+            is_day: Option<bool>,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            encrypted_data: Option<BoundedVec<u8, T::MaxEncryptedLen>>,
+            data_hash: Option<[u8; 32]>,
+            owner_key_backup: Option<[u8; 80]>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 转换隐私模式
+            let mode = match privacy_mode {
+                0 => pallet_divination_privacy::types::PrivacyMode::Public,
+                1 => pallet_divination_privacy::types::PrivacyMode::Partial,
+                2 => pallet_divination_privacy::types::PrivacyMode::Private,
+                _ => return Err(Error::<T>::InvalidPrivacyMode.into()),
+            };
+
+            // 校验参数
+            match mode {
+                pallet_divination_privacy::types::PrivacyMode::Public => {
+                    // Public 模式不能有加密数据
+                    ensure!(encrypted_data.is_none(), Error::<T>::PublicModeNoEncryptedData);
+                    // Public 模式需要所有明文数据
+                    ensure!(year_gz.is_some() && month_gz.is_some() && day_gz.is_some() && hour_gz.is_some(), Error::<T>::InvalidGanZhi);
+                    ensure!(yue_jiang.is_some() && zhan_shi.is_some() && is_day.is_some(), Error::<T>::InvalidYueJiang);
+                },
+                pallet_divination_privacy::types::PrivacyMode::Partial => {
+                    // Partial 模式需要计算数据
+                    ensure!(year_gz.is_some() && month_gz.is_some() && day_gz.is_some() && hour_gz.is_some(), Error::<T>::InvalidGanZhi);
+                    ensure!(yue_jiang.is_some() && zhan_shi.is_some() && is_day.is_some(), Error::<T>::InvalidYueJiang);
+                },
+                pallet_divination_privacy::types::PrivacyMode::Private => {
+                    // Private 模式需要加密数据
+                    ensure!(encrypted_data.is_some(), Error::<T>::PrivateModeRequiresEncryptedData);
+                },
+            }
+
+            // 检查每日限额
+            Self::check_daily_limit(&who)?;
+
+            // 收取费用
+            Self::charge_fee(&who, T::DivinationFee::get())?;
+
+            // 执行加密起课
+            Self::do_divine_encrypted(
+                who,
+                mode,
+                DivinationMethod::TimeMethod,
+                year_gz,
+                month_gz,
+                day_gz,
+                hour_gz,
+                yue_jiang,
+                zhan_shi,
+                is_day,
+                question_cid,
+                encrypted_data,
+                data_hash,
+                owner_key_backup,
+            )
+        }
+
+        /// 更新加密数据
+        ///
+        /// 更新式盘的加密数据（仅限 Partial/Private 模式）
+        ///
+        /// # 参数
+        /// - `origin`: 调用者（必须是式盘所有者）
+        /// - `pan_id`: 式盘 ID
+        /// - `encrypted_data`: 新的加密数据
+        /// - `data_hash`: 新的数据哈希
+        /// - `owner_key_backup`: 新的密钥备份
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn update_encrypted_data(
+            origin: OriginFor<T>,
+            pan_id: u64,
+            encrypted_data: BoundedVec<u8, T::MaxEncryptedLen>,
+            data_hash: [u8; 32],
+            owner_key_backup: [u8; 80],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查式盘存在并验证权限
+            Pans::<T>::try_mutate(pan_id, |maybe_pan| -> DispatchResult {
+                let pan = maybe_pan.as_mut().ok_or(Error::<T>::PanNotFound)?;
+
+                // 检查权限
+                ensure!(pan.creator == who, Error::<T>::NotAuthorized);
+
+                // 公开模式不能存储加密数据
+                ensure!(
+                    !pan.is_public(),
+                    Error::<T>::PublicModeNoEncryptedData
+                );
+
+                // 更新敏感数据哈希
+                pan.sensitive_data_hash = Some(data_hash);
+
+                Ok(())
+            })?;
+
+            // 存储加密数据
+            EncryptedDataStorage::<T>::insert(pan_id, encrypted_data);
+            OwnerKeyBackupStorage::<T>::insert(pan_id, owner_key_backup);
+
+            // 发出事件
+            Self::deposit_event(Event::EncryptedDataUpdated {
+                pan_id,
+                data_hash,
+            });
 
             Ok(())
         }
@@ -690,6 +890,7 @@ pub mod pallet {
         /// 执行起课
         ///
         /// 核心起课逻辑，计算天盘、四课、三传等。
+        /// 默认使用 Public 模式（向后兼容）
         fn do_divine(
             who: T::AccountId,
             method: DivinationMethod,
@@ -724,28 +925,38 @@ pub mod pallet {
             let pan_id = NextPanId::<T>::get();
             NextPanId::<T>::put(pan_id.saturating_add(1));
 
-            // 创建式盘
+            // 创建式盘（使用 Private 模式，所有字段使用 Some 包装）
             let pan = DaLiuRenPan {
                 id: pan_id,
                 creator: who.clone(),
                 created_at: current_block,
+                // 隐私控制字段（默认 Private，用户可后续更改）
+                privacy_mode: pallet_divination_privacy::types::PrivacyMode::Private,
+                encrypted_fields: None,
+                sensitive_data_hash: None,
+                // 起课信息
                 method,
                 question_cid,
-                year_gz,
-                month_gz,
-                day_gz,
-                hour_gz,
-                yue_jiang,
-                zhan_shi,
-                is_day,
-                tian_pan,
-                tian_jiang_pan,
-                si_ke,
-                san_chuan,
-                ke_shi,
-                ge_ju,
-                xun_kong,
-                is_public: false,
+                // 时间信息（使用 Some 包装）
+                year_gz: Some(year_gz),
+                month_gz: Some(month_gz),
+                day_gz: Some(day_gz),
+                hour_gz: Some(hour_gz),
+                // 起课参数
+                yue_jiang: Some(yue_jiang),
+                zhan_shi: Some(zhan_shi),
+                is_day: Some(is_day),
+                // 式盘信息
+                tian_pan: Some(tian_pan),
+                tian_jiang_pan: Some(tian_jiang_pan),
+                si_ke: Some(si_ke),
+                san_chuan: Some(san_chuan),
+                // 课式与格局
+                ke_shi: Some(ke_shi),
+                ge_ju: Some(ge_ju),
+                // 空亡
+                xun_kong: Some(xun_kong),
+                // AI 解读
                 ai_interpretation_cid: None,
             };
 
@@ -774,6 +985,185 @@ pub mod pallet {
                 ke_shi: ke_shi as u8,
                 ge_ju: ge_ju as u8,
             });
+
+            Ok(())
+        }
+
+        /// 执行加密起课
+        ///
+        /// 支持三种隐私模式的起课逻辑
+        #[allow(clippy::too_many_arguments)]
+        fn do_divine_encrypted(
+            who: T::AccountId,
+            privacy_mode: pallet_divination_privacy::types::PrivacyMode,
+            method: DivinationMethod,
+            year_gz: Option<(u8, u8)>,
+            month_gz: Option<(u8, u8)>,
+            day_gz: Option<(u8, u8)>,
+            hour_gz: Option<(u8, u8)>,
+            yue_jiang: Option<u8>,
+            zhan_shi: Option<u8>,
+            is_day: Option<bool>,
+            question_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            encrypted_data: Option<BoundedVec<u8, T::MaxEncryptedLen>>,
+            data_hash: Option<[u8; 32]>,
+            owner_key_backup: Option<[u8; 80]>,
+        ) -> DispatchResult {
+            let current_block = <frame_system::Pallet<T>>::block_number();
+
+            // 生成式盘 ID
+            let pan_id = NextPanId::<T>::get();
+            NextPanId::<T>::put(pan_id.saturating_add(1));
+
+            // 根据隐私模式创建式盘
+            let (pan, ke_shi_val, ge_ju_val) = match privacy_mode {
+                pallet_divination_privacy::types::PrivacyMode::Public |
+                pallet_divination_privacy::types::PrivacyMode::Partial => {
+                    // Public/Partial 模式：计算所有数据
+                    let year = (
+                        TianGan::from_index(year_gz.unwrap().0),
+                        DiZhi::from_index(year_gz.unwrap().1),
+                    );
+                    let month = (
+                        TianGan::from_index(month_gz.unwrap().0),
+                        DiZhi::from_index(month_gz.unwrap().1),
+                    );
+                    let day = (
+                        TianGan::from_index(day_gz.unwrap().0),
+                        DiZhi::from_index(day_gz.unwrap().1),
+                    );
+                    let hour = (
+                        TianGan::from_index(hour_gz.unwrap().0),
+                        DiZhi::from_index(hour_gz.unwrap().1),
+                    );
+                    let yj = DiZhi::from_index(yue_jiang.unwrap());
+                    let zs = DiZhi::from_index(zhan_shi.unwrap());
+                    let is_d = is_day.unwrap();
+
+                    // 计算天盘
+                    let tian_pan = calculate_tian_pan(yj, zs);
+                    // 计算天将盘
+                    let tian_jiang_pan = calculate_tian_jiang_pan(&tian_pan, day.0, is_d);
+                    // 计算四课
+                    let si_ke = calculate_si_ke(&tian_pan, &tian_jiang_pan, day.0, day.1);
+                    // 计算三传
+                    let (san_chuan, ke_shi, ge_ju) =
+                        calculate_san_chuan(&tian_pan, &tian_jiang_pan, &si_ke, day.0, day.1);
+                    // 计算空亡
+                    let xun_kong = calculate_xun_kong(day.0, day.1);
+
+                    let pan = DaLiuRenPan {
+                        id: pan_id,
+                        creator: who.clone(),
+                        created_at: current_block,
+                        privacy_mode,
+                        encrypted_fields: if privacy_mode == pallet_divination_privacy::types::PrivacyMode::Partial {
+                            Some(0x01) // bit 0: question_cid 已加密
+                        } else {
+                            None
+                        },
+                        sensitive_data_hash: data_hash,
+                        method,
+                        question_cid,
+                        year_gz: Some(year),
+                        month_gz: Some(month),
+                        day_gz: Some(day),
+                        hour_gz: Some(hour),
+                        yue_jiang: Some(yj),
+                        zhan_shi: Some(zs),
+                        is_day: Some(is_d),
+                        tian_pan: Some(tian_pan),
+                        tian_jiang_pan: Some(tian_jiang_pan),
+                        si_ke: Some(si_ke),
+                        san_chuan: Some(san_chuan),
+                        ke_shi: Some(ke_shi),
+                        ge_ju: Some(ge_ju),
+                        xun_kong: Some(xun_kong),
+                        ai_interpretation_cid: None,
+                    };
+
+                    (pan, ke_shi as u8, ge_ju as u8)
+                },
+                pallet_divination_privacy::types::PrivacyMode::Private => {
+                    // Private 模式：不存储任何计算数据
+                    let pan = DaLiuRenPan {
+                        id: pan_id,
+                        creator: who.clone(),
+                        created_at: current_block,
+                        privacy_mode,
+                        encrypted_fields: Some(0x03), // bit 0-1: 所有敏感数据已加密
+                        sensitive_data_hash: data_hash,
+                        method,
+                        question_cid: None, // Private 模式不存储问题
+                        year_gz: None,
+                        month_gz: None,
+                        day_gz: None,
+                        hour_gz: None,
+                        yue_jiang: None,
+                        zhan_shi: None,
+                        is_day: None,
+                        tian_pan: None,
+                        tian_jiang_pan: None,
+                        si_ke: None,
+                        san_chuan: None,
+                        ke_shi: None,
+                        ge_ju: None,
+                        xun_kong: None,
+                        ai_interpretation_cid: None,
+                    };
+
+                    (pan, 0u8, 0u8)
+                },
+            };
+
+            // 存储式盘
+            Pans::<T>::insert(pan_id, pan);
+            UserPans::<T>::insert(&who, pan_id, true);
+
+            // 存储加密数据（如果提供）
+            if let Some(data) = encrypted_data {
+                EncryptedDataStorage::<T>::insert(pan_id, data);
+            }
+            if let Some(backup) = owner_key_backup {
+                OwnerKeyBackupStorage::<T>::insert(pan_id, backup);
+            }
+
+            // 更新公开索引（仅 Public 模式）
+            if privacy_mode == pallet_divination_privacy::types::PrivacyMode::Public {
+                PublicPans::<T>::insert(pan_id, current_block);
+            }
+
+            // 更新每日计数
+            let day_stamp = Self::get_day_stamp();
+            DailyPanCount::<T>::mutate(&who, day_stamp, |count| {
+                *count = count.saturating_add(1);
+            });
+
+            // 更新用户统计
+            UserStatsStorage::<T>::mutate(&who, |stats| {
+                stats.total_pans = stats.total_pans.saturating_add(1);
+                if stats.first_pan_block == 0 {
+                    stats.first_pan_block = Self::block_to_u32(current_block);
+                }
+            });
+
+            // 发出事件
+            Self::deposit_event(Event::EncryptedPanCreated {
+                pan_id,
+                creator: who.clone(),
+                privacy_mode,
+                method,
+            });
+
+            // 如果是 Public/Partial 模式，也发出标准事件
+            if privacy_mode != pallet_divination_privacy::types::PrivacyMode::Private {
+                Self::deposit_event(Event::PanCreated {
+                    pan_id,
+                    creator: who,
+                    ke_shi: ke_shi_val,
+                    ge_ju: ge_ju_val,
+                });
+            }
 
             Ok(())
         }
@@ -939,6 +1329,7 @@ pub mod pallet {
         /// 获取三传分析
         ///
         /// 分析三传的旺衰、空亡、递生递克关系
+        /// 注意：Private 模式无法进行解读
         ///
         /// # 参数
         /// - `pan_id`: 式盘ID
@@ -947,20 +1338,31 @@ pub mod pallet {
         /// - `Option<SanChuanAnalysis>`: 三传分析结果
         pub fn get_san_chuan_analysis(pan_id: u64) -> Option<SanChuanAnalysis> {
             let pan = Pans::<T>::get(pan_id)?;
-            let month_wuxing = pan.month_gz.1.wu_xing();
+
+            // 检查是否可解读（Private 模式无计算数据）
+            if !pan.can_interpret() {
+                return None;
+            }
+
+            let month_gz = pan.month_gz?;
+            let san_chuan = pan.san_chuan.as_ref()?;
+            let tian_jiang_pan = pan.tian_jiang_pan.as_ref()?;
+            let day_gz = pan.day_gz?;
+            let xun_kong = pan.xun_kong?;
 
             Some(analyze_san_chuan(
-                &pan.san_chuan,
-                &pan.tian_jiang_pan,
-                pan.day_gz.0,
-                month_wuxing,
-                pan.xun_kong,
+                san_chuan,
+                tian_jiang_pan,
+                day_gz.0,
+                month_gz.1.wu_xing(),
+                xun_kong,
             ))
         }
 
         /// 获取应期分析
         ///
         /// 计算多种应期：三传相加法、空亡填实、六冲应期等
+        /// 注意：Private 模式无法进行解读
         ///
         /// # 参数
         /// - `pan_id`: 式盘ID
@@ -974,9 +1376,17 @@ pub mod pallet {
         ) -> Option<YingQiAnalysis> {
             let pan = Pans::<T>::get(pan_id)?;
 
+            // 检查是否可解读（Private 模式无计算数据）
+            if !pan.can_interpret() {
+                return None;
+            }
+
+            let san_chuan = pan.san_chuan.as_ref()?;
+            let xun_kong = pan.xun_kong?;
+
             Some(calculate_ying_qi_analysis(
-                &pan.san_chuan,
-                pan.xun_kong,
+                san_chuan,
+                xun_kong,
                 shi_xiang_type,
             ))
         }
